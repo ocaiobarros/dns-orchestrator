@@ -1,6 +1,6 @@
 """
-DNS Control v2 — Health Service
-Core health check logic for DNS instances.
+DNS Control v2.1 — Health Service
+Multi-check health validation with quorum logic and configurable thresholds.
 """
 
 import json
@@ -11,16 +11,16 @@ from sqlalchemy.orm import Session
 
 from app.executors.command_runner import run_command
 from app.models.operational import DnsInstance, HealthCheck, InstanceState, OperationalEvent
+from app.services.settings_service import get_health_settings
 
 logger = logging.getLogger("dns-control.health")
 
 PROBE_DOMAIN = "google.com"
-FAILURE_THRESHOLD = 3
-RECOVERY_THRESHOLD = 3
 
 
 def run_health_checks_for_instance(db: Session, instance: DnsInstance) -> dict:
-    """Run all health check types for a single instance."""
+    """Run all health check types for a single instance (quorum health check)."""
+    settings = get_health_settings(db)
     results = {}
 
     # 1. systemd check
@@ -30,19 +30,13 @@ def run_health_checks_for_instance(db: Session, instance: DnsInstance) -> dict:
     results["port"] = _check_port(instance.bind_ip, instance.bind_port)
 
     # 3. functional dig check
-    results["dig"] = _check_dig(instance.bind_ip, instance.bind_port)
+    results["dig"] = _check_dig(instance.bind_ip, instance.bind_port, settings)
 
     # 4. unbound-control status (optional, non-fatal)
     results["unbound_stats"] = _check_unbound_control(instance.instance_name)
 
-    # Determine overall status
-    critical_checks = [results["systemd"], results["port"], results["dig"]]
-    if all(c["status"] == "ok" for c in critical_checks):
-        overall = "ok"
-    elif any(c["status"] == "ok" for c in critical_checks):
-        overall = "degraded"
-    else:
-        overall = "failed"
+    # Quorum health classification
+    overall = _classify_health(results, settings)
 
     # Persist health check records
     for check_type, result in results.items():
@@ -56,11 +50,36 @@ def run_health_checks_for_instance(db: Session, instance: DnsInstance) -> dict:
         )
         db.add(hc)
 
-    # Update instance state
-    _update_instance_state(db, instance, overall)
+    # Update instance state with thresholds from settings
+    _update_instance_state(db, instance, overall, settings)
 
     db.commit()
     return {"instance": instance.instance_name, "overall": overall, "checks": results}
+
+
+def _classify_health(results: dict, settings: dict) -> str:
+    """
+    Quorum health classification:
+    - Healthy: process OK, port bound, dig OK
+    - Degraded: process OK, port OK, dig latency > threshold
+    - Failed: dig timeout, process inactive, or port not listening
+    """
+    systemd_ok = results["systemd"]["status"] == "ok"
+    port_ok = results["port"]["status"] == "ok"
+    dig_ok = results["dig"]["status"] == "ok"
+    dig_latency = results["dig"].get("latency_ms", 0)
+    latency_warn = settings.get("latency_warn_ms", 50)
+
+    if not systemd_ok or not port_ok:
+        return "failed"
+
+    if not dig_ok:
+        return "failed"
+
+    if dig_latency > latency_warn:
+        return "degraded"
+
+    return "ok"
 
 
 def _check_systemd(instance_name: str) -> dict:
@@ -90,18 +109,21 @@ def _check_port(bind_ip: str, port: int) -> dict:
     }
 
 
-def _check_dig(bind_ip: str, port: int) -> dict:
+def _check_dig(bind_ip: str, port: int, settings: dict) -> dict:
+    dig_timeout_ms = settings.get("dig_timeout_ms", 2000)
+    timeout_sec = max(1, dig_timeout_ms // 1000)
+
     start = time.monotonic()
     result = run_command(
-        "dig", [f"@{bind_ip}", "-p", str(port), PROBE_DOMAIN, "+short", "+time=2", "+tries=1"],
-        timeout=5,
+        "dig", [f"@{bind_ip}", "-p", str(port), PROBE_DOMAIN, "+short", f"+time={timeout_sec}", "+tries=1"],
+        timeout=timeout_sec + 2,
     )
     elapsed = int((time.monotonic() - start) * 1000)
     has_answer = result["exit_code"] == 0 and len(result["stdout"].strip()) > 0
     return {
         "status": "ok" if has_answer else "failed",
         "latency_ms": elapsed,
-        "error": None if has_answer else (result["stderr"].strip() or "No response"),
+        "error": None if has_answer else (result["stderr"].strip() or "No response / timeout"),
         "details": {"resolved": result["stdout"].strip().split("\n")[0] if has_answer else ""},
     }
 
@@ -120,8 +142,11 @@ def _check_unbound_control(instance_name: str) -> dict:
     }
 
 
-def _update_instance_state(db: Session, instance: DnsInstance, check_result: str):
+def _update_instance_state(db: Session, instance: DnsInstance, check_result: str, settings: dict):
     """Update instance_state based on health check result. Emit events on transition."""
+    failure_threshold = settings.get("consecutive_failures", 3)
+    recovery_threshold = settings.get("consecutive_successes", 3)
+
     state = db.query(InstanceState).filter(InstanceState.instance_id == instance.id).first()
 
     if not state:
@@ -137,28 +162,28 @@ def _update_instance_state(db: Session, instance: DnsInstance, check_result: str
         state.consecutive_successes += 1
         state.last_success_at = now
 
-        if state.consecutive_successes >= RECOVERY_THRESHOLD and previous_status != "healthy":
+        if state.consecutive_successes >= recovery_threshold and previous_status != "healthy":
             state.current_status = "healthy"
             state.last_transition_at = now
-            state.reason = "Recovery: passed consecutive health checks"
-            _emit_event(db, "instance_recovered", "info", instance.id,
-                        f"{instance.instance_name} recovered after {RECOVERY_THRESHOLD} successful checks")
+            state.reason = f"Recovery: passed {recovery_threshold} consecutive health checks"
+            _emit_event(db, "instance_recovered", "warning", instance.id,
+                        f"{instance.instance_name} recovered after {recovery_threshold} successful checks")
 
     elif check_result == "degraded":
         state.current_status = "degraded"
         state.consecutive_successes = 0
         if previous_status != "degraded":
             state.last_transition_at = now
-            state.reason = "Partial health check failure"
+            state.reason = "Partial health check failure (high latency)"
             _emit_event(db, "instance_degraded", "warning", instance.id,
-                        f"{instance.instance_name} is degraded")
+                        f"{instance.instance_name} is degraded (high latency)")
 
     else:  # failed
         state.consecutive_successes = 0
         state.consecutive_failures += 1
         state.last_failure_at = now
 
-        if state.consecutive_failures >= FAILURE_THRESHOLD and previous_status != "failed":
+        if state.consecutive_failures >= failure_threshold and previous_status != "failed":
             state.current_status = "failed"
             state.last_transition_at = now
             state.reason = f"Failed {state.consecutive_failures} consecutive health checks"
@@ -178,11 +203,16 @@ def _emit_event(db: Session, event_type: str, severity: str, instance_id: str, m
 
 
 def get_all_instance_states(db: Session) -> list[dict]:
-    """Get current state of all instances."""
+    """Get current state of all instances with cooldown info."""
     instances = db.query(DnsInstance).filter(DnsInstance.is_enabled == True).all()
+    now = datetime.now(timezone.utc)
     results = []
     for inst in instances:
         state = db.query(InstanceState).filter(InstanceState.instance_id == inst.id).first()
+        cooldown_remaining = 0
+        if state and state.cooldown_until:
+            remaining = (state.cooldown_until - now).total_seconds()
+            cooldown_remaining = max(0, int(remaining))
         results.append({
             "id": inst.id,
             "instance_name": inst.instance_name,
@@ -198,6 +228,8 @@ def get_all_instance_states(db: Session) -> list[dict]:
             "last_failure_at": state.last_failure_at.isoformat() if state and state.last_failure_at else None,
             "last_transition_at": state.last_transition_at.isoformat() if state and state.last_transition_at else None,
             "reason": state.reason if state else None,
+            "cooldown_remaining": cooldown_remaining,
+            "last_reconciliation_at": state.last_reconciliation_at.isoformat() if state and state.last_reconciliation_at else None,
         })
     return results
 
