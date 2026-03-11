@@ -12,6 +12,7 @@ import type {
   ApplyRequest, ApplyResult, DiagCommand, DiagResult,
   ConfigProfile, ConfigDiff, GeneratedFile, PaginatedResponse,
   InstanceHealthReport,
+  V2Event, V2MetricEntry, V2Instance, V2Action,
 } from './types';
 
 export interface AuthUserRecord {
@@ -29,6 +30,7 @@ import {
   mockInstanceStats, mockNftCounters, mockStickyEntries,
   mockOspfNeighbors, mockOspfRoutes, mockLogs, mockDiagCommands,
   mockHistory, mockProfiles, mockDiagOutputs, mockInstanceHealth,
+  mockV2Events, mockV2Metrics, mockV2Instances, mockV2Actions,
 } from './mock-data';
 
 // ---- Configuration ----
@@ -179,6 +181,22 @@ export const api = {
     apiCall<{ success: boolean }>('POST', `/api/users/${userId}/change-password`, { password }),
   deleteUser: (userId: string) =>
     apiCall<void>('DELETE', `/api/users/${userId}`),
+
+  // ---- v2: Events, Metrics, Actions, Instances ----
+  getEvents: (severity?: string, limit: number = 100) =>
+    apiCall<{ items: V2Event[]; total: number }>('GET', `/api/events${severity ? `?severity=${severity}` : ''}${severity ? '&' : '?'}limit=${limit}`),
+  getV2Metrics: () =>
+    apiCall<V2MetricEntry[]>('GET', '/api/metrics/dns'),
+  getV2Instances: () =>
+    apiCall<V2Instance[]>('GET', '/api/health/instances'),
+  getV2Actions: () =>
+    apiCall<V2Action[]>('GET', '/api/actions'),
+  removeBackend: (instanceId: string) =>
+    apiCall<{ success: boolean }>('POST', `/api/actions/remove-backend/${instanceId}`),
+  restoreBackend: (instanceId: string) =>
+    apiCall<{ success: boolean }>('POST', `/api/actions/restore-backend/${instanceId}`),
+  getSchedulerStatus: () =>
+    apiCall<{ running: boolean; jobs: Array<{ id: string; name: string; next_run: string | null }> }>('GET', '/api/health'),
 };
 
 // ---- Mock Response Router ----
@@ -286,6 +304,19 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path.match(/\/api\/users\/.*\/(enable|disable)/)) return { success: true };
   if (path.match(/\/api\/users\//) && method === 'PATCH') return { success: true };
   if (path.match(/\/api\/users\//) && method === 'DELETE') return undefined;
+
+  // v2: Events
+  if (path.startsWith('/api/events')) return mockV2Events();
+
+  // v2: Metrics
+  if (path === '/api/metrics/dns') return mockV2Metrics();
+
+  // v2: Health instances
+  if (path === '/api/health/instances') return mockV2Instances();
+
+  // v2: Actions
+  if (path === '/api/actions' && method === 'GET') return mockV2Actions();
+  if (path.match(/\/api\/actions\/(remove|restore)-backend/)) return { success: true };
 
   return {};
 }

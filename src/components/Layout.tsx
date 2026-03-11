@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Server, Network, Globe, Shield, Router,
-  FileText, Wrench, Settings, History, FolderOpen, Menu, X, Wand2, Users, LogOut
+  FileText, Wrench, Settings, History, FolderOpen, Menu, X, Wand2, Users, LogOut,
+  HeartPulse, BarChart3, Bell,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 
@@ -14,6 +15,8 @@ const navItems = [
   { path: '/dns', label: 'DNS', icon: Globe },
   { path: '/nat', label: 'NAT / Balanceamento', icon: Shield },
   { path: '/ospf', label: 'OSPF / FRR', icon: Router },
+  { path: '/metrics', label: 'Métricas', icon: BarChart3 },
+  { path: '/events', label: 'Eventos', icon: Bell },
   { path: '/logs', label: 'Logs', icon: FileText },
   { path: '/troubleshoot', label: 'Troubleshooting', icon: Wrench },
   { path: '/files', label: 'Arquivos', icon: FolderOpen },
@@ -87,7 +90,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </button>
             </div>
           )}
-          <p className="text-xs text-muted-foreground font-mono px-1">v1.0.0 · Debian 13</p>
+          <p className="text-xs text-muted-foreground font-mono px-1">v2.0.0 · Carrier Edition</p>
         </div>
       </aside>
 

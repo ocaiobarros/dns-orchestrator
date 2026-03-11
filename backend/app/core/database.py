@@ -54,6 +54,7 @@ def init_db():
     import app.models.config_revision  # noqa
     import app.models.apply_job  # noqa
     import app.models.log_entry  # noqa
+    import app.models.operational  # noqa  — v2 operational models
 
     Base.metadata.create_all(bind=engine)
 

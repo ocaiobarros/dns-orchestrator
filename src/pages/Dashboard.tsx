@@ -1,9 +1,11 @@
-import { Activity, Clock, Globe, Server, HeartPulse, CheckCircle, XCircle, Zap } from 'lucide-react';
+import { Activity, Clock, Globe, Server, HeartPulse, CheckCircle, XCircle, Zap, AlertTriangle, Bell } from 'lucide-react';
 import MetricCard from '@/components/MetricCard';
 import StatusBadge from '@/components/StatusBadge';
 import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useSystemInfo, useServices, useInstanceStats, useInstanceHealth } from '@/lib/hooks';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 
 function formatBytes(bytes: number | null): string {
   if (bytes === null) return 'N/A';
@@ -19,6 +21,18 @@ export default function Dashboard() {
   const { data: health } = useInstanceHealth();
   const navigate = useNavigate();
 
+  const { data: v2Instances } = useQuery({
+    queryKey: ['v2-instances'],
+    queryFn: async () => { const r = await api.getV2Instances(); if (!r.success) throw new Error(r.error!); return r.data; },
+    refetchInterval: 10000,
+  });
+
+  const { data: recentEvents } = useQuery({
+    queryKey: ['events', 'recent'],
+    queryFn: async () => { const r = await api.getEvents(undefined, 5); if (!r.success) throw new Error(r.error!); return r.data; },
+    refetchInterval: 5000,
+  });
+
   if (sysLoading || svcLoading) return <LoadingState />;
   if (sysError) return <ErrorState message={sysError.message} />;
 
@@ -28,32 +42,89 @@ export default function Dashboard() {
     ? (instanceStats.reduce((a, b) => a + b.cacheHitRatio, 0) / instanceStats.length).toFixed(1)
     : '0';
 
+  const healthyCount = v2Instances?.filter(i => i.current_status === 'healthy').length ?? health?.healthy ?? 0;
+  const totalInstances = v2Instances?.length ?? health?.total ?? 0;
+  const failedCount = v2Instances?.filter(i => i.current_status === 'failed' || i.current_status === 'withdrawn').length ?? 0;
+  const inRotation = v2Instances?.filter(i => i.in_rotation).length ?? totalInstances;
+
+  const statusLabel = failedCount > 0 ? 'Degradado' : 'Todas saudáveis';
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Visão geral do ambiente DNS</p>
+          <p className="text-sm text-muted-foreground">DNS Control v2 — Carrier Edition</p>
         </div>
-        <StatusBadge status={allRunning ? 'running' : 'error'} />
+        <StatusBadge status={allRunning && failedCount === 0 ? 'running' : 'error'} />
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard label="Instâncias DNS" value={`${health?.healthy ?? instanceStats?.length ?? 0}/${health?.total ?? instanceStats?.length ?? 0}`} sub={health?.all_healthy ? 'Todas saudáveis' : health?.degraded ? 'Degradado' : 'Operacionais'} icon={<Globe size={16} />} />
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <MetricCard label="Instâncias" value={`${healthyCount}/${totalInstances}`} sub={statusLabel} icon={<Globe size={16} />} />
+        <MetricCard label="Em Rotação" value={`${inRotation}/${totalInstances}`} sub="DNAT ativo" icon={<Zap size={16} />} />
         <MetricCard label="Total Queries" value={totalQps.toLocaleString()} sub="Acumulado" icon={<Activity size={16} />} />
         <MetricCard label="Cache Hit" value={`${avgCacheHit}%`} sub="Média geral" icon={<Server size={16} />} />
-        <MetricCard label="Uptime" value={sysInfo?.uptime ?? '-'} sub="Desde último restart" icon={<Clock size={16} />} />
+        <MetricCard label="Uptime" value={sysInfo?.uptime ?? '-'} sub="Sistema" icon={<Clock size={16} />} />
       </div>
 
-      {/* Instance Health Check Panel */}
+      {/* v2 Instance State Table */}
+      {v2Instances && v2Instances.length > 0 && (
+        <div className="noc-panel">
+          <div className="noc-panel-header flex items-center gap-2">
+            <HeartPulse size={14} />
+            Estado Operacional das Instâncias
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b border-border">
+                  <th className="py-2 pr-3 font-medium">Instância</th>
+                  <th className="py-2 pr-3 font-medium">Bind IP</th>
+                  <th className="py-2 pr-3 font-medium">Status</th>
+                  <th className="py-2 pr-3 font-medium">Rotação</th>
+                  <th className="py-2 pr-3 font-medium text-right">Falhas</th>
+                  <th className="py-2 pr-3 font-medium text-right">Sucessos</th>
+                  <th className="py-2 font-medium">Motivo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {v2Instances.map(inst => (
+                  <tr key={inst.id} className="border-b border-border last:border-0">
+                    <td className="py-2 pr-3 font-mono">{inst.instance_name}</td>
+                    <td className="py-2 pr-3 font-mono text-muted-foreground">{inst.bind_ip}:{inst.bind_port}</td>
+                    <td className="py-2 pr-3">
+                      <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded ${
+                        inst.current_status === 'healthy' ? 'bg-emerald-500/10 text-emerald-500' :
+                        inst.current_status === 'degraded' ? 'bg-yellow-500/10 text-yellow-500' :
+                        'bg-destructive/10 text-destructive'
+                      }`}>
+                        {inst.current_status === 'healthy' ? <CheckCircle size={12} /> : inst.current_status === 'degraded' ? <AlertTriangle size={12} /> : <XCircle size={12} />}
+                        {inst.current_status}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3">
+                      <span className={`text-xs font-mono ${inst.in_rotation ? 'text-emerald-500' : 'text-destructive'}`}>
+                        {inst.in_rotation ? 'SIM' : 'NÃO'}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3 text-right font-mono">{inst.consecutive_failures}</td>
+                    <td className="py-2 pr-3 text-right font-mono">{inst.consecutive_successes}</td>
+                    <td className="py-2 text-xs text-muted-foreground truncate max-w-[200px]">{inst.reason ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Health Check Panel (dig-based) */}
       {health && (
         <div className="noc-panel">
           <div className="noc-panel-header flex items-center gap-2">
             <HeartPulse size={14} />
             Health Check — dig @instância
           </div>
-
-          {/* VIP status */}
           {health.vip && (
             <div className="flex items-center justify-between py-2 px-1 mb-2 rounded bg-secondary/30 border border-border">
               <div className="flex items-center gap-2">
@@ -71,29 +142,19 @@ export default function Dashboard() {
               </div>
             </div>
           )}
-
           <div className="space-y-1">
             {health.instances.map(inst => (
               <div key={inst.instance} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
                 <div className="flex items-center gap-2">
-                  {inst.healthy ? (
-                    <CheckCircle size={14} className="text-emerald-500" />
-                  ) : (
-                    <XCircle size={14} className="text-destructive" />
-                  )}
+                  {inst.healthy ? <CheckCircle size={14} className="text-emerald-500" /> : <XCircle size={14} className="text-destructive" />}
                   <span className="text-sm font-mono">{inst.instance}</span>
                   <span className="text-xs text-muted-foreground font-mono">{inst.bind_ip}:{inst.port}</span>
                 </div>
                 <div className="flex items-center gap-4">
-                  {inst.healthy && (
-                    <span className="text-xs text-muted-foreground font-mono">→ {inst.resolved_ip}</span>
-                  )}
+                  {inst.healthy && <span className="text-xs text-muted-foreground font-mono">→ {inst.resolved_ip}</span>}
                   <span className={`text-xs font-mono ${inst.latency_ms < 10 ? 'text-emerald-500' : inst.latency_ms < 50 ? 'text-yellow-500' : 'text-destructive'}`}>
                     {inst.latency_ms}ms
                   </span>
-                  {inst.error && (
-                    <span className="text-xs text-destructive truncate max-w-[200px]">{inst.error}</span>
-                  )}
                 </div>
               </div>
             ))}
@@ -102,27 +163,30 @@ export default function Dashboard() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Per-instance stats */}
+        {/* Recent Events */}
         <div className="noc-panel">
-          <div className="noc-panel-header">Estatísticas por Instância</div>
-          <div className="space-y-2">
-            {instanceStats?.map(inst => (
-              <div key={inst.instance} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
-                <div className="flex items-center gap-2">
-                  <Server size={14} className="text-muted-foreground" />
-                  <span className="text-sm font-mono">{inst.instance}</span>
-                </div>
-                <div className="flex items-center gap-4 text-xs font-mono">
-                  <span className="text-muted-foreground">{inst.totalQueries.toLocaleString()} q</span>
-                  <span className="text-emerald-500">{inst.cacheHitRatio}% hit</span>
-                  <span className="text-muted-foreground">{inst.avgLatencyMs}ms</span>
-                  <span className="text-muted-foreground">{inst.uptime}</span>
+          <div className="noc-panel-header flex items-center justify-between">
+            <div className="flex items-center gap-2"><Bell size={14} /> Eventos Recentes</div>
+            <button onClick={() => navigate('/events')} className="text-xs text-primary hover:underline">Ver todos</button>
+          </div>
+          <div className="space-y-1">
+            {recentEvents?.items && recentEvents.items.length > 0 ? recentEvents.items.map(ev => (
+              <div key={ev.id} className="flex items-start gap-2 py-1.5 border-b border-border last:border-0">
+                {ev.severity === 'critical' ? <XCircle size={12} className="text-destructive mt-0.5" /> :
+                 ev.severity === 'warning' ? <AlertTriangle size={12} className="text-yellow-500 mt-0.5" /> :
+                 <CheckCircle size={12} className="text-muted-foreground mt-0.5" />}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-foreground truncate">{ev.message}</p>
+                  <span className="text-xs text-muted-foreground">{new Date(ev.created_at).toLocaleString('pt-BR')}</span>
                 </div>
               </div>
-            ))}
+            )) : (
+              <p className="text-xs text-muted-foreground py-2">Nenhum evento recente</p>
+            )}
           </div>
         </div>
 
+        {/* Services */}
         <div className="noc-panel">
           <div className="noc-panel-header">Serviços</div>
           <div className="space-y-2">
@@ -169,6 +233,8 @@ export default function Dashboard() {
         <div className="noc-panel-header">Ações Rápidas</div>
         <div className="flex flex-wrap gap-2">
           {[
+            { label: 'Métricas DNS', action: () => navigate('/metrics') },
+            { label: 'Eventos', action: () => navigate('/events') },
             { label: 'Executar Diagnóstico', action: () => navigate('/troubleshoot') },
             { label: 'Wizard de Instalação', action: () => navigate('/wizard') },
             { label: 'Ver Arquivos Gerados', action: () => navigate('/files') },
