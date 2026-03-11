@@ -248,7 +248,7 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   }
   if (path === '/api/v1/auth/users' && method === 'POST') {
     const b = body as { username: string };
-    return { id: `usr-${Date.now()}`, username: b.username, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), lastLoginAt: null };
+    return { id: `usr-${Date.now()}`, username: b.username, isActive: true, mustChangePassword: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), lastLoginAt: null };
   }
   if (path.match(/\/api\/v1\/auth\/users\/.*\/password/)) return { success: true };
   if (path.match(/\/api\/v1\/auth\/users\//) && method === 'PATCH') return { success: true };
