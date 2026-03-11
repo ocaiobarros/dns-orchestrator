@@ -31,11 +31,11 @@ export default function UsersPage() {
   const [changePassword, setChangePassword] = useState('');
   const [changePasswordConfirm, setChangePasswordConfirm] = useState('');
 
-  const { data: users = [], isLoading } = useQuery<UserRecord[]>({
+  const { data: users = [], isLoading } = useQuery<AuthUserRecord[]>({
     queryKey: ['users'],
     queryFn: async () => {
       const res = await api.getUsers();
-      return res.success ? (res.data as unknown as UserRecord[]) : [];
+      return res.success ? res.data : [];
     },
   });
 
