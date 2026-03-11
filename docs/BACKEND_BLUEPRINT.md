@@ -66,6 +66,43 @@
 
 ## SQLite Schema
 
+### Authentication
+
+```sql
+CREATE TABLE users (
+    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_login_at TEXT
+);
+
+CREATE TABLE sessions (
+    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(32)))),
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL,
+    ip_address TEXT,
+    user_agent TEXT
+);
+
+CREATE INDEX idx_sessions_token ON sessions(token);
+CREATE INDEX idx_sessions_expires ON sessions(expires_at);
+
+-- Initial admin user (password: changeme, bcrypt hash)
+-- Generate with: python3 -c "from passlib.hash import bcrypt; print(bcrypt.hash('changeme'))"
+INSERT INTO users (id, username, password_hash) VALUES (
+    'usr-admin-001',
+    'admin',
+    '$2b$12$PLACEHOLDER_HASH_CHANGE_ON_INSTALL'
+);
+```
+
+### Application Data
+
 ```sql
 CREATE TABLE config_snapshots (
     id TEXT PRIMARY KEY,
