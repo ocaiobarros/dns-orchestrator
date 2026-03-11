@@ -17,6 +17,7 @@ export interface AuthUserRecord {
   id: string;
   username: string;
   isActive: boolean;
+  mustChangePassword: boolean;
   createdAt: string;
   updatedAt: string;
   lastLoginAt: string | null;
