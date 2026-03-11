@@ -25,6 +25,7 @@ const navItems = [
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { user, logout } = useAuth();
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
