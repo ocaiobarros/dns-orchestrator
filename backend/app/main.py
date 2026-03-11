@@ -57,4 +57,23 @@ app.include_router(settings_route.router, prefix="/api/settings", tags=["Setting
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "version": "1.0.0"}
+    from app.core.database import SessionLocal
+    db_ok = False
+    user_count = 0
+    try:
+        db = SessionLocal()
+        from app.models.user import User
+        user_count = db.query(User).count()
+        db_ok = True
+        db.close()
+    except Exception:
+        pass
+
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "version": "1.0.0",
+        "database": "connected" if db_ok else "unreachable",
+        "users": user_count,
+        "engine": "FastAPI + SQLite + SQLAlchemy",
+        "auth": "bcrypt + JWT + server-side sessions",
+    }
