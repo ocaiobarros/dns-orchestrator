@@ -319,6 +319,7 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   // v2: Actions
   if (path === '/api/actions' && method === 'GET') return mockV2Actions();
   if (path.match(/\/api\/actions\/(remove|restore)-backend/)) return { success: true };
+  if (path === '/api/actions/reconcile-now' && method === 'POST') return { instances_checked: 4, instances_failed: 0, backends_removed: 0, backends_restored: 0 };
 
   return {};
 }
