@@ -195,6 +195,8 @@ export const api = {
     apiCall<{ success: boolean }>('POST', `/api/actions/remove-backend/${instanceId}`),
   restoreBackend: (instanceId: string) =>
     apiCall<{ success: boolean }>('POST', `/api/actions/restore-backend/${instanceId}`),
+  reconcileNow: () =>
+    apiCall<ReconcileSummary>('POST', '/api/actions/reconcile-now'),
   getSchedulerStatus: () =>
     apiCall<{ running: boolean; jobs: Array<{ id: string; name: string; next_run: string | null }> }>('GET', '/api/health'),
 };
