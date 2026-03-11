@@ -439,3 +439,54 @@ export const DEFAULT_CONFIG: WizardConfig = {
   allowedIps: [],
   panelPort: 8443,
 };
+
+// ---- v2: Operational Types ----
+
+export interface V2Event {
+  id: string;
+  event_type: string;
+  severity: 'info' | 'warning' | 'critical';
+  instance_id: string | null;
+  message: string;
+  details_json: string | null;
+  created_at: string;
+}
+
+export interface V2MetricEntry {
+  instance_id: string;
+  instance_name: string;
+  metric_name: string;
+  metric_value: number;
+  collected_at: string;
+}
+
+export interface V2Instance {
+  id: string;
+  instance_name: string;
+  bind_ip: string;
+  bind_port: number;
+  outgoing_ip: string | null;
+  control_port: number;
+  current_status: 'healthy' | 'degraded' | 'failed' | 'withdrawn' | 'unknown';
+  in_rotation: boolean;
+  consecutive_failures: number;
+  consecutive_successes: number;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  last_transition_at: string | null;
+  reason: string | null;
+}
+
+export interface V2Action {
+  id: string;
+  action_type: string;
+  target_type: string;
+  target_id: string | null;
+  status: string;
+  exit_code: number | null;
+  trigger_source: string;
+  stdout_log: string;
+  stderr_log: string;
+  created_at: string;
+  finished_at: string | null;
+}
