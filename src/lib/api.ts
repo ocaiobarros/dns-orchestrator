@@ -41,7 +41,6 @@ async function apiCall<T>(
   body?: unknown,
 ): Promise<ApiResponse<T>> {
   if (IS_PREVIEW) {
-    // Return mock data in preview mode
     return getMockResponse<T>(method, path, body);
   }
 
@@ -64,94 +63,119 @@ async function apiCall<T>(
     };
   }
 
-  return res.json();
+  const data = await res.json();
+  return {
+    success: true,
+    data: data as T,
+    error: null,
+    timestamp: new Date().toISOString(),
+  };
 }
 
 // ---- Public API Methods ----
+// Paths match backend routes in backend/app/main.py
 
 export const api = {
-  // System
-  getSystemInfo: () => apiCall<SystemInfo>('GET', '/api/v1/system/info'),
-  getServices: () => apiCall<ServiceStatus[]>('GET', '/api/v1/system/services'),
-  restartService: (name: string) => apiCall<{ success: boolean }>('POST', `/api/v1/system/services/${name}/restart`),
+  // Dashboard
+  getSystemInfo: () => apiCall<SystemInfo>('GET', '/api/dashboard/summary'),
+
+  // Services
+  getServices: () => apiCall<ServiceStatus[]>('GET', '/api/services'),
+  restartService: (name: string) => apiCall<{ success: boolean }>('POST', `/api/services/${name}/restart`),
 
   // Network
-  getInterfaces: () => apiCall<NetworkInterface[]>('GET', '/api/v1/network/interfaces'),
-  getRoutes: () => apiCall<Route[]>('GET', '/api/v1/network/routes'),
-  checkReachability: () => apiCall<ReachabilityResult[]>('POST', '/api/v1/network/reachability'),
+  getInterfaces: () => apiCall<NetworkInterface[]>('GET', '/api/network/interfaces'),
+  getRoutes: () => apiCall<Route[]>('GET', '/api/network/routes'),
+  checkReachability: () => apiCall<ReachabilityResult[]>('GET', '/api/network/reachability'),
 
   // DNS
   getDnsMetrics: (hours: number = 6, instance?: string) =>
-    apiCall<DnsMetrics[]>('GET', `/api/v1/dns/metrics?hours=${hours}${instance ? `&instance=${instance}` : ''}`),
+    apiCall<DnsMetrics[]>('GET', `/api/dns/metrics?hours=${hours}${instance ? `&instance=${instance}` : ''}`),
   getTopDomains: (limit: number = 20) =>
-    apiCall<DnsTopDomain[]>('GET', `/api/v1/dns/top-domains?limit=${limit}`),
-  getInstanceStats: () => apiCall<DnsInstanceStats[]>('GET', '/api/v1/dns/instances'),
+    apiCall<DnsTopDomain[]>('GET', `/api/dns/top-domains?limit=${limit}`),
+  getInstanceStats: () => apiCall<DnsInstanceStats[]>('GET', '/api/dns/instances'),
 
   // NAT / nftables
-  getNftCounters: () => apiCall<NftCounter[]>('GET', '/api/v1/nat/counters'),
-  getStickyTable: () => apiCall<NftStickyEntry[]>('GET', '/api/v1/nat/sticky'),
-  getNftRuleset: () => apiCall<{ ruleset: string }>('GET', '/api/v1/nat/ruleset'),
+  getNftCounters: () => apiCall<NftCounter[]>('GET', '/api/nat/summary'),
+  getStickyTable: () => apiCall<NftStickyEntry[]>('GET', '/api/nat/sticky'),
+  getNftRuleset: () => apiCall<{ ruleset: string }>('GET', '/api/nat/ruleset'),
 
   // OSPF / FRR
-  getOspfNeighbors: () => apiCall<OspfNeighbor[]>('GET', '/api/v1/ospf/neighbors'),
-  getOspfRoutes: () => apiCall<OspfRoute[]>('GET', '/api/v1/ospf/routes'),
-  getFrrRunningConfig: () => apiCall<{ config: string }>('GET', '/api/v1/ospf/running-config'),
+  getOspfNeighbors: () => apiCall<OspfNeighbor[]>('GET', '/api/ospf/neighbors'),
+  getOspfRoutes: () => apiCall<OspfRoute[]>('GET', '/api/ospf/routes'),
+  getFrrRunningConfig: () => apiCall<{ config: string }>('GET', '/api/ospf/running-config'),
 
   // Logs
   getLogs: (source?: LogSource, search?: string, page: number = 1, pageSize: number = 100) =>
     apiCall<PaginatedResponse<LogEntry>>('GET',
-      `/api/v1/logs?page=${page}&pageSize=${pageSize}${source ? `&source=${source}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
+      `/api/logs?page=${page}&page_size=${pageSize}${source ? `&source=${source}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
   exportLogs: (source?: LogSource) =>
-    apiCall<{ downloadUrl: string }>('POST', `/api/v1/logs/export${source ? `?source=${source}` : ''}`),
+    apiCall<{ content: string; count: number }>('GET', `/api/logs/export${source ? `?source=${source}` : ''}`),
 
   // Troubleshooting
-  getDiagCommands: () => apiCall<DiagCommand[]>('GET', '/api/v1/diag/commands'),
-  runDiagCommand: (commandId: string) => apiCall<DiagResult>('POST', `/api/v1/diag/run/${commandId}`),
-  runHealthCheck: () => apiCall<DiagResult[]>('POST', '/api/v1/diag/health-check'),
+  getDiagCommands: () => apiCall<DiagCommand[]>('GET', '/api/troubleshooting/commands'),
+  runDiagCommand: (commandId: string, args?: Record<string, string>) =>
+    apiCall<DiagResult>('POST', '/api/troubleshooting/run', { command_id: commandId, args: args || {} }),
+  runHealthCheck: () => apiCall<DiagResult[]>('GET', '/api/troubleshooting/health-check'),
 
-  // Config / Apply
-  getCurrentConfig: () => apiCall<WizardConfig>('GET', '/api/v1/config/current'),
+  // Config Profiles
+  getProfiles: () => apiCall<ConfigProfile[]>('GET', '/api/configs'),
+  saveProfile: (profile: { name: string; description?: string; payload: Record<string, unknown> }) =>
+    apiCall<ConfigProfile>('POST', '/api/configs', profile),
+  getProfile: (id: string) => apiCall<ConfigProfile>('GET', `/api/configs/${id}`),
+  updateProfile: (id: string, profile: { name: string; description?: string; payload: Record<string, unknown> }) =>
+    apiCall<{ success: boolean }>('PATCH', `/api/configs/${id}`, profile),
+  cloneProfile: (id: string) => apiCall<{ id: string; name: string }>('POST', `/api/configs/${id}/clone`),
+  previewFiles: (id: string) => apiCall<GeneratedFile[]>('GET', `/api/configs/${id}/preview`),
+  getConfigFiles: (id: string) => apiCall<GeneratedFile[]>('GET', `/api/configs/${id}/files`),
+  getConfigDiff: (id: string, revA: string, revB: string) =>
+    apiCall<ConfigDiff[]>('GET', `/api/configs/${id}/diff/${revA}/${revB}`),
+  getConfigHistory: (id: string) => apiCall<unknown[]>('GET', `/api/configs/${id}/history`),
+  deleteProfile: (id: string) => apiCall<void>('DELETE', `/api/configs/${id}`),
+
+  // Config validation (standalone, without saved profile)
+  getCurrentConfig: () => apiCall<WizardConfig>('GET', '/api/configs'),
   validateConfig: (config: WizardConfig) =>
-    apiCall<{ valid: boolean; errors: Array<{ field: string; message: string }> }>('POST', '/api/v1/config/validate', config),
-  previewFiles: (config: WizardConfig) =>
-    apiCall<GeneratedFile[]>('POST', '/api/v1/config/preview', config),
+    apiCall<{ valid: boolean; errors: Array<{ field: string; message: string }> }>('POST', '/api/configs', config),
+  previewFilesFromConfig: (config: WizardConfig) =>
+    apiCall<GeneratedFile[]>('POST', '/api/configs', config),
+
+  // Apply
   applyConfig: (request: ApplyRequest) =>
-    apiCall<ApplyResult>('POST', '/api/v1/config/apply', request),
+    apiCall<ApplyResult>('POST', `/api/apply/${request.scope || 'full'}`, request),
+  dryRunConfig: (request: ApplyRequest) =>
+    apiCall<ApplyResult>('POST', '/api/apply/dry-run', request),
+  getApplyJobs: () => apiCall<ApplyResult[]>('GET', '/api/apply/jobs'),
+  getApplyJob: (id: string) => apiCall<ApplyResult>('GET', `/api/apply/jobs/${id}`),
 
   // History
   getHistory: (page: number = 1) =>
-    apiCall<PaginatedResponse<ApplyResult>>('GET', `/api/v1/history?page=${page}`),
+    apiCall<PaginatedResponse<ApplyResult>>('GET', `/api/history?page=${page}`),
   getHistoryEntry: (id: string) =>
-    apiCall<ApplyResult>('GET', `/api/v1/history/${id}`),
-  getConfigDiff: (id1: string, id2: string) =>
-    apiCall<ConfigDiff[]>('GET', `/api/v1/history/diff?from=${id1}&to=${id2}`),
-  reapply: (id: string) =>
-    apiCall<ApplyResult>('POST', `/api/v1/history/${id}/reapply`),
+    apiCall<ApplyResult>('GET', `/api/apply/jobs/${id}`),
 
-  // Profiles
-  getProfiles: () => apiCall<ConfigProfile[]>('GET', '/api/v1/profiles'),
-  saveProfile: (profile: Omit<ConfigProfile, 'id' | 'createdAt' | 'updatedAt'>) =>
-    apiCall<ConfigProfile>('POST', '/api/v1/profiles', profile),
-  importProfile: (data: string) =>
-    apiCall<ConfigProfile>('POST', '/api/v1/profiles/import', { data }),
-  exportProfile: (id: string) =>
-    apiCall<{ json: string }>('GET', `/api/v1/profiles/${id}/export`),
-  deleteProfile: (id: string) =>
-    apiCall<void>('DELETE', `/api/v1/profiles/${id}`),
+  // Files
+  getGeneratedFiles: () => apiCall<GeneratedFile[]>('GET', '/api/files/generated'),
+  getFileContent: (path: string) => apiCall<{ path: string; content: string }>('GET', `/api/files/generated/${path}`),
+
+  // Settings
+  getSettings: () => apiCall<Record<string, string>>('GET', '/api/settings'),
+  updateSettings: (settings: Record<string, string>) =>
+    apiCall<{ success: boolean }>('PATCH', '/api/settings', { settings }),
 
   // Reports
-  generateReport: () => apiCall<{ downloadUrl: string; html: string }>('POST', '/api/v1/reports/generate'),
+  generateReport: () => apiCall<{ downloadUrl: string; html: string }>('POST', '/api/dashboard/summary'),
 
-  // Auth / Users
-  getUsers: () => apiCall<AuthUserRecord[]>('GET', '/api/v1/auth/users'),
-  createUser: (username: string, password: string) =>
-    apiCall<AuthUserRecord>('POST', '/api/v1/auth/users', { username, password }),
+  // Users (admin)
+  getUsers: () => apiCall<AuthUserRecord[]>('GET', '/api/users'),
+  createUser: (username: string, password: string, mustChangePassword: boolean = true) =>
+    apiCall<AuthUserRecord>('POST', '/api/users', { username, password, must_change_password: mustChangePassword }),
   toggleUser: (userId: string, active: boolean) =>
-    apiCall<{ success: boolean }>('PATCH', `/api/v1/auth/users/${userId}`, { is_active: active }),
+    apiCall<{ success: boolean }>('POST', `/api/users/${userId}/${active ? 'enable' : 'disable'}`),
   changeUserPassword: (userId: string, password: string) =>
-    apiCall<{ success: boolean }>('PATCH', `/api/v1/auth/users/${userId}/password`, { password }),
+    apiCall<{ success: boolean }>('POST', `/api/users/${userId}/change-password`, { password }),
   deleteUser: (userId: string) =>
-    apiCall<void>('DELETE', `/api/v1/auth/users/${userId}`),
+    apiCall<void>('DELETE', `/api/users/${userId}`),
 };
 
 // ---- Mock Response Router ----
@@ -172,87 +196,91 @@ function getMockResponse<T>(method: string, path: string, body?: unknown): Promi
 }
 
 function routeMock(method: string, path: string, body?: unknown): unknown {
-  // System
-  if (path === '/api/v1/system/info') return mockSystemInfo;
-  if (path === '/api/v1/system/services') return mockServices;
-  if (path.match(/\/api\/v1\/system\/services\/.*\/restart/)) return { success: true };
+  // Dashboard
+  if (path === '/api/dashboard/summary') return mockSystemInfo;
+
+  // Services
+  if (path === '/api/services' && method === 'GET') return mockServices;
+  if (path.match(/\/api\/services\/.*\/restart/)) return { success: true };
 
   // Network
-  if (path === '/api/v1/network/interfaces') return mockInterfaces;
-  if (path === '/api/v1/network/routes') return mockRoutes;
-  if (path === '/api/v1/network/reachability') return mockReachability;
+  if (path === '/api/network/interfaces') return mockInterfaces;
+  if (path === '/api/network/routes') return mockRoutes;
+  if (path === '/api/network/reachability') return mockReachability;
 
   // DNS
-  if (path.startsWith('/api/v1/dns/metrics')) return generateDnsMetrics(6);
-  if (path.startsWith('/api/v1/dns/top-domains')) return mockTopDomains;
-  if (path === '/api/v1/dns/instances') return mockInstanceStats;
+  if (path.startsWith('/api/dns/metrics')) return generateDnsMetrics(6);
+  if (path.startsWith('/api/dns/top-domains')) return mockTopDomains;
+  if (path === '/api/dns/instances') return mockInstanceStats;
 
   // NAT
-  if (path === '/api/v1/nat/counters') return mockNftCounters;
-  if (path === '/api/v1/nat/sticky') return mockStickyEntries;
-  if (path === '/api/v1/nat/ruleset') return { ruleset: 'table ip nat { ... }' };
+  if (path === '/api/nat/summary') return mockNftCounters;
+  if (path === '/api/nat/sticky') return mockStickyEntries;
+  if (path === '/api/nat/ruleset') return { ruleset: 'table ip nat { ... }' };
 
   // OSPF
-  if (path === '/api/v1/ospf/neighbors') return mockOspfNeighbors;
-  if (path === '/api/v1/ospf/routes') return mockOspfRoutes;
-  if (path === '/api/v1/ospf/running-config') return { config: '! FRR running config...' };
+  if (path === '/api/ospf/neighbors') return mockOspfNeighbors;
+  if (path === '/api/ospf/routes') return mockOspfRoutes;
+  if (path === '/api/ospf/running-config') return { config: '! FRR running config...' };
 
   // Logs
-  if (path.startsWith('/api/v1/logs') && !path.includes('export')) {
+  if (path.startsWith('/api/logs') && !path.includes('export')) {
     const source = new URL('http://x' + path).searchParams.get('source') as LogSource | null;
     const filtered = source ? mockLogs.filter(l => l.source === source) : mockLogs;
     return { items: filtered, total: filtered.length, page: 1, pageSize: 100, hasMore: false };
   }
+  if (path.startsWith('/api/logs/export')) {
+    return { content: mockLogs.map(l => `${l.timestamp} [${l.level}] ${l.message}`).join('\n'), count: mockLogs.length };
+  }
 
-  // Diag
-  if (path === '/api/v1/diag/commands') return mockDiagCommands;
-  if (path.startsWith('/api/v1/diag/run/')) {
-    const cmdId = path.split('/').pop()!;
+  // Troubleshooting
+  if (path === '/api/troubleshooting/commands') return mockDiagCommands;
+  if (path === '/api/troubleshooting/run' && method === 'POST') {
+    const b = body as { command_id: string } | undefined;
+    const cmdId = b?.command_id || '';
     return mockDiagOutputs[cmdId] || { commandId: cmdId, exitCode: 0, stdout: 'OK', stderr: '', durationMs: 50, timestamp: new Date().toISOString() };
   }
-  if (path === '/api/v1/diag/health-check') return Object.values(mockDiagOutputs);
+  if (path === '/api/troubleshooting/health-check') return Object.values(mockDiagOutputs);
 
-  // Config
-  if (path === '/api/v1/config/current') {
+  // Config profiles
+  if (path === '/api/configs' && method === 'GET') return mockProfiles;
+  if (path === '/api/configs' && method === 'POST') {
     const { DEFAULT_CONFIG } = require('./types');
-    return DEFAULT_CONFIG;
+    return { valid: true, errors: [], id: `cfg-${Date.now()}`, name: 'New Config', payload: body || DEFAULT_CONFIG };
   }
-  if (path === '/api/v1/config/validate') return { valid: true, errors: [] };
-  if (path === '/api/v1/config/preview') {
-    const { generateAllFiles } = require('./config-generator');
-    return generateAllFiles(body as WizardConfig).map((f: { path: string; content: string }) => ({
-      ...f, permissions: '0644', owner: 'root:root', backupPath: null, changed: true
-    }));
-  }
-  if (path === '/api/v1/config/apply') {
-    return mockApplyResult(body as { dryRun?: boolean; scope?: string });
+
+  // Apply
+  if (path.startsWith('/api/apply/')) {
+    if (path.includes('/jobs')) {
+      if (path === '/api/apply/jobs') return mockHistory;
+      return mockHistory[0];
+    }
+    return mockApplyResult(body as { dry_run?: boolean; scope?: string });
   }
 
   // History
-  if (path.startsWith('/api/v1/history') && !path.includes('diff') && !path.includes('reapply')) {
-    if (path === '/api/v1/history' || path.includes('?')) {
-      return { items: mockHistory, total: mockHistory.length, page: 1, pageSize: 20, hasMore: false };
-    }
-    return mockHistory[0];
+  if (path.startsWith('/api/history')) {
+    return { items: mockHistory, total: mockHistory.length, page: 1, pageSize: 20, hasMore: false };
   }
 
-  // Profiles
-  if (path === '/api/v1/profiles') return mockProfiles;
+  // Files
+  if (path === '/api/files/generated') return [];
+  if (path.startsWith('/api/files/generated/')) return { path: '', content: '' };
 
-  // Reports
-  if (path === '/api/v1/reports/generate') return { downloadUrl: '#', html: '<h1>DNS Control Report</h1>' };
+  // Settings
+  if (path === '/api/settings' && method === 'GET') return {};
+  if (path === '/api/settings' && method === 'PATCH') return { success: true };
 
-  // Auth / Users
-  if (path === '/api/v1/auth/users' && method === 'GET') {
-    return mockUsers();
-  }
-  if (path === '/api/v1/auth/users' && method === 'POST') {
+  // Users
+  if (path === '/api/users' && method === 'GET') return mockUsers();
+  if (path === '/api/users' && method === 'POST') {
     const b = body as { username: string };
     return { id: `usr-${Date.now()}`, username: b.username, isActive: true, mustChangePassword: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), lastLoginAt: null };
   }
-  if (path.match(/\/api\/v1\/auth\/users\/.*\/password/)) return { success: true };
-  if (path.match(/\/api\/v1\/auth\/users\//) && method === 'PATCH') return { success: true };
-  if (path.match(/\/api\/v1\/auth\/users\//) && method === 'DELETE') return undefined;
+  if (path.match(/\/api\/users\/.*\/change-password/)) return { success: true };
+  if (path.match(/\/api\/users\/.*\/(enable|disable)/)) return { success: true };
+  if (path.match(/\/api\/users\//) && method === 'PATCH') return { success: true };
+  if (path.match(/\/api\/users\//) && method === 'DELETE') return undefined;
 
   return {};
 }
@@ -265,14 +293,14 @@ function mockUsers(): AuthUserRecord[] {
   ];
 }
 
-function mockApplyResult(req?: { dryRun?: boolean; scope?: string }): ApplyResult {
+function mockApplyResult(req?: { dry_run?: boolean; scope?: string }): ApplyResult {
   return {
     id: `apply-${Date.now()}`,
     timestamp: new Date().toISOString(),
     user: 'admin',
-    status: req?.dryRun ? 'dry-run' : 'success',
+    status: req?.dry_run ? 'dry-run' : 'success',
     scope: (req?.scope as ApplyResult['scope']) || 'full',
-    dryRun: req?.dryRun || false,
+    dryRun: req?.dry_run || false,
     comment: '',
     duration: 8500,
     configSnapshot: {} as WizardConfig,
