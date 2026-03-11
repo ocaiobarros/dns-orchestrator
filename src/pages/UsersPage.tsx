@@ -12,8 +12,8 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useAuth, type AuthUser } from '@/lib/auth';
-import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { api, type AuthUserRecord } from '@/lib/api';
 import { Loader2, Plus, KeyRound, UserX, UserCheck, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
