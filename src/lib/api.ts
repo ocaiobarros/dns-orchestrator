@@ -131,6 +131,17 @@ export const api = {
 
   // Reports
   generateReport: () => apiCall<{ downloadUrl: string; html: string }>('POST', '/api/v1/reports/generate'),
+
+  // Auth / Users
+  getUsers: () => apiCall<AuthUserRecord[]>('GET', '/api/v1/auth/users'),
+  createUser: (username: string, password: string) =>
+    apiCall<AuthUserRecord>('POST', '/api/v1/auth/users', { username, password }),
+  toggleUser: (userId: string, active: boolean) =>
+    apiCall<{ success: boolean }>('PATCH', `/api/v1/auth/users/${userId}`, { is_active: active }),
+  changeUserPassword: (userId: string, password: string) =>
+    apiCall<{ success: boolean }>('PATCH', `/api/v1/auth/users/${userId}/password`, { password }),
+  deleteUser: (userId: string) =>
+    apiCall<void>('DELETE', `/api/v1/auth/users/${userId}`),
 };
 
 // ---- Mock Response Router ----
