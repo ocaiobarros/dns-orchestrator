@@ -179,6 +179,22 @@ export const api = {
     apiCall<{ success: boolean }>('POST', `/api/users/${userId}/change-password`, { password }),
   deleteUser: (userId: string) =>
     apiCall<void>('DELETE', `/api/users/${userId}`),
+
+  // ---- v2: Events, Metrics, Actions, Instances ----
+  getEvents: (severity?: string, limit: number = 100) =>
+    apiCall<{ items: V2Event[]; total: number }>('GET', `/api/events${severity ? `?severity=${severity}` : ''}${severity ? '&' : '?'}limit=${limit}`),
+  getV2Metrics: () =>
+    apiCall<V2MetricEntry[]>('GET', '/api/metrics/dns'),
+  getV2Instances: () =>
+    apiCall<V2Instance[]>('GET', '/api/health/instances'),
+  getV2Actions: () =>
+    apiCall<V2Action[]>('GET', '/api/actions'),
+  removeBackend: (instanceId: string) =>
+    apiCall<{ success: boolean }>('POST', `/api/actions/remove-backend/${instanceId}`),
+  restoreBackend: (instanceId: string) =>
+    apiCall<{ success: boolean }>('POST', `/api/actions/restore-backend/${instanceId}`),
+  getSchedulerStatus: () =>
+    apiCall<{ running: boolean; jobs: Array<{ id: string; name: string; next_run: string | null }> }>('GET', '/api/health'),
 };
 
 // ---- Mock Response Router ----
