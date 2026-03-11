@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Server, Network, Globe, Shield, Router,
-  FileText, Wrench, Settings, History, FolderOpen, Menu, X, Wand2, Users, LogOut
+  FileText, Wrench, Settings, History, FolderOpen, Menu, X, Wand2, Users, LogOut,
+  HeartPulse, BarChart3, Bell,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 
