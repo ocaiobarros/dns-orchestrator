@@ -170,3 +170,29 @@ Preview-specific behaviors (isolated in `src/lib/auth.tsx`):
 | Session timeout warning modal | ✓ Component implemented with countdown |
 | Session expiry auto-logout | ✓ Timer invalidates session and clears state |
 | User management page | ✓ Create, toggle, delete, change password |
+
+## 8. Issues Found and Fixed (This Pass)
+
+| Issue | Severity | Fix |
+|---|---|---|
+| `api.ts` used `/api/v1/` paths but backend uses `/api/` | **Critical** | Rewrote all API client paths to match backend route prefixes |
+| `previewFiles()` hook passed `WizardConfig` but api now takes `string` | Build error | Changed hook to use `previewFilesFromConfig()` |
+| Mock response router used old `/api/v1/` paths | Medium | Updated all mock routes to match new paths |
+
+## 9. Audit Verdict
+
+| Area | Status |
+|---|---|
+| Backend structure | ✅ OK real — 67+ files |
+| SQLite schema + models | ✅ OK real — 7 tables |
+| Auth (bcrypt, JWT, sessions) | ✅ OK real |
+| First access flow | ✅ OK real |
+| User management CRUD | ✅ OK real |
+| Executor (no shell=True) | ✅ OK real |
+| Generators (real config output) | ✅ OK real |
+| Apply engine (full workflow) | ✅ OK real |
+| Operational endpoints | ✅ OK real |
+| Frontend auth integration | ✅ OK real (preview isolated) |
+| API path alignment | ✅ Fixed this pass |
+| README | ✅ Matches code |
+| Install script | ✅ Functional |
