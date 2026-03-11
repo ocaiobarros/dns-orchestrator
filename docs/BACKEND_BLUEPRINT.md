@@ -329,6 +329,113 @@ echo "Access: http://$(hostname -I | awk '{print $1}'):8443"
 | DELETE | /api/v1/profiles/{id} | Delete profile |
 | POST | /api/v1/reports/generate | Generate technical report |
 
+### Authentication Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | /api/v1/auth/login | Login with username/password → returns JWT token |
+| POST | /api/v1/auth/logout | Invalidate current session |
+| GET | /api/v1/auth/session | Validate token, return current user |
+| GET | /api/v1/auth/users | List all users |
+| POST | /api/v1/auth/users | Create new user |
+| PATCH | /api/v1/auth/users/{id} | Update user (enable/disable) |
+| PATCH | /api/v1/auth/users/{id}/password | Change user password |
+| DELETE | /api/v1/auth/users/{id} | Delete user |
+
+### Auth Request/Response Schemas
+
+**POST /api/v1/auth/login**
+```json
+// Request
+{ "username": "admin", "password": "secret" }
+
+// Response (200)
+{
+  "success": true,
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIs...",
+    "user": { "id": "usr-001", "username": "admin", "isActive": true, "lastLoginAt": "..." }
+  }
+}
+
+// Response (401)
+{ "success": false, "error": "Credenciais inválidas" }
+```
+
+**POST /api/v1/auth/users**
+```json
+// Request
+{ "username": "operador", "password": "min6chars" }
+
+// Response (201)
+{ "success": true, "data": { "id": "usr-002", "username": "operador", "isActive": true, ... } }
+
+// Response (409)
+{ "success": false, "error": "Usuário já existe" }
+```
+
+### Authentication Flow
+
+1. **Login**: Client sends POST /auth/login → backend verifies bcrypt hash → creates session → returns JWT
+2. **Session**: All protected endpoints require `Authorization: Bearer <token>` header
+3. **Validation**: Backend middleware decodes JWT, checks session table, verifies expiry
+4. **Logout**: POST /auth/logout invalidates the session in SQLite
+5. **Timeout**: Sessions expire after 8 hours (configurable). Frontend redirects to /login on 401.
+
+### Password Strategy
+
+- **Hashing**: bcrypt with cost factor 12 (via `passlib[bcrypt]`)
+- **Minimum length**: 6 characters enforced server-side
+- **No plaintext storage**: Only bcrypt hashes stored in SQLite
+- **First admin**: Created by install.sh with a temporary password, must be changed on first login
+
+### Backend Auth Module (auth.py)
+
+```python
+from passlib.hash import bcrypt
+from jose import jwt
+import secrets
+from datetime import datetime, timedelta
+
+SECRET_KEY = os.environ.get("DNS_CONTROL_SECRET", secrets.token_hex(32))
+TOKEN_EXPIRY_HOURS = 8
+
+def hash_password(password: str) -> str:
+    return bcrypt.hash(password)
+
+def verify_password(password: str, password_hash: str) -> bool:
+    return bcrypt.verify(password, password_hash)
+
+def create_token(user_id: str) -> str:
+    payload = {
+        "sub": user_id,
+        "exp": datetime.utcnow() + timedelta(hours=TOKEN_EXPIRY_HOURS),
+        "iat": datetime.utcnow(),
+        "jti": secrets.token_hex(16),
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+
+def verify_token(token: str) -> dict | None:
+    try:
+        return jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+    except Exception:
+        return None
+
+# FastAPI dependency
+async def get_current_user(authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Token não fornecido")
+    token = authorization.split(" ", 1)[1]
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(401, "Token inválido ou expirado")
+    user = await db.get_user_by_id(payload["sub"])
+    if not user or not user.is_active:
+        raise HTTPException(401, "Usuário inativo ou não encontrado")
+    return user
+```
+
+
 ## Requirements.txt
 
 ```
