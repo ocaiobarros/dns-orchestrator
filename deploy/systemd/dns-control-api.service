@@ -1,0 +1,16 @@
+[Unit]
+Description=DNS Control API
+After=network.target
+
+[Service]
+Type=simple
+User=dns-control
+Group=dns-control
+WorkingDirectory=/opt/dns-control/backend
+EnvironmentFile=/etc/dns-control/env
+ExecStart=/opt/dns-control/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
