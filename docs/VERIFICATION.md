@@ -1,6 +1,7 @@
 # DNS Control — Verification Report
 
-Generated: 2026-03-11
+**Date**: 2026-03-11  
+**Scope**: Full backend + frontend audit (second pass — deep verification)
 
 ## 1. Backend Files — Verified Present
 
