@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================
-# DNS Control — Script de Deploy Completo para Debian 13
+# DNS Control v2.1 — Script de Deploy Completo para Debian 13
 #
 # Uso:
 #   chmod +x deploy.sh
@@ -24,7 +24,7 @@ ENV_FILE="$ENV_DIR/env"
 SYSTEMD_FILE="/etc/systemd/system/dns-control-api.service"
 NGINX_SITE="/etc/nginx/sites-available/dns-control"
 NGINX_ENABLED="/etc/nginx/sites-enabled/dns-control"
-DOMAIN="dnscontrol.seudominio.com.br"
+DOMAIN="${DNS_CONTROL_DOMAIN:-dnscontrol.seudominio.com.br}"
 BACKEND_HOST="127.0.0.1"
 BACKEND_PORT="8000"
 FRONTEND_BUILD_DIR="$FRONTEND_DIR/dist"
@@ -34,7 +34,7 @@ TLS_KEY="/etc/ssl/private/dns-control/privkey.pem"
 log() {
   echo ""
   echo "============================================================"
-  echo "[DNS CONTROL] $1"
+  echo "[DNS CONTROL v2.1] $1"
   echo "============================================================"
 }
 
@@ -55,18 +55,21 @@ apt update
 apt install -y \
   python3 python3-venv python3-pip \
   nginx sqlite3 curl openssl \
-  nodejs npm
+  nodejs npm \
+  nftables frr unbound ifupdown2 \
+  dnsutils sudo
 
 # ---- 2. Usuário de serviço ----
 log "Criando usuário de serviço"
 if ! id "$APP_USER" >/dev/null 2>&1; then
-  useradd --system --create-home --shell /usr/sbin/nologin "$APP_USER"
+  useradd --system --shell /usr/sbin/nologin --home-dir "$APP_ROOT" "$APP_USER"
 fi
 
 # ---- 3. Diretórios ----
 log "Preparando diretórios"
 mkdir -p "$ENV_DIR"
-mkdir -p /var/lib/dns-control
+mkdir -p /var/lib/dns-control/backups
+mkdir -p /var/lib/dns-control/generated
 mkdir -p /var/log/dns-control
 chown -R "$APP_USER:$APP_GROUP" /var/lib/dns-control
 chown -R "$APP_USER:$APP_GROUP" /var/log/dns-control
@@ -100,31 +103,57 @@ else
   echo "[INFO] $ENV_FILE já existe. Mantendo."
 fi
 
-# ---- 6. Systemd service ----
+# ---- 6. Inicializar banco ----
+log "Inicializando banco de dados"
+set -a; source "$ENV_FILE"; set +a
+cd "$BACKEND_DIR"
+"$VENV_DIR/bin/python" -c "from app.core.database import init_db; init_db()"
+
+# ---- 7. Permissões ----
+log "Configurando permissões"
+chown -R "$APP_USER:$APP_GROUP" "$APP_ROOT"
+chmod 600 /var/lib/dns-control/dns-control.db 2>/dev/null || true
+
+# Sudoers
+cat > /etc/sudoers.d/dns-control << 'SUDOEOF'
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl restart unbound*
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl restart frr
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl restart nftables
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl status *
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl is-active *
+dns-control ALL=(root) NOPASSWD: /usr/sbin/nft *
+dns-control ALL=(root) NOPASSWD: /usr/bin/vtysh -c *
+dns-control ALL=(root) NOPASSWD: /usr/sbin/unbound-control *
+dns-control ALL=(root) NOPASSWD: /usr/sbin/unbound-checkconf *
+dns-control ALL=(root) NOPASSWD: /sbin/ifreload -a
+dns-control ALL=(root) NOPASSWD: /sbin/ifquery *
+SUDOEOF
+chmod 440 /etc/sudoers.d/dns-control
+
+# ---- 8. Systemd service ----
 log "Criando service systemd"
 cp "$APP_ROOT/deploy/systemd/dns-control-api.service" "$SYSTEMD_FILE"
 systemctl daemon-reload
 systemctl enable dns-control-api
 
-# ---- 7. Build frontend ----
+# ---- 9. Build frontend ----
 log "Buildando frontend"
 cd "$FRONTEND_DIR"
 npm install
 VITE_API_URL="" npm run build
 [[ -d "$FRONTEND_BUILD_DIR" ]] || fail "Build do frontend não encontrado em $FRONTEND_BUILD_DIR."
 
-# ---- 8. nginx ----
+# ---- 10. nginx ----
 log "Configurando nginx"
 cp "$APP_ROOT/deploy/nginx/dns-control.conf" "$NGINX_SITE"
 
-# Substituir domínio se definido
 sed -i "s/dnscontrol.seudominio.com.br/$DOMAIN/g" "$NGINX_SITE"
 sed -i "s|/opt/dns-control/frontend/dist|$FRONTEND_BUILD_DIR|g" "$NGINX_SITE"
 
 ln -sf "$NGINX_SITE" "$NGINX_ENABLED"
 rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
 
-# ---- 9. Validar TLS ----
+# ---- 11. Validar TLS ----
 log "Verificando certificados TLS"
 if [[ ! -f "$TLS_CERT" || ! -f "$TLS_KEY" ]]; then
   echo "[AVISO] Certificados TLS não encontrados:"
@@ -132,22 +161,19 @@ if [[ ! -f "$TLS_CERT" || ! -f "$TLS_KEY" ]]; then
   echo "        KEY:  $TLS_KEY"
   echo ""
   echo "  Para Let's Encrypt:"
-  echo "    apt install -y certbot"
-  echo "    certbot certonly --standalone -d $DOMAIN"
-  echo ""
-  echo "  Ou ajuste os caminhos no nginx:"
-  echo "    $NGINX_SITE"
+  echo "    apt install -y certbot python3-certbot-nginx"
+  echo "    certbot --nginx -d $DOMAIN"
 fi
 
-# ---- 10. Subir serviços ----
+# ---- 12. Subir serviços ----
 log "Subindo serviços"
 systemctl restart dns-control-api
 nginx -t && systemctl restart nginx
 systemctl enable nginx
 
-# ---- 11. Health checks ----
+# ---- 13. Health checks ----
 log "Validando deploy"
-sleep 2
+sleep 3
 
 echo "[CHECK] Backend status:"
 systemctl --no-pager status dns-control-api || true
@@ -155,6 +181,14 @@ systemctl --no-pager status dns-control-api || true
 echo ""
 echo "[CHECK] Health endpoint:"
 curl -fsS "http://$BACKEND_HOST:$BACKEND_PORT/api/health" 2>/dev/null && echo "" || echo "[AVISO] /api/health não respondeu."
+
+echo ""
+echo "[CHECK] Prometheus metrics:"
+curl -fsS "http://$BACKEND_HOST:$BACKEND_PORT/metrics" 2>/dev/null | head -5 || echo "[AVISO] /metrics não respondeu."
+
+echo ""
+echo "[CHECK] Scheduler workers:"
+journalctl -u dns-control-api --no-pager -n 5 | grep -i "scheduler" || echo "[AVISO] Scheduler não detectado nos logs."
 
 echo ""
 echo "[CHECK] nginx status:"
@@ -165,7 +199,7 @@ echo "[CHECK] Portas:"
 ss -lntup | grep -E ":80|:443|:$BACKEND_PORT" || true
 
 # ---- Conclusão ----
-log "Deploy concluído"
+log "Deploy v2.1 concluído"
 cat <<EOF
 
 Próximos passos:
@@ -179,15 +213,24 @@ Próximos passos:
    → server_name $DOMAIN
 
 3. Instale certificado TLS:
-   $TLS_CERT
-   $TLS_KEY
+   certbot --nginx -d $DOMAIN
 
-4. Teste:
+4. Configure Prometheus:
+   Copie docs/PROMETHEUS_ALERTS.md para /etc/prometheus/rules/
+   Adicione o target em prometheus.yml
+
+5. Teste:
    curl http://127.0.0.1:$BACKEND_PORT/api/health
+   curl http://127.0.0.1:$BACKEND_PORT/metrics
    https://$DOMAIN
 
-5. Logs:
+6. Logs:
    journalctl -u dns-control-api -f
    tail -f /var/log/nginx/dns-control-error.log
+
+7. Documentação:
+   docs/PRODUCTION_DEPLOYMENT.md
+   docs/OPERATIONS_RUNBOOK.md
+   docs/OPERATIONAL_TESTS.md
 
 EOF
