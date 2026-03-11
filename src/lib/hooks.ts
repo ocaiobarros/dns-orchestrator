@@ -49,6 +49,14 @@ export function useServices() {
   });
 }
 
+export function useInstanceHealth() {
+  return useQuery({
+    queryKey: queryKeys.instanceHealth,
+    queryFn: async () => { const r = await api.getInstanceHealth(); if (!r.success) throw new Error(r.error!); return r.data; },
+    refetchInterval: 15000,
+  });
+}
+
 export function useRestartService() {
   const qc = useQueryClient();
   return useMutation({

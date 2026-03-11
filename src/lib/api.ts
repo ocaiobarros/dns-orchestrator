@@ -28,7 +28,7 @@ import {
   mockReachability, generateDnsMetrics, mockTopDomains,
   mockInstanceStats, mockNftCounters, mockStickyEntries,
   mockOspfNeighbors, mockOspfRoutes, mockLogs, mockDiagCommands,
-  mockHistory, mockProfiles, mockDiagOutputs,
+  mockHistory, mockProfiles, mockDiagOutputs, mockInstanceHealth,
 } from './mock-data';
 
 // ---- Configuration ----
