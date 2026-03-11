@@ -78,6 +78,8 @@ async function apiCall<T>(
 export const api = {
   // Dashboard
   getSystemInfo: () => apiCall<SystemInfo>('GET', '/api/dashboard/summary'),
+  getInstanceHealth: () => apiCall<InstanceHealthReport>('GET', '/api/healthcheck'),
+  getInstanceRealStats: () => apiCall<DnsInstanceStats[]>('GET', '/api/dashboard/instance-stats'),
 
   // Services
   getServices: () => apiCall<ServiceStatus[]>('GET', '/api/services'),
