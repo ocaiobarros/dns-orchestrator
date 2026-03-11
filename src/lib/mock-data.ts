@@ -424,3 +424,25 @@ export const mockProfiles: ConfigProfile[] = [
     updatedAt: '2026-03-10T14:30:00Z',
   },
 ];
+
+// ---- Instance Health Check ----
+
+import type { InstanceHealthReport } from './types';
+
+export function mockInstanceHealth(): InstanceHealthReport {
+  return {
+    healthy: 4,
+    total: 4,
+    all_healthy: true,
+    degraded: false,
+    down: false,
+    instances: [
+      { instance: 'unbound01', bind_ip: '100.126.255.101', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 3 + Math.round(Math.random() * 5), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
+      { instance: 'unbound02', bind_ip: '100.126.255.102', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 4 + Math.round(Math.random() * 5), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
+      { instance: 'unbound03', bind_ip: '100.126.255.103', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 2 + Math.round(Math.random() * 4), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
+      { instance: 'unbound04', bind_ip: '100.126.255.104', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 5 + Math.round(Math.random() * 6), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
+    ],
+    vip: { instance: 'VIP-Anycast', bind_ip: '4.2.2.5', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 2 + Math.round(Math.random() * 3), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
+    timestamp: Date.now() / 1000,
+  };
+}

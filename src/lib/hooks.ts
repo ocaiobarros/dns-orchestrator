@@ -11,6 +11,8 @@ import type { WizardConfig, ApplyRequest, LogSource } from './types';
 export const queryKeys = {
   systemInfo: ['system', 'info'] as const,
   services: ['system', 'services'] as const,
+  instanceHealth: ['system', 'health'] as const,
+  instanceRealStats: ['system', 'realStats'] as const,
   interfaces: ['network', 'interfaces'] as const,
   routes: ['network', 'routes'] as const,
   reachability: ['network', 'reachability'] as const,
@@ -44,6 +46,14 @@ export function useServices() {
     queryKey: queryKeys.services,
     queryFn: async () => { const r = await api.getServices(); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 10000,
+  });
+}
+
+export function useInstanceHealth() {
+  return useQuery({
+    queryKey: queryKeys.instanceHealth,
+    queryFn: async () => { const r = await api.getInstanceHealth(); if (!r.success) throw new Error(r.error!); return r.data; },
+    refetchInterval: 15000,
   });
 }
 

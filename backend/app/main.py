@@ -13,6 +13,7 @@ from app.api.routes import (
     auth, users, dashboard, services, network, dns,
     nat, ospf, logs, troubleshooting, configs, apply,
     files, history, settings as settings_route,
+    healthcheck, metrics,
 )
 
 
@@ -53,6 +54,8 @@ app.include_router(apply.router, prefix="/api/apply", tags=["Apply"])
 app.include_router(files.router, prefix="/api/files", tags=["Files"])
 app.include_router(history.router, prefix="/api/history", tags=["History"])
 app.include_router(settings_route.router, prefix="/api/settings", tags=["Settings"])
+app.include_router(healthcheck.router, prefix="/api/healthcheck", tags=["Health Check"])
+app.include_router(metrics.router, prefix="/metrics", tags=["Metrics"])
 
 
 @app.get("/api/health")

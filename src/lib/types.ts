@@ -178,6 +178,31 @@ export interface DnsInstanceStats {
   currentConnections: number;
 }
 
+// ---- Instance Health Check ----
+
+export interface InstanceHealthResult {
+  instance: string;
+  bind_ip: string;
+  port: number;
+  healthy: boolean;
+  resolved_ip: string;
+  latency_ms: number;
+  probe_domain: string;
+  error: string | null;
+  timestamp: number;
+}
+
+export interface InstanceHealthReport {
+  healthy: number;
+  total: number;
+  all_healthy: boolean;
+  degraded: boolean;
+  down: boolean;
+  instances: InstanceHealthResult[];
+  vip?: InstanceHealthResult;
+  timestamp: number;
+}
+
 // ---- NAT / nftables ----
 
 export interface NftCounter {

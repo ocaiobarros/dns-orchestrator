@@ -11,6 +11,7 @@ import type {
   OspfNeighbor, OspfRoute, LogEntry, LogSource,
   ApplyRequest, ApplyResult, DiagCommand, DiagResult,
   ConfigProfile, ConfigDiff, GeneratedFile, PaginatedResponse,
+  InstanceHealthReport,
 } from './types';
 
 export interface AuthUserRecord {
@@ -27,7 +28,7 @@ import {
   mockReachability, generateDnsMetrics, mockTopDomains,
   mockInstanceStats, mockNftCounters, mockStickyEntries,
   mockOspfNeighbors, mockOspfRoutes, mockLogs, mockDiagCommands,
-  mockHistory, mockProfiles, mockDiagOutputs,
+  mockHistory, mockProfiles, mockDiagOutputs, mockInstanceHealth,
 } from './mock-data';
 
 // ---- Configuration ----
@@ -78,6 +79,8 @@ async function apiCall<T>(
 export const api = {
   // Dashboard
   getSystemInfo: () => apiCall<SystemInfo>('GET', '/api/dashboard/summary'),
+  getInstanceHealth: () => apiCall<InstanceHealthReport>('GET', '/api/healthcheck'),
+  getInstanceRealStats: () => apiCall<DnsInstanceStats[]>('GET', '/api/dashboard/instance-stats'),
 
   // Services
   getServices: () => apiCall<ServiceStatus[]>('GET', '/api/services'),
@@ -198,6 +201,8 @@ function getMockResponse<T>(method: string, path: string, body?: unknown): Promi
 function routeMock(method: string, path: string, body?: unknown): unknown {
   // Dashboard
   if (path === '/api/dashboard/summary') return mockSystemInfo;
+  if (path === '/api/healthcheck') return mockInstanceHealth();
+  if (path === '/api/dashboard/instance-stats') return mockInstanceStats;
 
   // Services
   if (path === '/api/services' && method === 'GET') return mockServices;
