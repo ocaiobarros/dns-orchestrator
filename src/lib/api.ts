@@ -12,6 +12,15 @@ import type {
   ApplyRequest, ApplyResult, DiagCommand, DiagResult,
   ConfigProfile, ConfigDiff, GeneratedFile, PaginatedResponse,
 } from './types';
+
+export interface AuthUserRecord {
+  id: string;
+  username: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt: string | null;
+}
 import {
   mockSystemInfo, mockServices, mockInterfaces, mockRoutes,
   mockReachability, generateDnsMetrics, mockTopDomains,
@@ -131,6 +140,17 @@ export const api = {
 
   // Reports
   generateReport: () => apiCall<{ downloadUrl: string; html: string }>('POST', '/api/v1/reports/generate'),
+
+  // Auth / Users
+  getUsers: () => apiCall<AuthUserRecord[]>('GET', '/api/v1/auth/users'),
+  createUser: (username: string, password: string) =>
+    apiCall<AuthUserRecord>('POST', '/api/v1/auth/users', { username, password }),
+  toggleUser: (userId: string, active: boolean) =>
+    apiCall<{ success: boolean }>('PATCH', `/api/v1/auth/users/${userId}`, { is_active: active }),
+  changeUserPassword: (userId: string, password: string) =>
+    apiCall<{ success: boolean }>('PATCH', `/api/v1/auth/users/${userId}/password`, { password }),
+  deleteUser: (userId: string) =>
+    apiCall<void>('DELETE', `/api/v1/auth/users/${userId}`),
 };
 
 // ---- Mock Response Router ----
@@ -221,7 +241,27 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   // Reports
   if (path === '/api/v1/reports/generate') return { downloadUrl: '#', html: '<h1>DNS Control Report</h1>' };
 
+  // Auth / Users
+  if (path === '/api/v1/auth/users' && method === 'GET') {
+    return mockUsers();
+  }
+  if (path === '/api/v1/auth/users' && method === 'POST') {
+    const b = body as { username: string };
+    return { id: `usr-${Date.now()}`, username: b.username, isActive: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), lastLoginAt: null };
+  }
+  if (path.match(/\/api\/v1\/auth\/users\/.*\/password/)) return { success: true };
+  if (path.match(/\/api\/v1\/auth\/users\//) && method === 'PATCH') return { success: true };
+  if (path.match(/\/api\/v1\/auth\/users\//) && method === 'DELETE') return undefined;
+
   return {};
+}
+
+function mockUsers(): AuthUserRecord[] {
+  return [
+    { id: 'usr-001', username: 'admin', isActive: true, createdAt: '2026-01-15T10:00:00Z', updatedAt: '2026-03-10T08:00:00Z', lastLoginAt: '2026-03-11T09:30:00Z' },
+    { id: 'usr-002', username: 'operador', isActive: true, createdAt: '2026-02-20T14:00:00Z', updatedAt: '2026-03-08T12:00:00Z', lastLoginAt: '2026-03-10T16:45:00Z' },
+    { id: 'usr-003', username: 'auditor', isActive: false, createdAt: '2026-03-01T09:00:00Z', updatedAt: '2026-03-05T11:00:00Z', lastLoginAt: null },
+  ];
 }
 
 function mockApplyResult(req?: { dryRun?: boolean; scope?: string }): ApplyResult {

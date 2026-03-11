@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Server, Network, Globe, Shield, Router,
-  FileText, Wrench, Settings, History, FolderOpen, Menu, X, Wand2
+  FileText, Wrench, Settings, History, FolderOpen, Menu, X, Wand2, Users, LogOut
 } from 'lucide-react';
+import { useAuth } from '@/lib/auth';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -18,11 +19,13 @@ const navItems = [
   { path: '/files', label: 'Arquivos', icon: FolderOpen },
   { path: '/history', label: 'Histórico', icon: History },
   { path: '/settings', label: 'Configurações', icon: Settings },
+  { path: '/users', label: 'Usuários', icon: Users },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { user, logout } = useAuth();
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -71,8 +74,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className="px-4 py-3 border-t border-sidebar-border">
-          <p className="text-xs text-muted-foreground font-mono">v1.0.0 · Debian 13</p>
+        <div className="px-3 py-3 border-t border-sidebar-border space-y-2">
+          {user && (
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs text-muted-foreground font-mono truncate">{user.username}</span>
+              <button
+                onClick={logout}
+                className="text-muted-foreground hover:text-destructive transition-colors"
+                title="Sair"
+              >
+                <LogOut size={14} />
+              </button>
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground font-mono px-1">v1.0.0 · Debian 13</p>
         </div>
       </aside>
 
