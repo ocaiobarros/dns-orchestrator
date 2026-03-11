@@ -1,73 +1,172 @@
-# Welcome to your Lovable project
+# DNS Control
 
-## Project info
+Infrastructure management console for recursive DNS on Debian 13.  
+Manages Unbound, FRR/OSPF, nftables, and systemd through a unified web interface.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Architecture
 
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+dns-control/
+├── backend/                    # Python/FastAPI backend
+│   ├── app/
+│   │   ├── main.py            # FastAPI entry point
+│   │   ├── core/              # Config, security, database, sessions
+│   │   ├── models/            # SQLAlchemy models (User, Session, ConfigProfile, etc.)
+│   │   ├── schemas/           # Pydantic request/response schemas
+│   │   ├── api/routes/        # REST API endpoints
+│   │   ├── services/          # Business logic layer
+│   │   ├── executors/         # Secure command execution (whitelist-based)
+│   │   ├── generators/        # Config file generators (Unbound, nftables, FRR)
+│   │   ├── db/                # SQLite schema and seed scripts
+│   │   └── scripts/           # Installation and admin scripts
+│   └── requirements.txt
+├── src/                        # React/TypeScript frontend
+│   ├── components/            # Reusable UI components
+│   ├── lib/                   # API client, auth, types, validation
+│   └── pages/                 # Route-based pages
+└── docs/                      # Backend blueprint documentation
 ```
 
-**Edit a file directly in GitHub**
+## Requirements
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+- **Target OS**: Debian 13 (Trixie)
+- **System packages**: unbound, frr, nftables, ifupdown2, sqlite3, python3
+- **Python**: 3.11+
+- **Node.js**: 18+ (for frontend build)
 
-**Use GitHub Codespaces**
+## Quick Start — Backend
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 
-## What technologies are used for this project?
+export DNS_CONTROL_SECRET_KEY=$(openssl rand -hex 32)
+export DNS_CONTROL_INITIAL_ADMIN_PASSWORD=changeme
+export DNS_CONTROL_DB_PATH=./dns-control.db
 
-This project is built with:
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+The database and default admin user are created automatically on first startup.  
+The admin must change their password on first login (`must_change_password=true`).
 
-## How can I deploy this project?
+## Quick Start — Frontend
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+```bash
+npm install
+VITE_API_URL=http://localhost:8000 npm run dev
+```
 
-## Can I connect a custom domain to my Lovable project?
+Without `VITE_API_URL`, the frontend runs in preview mode with mock data.
 
-Yes, you can!
+## Production Build
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+```bash
+npm run build    # outputs to dist/
+```
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## Debian 13 Installation
+
+```bash
+sudo bash backend/app/scripts/install_debian13.sh
+```
+
+This script:
+1. Installs system packages (unbound, frr, nftables, ifupdown2)
+2. Creates the `dns-control` service user
+3. Sets up the Python virtualenv and dependencies
+4. Initializes the SQLite database
+5. Creates the default admin user
+6. Installs and starts the systemd service
+7. Configures sudoers for privileged commands
+
+## Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `DNS_CONTROL_DB_PATH` | `/var/lib/dns-control/dns-control.db` | SQLite database path |
+| `DNS_CONTROL_SECRET_KEY` | *(required)* | JWT signing key |
+| `DNS_CONTROL_SESSION_TIMEOUT_MINUTES` | `30` | Session timeout |
+| `DNS_CONTROL_SESSION_WARNING_SECONDS` | `120` | Warning before expiry |
+| `DNS_CONTROL_INITIAL_ADMIN_USERNAME` | `admin` | Bootstrap admin username |
+| `DNS_CONTROL_INITIAL_ADMIN_PASSWORD` | `admin` | Bootstrap admin password |
+| `DNS_CONTROL_HOST` | `127.0.0.1` | API bind address |
+| `DNS_CONTROL_PORT` | `8000` | API port |
+
+## SQLite Tables
+
+- **users** — Local user accounts with bcrypt password hashing
+- **sessions** — Server-side session tracking with expiration
+- **config_profiles** — Saved infrastructure configurations
+- **config_revisions** — Version history for each profile
+- **apply_jobs** — Deployment execution history with stdout/stderr
+- **log_entries** — Structured audit and system logs
+- **settings** — Key-value application settings
+
+## Authentication
+
+- Local authentication with bcrypt password hashing
+- JWT-based session tokens with server-side validation
+- Configurable session timeout with countdown warning
+- Forced password change on first login
+- User management: create, disable, enable, delete, password reset
+
+## Security
+
+- **Command execution**: Whitelist-based only — no arbitrary shell access
+- **Sudoers**: Least-privilege escalation for specific system commands
+- **Sessions**: Server-side validation, automatic expiration
+- **Passwords**: bcrypt with minimum length enforcement
+- **API**: All endpoints require valid authentication token
+
+## Systemd Service
+
+```ini
+# /etc/systemd/system/dns-control-api.service
+[Unit]
+Description=DNS Control API
+After=network.target
+
+[Service]
+Type=simple
+User=dns-control
+Group=dns-control
+WorkingDirectory=/opt/dns-control/backend
+EnvironmentFile=/etc/dns-control/env
+ExecStart=/opt/dns-control/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+## Troubleshooting
+
+```bash
+# Check API status
+systemctl status dns-control-api
+
+# View API logs
+journalctl -u dns-control-api -f
+
+# Reset admin password
+cd /opt/dns-control/backend
+source venv/bin/activate
+python app/scripts/create_admin.py admin newpassword
+
+# Test DNS resolution
+dig @127.0.0.1 google.com +short
+
+# Check OSPF neighbors
+vtysh -c "show ip ospf neighbor"
+
+# List nftables rules
+nft list ruleset
+```
+
+## API Documentation
+
+Start the backend and visit `http://localhost:8000/docs` for interactive Swagger documentation.

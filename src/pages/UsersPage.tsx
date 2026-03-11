@@ -12,9 +12,10 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/lib/auth';
 import { api, type AuthUserRecord } from '@/lib/api';
-import { Loader2, Plus, KeyRound, UserX, UserCheck, Trash2, Users } from 'lucide-react';
+import { Loader2, Plus, KeyRound, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function UsersPage() {
@@ -24,10 +25,10 @@ export default function UsersPage() {
   const [passwordOpen, setPasswordOpen] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
-  // Form state
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
+  const [mustChangePassword, setMustChangePassword] = useState(true);
   const [changePassword, setChangePassword] = useState('');
   const [changePasswordConfirm, setChangePasswordConfirm] = useState('');
 
@@ -49,6 +50,7 @@ export default function UsersPage() {
         setNewUsername('');
         setNewPassword('');
         setNewPasswordConfirm('');
+        setMustChangePassword(true);
       } else {
         toast.error(res.error || 'Erro ao criar usuário');
       }
@@ -111,6 +113,7 @@ export default function UsersPage() {
             <TableRow>
               <TableHead>Usuário</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Troca de senha</TableHead>
               <TableHead>Criado em</TableHead>
               <TableHead>Último login</TableHead>
               <TableHead className="text-right">Ações</TableHead>
@@ -119,13 +122,13 @@ export default function UsersPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8">
+                <TableCell colSpan={6} className="text-center py-8">
                   <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
                 </TableCell>
               </TableRow>
             ) : users.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                   Nenhum usuário cadastrado
                 </TableCell>
               </TableRow>
@@ -137,6 +140,13 @@ export default function UsersPage() {
                     <Badge variant={u.isActive ? 'default' : 'secondary'} className={u.isActive ? 'bg-success/20 text-success border-success/30' : ''}>
                       {u.isActive ? 'Ativo' : 'Inativo'}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {u.mustChangePassword && (
+                      <Badge variant="outline" className="text-warning border-warning/30">
+                        Pendente
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground font-mono">
                     {new Date(u.createdAt).toLocaleString('pt-BR')}
@@ -150,12 +160,13 @@ export default function UsersPage() {
                     </Button>
                     <Button
                       variant="ghost"
-                      size="icon"
+                      size="sm"
                       title={u.isActive ? 'Desativar' : 'Ativar'}
                       onClick={() => toggleMutation.mutate({ userId: u.id, active: !u.isActive })}
                       disabled={u.id === currentUser?.id}
+                      className="px-2"
                     >
-                      {u.isActive ? <UserX size={14} /> : <UserCheck size={14} />}
+                      {u.isActive ? 'Desativar' : 'Ativar'}
                     </Button>
                     <Button
                       variant="ghost"
@@ -203,6 +214,10 @@ export default function UsersPage() {
               {newPasswordConfirm.length > 0 && newPassword !== newPasswordConfirm && (
                 <p className="text-xs text-destructive">Senhas não conferem</p>
               )}
+            </div>
+            <div className="flex items-center gap-3">
+              <Switch checked={mustChangePassword} onCheckedChange={setMustChangePassword} />
+              <Label>Forçar troca de senha no primeiro login</Label>
             </div>
           </div>
           <DialogFooter>

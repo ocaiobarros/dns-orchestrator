@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2, Lock, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
+  const navigate = useNavigate();
   const { user, login, loading: sessionLoading } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -14,7 +15,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   if (sessionLoading) return null;
-  if (user) return <Navigate to="/" replace />;
+  if (user && !user.mustChangePassword) return <Navigate to="/" replace />;
+  if (user && user.mustChangePassword) return <Navigate to="/force-change-password" replace />;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -24,6 +26,8 @@ export default function LoginPage() {
     const result = await login(username, password);
     if (!result.success) {
       setError(result.error || 'Falha na autenticação');
+    } else if (result.mustChangePassword) {
+      navigate('/force-change-password', { replace: true });
     }
     setLoading(false);
   };
@@ -31,7 +35,6 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm space-y-6">
-        {/* Brand */}
         <div className="flex flex-col items-center gap-3">
           <div className="w-12 h-12 rounded-lg bg-primary flex items-center justify-center">
             <span className="text-primary-foreground font-bold text-xl font-mono">D</span>
@@ -42,7 +45,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Login form */}
         <form onSubmit={handleSubmit} className="noc-panel space-y-4">
           <div className="flex items-center gap-2 pb-2 border-b border-border mb-2">
             <Lock size={14} className="text-muted-foreground" />
@@ -94,7 +96,7 @@ export default function LoginPage() {
           </Button>
 
           <p className="text-xs text-center text-muted-foreground font-mono pt-2">
-            Preview: qualquer usuário/senha
+            Preview: admin/admin (troca de senha) · outro/qualquer (acesso direto)
           </p>
         </form>
       </div>
