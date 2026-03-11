@@ -11,6 +11,7 @@ import type {
   OspfNeighbor, OspfRoute, LogEntry, LogSource,
   ApplyRequest, ApplyResult, DiagCommand, DiagResult,
   ConfigProfile, ConfigDiff, GeneratedFile, PaginatedResponse,
+  InstanceHealthReport,
 } from './types';
 
 export interface AuthUserRecord {
