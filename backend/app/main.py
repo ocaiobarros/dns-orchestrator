@@ -13,6 +13,7 @@ from app.api.routes import (
     auth, users, dashboard, services, network, dns,
     nat, ospf, logs, troubleshooting, configs, apply,
     files, history, settings as settings_route,
+    healthcheck, metrics,
 )
 
 
