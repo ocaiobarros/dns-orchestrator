@@ -74,8 +74,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className="px-4 py-3 border-t border-sidebar-border">
-          <p className="text-xs text-muted-foreground font-mono">v1.0.0 · Debian 13</p>
+        <div className="px-3 py-3 border-t border-sidebar-border space-y-2">
+          {user && (
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs text-muted-foreground font-mono truncate">{user.username}</span>
+              <button
+                onClick={logout}
+                className="text-muted-foreground hover:text-destructive transition-colors"
+                title="Sair"
+              >
+                <LogOut size={14} />
+              </button>
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground font-mono px-1">v1.0.0 · Debian 13</p>
         </div>
       </aside>
 
