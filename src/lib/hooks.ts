@@ -184,7 +184,7 @@ export function useApplyConfig() {
 
 export function usePreviewFiles() {
   return useMutation({
-    mutationFn: async (config: WizardConfig) => { const r = await api.previewFiles(config); if (!r.success) throw new Error(r.error!); return r.data; },
+    mutationFn: async (config: WizardConfig) => { const r = await api.previewFilesFromConfig(config); if (!r.success) throw new Error(r.error!); return r.data; },
   });
 }
 
