@@ -90,7 +90,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </button>
             </div>
           )}
-          <p className="text-xs text-muted-foreground font-mono px-1">v1.0.0 · Debian 13</p>
+          <p className="text-xs text-muted-foreground font-mono px-1">v2.0.0 · Carrier Edition</p>
         </div>
       </aside>
 

@@ -21,6 +21,8 @@ import FilesPage from "@/pages/FilesPage";
 import HistoryPage from "@/pages/HistoryPage";
 import SettingsPage from "@/pages/SettingsPage";
 import UsersPage from "@/pages/UsersPage";
+import EventsPage from "@/pages/EventsPage";
+import MetricsPage from "@/pages/MetricsPage";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -48,6 +50,8 @@ const App = () => (
             <Route path="/dns" element={<ProtectedApp><DnsPage /></ProtectedApp>} />
             <Route path="/nat" element={<ProtectedApp><NatPage /></ProtectedApp>} />
             <Route path="/ospf" element={<ProtectedApp><OspfPage /></ProtectedApp>} />
+            <Route path="/metrics" element={<ProtectedApp><MetricsPage /></ProtectedApp>} />
+            <Route path="/events" element={<ProtectedApp><EventsPage /></ProtectedApp>} />
             <Route path="/logs" element={<ProtectedApp><LogsPage /></ProtectedApp>} />
             <Route path="/troubleshoot" element={<ProtectedApp><TroubleshootPage /></ProtectedApp>} />
             <Route path="/files" element={<ProtectedApp><FilesPage /></ProtectedApp>} />
