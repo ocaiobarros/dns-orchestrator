@@ -167,6 +167,74 @@ vtysh -c "show ip ospf neighbor"
 nft list ruleset
 ```
 
+## Production Deployment with nginx
+
+### Install nginx
+
+```bash
+apt install -y nginx
+```
+
+### Configure reverse proxy
+
+```bash
+cp deploy/nginx/dns-control.conf /etc/nginx/sites-available/dns-control
+ln -s /etc/nginx/sites-available/dns-control /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default
+```
+
+### Edit server name and TLS paths
+
+```bash
+nano /etc/nginx/sites-available/dns-control
+# Replace dns-control.example.com with your domain
+# Update ssl_certificate and ssl_certificate_key paths
+```
+
+### Obtain TLS certificate (Let's Encrypt)
+
+```bash
+mkdir -p /var/www/certbot
+apt install -y certbot
+certbot certonly --webroot -w /var/www/certbot -d dns-control.example.com
+```
+
+### Deploy frontend build
+
+```bash
+npm run build
+mkdir -p /opt/dns-control/frontend
+cp -r dist/ /opt/dns-control/frontend/dist/
+```
+
+### Test and reload nginx
+
+```bash
+nginx -t
+systemctl reload nginx
+```
+
+### Production architecture
+
+```
+Client (HTTPS:443) → nginx → static files (frontend)
+                           → proxy /api/ → uvicorn (127.0.0.1:8000)
+```
+
+- nginx handles HTTPS termination and security headers
+- Backend binds only to `127.0.0.1` (not exposed externally)
+- Static frontend assets served directly by nginx with 1-year cache
+- API responses are not cached
+
+### Security headers included
+
+- `Strict-Transport-Security` (HSTS with preload)
+- `X-Frame-Options: SAMEORIGIN`
+- `X-Content-Type-Options: nosniff`
+- `Content-Security-Policy`
+- `Referrer-Policy`
+- `Permissions-Policy`
+
 ## API Documentation
 
 Start the backend and visit `http://localhost:8000/docs` for interactive Swagger documentation.
