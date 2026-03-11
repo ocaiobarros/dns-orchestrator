@@ -304,6 +304,19 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path.match(/\/api\/users\//) && method === 'PATCH') return { success: true };
   if (path.match(/\/api\/users\//) && method === 'DELETE') return undefined;
 
+  // v2: Events
+  if (path.startsWith('/api/events')) return mockV2Events();
+
+  // v2: Metrics
+  if (path === '/api/metrics/dns') return mockV2Metrics();
+
+  // v2: Health instances
+  if (path === '/api/health/instances') return mockV2Instances();
+
+  // v2: Actions
+  if (path === '/api/actions' && method === 'GET') return mockV2Actions();
+  if (path.match(/\/api\/actions\/(remove|restore)-backend/)) return { success: true };
+
   return {};
 }
 
