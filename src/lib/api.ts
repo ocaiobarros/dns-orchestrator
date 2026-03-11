@@ -201,6 +201,8 @@ function getMockResponse<T>(method: string, path: string, body?: unknown): Promi
 function routeMock(method: string, path: string, body?: unknown): unknown {
   // Dashboard
   if (path === '/api/dashboard/summary') return mockSystemInfo;
+  if (path === '/api/healthcheck') return mockInstanceHealth();
+  if (path === '/api/dashboard/instance-stats') return mockInstanceStats;
 
   // Services
   if (path === '/api/services' && method === 'GET') return mockServices;
