@@ -475,6 +475,9 @@ export interface V2Instance {
   last_failure_at: string | null;
   last_transition_at: string | null;
   reason: string | null;
+  // v2.1 cooldown
+  cooldown_remaining: number;
+  last_reconciliation_at: string | null;
 }
 
 export interface V2Action {
@@ -489,4 +492,11 @@ export interface V2Action {
   stderr_log: string;
   created_at: string;
   finished_at: string | null;
+}
+
+export interface ReconcileSummary {
+  instances_checked: number;
+  instances_failed: number;
+  backends_removed: number;
+  backends_restored: number;
 }

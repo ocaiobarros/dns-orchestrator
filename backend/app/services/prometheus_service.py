@@ -1,11 +1,15 @@
 """
-DNS Control v2 — Prometheus Export Service
-Generates Prometheus text format from latest metrics and health state.
+DNS Control v2.1 — Prometheus Export Service
+Generates Prometheus text format with enhanced metrics including cooldown and event counts.
 """
 
 from sqlalchemy.orm import Session
-from app.models.operational import DnsInstance, InstanceState, MetricSample
 from sqlalchemy import func
+from datetime import datetime, timezone
+
+from app.models.operational import (
+    DnsInstance, InstanceState, MetricSample, OperationalEvent, OperationalAction,
+)
 
 
 PROM_HELP = """# HELP dns_control_up DNS Control API is up
@@ -16,6 +20,10 @@ PROM_HELP = """# HELP dns_control_up DNS Control API is up
 # TYPE dns_backend_in_rotation gauge
 # HELP dns_healthcheck_consecutive_failures Consecutive health check failures
 # TYPE dns_healthcheck_consecutive_failures gauge
+# HELP dns_instance_consecutive_successes Consecutive health check successes
+# TYPE dns_instance_consecutive_successes gauge
+# HELP dns_instance_cooldown_seconds Seconds remaining in cooldown
+# TYPE dns_instance_cooldown_seconds gauge
 # HELP dns_queries_total Total queries served
 # TYPE dns_queries_total counter
 # HELP dns_cache_hit_ratio Cache hit ratio (0-1)
@@ -36,11 +44,16 @@ PROM_HELP = """# HELP dns_control_up DNS Control API is up
 # TYPE dns_failed_instances gauge
 # HELP dns_nftables_backend_count Number of backends in DNAT rotation
 # TYPE dns_nftables_backend_count gauge
+# HELP dns_events_total Total operational events by severity
+# TYPE dns_events_total counter
+# HELP dns_reconciliation_actions_total Total reconciliation actions by type
+# TYPE dns_reconciliation_actions_total counter
 """
 
 
 def generate_prometheus_output(db: Session) -> str:
     lines = [PROM_HELP.strip(), "", "dns_control_up 1"]
+    now = datetime.now(timezone.utc)
 
     instances = db.query(DnsInstance).filter(DnsInstance.is_enabled == True).all()
     active_count = 0
@@ -51,12 +64,19 @@ def generate_prometheus_output(db: Session) -> str:
         labels = f'instance="{inst.instance_name}",bind_ip="{inst.bind_ip}"'
         state = db.query(InstanceState).filter(InstanceState.instance_id == inst.id).first()
 
-        # Health status
         if state:
             health_val = {"healthy": 1, "degraded": 0.5, "failed": 0, "withdrawn": 0}.get(state.current_status, 0)
             lines.append(f"dns_instance_health{{{labels}}} {health_val}")
             lines.append(f"dns_backend_in_rotation{{{labels}}} {1 if state.in_rotation else 0}")
             lines.append(f"dns_healthcheck_consecutive_failures{{{labels}}} {state.consecutive_failures}")
+            lines.append(f"dns_instance_consecutive_successes{{{labels}}} {state.consecutive_successes}")
+
+            # Cooldown
+            cooldown_remaining = 0
+            if state.cooldown_until:
+                remaining = (state.cooldown_until - now).total_seconds()
+                cooldown_remaining = max(0, remaining)
+            lines.append(f"dns_instance_cooldown_seconds{{{labels}}} {cooldown_remaining:.0f}")
 
             if state.current_status in ("healthy", "degraded"):
                 active_count += 1
@@ -67,17 +87,31 @@ def generate_prometheus_output(db: Session) -> str:
         else:
             lines.append(f"dns_instance_health{{{labels}}} 1")
             lines.append(f"dns_backend_in_rotation{{{labels}}} 1")
+            lines.append(f"dns_instance_cooldown_seconds{{{labels}}} 0")
             active_count += 1
             in_rotation_count += 1
 
-        # Latest metrics for this instance
         _append_latest_metrics(db, inst, labels, lines)
 
     lines.append(f"dns_active_instances {active_count}")
     lines.append(f"dns_failed_instances {failed_count}")
     lines.append(f"dns_nftables_backend_count {in_rotation_count}")
-    lines.append("")
 
+    # Event counts by severity
+    for severity in ("info", "warning", "critical"):
+        count = db.query(func.count(OperationalEvent.id)).filter(
+            OperationalEvent.severity == severity
+        ).scalar() or 0
+        lines.append(f'dns_events_total{{severity="{severity}"}} {count}')
+
+    # Reconciliation action counts
+    for action_type in ("remove_backend", "restore_backend"):
+        count = db.query(func.count(OperationalAction.id)).filter(
+            OperationalAction.action_type == action_type
+        ).scalar() or 0
+        lines.append(f'dns_reconciliation_actions_total{{action="{action_type}"}} {count}')
+
+    lines.append("")
     return "\n".join(lines)
 
 

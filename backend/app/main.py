@@ -1,7 +1,7 @@
 """
 DNS Control — Backend Entry Point
 FastAPI application for managing recursive DNS infrastructure on Debian 13.
-v2: Health monitoring, metrics collection, automatic reconciliation.
+v2.1: Stability upgrade — cooldown, quorum health, enhanced observability.
 """
 
 from contextlib import asynccontextmanager
@@ -26,7 +26,8 @@ from app.api.routes import (
 async def lifespan(app: FastAPI):
     init_db()
 
-    # Start v2 scheduler (health, metrics, reconciliation workers)
+    # Start v2.1 scheduler (health, metrics, reconciliation workers)
+    # File-lock protected against duplicate workers
     try:
         from app.workers.scheduler import start_scheduler, stop_scheduler
         start_scheduler()
@@ -46,8 +47,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="DNS Control",
-    version="2.0.0",
-    description="Recursive DNS infrastructure management — Carrier Edition",
+    version="2.1.0",
+    description="Recursive DNS infrastructure management — Carrier Edition (Stability Upgrade)",
     lifespan=lifespan,
 )
 
@@ -119,7 +120,7 @@ def health_check():
 
     return {
         "status": "ok" if db_ok else "degraded",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "database": "connected" if db_ok else "unreachable",
         "users": user_count,
         "engine": "FastAPI + SQLite + SQLAlchemy",

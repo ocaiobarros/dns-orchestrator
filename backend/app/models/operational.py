@@ -1,5 +1,5 @@
 """
-DNS Control v2 — Operational Models
+DNS Control v2.1 — Operational Models
 DNS instances, health checks, instance state, metrics, events, actions.
 """
 
@@ -50,6 +50,9 @@ class InstanceState(Base):
     in_rotation = Column(Boolean, nullable=False, default=True)
     last_transition_at = Column(DateTime, nullable=True)
     reason = Column(Text, nullable=True)
+    # v2.1: Cooldown fields
+    cooldown_until = Column(DateTime, nullable=True)
+    last_reconciliation_at = Column(DateTime, nullable=True)
 
 
 class MetricSample(Base):

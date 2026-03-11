@@ -1,11 +1,12 @@
-import { Activity, Clock, Globe, Server, HeartPulse, CheckCircle, XCircle, Zap, AlertTriangle, Bell } from 'lucide-react';
+import { Activity, Clock, Globe, Server, HeartPulse, CheckCircle, XCircle, Zap, AlertTriangle, Bell, RefreshCw, Timer } from 'lucide-react';
 import MetricCard from '@/components/MetricCard';
 import StatusBadge from '@/components/StatusBadge';
 import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useSystemInfo, useServices, useInstanceStats, useInstanceHealth } from '@/lib/hooks';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useState } from 'react';
 
 function formatBytes(bytes: number | null): string {
   if (bytes === null) return 'N/A';
@@ -20,6 +21,8 @@ export default function Dashboard() {
   const { data: instanceStats } = useInstanceStats();
   const { data: health } = useInstanceHealth();
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [reconciling, setReconciling] = useState(false);
 
   const { data: v2Instances } = useQuery({
     queryKey: ['v2-instances'],
@@ -33,6 +36,20 @@ export default function Dashboard() {
     refetchInterval: 5000,
   });
 
+  const reconcileMutation = useMutation({
+    mutationFn: async () => {
+      setReconciling(true);
+      const r = await api.reconcileNow();
+      if (!r.success) throw new Error(r.error!);
+      return r.data;
+    },
+    onSettled: () => {
+      setReconciling(false);
+      qc.invalidateQueries({ queryKey: ['v2-instances'] });
+      qc.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+
   if (sysLoading || svcLoading) return <LoadingState />;
   if (sysError) return <ErrorState message={sysError.message} />;
 
@@ -41,12 +58,16 @@ export default function Dashboard() {
   const avgCacheHit = instanceStats && instanceStats.length > 0
     ? (instanceStats.reduce((a, b) => a + b.cacheHitRatio, 0) / instanceStats.length).toFixed(1)
     : '0';
+  const avgLatency = instanceStats && instanceStats.length > 0
+    ? (instanceStats.reduce((a, b) => a + b.avgLatencyMs, 0) / instanceStats.length).toFixed(1)
+    : '0';
 
   const healthyCount = v2Instances?.filter(i => i.current_status === 'healthy').length ?? health?.healthy ?? 0;
   const totalInstances = v2Instances?.length ?? health?.total ?? 0;
   const failedCount = v2Instances?.filter(i => i.current_status === 'failed' || i.current_status === 'withdrawn').length ?? 0;
   const inRotation = v2Instances?.filter(i => i.in_rotation).length ?? totalInstances;
 
+  const criticalEvents = recentEvents?.items?.filter(e => e.severity === 'critical').length ?? 0;
   const statusLabel = failedCount > 0 ? 'Degradado' : 'Todas saudáveis';
 
   return (
@@ -54,20 +75,44 @@ export default function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">DNS Control v2 — Carrier Edition</p>
+          <p className="text-sm text-muted-foreground">DNS Control v2.1 — Carrier Edition</p>
         </div>
-        <StatusBadge status={allRunning && failedCount === 0 ? 'running' : 'error'} />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => reconcileMutation.mutate()}
+            disabled={reconciling}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw size={12} className={reconciling ? 'animate-spin' : ''} />
+            Reconciliar Agora
+          </button>
+          <StatusBadge status={allRunning && failedCount === 0 ? 'running' : 'error'} />
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <MetricCard label="Instâncias" value={`${healthyCount}/${totalInstances}`} sub={statusLabel} icon={<Globe size={16} />} />
         <MetricCard label="Em Rotação" value={`${inRotation}/${totalInstances}`} sub="DNAT ativo" icon={<Zap size={16} />} />
         <MetricCard label="Total Queries" value={totalQps.toLocaleString()} sub="Acumulado" icon={<Activity size={16} />} />
         <MetricCard label="Cache Hit" value={`${avgCacheHit}%`} sub="Média geral" icon={<Server size={16} />} />
+        <MetricCard label="Latência" value={`${avgLatency}ms`} sub="Média DNS" icon={<Timer size={16} />} />
         <MetricCard label="Uptime" value={sysInfo?.uptime ?? '-'} sub="Sistema" icon={<Clock size={16} />} />
       </div>
 
-      {/* v2 Instance State Table */}
+      {/* Reconciliation result */}
+      {reconcileMutation.data && (
+        <div className="noc-panel border-l-2 border-l-primary">
+          <div className="text-sm">
+            <span className="font-medium">Reconciliação executada:</span>{' '}
+            <span className="font-mono">{reconcileMutation.data.instances_checked} verificadas</span>{' · '}
+            <span className="font-mono text-destructive">{reconcileMutation.data.instances_failed} falhas</span>{' · '}
+            <span className="font-mono">{reconcileMutation.data.backends_removed} removidas</span>{' · '}
+            <span className="font-mono text-emerald-500">{reconcileMutation.data.backends_restored} restauradas</span>
+          </div>
+        </div>
+      )}
+
+      {/* v2.1 Instance State Table with cooldown */}
       {v2Instances && v2Instances.length > 0 && (
         <div className="noc-panel">
           <div className="noc-panel-header flex items-center gap-2">
@@ -84,6 +129,7 @@ export default function Dashboard() {
                   <th className="py-2 pr-3 font-medium">Rotação</th>
                   <th className="py-2 pr-3 font-medium text-right">Falhas</th>
                   <th className="py-2 pr-3 font-medium text-right">Sucessos</th>
+                  <th className="py-2 pr-3 font-medium text-right">Cooldown</th>
                   <th className="py-2 font-medium">Motivo</th>
                 </tr>
               </thead>
@@ -109,6 +155,13 @@ export default function Dashboard() {
                     </td>
                     <td className="py-2 pr-3 text-right font-mono">{inst.consecutive_failures}</td>
                     <td className="py-2 pr-3 text-right font-mono">{inst.consecutive_successes}</td>
+                    <td className="py-2 pr-3 text-right">
+                      {inst.cooldown_remaining > 0 ? (
+                        <span className="text-xs font-mono text-yellow-500">{inst.cooldown_remaining}s</span>
+                      ) : (
+                        <span className="text-xs font-mono text-muted-foreground">—</span>
+                      )}
+                    </td>
                     <td className="py-2 text-xs text-muted-foreground truncate max-w-[200px]">{inst.reason ?? '—'}</td>
                   </tr>
                 ))}
@@ -163,10 +216,18 @@ export default function Dashboard() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Recent Events */}
+        {/* Recent Critical Events */}
         <div className="noc-panel">
           <div className="noc-panel-header flex items-center justify-between">
-            <div className="flex items-center gap-2"><Bell size={14} /> Eventos Recentes</div>
+            <div className="flex items-center gap-2">
+              <Bell size={14} />
+              Eventos Recentes
+              {criticalEvents > 0 && (
+                <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-destructive/10 text-destructive">
+                  {criticalEvents} crítico{criticalEvents > 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
             <button onClick={() => navigate('/events')} className="text-xs text-primary hover:underline">Ver todos</button>
           </div>
           <div className="space-y-1">

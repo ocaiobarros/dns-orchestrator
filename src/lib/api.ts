@@ -12,7 +12,7 @@ import type {
   ApplyRequest, ApplyResult, DiagCommand, DiagResult,
   ConfigProfile, ConfigDiff, GeneratedFile, PaginatedResponse,
   InstanceHealthReport,
-  V2Event, V2MetricEntry, V2Instance, V2Action,
+  V2Event, V2MetricEntry, V2Instance, V2Action, ReconcileSummary,
 } from './types';
 
 export interface AuthUserRecord {
@@ -195,6 +195,8 @@ export const api = {
     apiCall<{ success: boolean }>('POST', `/api/actions/remove-backend/${instanceId}`),
   restoreBackend: (instanceId: string) =>
     apiCall<{ success: boolean }>('POST', `/api/actions/restore-backend/${instanceId}`),
+  reconcileNow: () =>
+    apiCall<ReconcileSummary>('POST', '/api/actions/reconcile-now'),
   getSchedulerStatus: () =>
     apiCall<{ running: boolean; jobs: Array<{ id: string; name: string; next_run: string | null }> }>('GET', '/api/health'),
 };
@@ -317,6 +319,7 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   // v2: Actions
   if (path === '/api/actions' && method === 'GET') return mockV2Actions();
   if (path.match(/\/api\/actions\/(remove|restore)-backend/)) return { success: true };
+  if (path === '/api/actions/reconcile-now' && method === 'POST') return { instances_checked: 4, instances_failed: 0, backends_removed: 0, backends_restored: 0 };
 
   return {};
 }
