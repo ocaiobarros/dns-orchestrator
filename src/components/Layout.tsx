@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Server, Network, Globe, Shield, Router,
-  FileText, Wrench, Settings, History, FolderOpen, Menu, X, Wand2
+  FileText, Wrench, Settings, History, FolderOpen, Menu, X, Wand2, Users, LogOut
 } from 'lucide-react';
+import { useAuth } from '@/lib/auth';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
