@@ -15,6 +15,8 @@ const navItems = [
   { path: '/dns', label: 'DNS', icon: Globe },
   { path: '/nat', label: 'NAT / Balanceamento', icon: Shield },
   { path: '/ospf', label: 'OSPF / FRR', icon: Router },
+  { path: '/metrics', label: 'Métricas', icon: BarChart3 },
+  { path: '/events', label: 'Eventos', icon: Bell },
   { path: '/logs', label: 'Logs', icon: FileText },
   { path: '/troubleshoot', label: 'Troubleshooting', icon: Wrench },
   { path: '/files', label: 'Arquivos', icon: FolderOpen },
