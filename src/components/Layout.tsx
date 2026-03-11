@@ -19,6 +19,7 @@ const navItems = [
   { path: '/files', label: 'Arquivos', icon: FolderOpen },
   { path: '/history', label: 'Histórico', icon: History },
   { path: '/settings', label: 'Configurações', icon: Settings },
+  { path: '/users', label: 'Usuários', icon: Users },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
