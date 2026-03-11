@@ -11,6 +11,8 @@ import type { WizardConfig, ApplyRequest, LogSource } from './types';
 export const queryKeys = {
   systemInfo: ['system', 'info'] as const,
   services: ['system', 'services'] as const,
+  instanceHealth: ['system', 'health'] as const,
+  instanceRealStats: ['system', 'realStats'] as const,
   interfaces: ['network', 'interfaces'] as const,
   routes: ['network', 'routes'] as const,
   reachability: ['network', 'reachability'] as const,
