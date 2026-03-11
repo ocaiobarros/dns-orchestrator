@@ -30,6 +30,7 @@ import {
   mockInstanceStats, mockNftCounters, mockStickyEntries,
   mockOspfNeighbors, mockOspfRoutes, mockLogs, mockDiagCommands,
   mockHistory, mockProfiles, mockDiagOutputs, mockInstanceHealth,
+  mockV2Events, mockV2Metrics, mockV2Instances, mockV2Actions,
 } from './mock-data';
 
 // ---- Configuration ----
