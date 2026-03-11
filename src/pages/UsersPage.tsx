@@ -17,10 +17,6 @@ import { api, type AuthUserRecord } from '@/lib/api';
 import { Loader2, Plus, KeyRound, UserX, UserCheck, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
-interface UserRecord extends AuthUser {
-  updatedAt: string;
-}
-
 export default function UsersPage() {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
