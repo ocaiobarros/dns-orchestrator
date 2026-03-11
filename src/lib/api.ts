@@ -12,6 +12,15 @@ import type {
   ApplyRequest, ApplyResult, DiagCommand, DiagResult,
   ConfigProfile, ConfigDiff, GeneratedFile, PaginatedResponse,
 } from './types';
+
+export interface AuthUserRecord {
+  id: string;
+  username: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt: string | null;
+}
 import {
   mockSystemInfo, mockServices, mockInterfaces, mockRoutes,
   mockReachability, generateDnsMetrics, mockTopDomains,
