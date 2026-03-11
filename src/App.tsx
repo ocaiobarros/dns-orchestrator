@@ -4,8 +4,10 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/lib/auth";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 import Layout from "@/components/Layout";
 import LoginPage from "@/pages/LoginPage";
+import ForceChangePasswordPage from "@/pages/ForceChangePasswordPage";
 import Dashboard from "@/pages/Dashboard";
 import Wizard from "@/pages/Wizard";
 import Services from "@/pages/Services";
@@ -35,8 +37,10 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <SessionTimeoutModal />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/force-change-password" element={<ForceChangePasswordPage />} />
             <Route path="/" element={<ProtectedApp><Dashboard /></ProtectedApp>} />
             <Route path="/wizard" element={<ProtectedApp><Wizard /></ProtectedApp>} />
             <Route path="/services" element={<ProtectedApp><Services /></ProtectedApp>} />

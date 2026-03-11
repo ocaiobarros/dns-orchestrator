@@ -20,5 +20,10 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     return <Navigate to="/login" replace />;
   }
 
+  // Force password change redirect
+  if (user.mustChangePassword) {
+    return <Navigate to="/force-change-password" replace />;
+  }
+
   return <>{children}</>;
 }
