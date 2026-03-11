@@ -166,6 +166,11 @@ def _update_instance_state(db: Session, instance: DnsInstance, check_result: str
             state.current_status = "healthy"
             state.last_transition_at = now
             state.reason = f"Recovery: passed {recovery_threshold} consecutive health checks"
+            # v2.1: Set cooldown before restoration
+            cooldown_seconds = settings.get("cooldown_seconds", 120)
+            state.cooldown_until = now + __import__('datetime').timedelta(seconds=cooldown_seconds)
+            _emit_event(db, "instance_recovered", "warning", instance.id,
+                        f"{instance.instance_name} recovered after {recovery_threshold} successful checks (cooldown: {cooldown_seconds}s)")
             _emit_event(db, "instance_recovered", "warning", instance.id,
                         f"{instance.instance_name} recovered after {recovery_threshold} successful checks")
 
