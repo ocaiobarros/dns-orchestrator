@@ -1,70 +1,57 @@
 import { useState } from 'react';
+import { LoadingState, ErrorState, EmptyState } from '@/components/DataStates';
+import { useLogs } from '@/lib/hooks';
+import type { LogSource } from '@/lib/types';
+import { Download } from 'lucide-react';
 
-const logSources = ['apply', 'unbound', 'frr', 'nftables', 'system'];
+const logSources: { value: LogSource | 'all'; label: string }[] = [
+  { value: 'all', label: 'Todos' },
+  { value: 'apply', label: 'Apply' },
+  { value: 'unbound', label: 'Unbound' },
+  { value: 'frr', label: 'FRR' },
+  { value: 'nftables', label: 'nftables' },
+  { value: 'system', label: 'Sistema' },
+];
 
-const mockLogs: Record<string, string[]> = {
-  apply: [
-    '[2026-03-10 14:30:01] INFO  Starting configuration apply...',
-    '[2026-03-10 14:30:02] OK    Packages verified: unbound frr nftables',
-    '[2026-03-10 14:30:03] OK    Generated /etc/unbound/unbound01.conf',
-    '[2026-03-10 14:30:03] OK    Generated /etc/unbound/unbound02.conf',
-    '[2026-03-10 14:30:03] OK    Generated /etc/unbound/unbound03.conf',
-    '[2026-03-10 14:30:04] OK    Generated /etc/unbound/unbound04.conf',
-    '[2026-03-10 14:30:04] OK    Generated /etc/nftables.conf',
-    '[2026-03-10 14:30:05] OK    Generated /etc/frr/frr.conf',
-    '[2026-03-10 14:30:06] OK    Services restarted successfully',
-    '[2026-03-10 14:30:08] OK    Validation passed — all instances responding',
-    '[2026-03-10 14:30:08] INFO  Apply completed successfully',
-  ],
-  unbound: [
-    '[2026-03-11 08:00:01] unbound[1234]: start of service (unbound 1.21.1)',
-    '[2026-03-11 08:00:01] unbound[1234]: service started (4 threads)',
-    '[2026-03-11 08:15:32] unbound[1234]: info: 127.0.0.1 google.com. A IN',
-    '[2026-03-11 08:15:33] unbound[1234]: info: response for google.com. A IN NOERROR 1.2ms',
-  ],
-  frr: [
-    '[2026-03-11 08:00:00] ospfd[890]: OSPFd starting: vty@2604',
-    '[2026-03-11 08:00:01] ospfd[890]: Neighbor 172.28.22.1 state Full',
-    '[2026-03-11 08:00:01] ospfd[890]: Neighbor 172.28.22.2 state Full',
-  ],
-  nftables: [
-    '[2026-03-11 08:00:00] nftables: ruleset loaded successfully',
-    '[2026-03-11 08:00:00] nftables: table ip nat — 2 chains, 4 rules',
-  ],
-  system: [
-    '[2026-03-11 08:00:00] systemd: Started DNS Control Panel',
-    '[2026-03-11 08:00:00] systemd: Started Unbound DNS resolver (instance 01)',
-    '[2026-03-11 08:00:00] systemd: Started Unbound DNS resolver (instance 02)',
-    '[2026-03-11 08:00:00] systemd: Started Unbound DNS resolver (instance 03)',
-    '[2026-03-11 08:00:00] systemd: Started Unbound DNS resolver (instance 04)',
-  ],
+const levelColors: Record<string, string> = {
+  ok: 'text-success',
+  info: '',
+  warn: 'text-warning',
+  error: 'text-destructive',
+  debug: 'text-muted-foreground',
 };
 
 export default function LogsPage() {
-  const [source, setSource] = useState('apply');
+  const [source, setSource] = useState<LogSource | 'all'>('all');
   const [search, setSearch] = useState('');
+  const activeSource = source === 'all' ? undefined : source;
 
-  const logs = (mockLogs[source] || []).filter(l => !search || l.toLowerCase().includes(search.toLowerCase()));
+  const { data, isLoading, error, refetch } = useLogs(activeSource, search || undefined);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Logs</h1>
-        <p className="text-sm text-muted-foreground">Logs do sistema e dos serviços</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold">Logs</h1>
+          <p className="text-sm text-muted-foreground">Logs do sistema e dos serviços</p>
+        </div>
+        <button className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
+          <Download size={12} /> Exportar
+        </button>
       </div>
 
       <div className="flex flex-wrap gap-2">
         {logSources.map(s => (
           <button
-            key={s}
-            onClick={() => setSource(s)}
+            key={s.value}
+            onClick={() => setSource(s.value)}
             className={`px-3 py-1.5 text-xs font-mono rounded border transition-colors ${
-              source === s
+              source === s.value
                 ? 'bg-primary/15 text-primary border-primary/30'
                 : 'bg-secondary text-secondary-foreground border-border hover:bg-secondary/80'
             }`}
           >
-            {s}
+            {s.label}
           </button>
         ))}
       </div>
@@ -74,28 +61,29 @@ export default function LogsPage() {
         placeholder="Buscar nos logs..."
         value={search}
         onChange={e => setSearch(e.target.value)}
-        className="w-full px-3 py-2 text-sm bg-secondary border border-border rounded font-mono text-foreground placeholder:text-muted-foreground"
+        className="w-full px-3 py-2 text-sm bg-secondary border border-border rounded font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
       />
 
-      <div className="terminal-output max-h-[500px]">
-        {logs.length === 0 ? (
-          <p className="text-muted-foreground">Nenhum log encontrado.</p>
-        ) : (
-          logs.map((line, i) => (
-            <div key={i} className={`py-0.5 ${
-              line.includes('ERROR') || line.includes('FAIL') ? 'text-destructive' :
-              line.includes('OK') || line.includes('success') ? 'text-success' :
-              line.includes('WARN') ? 'text-warning' : ''
-            }`}>
-              {line}
+      {isLoading ? <LoadingState /> :
+       error ? <ErrorState message={error.message} onRetry={() => refetch()} /> :
+       !data?.items.length ? <EmptyState title="Nenhum log encontrado" description="Ajuste os filtros ou aguarde novos eventos" /> : (
+        <div className="terminal-output max-h-[500px]">
+          {data.items.map(entry => (
+            <div key={entry.id} className={`py-0.5 flex gap-2 ${levelColors[entry.level] || ''}`}>
+              <span className="text-muted-foreground shrink-0">{new Date(entry.timestamp).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+              <span className={`shrink-0 w-12 text-right ${levelColors[entry.level]}`}>[{entry.level.toUpperCase()}]</span>
+              {entry.service && <span className="text-accent shrink-0">{entry.service}</span>}
+              <span>{entry.message}</span>
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
 
-      <button className="px-3 py-1.5 text-xs bg-secondary text-secondary-foreground border border-border rounded hover:bg-secondary/80">
-        Exportar Logs
-      </button>
+      {data && (
+        <div className="text-xs text-muted-foreground">
+          Mostrando {data.items.length} de {data.total} registros
+        </div>
+      )}
     </div>
   );
 }

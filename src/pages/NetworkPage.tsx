@@ -1,14 +1,20 @@
-export default function NetworkPage() {
-  const interfaces = [
-    { name: 'enp6s18', ips: ['172.28.22.6/30'], status: 'UP', type: 'Physical' },
-    { name: 'lo0', ips: ['4.2.2.5/32', '100.126.255.101/32', '100.126.255.102/32', '100.126.255.103/32', '100.126.255.104/32', '45.232.215.16/32', '45.232.215.17/32', '45.232.215.18/32', '45.232.215.19/32'], status: 'UP', type: 'Dummy' },
-    { name: 'lo', ips: ['127.0.0.1/8'], status: 'UP', type: 'Loopback' },
-  ];
+import { LoadingState, ErrorState, EmptyState } from '@/components/DataStates';
+import { useInterfaces, useRoutes, useReachability } from '@/lib/hooks';
+import { RefreshCw } from 'lucide-react';
 
-  const routes = [
-    { dest: 'default', via: '172.28.22.5', dev: 'enp6s18', proto: 'static' },
-    { dest: '172.28.22.4/30', via: '-', dev: 'enp6s18', proto: 'kernel' },
-  ];
+function formatTraffic(bytes: number): string {
+  if (bytes > 1e9) return `${(bytes / 1e9).toFixed(1)}GB`;
+  if (bytes > 1e6) return `${(bytes / 1e6).toFixed(1)}MB`;
+  return `${(bytes / 1e3).toFixed(0)}KB`;
+}
+
+export default function NetworkPage() {
+  const { data: interfaces, isLoading: ifLoading, error: ifError } = useInterfaces();
+  const { data: routes, isLoading: rtLoading } = useRoutes();
+  const reachability = useReachability();
+
+  if (ifLoading || rtLoading) return <LoadingState />;
+  if (ifError) return <ErrorState message={ifError.message} />;
 
   return (
     <div className="space-y-6">
@@ -19,57 +25,87 @@ export default function NetworkPage() {
 
       <div className="noc-panel">
         <div className="noc-panel-header">Interfaces</div>
-        <div className="space-y-4">
-          {interfaces.map(iface => (
-            <div key={iface.name} className="border-b border-border last:border-0 pb-3 last:pb-0">
-              <div className="flex items-center gap-3 mb-1">
-                <span className="font-mono font-medium">{iface.name}</span>
-                <span className="text-xs px-1.5 py-0.5 rounded bg-success/15 text-success border border-success/30">{iface.status}</span>
-                <span className="text-xs text-muted-foreground">{iface.type}</span>
+        {!interfaces?.length ? <EmptyState title="Nenhuma interface encontrada" /> : (
+          <div className="space-y-4">
+            {interfaces.map(iface => (
+              <div key={iface.name} className="border-b border-border last:border-0 pb-3 last:pb-0">
+                <div className="flex items-center gap-3 mb-1">
+                  <span className="font-mono font-medium">{iface.name}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded border ${
+                    iface.state === 'UP' ? 'bg-success/15 text-success border-success/30' : 'bg-destructive/15 text-destructive border-destructive/30'
+                  }`}>{iface.state}</span>
+                  <span className="text-xs text-muted-foreground">{iface.type}</span>
+                  <span className="text-xs text-muted-foreground">MTU {iface.mtu}</span>
+                  <span className="text-xs text-muted-foreground ml-auto">↓{formatTraffic(iface.rxBytes)} ↑{formatTraffic(iface.txBytes)}</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {iface.ipv4Addresses.map(ip => (
+                    <span key={ip} className="text-xs font-mono px-2 py-0.5 rounded bg-secondary text-secondary-foreground">{ip}</span>
+                  ))}
+                  {iface.ipv6Addresses.map(ip => (
+                    <span key={ip} className="text-xs font-mono px-2 py-0.5 rounded bg-accent/15 text-accent">{ip}</span>
+                  ))}
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {iface.ips.map(ip => (
-                  <span key={ip} className="text-xs font-mono px-2 py-0.5 rounded bg-secondary text-secondary-foreground">{ip}</span>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="noc-panel">
         <div className="noc-panel-header">Tabela de Rotas</div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-muted-foreground border-b border-border">
-              <th className="pb-2 font-medium">Destino</th>
-              <th className="pb-2 font-medium">Via</th>
-              <th className="pb-2 font-medium">Dev</th>
-              <th className="pb-2 font-medium">Proto</th>
-            </tr>
-          </thead>
-          <tbody className="font-mono">
-            {routes.map((r, i) => (
-              <tr key={i} className="border-b border-border last:border-0">
-                <td className="py-2">{r.dest}</td>
-                <td className="py-2">{r.via}</td>
-                <td className="py-2">{r.dev}</td>
-                <td className="py-2 text-muted-foreground">{r.proto}</td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-muted-foreground border-b border-border">
+                <th className="pb-2 font-medium">Destino</th>
+                <th className="pb-2 font-medium">Via</th>
+                <th className="pb-2 font-medium">Dev</th>
+                <th className="pb-2 font-medium">Proto</th>
+                <th className="pb-2 font-medium">Scope</th>
+                <th className="pb-2 font-medium text-right">Metric</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="font-mono">
+              {routes?.map((r, i) => (
+                <tr key={i} className="border-b border-border last:border-0">
+                  <td className="py-2">{r.destination}</td>
+                  <td className="py-2 text-muted-foreground">{r.via || '-'}</td>
+                  <td className="py-2">{r.device}</td>
+                  <td className="py-2 text-muted-foreground">{r.protocol}</td>
+                  <td className="py-2 text-muted-foreground">{r.scope}</td>
+                  <td className="py-2 text-right text-muted-foreground">{r.metric}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="noc-panel">
-        <div className="noc-panel-header">Diagnóstico de Conectividade</div>
+        <div className="flex items-center justify-between mb-3">
+          <span className="noc-panel-header mb-0">Diagnóstico de Conectividade</span>
+          <button
+            onClick={() => reachability.mutate()}
+            disabled={reachability.isPending}
+            className="flex items-center gap-1 px-2.5 py-1 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80 disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={reachability.isPending ? 'animate-spin' : ''} /> Testar
+          </button>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {['172.28.22.5 (GW)', '8.8.8.8', '1.1.1.1', '4.2.2.5 (VIP)'].map(target => (
-            <div key={target} className="flex items-center gap-2 p-2 rounded bg-secondary border border-border">
-              <span className="status-dot-ok" />
-              <span className="text-xs font-mono">{target}</span>
+          {(reachability.data || []).map(target => (
+            <div key={target.target} className="flex items-center gap-2 p-2 rounded bg-secondary border border-border">
+              <span className={target.reachable ? 'status-dot-ok' : 'status-dot-error'} />
+              <div className="min-w-0">
+                <span className="text-xs font-mono block truncate">{target.target}</span>
+                <span className="text-xs text-muted-foreground">{target.label} {target.latencyMs !== null ? `${target.latencyMs}ms` : ''}</span>
+              </div>
             </div>
           ))}
+          {!reachability.data && (
+            <p className="text-xs text-muted-foreground col-span-full">Clique em "Testar" para verificar conectividade</p>
+          )}
         </div>
       </div>
     </div>
