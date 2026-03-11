@@ -12,6 +12,7 @@ import type {
   ApplyRequest, ApplyResult, DiagCommand, DiagResult,
   ConfigProfile, ConfigDiff, GeneratedFile, PaginatedResponse,
   InstanceHealthReport,
+  V2Event, V2MetricEntry, V2Instance, V2Action,
 } from './types';
 
 export interface AuthUserRecord {
