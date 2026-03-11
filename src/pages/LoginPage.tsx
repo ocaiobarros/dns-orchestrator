@@ -95,9 +95,11 @@ export default function LoginPage() {
             )}
           </Button>
 
-          <p className="text-xs text-center text-muted-foreground font-mono pt-2">
-            Preview: admin/admin (troca de senha) · outro/qualquer (acesso direto)
-          </p>
+          {!import.meta.env.VITE_API_URL && (
+            <p className="text-xs text-center text-muted-foreground font-mono pt-2">
+              Preview: admin/admin (troca de senha) · outro/qualquer (acesso direto)
+            </p>
+          )}
         </form>
       </div>
     </div>
