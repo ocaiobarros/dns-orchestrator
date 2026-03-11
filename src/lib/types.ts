@@ -1,3 +1,9 @@
+// ============================================================
+// DNS Control — Complete Type System
+// ============================================================
+
+// ---- Wizard Configuration ----
+
 export interface WizardConfig {
   // Step 1 - Environment
   hostname: string;
@@ -43,7 +49,7 @@ export interface WizardConfig {
   stickySourceIp: boolean;
   stickyTimeout: number;
   roundRobin: boolean;
-  dispatchMode: string;
+  dispatchMode: 'round-robin' | 'random' | 'hash';
   enableDnsProtection: boolean;
 
   // Step 6 - FRR/OSPF
@@ -53,11 +59,11 @@ export interface WizardConfig {
   ospfInterfaces: string[];
   redistributeConnected: boolean;
   ospfCost: number;
-  networkType: string;
+  networkType: 'point-to-point' | 'broadcast';
   optionalRoute: string;
 
   // Step 7 - Security
-  authType: string;
+  authType: 'local' | 'pam';
   adminUser: string;
   adminPassword: string;
   panelBind: string;
@@ -72,37 +78,283 @@ export interface DnsInstance {
   controlPort: number;
 }
 
+// ---- Service Status ----
+
+export type ServiceState = 'running' | 'stopped' | 'error' | 'unknown' | 'starting' | 'reloading';
+
 export interface ServiceStatus {
   name: string;
-  status: 'running' | 'stopped' | 'error' | 'unknown';
-  pid?: number;
-  memory?: string;
-  cpu?: string;
-  restartCount?: number;
-  uptime?: string;
+  status: ServiceState;
+  pid: number | null;
+  memoryBytes: number | null;
+  cpuPercent: number | null;
+  restartCount: number;
+  uptime: string;
+  lastLog: string;
+  unitFile: string;
 }
 
-export interface ApplyHistory {
-  id: string;
-  timestamp: string;
-  user: string;
-  status: 'success' | 'failed' | 'partial';
-  params: Partial<WizardConfig>;
-  files: string[];
-  logs: string[];
+// ---- System Info ----
+
+export interface SystemInfo {
+  hostname: string;
+  os: string;
+  kernel: string;
+  uptime: string;
+  unboundVersion: string;
+  frrVersion: string;
+  nftablesVersion: string;
+  mainInterface: string;
+  vipAnycast: string;
+  lastApply: string | null;
+  configVersion: string;
+  cpuCount: number;
+  memoryTotalMb: number;
+  memoryUsedMb: number;
 }
+
+// ---- Network ----
+
+export interface NetworkInterface {
+  name: string;
+  type: 'physical' | 'dummy' | 'loopback' | 'vlan' | 'bridge';
+  state: 'UP' | 'DOWN' | 'UNKNOWN';
+  mtu: number;
+  macAddress: string;
+  ipv4Addresses: string[];
+  ipv6Addresses: string[];
+  rxBytes: number;
+  txBytes: number;
+  rxPackets: number;
+  txPackets: number;
+}
+
+export interface Route {
+  destination: string;
+  via: string | null;
+  device: string;
+  protocol: string;
+  scope: string;
+  metric: number;
+}
+
+export interface ReachabilityResult {
+  target: string;
+  label: string;
+  reachable: boolean;
+  latencyMs: number | null;
+  error: string | null;
+}
+
+// ---- DNS Metrics ----
 
 export interface DnsMetrics {
   timestamp: string;
   qps: number;
   cacheHits: number;
   cacheMisses: number;
-  avgLatency: number;
+  avgLatencyMs: number;
   servfail: number;
   nxdomain: number;
   refused: number;
+  noerror: number;
   instance: string;
 }
+
+export interface DnsTopDomain {
+  domain: string;
+  queryCount: number;
+  queryType: string;
+  lastSeen: string;
+}
+
+export interface DnsInstanceStats {
+  instance: string;
+  totalQueries: number;
+  cacheHitRatio: number;
+  avgLatencyMs: number;
+  uptime: string;
+  threads: number;
+  currentConnections: number;
+}
+
+// ---- NAT / nftables ----
+
+export interface NftCounter {
+  chain: string;
+  rule: string;
+  packets: number;
+  bytes: number;
+  backend: string;
+}
+
+export interface NftStickyEntry {
+  sourceIp: string;
+  backend: string;
+  expires: number;
+  packets: number;
+}
+
+// ---- OSPF / FRR ----
+
+export interface OspfNeighbor {
+  neighborId: string;
+  priority: number;
+  state: string;
+  deadTime: string;
+  address: string;
+  interfaceName: string;
+  area: string;
+}
+
+export interface OspfRoute {
+  prefix: string;
+  nextHop: string;
+  device: string;
+  cost: number;
+  area: string;
+  type: string;
+}
+
+// ---- Logs ----
+
+export type LogSource = 'apply' | 'unbound' | 'frr' | 'nftables' | 'system';
+export type LogLevel = 'info' | 'warn' | 'error' | 'debug' | 'ok';
+
+export interface LogEntry {
+  id: string;
+  timestamp: string;
+  source: LogSource;
+  level: LogLevel;
+  message: string;
+  service: string | null;
+}
+
+// ---- Apply / History ----
+
+export type ApplyStatus = 'success' | 'failed' | 'partial' | 'running' | 'dry-run';
+export type ApplyScope = 'full' | 'dns' | 'network' | 'frr' | 'nftables';
+
+export interface ApplyRequest {
+  config: WizardConfig;
+  scope: ApplyScope;
+  dryRun: boolean;
+  comment: string;
+}
+
+export interface ApplyResult {
+  id: string;
+  timestamp: string;
+  user: string;
+  status: ApplyStatus;
+  scope: ApplyScope;
+  dryRun: boolean;
+  comment: string;
+  steps: ApplyStep[];
+  filesGenerated: GeneratedFile[];
+  duration: number;
+  configSnapshot: WizardConfig;
+}
+
+export interface ApplyStep {
+  order: number;
+  name: string;
+  status: 'success' | 'failed' | 'skipped' | 'running' | 'pending';
+  output: string;
+  durationMs: number;
+  command: string | null;
+}
+
+export interface GeneratedFile {
+  path: string;
+  content: string;
+  permissions: string;
+  owner: string;
+  backupPath: string | null;
+  changed: boolean;
+}
+
+// ---- Troubleshoot Commands ----
+
+export interface DiagCommand {
+  id: string;
+  label: string;
+  command: string;
+  category: 'services' | 'network' | 'dns' | 'nat' | 'frr' | 'system';
+  dangerous: boolean;
+}
+
+export interface DiagResult {
+  commandId: string;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+  timestamp: string;
+}
+
+// ---- Config Profile ----
+
+export interface ConfigProfile {
+  id: string;
+  name: string;
+  description: string;
+  config: WizardConfig;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---- Config Diff ----
+
+export interface ConfigDiff {
+  path: string;
+  oldContent: string;
+  newContent: string;
+  hunks: DiffHunk[];
+}
+
+export interface DiffHunk {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  lines: DiffLine[];
+}
+
+export interface DiffLine {
+  type: 'add' | 'remove' | 'context';
+  content: string;
+  oldLineNumber: number | null;
+  newLineNumber: number | null;
+}
+
+// ---- Validation ----
+
+export interface ValidationError {
+  field: string;
+  step: number;
+  message: string;
+  severity: 'error' | 'warning';
+}
+
+// ---- API Response Wrapper ----
+
+export interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  error: string | null;
+  timestamp: string;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+// ---- Defaults ----
 
 export const DEFAULT_CONFIG: WizardConfig = {
   hostname: '',
