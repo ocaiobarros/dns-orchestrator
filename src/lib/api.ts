@@ -317,6 +317,11 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
     if (path === '/api/deploy/backups') return mockDeployBackups();
     if (path === '/api/deploy/rollback' && method === 'POST') return mockRollbackResult();
     if (path === '/api/deploy/apply' && method === 'POST') return mockApplyResult(body as any);
+    if (path === '/api/deploy/dry-run' && method === 'POST') return mockApplyResult({ ...(body as any), dry_run: true });
+    if (path.startsWith('/api/deploy/history')) {
+      if (path === '/api/deploy/history') return { items: mockHistory, total: mockHistory.length, page: 1, pageSize: 20, hasMore: false };
+      return mockHistory[0]; // detail view
+    }
     return {};
   }
   if (path.startsWith('/api/apply/')) {
