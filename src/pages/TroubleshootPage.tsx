@@ -121,7 +121,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 // ── Summary Panel ──
 
 function BatchSummaryPanel({ summary, onRerun, isPending }: {
-  summary: { total: number; passed: number; failed: number; permission_limited: number; inactive: number; duration?: string };
+  summary: { total: number; passed: number; failed: number; permission_limited: number; inactive: number; service_not_running?: number; duration?: string };
   onRerun: () => void;
   isPending: boolean;
 }) {
