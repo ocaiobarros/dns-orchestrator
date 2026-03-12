@@ -2,35 +2,82 @@
 // DNS Control — Complete Type System
 // ============================================================
 
+// ---- Deployment Mode ----
+
+export type DeploymentMode =
+  | 'internal-recursive'
+  | 'public-recursive'
+  | 'vip-recursive'
+  | 'routed-vip'
+  | 'frr-ospf-vip';
+
+export type VipDeliveryMode = 'local-vip' | 'routed-vip' | 'firewall-delivered';
+
+export type VipDistributionPolicy =
+  | 'fixed-mapping'
+  | 'round-robin'
+  | 'sticky-source'
+  | 'nth-balancing'
+  | 'active-passive';
+
+export type RoutingMode = 'static' | 'frr-ospf' | 'frr-bgp';
+
+// ---- Service VIP ----
+
+export interface ServiceVip {
+  ipv4: string;
+  ipv6: string;
+  label: string;
+  deliveryMode: VipDeliveryMode;
+}
+
+// ---- DNS Instance (expanded) ----
+
+export interface DnsInstance {
+  name: string;
+  bindIp: string;
+  bindIpv6: string;
+  controlInterface: string;
+  controlPort: number;
+  egressIpv4: string;
+  egressIpv6: string;
+}
+
+// ---- Access Control ----
+
+export interface AccessControlEntry {
+  network: string;
+  action: 'allow' | 'refuse' | 'deny' | 'allow_snoop';
+  label: string;
+}
+
 // ---- Wizard Configuration ----
 
 export interface WizardConfig {
-  // Step 1 - Environment
+  // Step 1 - Host Topology
   hostname: string;
   organization: string;
   project: string;
+  description: string;
   timezone: string;
   mainInterface: string;
-  description: string;
-
-  // Step 2 - Network
   ipv4Address: string;
+  ipv4Cidr: string;
   ipv4Gateway: string;
-  bootstrapDns: string;
   enableIpv6: boolean;
   ipv6Address: string;
   ipv6Gateway: string;
+  vlanTag: string;
+  behindFirewall: boolean;
 
-  // Step 3 - Loopback & VIP
-  dummyInterface: string;
-  vipAnycastIpv4: string;
-  vipAnycastIpv6: string;
-  unboundBindIps: string[];
-  publicExitIps: string[];
-  ipv6BindIps: string[];
-  ipv6ExitIps: string[];
+  // Step 2 - Deployment Mode
+  deploymentMode: DeploymentMode;
 
-  // Step 4 - DNS Instances
+  // Step 3 - Service VIPs
+  serviceVips: ServiceVip[];
+  vipIpv6Enabled: boolean;
+
+  // Step 4 - Resolver Instances
   instanceCount: number;
   instances: DnsInstance[];
   threads: number;
@@ -42,40 +89,53 @@ export interface WizardConfig {
   rootHintsPath: string;
   enableDetailedLogs: boolean;
   enableBlocklist: boolean;
+  dnsIdentity: string;
+  dnsVersion: string;
 
-  // Step 5 - nftables
-  nftVipTarget: string;
-  nftDnatTargets: string[];
-  stickySourceIp: boolean;
+  // Step 5 - VIP Delivery Policy
+  distributionPolicy: VipDistributionPolicy;
   stickyTimeout: number;
-  roundRobin: boolean;
-  dispatchMode: 'round-robin' | 'random' | 'hash';
+  vipMappings: { vipIndex: number; instanceIndex: number }[];
+
+  // Step 6 - Access Control
+  accessControlIpv4: AccessControlEntry[];
+  accessControlIpv6: AccessControlEntry[];
+  openResolverConfirmed: boolean;
   enableDnsProtection: boolean;
 
-  // Step 6 - FRR/OSPF
-  enableFrr: boolean;
+  // Step 7 - Routing Mode
+  routingMode: RoutingMode;
   routerId: string;
   ospfArea: string;
   ospfInterfaces: string[];
   redistributeConnected: boolean;
   ospfCost: number;
   networkType: 'point-to-point' | 'broadcast';
-  optionalRoute: string;
 
-  // Step 7 - Security
+  // Step 8 - Panel / Security
   authType: 'local' | 'pam';
   adminUser: string;
   adminPassword: string;
   panelBind: string;
-  allowedIps: string[];
   panelPort: number;
-}
+  allowedIps: string[];
 
-export interface DnsInstance {
-  name: string;
-  bindIp: string;
-  exitIp: string;
-  controlPort: number;
+  // Legacy compat (used by existing generators until migrated)
+  bootstrapDns: string;
+  dummyInterface: string;
+  vipAnycastIpv4: string;
+  vipAnycastIpv6: string;
+  unboundBindIps: string[];
+  publicExitIps: string[];
+  ipv6BindIps: string[];
+  ipv6ExitIps: string[];
+  nftVipTarget: string;
+  nftDnatTargets: string[];
+  stickySourceIp: boolean;
+  roundRobin: boolean;
+  dispatchMode: 'round-robin' | 'random' | 'hash';
+  enableFrr: boolean;
+  optionalRoute: string;
 }
 
 // ---- Service Status ----
@@ -427,62 +487,100 @@ export interface PaginatedResponse<T> {
 // ---- Defaults ----
 
 export const DEFAULT_CONFIG: WizardConfig = {
+  // Step 1 - Host Topology
   hostname: '',
   organization: '',
   project: '',
-  timezone: 'America/Sao_Paulo',
-  mainInterface: 'enp6s18',
   description: '',
-  ipv4Address: '172.28.22.6/30',
-  ipv4Gateway: '172.28.22.5',
-  bootstrapDns: '8.8.8.8',
-  enableIpv6: false,
-  ipv6Address: '',
-  ipv6Gateway: '',
-  dummyInterface: 'lo0',
-  vipAnycastIpv4: '4.2.2.5/32',
-  vipAnycastIpv6: '',
-  unboundBindIps: ['100.126.255.101/32', '100.126.255.102/32', '100.126.255.103/32', '100.126.255.104/32'],
-  publicExitIps: ['45.232.215.16/32', '45.232.215.17/32', '45.232.215.18/32', '45.232.215.19/32'],
-  ipv6BindIps: [],
-  ipv6ExitIps: [],
+  timezone: 'America/Sao_Paulo',
+  mainInterface: 'ens192',
+  ipv4Address: '172.29.22.6/30',
+  ipv4Cidr: '/30',
+  ipv4Gateway: '172.29.22.5',
+  enableIpv6: true,
+  ipv6Address: '2804:4AFC:8844::2/64',
+  ipv6Gateway: '2804:4AFC:8844::1',
+  vlanTag: '',
+  behindFirewall: true,
+
+  // Step 2 - Deployment Mode
+  deploymentMode: 'vip-recursive',
+
+  // Step 3 - Service VIPs
+  serviceVips: [
+    { ipv4: '4.2.2.5', ipv6: '2620:119:35::35', label: 'DNS Primário', deliveryMode: 'firewall-delivered' },
+    { ipv4: '4.2.2.6', ipv6: '2620:119:53::53', label: 'DNS Secundário', deliveryMode: 'firewall-delivered' },
+  ],
+  vipIpv6Enabled: true,
+
+  // Step 4 - Resolver Instances
   instanceCount: 4,
   instances: [
-    { name: 'unbound01', bindIp: '100.126.255.101', exitIp: '45.232.215.16', controlPort: 8953 },
-    { name: 'unbound02', bindIp: '100.126.255.102', exitIp: '45.232.215.17', controlPort: 8954 },
-    { name: 'unbound03', bindIp: '100.126.255.103', exitIp: '45.232.215.18', controlPort: 8955 },
-    { name: 'unbound04', bindIp: '100.126.255.104', exitIp: '45.232.215.19', controlPort: 8956 },
+    { name: 'unbound01', bindIp: '100.127.255.101', bindIpv6: '2001:db8:ffff:ffff:100:127:255:101', controlInterface: '127.0.0.11', controlPort: 8953, egressIpv4: '45.232.215.20', egressIpv6: '2804:4afc:8888::1000' },
+    { name: 'unbound02', bindIp: '100.127.255.102', bindIpv6: '2001:db8:ffff:ffff:100:127:255:102', controlInterface: '127.0.0.12', controlPort: 8953, egressIpv4: '45.232.215.21', egressIpv6: '2804:4afc:8888::1001' },
+    { name: 'unbound03', bindIp: '100.127.255.103', bindIpv6: '2001:db8:ffff:ffff:100:127:255:103', controlInterface: '127.0.0.13', controlPort: 8953, egressIpv4: '45.232.215.22', egressIpv6: '2804:4afc:8888::1002' },
+    { name: 'unbound04', bindIp: '100.127.255.104', bindIpv6: '2001:db8:ffff:ffff:100:127:255:104', controlInterface: '127.0.0.14', controlPort: 8953, egressIpv4: '45.232.215.23', egressIpv6: '2804:4afc:8888::1003' },
   ],
   threads: 4,
-  msgCacheSize: '256m',
-  rrsetCacheSize: '512m',
+  msgCacheSize: '512m',
+  rrsetCacheSize: '32m',
   keyCacheSize: '256m',
   minTtl: 60,
-  maxTtl: 86400,
-  rootHintsPath: '/usr/share/dns/root.hints',
+  maxTtl: 7200,
+  rootHintsPath: '/etc/unbound/named.cache',
   enableDetailedLogs: false,
-  enableBlocklist: true,
-  nftVipTarget: '4.2.2.5',
-  nftDnatTargets: ['100.126.255.101', '100.126.255.102', '100.126.255.103', '100.126.255.104'],
-  stickySourceIp: true,
-  stickyTimeout: 300,
-  roundRobin: true,
-  dispatchMode: 'round-robin',
+  enableBlocklist: false,
+  dnsIdentity: '67-DNS',
+  dnsVersion: '1.0',
+
+  // Step 5 - VIP Delivery Policy
+  distributionPolicy: 'sticky-source',
+  stickyTimeout: 1200,
+  vipMappings: [],
+
+  // Step 6 - Access Control
+  accessControlIpv4: [
+    { network: '0.0.0.0/0', action: 'allow', label: 'All IPv4' },
+  ],
+  accessControlIpv6: [
+    { network: '::/0', action: 'allow', label: 'All IPv6' },
+  ],
+  openResolverConfirmed: false,
   enableDnsProtection: true,
-  enableFrr: true,
-  routerId: '172.28.22.6',
+
+  // Step 7 - Routing Mode
+  routingMode: 'static',
+  routerId: '172.29.22.6',
   ospfArea: '0.0.0.0',
-  ospfInterfaces: ['lo0', 'enp6s18'],
+  ospfInterfaces: [],
   redistributeConnected: true,
   ospfCost: 10,
   networkType: 'point-to-point',
-  optionalRoute: '',
+
+  // Step 8 - Panel / Security
   authType: 'local',
   adminUser: 'admin',
   adminPassword: '',
   panelBind: '0.0.0.0',
-  allowedIps: [],
   panelPort: 8443,
+  allowedIps: [],
+
+  // Legacy compat
+  bootstrapDns: '8.8.8.8',
+  dummyInterface: 'lo',
+  vipAnycastIpv4: '4.2.2.5/32',
+  vipAnycastIpv6: '2620:119:35::35/128',
+  unboundBindIps: ['100.127.255.101/32', '100.127.255.102/32', '100.127.255.103/32', '100.127.255.104/32'],
+  publicExitIps: ['45.232.215.20/32', '45.232.215.21/32', '45.232.215.22/32', '45.232.215.23/32'],
+  ipv6BindIps: ['2001:db8:ffff:ffff:100:127:255:101/128', '2001:db8:ffff:ffff:100:127:255:102/128', '2001:db8:ffff:ffff:100:127:255:103/128', '2001:db8:ffff:ffff:100:127:255:104/128'],
+  ipv6ExitIps: ['2804:4afc:8888::1000/128', '2804:4afc:8888::1001/128', '2804:4afc:8888::1002/128', '2804:4afc:8888::1003/128'],
+  nftVipTarget: '4.2.2.5',
+  nftDnatTargets: ['100.127.255.101', '100.127.255.102', '100.127.255.103', '100.127.255.104'],
+  stickySourceIp: true,
+  roundRobin: true,
+  dispatchMode: 'round-robin',
+  enableFrr: false,
+  optionalRoute: '',
 };
 
 // ---- v2: Operational Types ----
