@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import NocNetworkNode from './NocNetworkNode';
 import NocNetworkLink from './NocNetworkLink';
-import { safeNum } from '@/lib/svg-utils';
+import { safeNum, safeR } from '@/lib/svg-utils';
 
 export interface MapNode {
   id: string;

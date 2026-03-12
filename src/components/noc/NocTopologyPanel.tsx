@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import { Globe, Server, Wifi, Zap, Activity, AlertTriangle } from 'lucide-react';
 import { useState, forwardRef } from 'react';
 import type { InstanceHealthReport } from '@/lib/types';
-import { safeNum, safeR } from '@/lib/svg-utils';
+import { safeNum, safeR, safeSW, safeOpacity, safeDim } from '@/lib/svg-utils';
 
 interface NocTopologyPanelProps {
   health: InstanceHealthReport | null | undefined;
