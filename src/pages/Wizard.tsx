@@ -181,12 +181,53 @@ export default function Wizard() {
     return validationErrors.find(e => e.field === field && e.severity === 'error')?.message;
   };
 
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
+  }, []);
+
+  const startPolling = () => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    pollingRef.current = setInterval(async () => {
+      try {
+        const r = await api.getDeployState();
+        if (r.success && r.data) {
+          const d = r.data as any;
+          setDeployProgress({
+            phase: d.phase || 'idle',
+            currentStep: d.currentStep || null,
+            completedSteps: d.completedSteps || 0,
+            totalSteps: d.totalSteps || 0,
+            lastMessage: d.lastMessage || '',
+          });
+          // Stop polling when done
+          if (['idle', 'success', 'failed', 'rollback_success', 'rollback_failed'].includes(d.phase)) {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+            pollingRef.current = null;
+          }
+        }
+      } catch { /* ignore */ }
+    }, 1000);
+  };
+
   const handleApply = (dryRun: boolean) => {
     setShowValidation(true);
     if (!isConfigValid(validationErrors) && !dryRun) return;
+    setDeployProgress({ phase: dryRun ? 'dry_run_validating' : 'applying', currentStep: 'Iniciando...', completedSteps: 0, totalSteps: 0, lastMessage: '' });
+    startPolling();
     applyMutation.mutate(
       { config, scope: 'full', dryRun, comment: '' },
-      { onSuccess: (result) => setApplyResult(result) }
+      {
+        onSuccess: (result) => {
+          setApplyResult(result);
+          setDeployProgress(null);
+          if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+        },
+        onError: () => {
+          setDeployProgress(null);
+          if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+        },
+      }
     );
   };
 
