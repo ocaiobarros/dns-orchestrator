@@ -352,7 +352,7 @@ export default function Wizard() {
               ))}
             </div>
             <div className="flex gap-3 flex-wrap">
-              <button onClick={() => set('serviceVips', [...config.serviceVips, { ipv4: '', ipv6: '', port: 53, protocol: 'udp+tcp' as const, description: '', label: '', deliveryMode: 'firewall-delivered' as const }])}
+              <button onClick={() => set('serviceVips', [...config.serviceVips, { ipv4: '', ipv6: '', port: 53, protocol: 'udp+tcp' as const, description: '', label: '', deliveryMode: 'firewall-delivered' as const, healthCheckEnabled: true, healthCheckDomain: 'google.com', healthCheckInterval: 30 }])}
                 className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
                 <Plus size={12} /> Adicionar VIP
               </button>
