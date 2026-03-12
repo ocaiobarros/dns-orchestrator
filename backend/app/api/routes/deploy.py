@@ -191,7 +191,7 @@ def deploy_history_detail(job_id: str, db: Session = Depends(get_db), _: User = 
         "created_by": job.created_by,
         "started_at": job.started_at.isoformat() if job.started_at else None,
         "finished_at": job.finished_at.isoformat() if job.finished_at else None,
-        "created_at": job.created_at.isoformat() if j.created_at else None,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
         "steps": steps,
         "healthResult": health_result,
     }
