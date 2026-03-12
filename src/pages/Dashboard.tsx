@@ -212,36 +212,38 @@ export default function Dashboard() {
         </motion.div>
       )}
 
-      {/* ═══ TIER 4: TOPOLOGY — Live operational surface ═══ */}
-      <NocTopologyPanel
-        health={health}
-        vipConfigured={vipConfigured}
-        vipAddress={vipAddress}
-        dnsAvailable={dnsAvail}
-        totalQueries={totalQps}
-        cacheHitRatio={Number(avgCacheHit)}
-        avgLatency={Number(avgLatency)}
-        dnsMetricsAvailable={dnsAvail}
-      />
+      {/* ═══ TIER 4: CENTERPIECE — Topology (8col) + Health Matrix (4col) ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div className="lg:col-span-8">
+          <NocTopologyPanel
+            health={health}
+            vipConfigured={vipConfigured}
+            vipAddress={vipAddress}
+            dnsAvailable={dnsAvail}
+            totalQueries={totalQps}
+            cacheHitRatio={Number(avgCacheHit)}
+            avgLatency={Number(avgLatency)}
+            dnsMetricsAvailable={dnsAvail}
+          />
+        </div>
+        <div className="lg:col-span-4">
+          <NocHealthMatrix
+            services={safeServices}
+            dnsHealthy={healthyCount === totalInstances && totalInstances > 0}
+            networkOk={allRunning}
+            dnsAvailable={dnsAvail}
+            privilegeLimited={dnsStatus === 'privilege_limited'}
+          />
+        </div>
+      </div>
 
       {/* ═══ TIER 5: INSTANCE TABLE ═══ */}
       <NocInstanceTable instances={safeV2} />
 
-      {/* ═══ TIER 6: HEALTH MATRIX + SERVICES ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <NocHealthMatrix
-          services={safeServices}
-          dnsHealthy={healthyCount === totalInstances && totalInstances > 0}
-          networkOk={allRunning}
-          dnsAvailable={dnsAvail}
-          privilegeLimited={dnsStatus === 'privilege_limited'}
-        />
-        <NocResolverPanel services={safeServices} />
-      </div>
-
-      {/* ═══ TIER 7: EVENTS + SYSTEM INFO ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* ═══ TIER 6: EVENTS + SERVICES + SYSTEM INFO (4+4+4) ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <NocEventsTimeline events={eventItems} />
+        <NocResolverPanel services={safeServices} />
         <NocSystemInfoGrid sysInfo={sysInfo} />
       </div>
 
