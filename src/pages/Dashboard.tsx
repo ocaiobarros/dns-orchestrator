@@ -280,21 +280,21 @@ export default function Dashboard() {
       <div className="noc-panel">
         <div className="noc-panel-header">Informações do Sistema</div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 text-sm">
-          {sysInfo && [
-            ['Hostname', sysInfo.hostname ?? '—'],
-            ['OS', sysInfo.os ?? '—'],
-            ['Kernel', sysInfo.kernel ?? '—'],
-            ['Unbound', sysInfo.unboundVersion ?? '—'],
-            ['FRR', sysInfo.frrVersion ?? '—'],
-            ['nftables', sysInfo.nftablesVersion ?? '—'],
-            ['Interface', sysInfo.mainInterface ?? '—'],
-            ['VIP Anycast', sysInfo.vipAnycast ?? '—'],
-            ['Config Version', sysInfo.configVersion ?? '—'],
-            ['Última aplicação', safeDate(sysInfo.lastApply)],
+          {[
+            ['Hostname', sysInfo?.hostname ?? '—'],
+            ['OS', sysInfo?.os ?? '—'],
+            ['Kernel', sysInfo?.kernel ?? '—'],
+            ['Unbound', sysInfo?.unbound_version ?? sysInfo?.unboundVersion ?? '—'],
+            ['FRR', sysInfo?.frr_version ?? sysInfo?.frrVersion ?? '—'],
+            ['nftables', sysInfo?.nftables_version ?? sysInfo?.nftablesVersion ?? '—'],
+            ['Interface', sysInfo?.primary_interface ?? sysInfo?.mainInterface ?? '—'],
+            ['VIP Anycast', sysInfo?.vip_anycast ?? sysInfo?.vipAnycast ?? '—'],
+            ['Config Version', sysInfo?.config_version ?? sysInfo?.configVersion ?? '—'],
+            ['Última aplicação', safeDate(sysInfo?.last_apply_at ?? sysInfo?.lastApply)],
           ].map(([label, value]) => (
             <div key={label as string} className="flex justify-between py-1 border-b border-border last:border-0">
               <span className="text-muted-foreground">{label}</span>
-              <span className="font-mono text-foreground">{value}</span>
+              <span className="font-mono text-foreground">{value || '—'}</span>
             </div>
           ))}
         </div>
