@@ -5,6 +5,7 @@ Collects DNS, NAT, and OSPF metrics from system commands.
 
 from app.executors.command_runner import run_command
 import json
+import re
 
 
 def get_dns_metrics(hours: int = 6, instance: str | None = None) -> list[dict]:
@@ -41,7 +42,32 @@ def get_rcode_breakdown() -> dict:
 
 def get_nat_summary() -> dict:
     result = run_command("nft", ["list", "counters"], timeout=10)
-    return {"ruleset_loaded": result["exit_code"] == 0, "counters": result["stdout"]}
+    counters = _parse_nft_counters(result["stdout"]) if result["exit_code"] == 0 else []
+    return {"ruleset_loaded": result["exit_code"] == 0, "counters": counters}
+
+
+def _parse_nft_counters(raw: str) -> list[dict]:
+    """Parse nft list counters output into structured array."""
+    counters = []
+    current = None
+    for line in raw.split("\n"):
+        line = line.strip()
+        # Match: counter <family> <table> <name> {
+        m = re.match(r'counter\s+\w+\s+(\S+)\s+(\S+)\s*\{', line)
+        if m:
+            current = {"name": m.group(2), "chain": m.group(1), "packets": 0, "bytes": 0}
+            continue
+        if current:
+            pm = re.search(r'packets\s+(\d+)', line)
+            if pm:
+                current["packets"] = int(pm.group(1))
+            bm = re.search(r'bytes\s+(\d+)', line)
+            if bm:
+                current["bytes"] = int(bm.group(1))
+            if "}" in line:
+                counters.append(current)
+                current = None
+    return counters
 
 
 def get_nat_backends() -> list[dict]:

@@ -3,6 +3,7 @@ DNS Control — Diagnostics Service
 System status, health checks, service management.
 """
 
+import platform
 from app.executors.command_runner import run_command
 
 
@@ -10,6 +11,7 @@ def get_dashboard_summary() -> dict:
     # Collect live data from system commands
     services = get_services_status()
     active = sum(1 for s in services if s["active"])
+    sys_info = _get_system_info()
     return {
         "total_queries": 0,
         "cache_hit_ratio": 0.0,
@@ -21,6 +23,129 @@ def get_dashboard_summary() -> dict:
         "uptime": _get_uptime(),
         "unbound_instances": sum(1 for s in services if "unbound" in s["name"]),
         "alerts": [],
+        # System info fields
+        "hostname": sys_info["hostname"],
+        "os": sys_info["os"],
+        "kernel": sys_info["kernel"],
+        "unbound_version": sys_info["unbound_version"],
+        "frr_version": sys_info["frr_version"],
+        "nftables_version": sys_info["nftables_version"],
+        "primary_interface": sys_info["primary_interface"],
+        "vip_anycast": sys_info["vip_anycast"],
+        "config_version": sys_info["config_version"],
+        "last_apply_at": sys_info["last_apply_at"],
+    }
+
+
+def _get_system_info() -> dict:
+    """Collect real system info from the machine."""
+    hostname = platform.node() or "unknown"
+    kernel = platform.release() or "unknown"
+
+    # OS from /etc/os-release
+    os_name = "unknown"
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if line.startswith("PRETTY_NAME="):
+                    os_name = line.split("=", 1)[1].strip().strip('"')
+                    break
+    except FileNotFoundError:
+        pass
+
+    # Unbound version
+    r = run_command("unbound", ["-V"], timeout=5)
+    unbound_version = ""
+    if r["exit_code"] == 0:
+        first_line = r["stdout"].split("\n")[0]
+        unbound_version = first_line.strip()
+    else:
+        # Try unbound-control
+        r2 = run_command("unbound-control", ["status"], timeout=5)
+        if r2["exit_code"] == 0:
+            for line in r2["stdout"].split("\n"):
+                if "version" in line.lower():
+                    unbound_version = line.strip()
+                    break
+
+    # FRR version
+    r = run_command("vtysh", ["-c", "show version"], timeout=5)
+    frr_version = ""
+    if r["exit_code"] == 0:
+        for line in r["stdout"].split("\n"):
+            if "FRRouting" in line or "frr" in line.lower():
+                frr_version = line.strip()
+                break
+
+    # nftables version
+    r = run_command("nft", ["--version"], timeout=5)
+    nftables_version = r["stdout"].strip().split("\n")[0] if r["exit_code"] == 0 else ""
+
+    # Primary interface (default route)
+    primary_interface = ""
+    r = run_command("ip", ["route", "show", "default"], timeout=5)
+    if r["exit_code"] == 0 and "dev" in r["stdout"]:
+        parts = r["stdout"].split()
+        try:
+            idx = parts.index("dev")
+            primary_interface = parts[idx + 1]
+        except (ValueError, IndexError):
+            pass
+
+    # VIP anycast — look for anycast/loopback secondary IPs
+    vip_anycast = ""
+    r = run_command("ip", ["-j", "addr", "show", "lo"], timeout=5)
+    if r["exit_code"] == 0:
+        import json
+        try:
+            lo_data = json.loads(r["stdout"])
+            for iface in lo_data:
+                for addr in iface.get("addr_info", []):
+                    if addr.get("family") == "inet" and addr.get("local") != "127.0.0.1":
+                        vip_anycast = addr["local"]
+                        break
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    # Config version — try to read from a version file
+    config_version = ""
+    for path in ["/etc/dns-control/version", "/opt/dns-control/VERSION", "/opt/dns-control/package.json"]:
+        try:
+            with open(path) as f:
+                content = f.read().strip()
+                if path.endswith("package.json"):
+                    import json
+                    config_version = json.loads(content).get("version", "")
+                else:
+                    config_version = content
+                break
+        except (FileNotFoundError, json.JSONDecodeError):
+            continue
+
+    # Last apply timestamp
+    last_apply_at = None
+    try:
+        from app.core.database import get_db
+        db = next(get_db())
+        row = db.execute(
+            "SELECT timestamp FROM apply_history ORDER BY timestamp DESC LIMIT 1"
+        ).fetchone()
+        if row:
+            last_apply_at = row[0]
+    except Exception:
+        pass
+
+    return {
+        "hostname": hostname,
+        "os": os_name,
+        "kernel": kernel,
+        "unbound_version": unbound_version,
+        "frr_version": frr_version,
+        "nftables_version": nftables_version,
+        "primary_interface": primary_interface,
+        "vip_anycast": vip_anycast,
+        "config_version": config_version,
+        "last_apply_at": last_apply_at,
     }
 
 
@@ -34,6 +159,7 @@ def get_services_status() -> list[dict]:
             "name": name,
             "display_name": name.capitalize(),
             "active": active,
+            "status": "running" if active else "stopped",
             "enabled": True,
             "pid": None,
             "uptime": "",
@@ -43,6 +169,7 @@ def get_services_status() -> list[dict]:
     return results
 
 
+# ... keep existing code
 def get_service_detail(name: str) -> dict:
     result = run_command("systemctl", ["status", name], timeout=10)
     return {

@@ -4,6 +4,7 @@ DNS Control — Metrics Schemas
 
 from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional
 
 
 class DnsMetricsResponse(BaseModel):
@@ -33,11 +34,16 @@ class DnsTopDomainResponse(BaseModel):
     query_type: str
 
 
-class NatCounterResponse(BaseModel):
+class NatCounterItem(BaseModel):
     name: str
-    packets: int
-    bytes: int
-    rule: str
+    chain: str = ""
+    packets: int = 0
+    bytes: int = 0
+
+
+class NatSummaryResponse(BaseModel):
+    ruleset_loaded: bool
+    counters: list[NatCounterItem] = []
 
 
 class NatStickyResponse(BaseModel):
@@ -77,3 +83,14 @@ class DashboardSummary(BaseModel):
     uptime: str
     unbound_instances: int
     alerts: list[dict] = []
+    # System info fields
+    hostname: str = ""
+    os: str = ""
+    kernel: str = ""
+    unbound_version: str = ""
+    frr_version: str = ""
+    nftables_version: str = ""
+    primary_interface: str = ""
+    vip_anycast: str = ""
+    config_version: str = ""
+    last_apply_at: Optional[str] = None
