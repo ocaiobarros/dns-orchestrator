@@ -2,6 +2,7 @@ import StatusBadge from '@/components/StatusBadge';
 import ApplyStepsViewer from '@/components/ApplyStepsViewer';
 import { LoadingState, ErrorState, EmptyState } from '@/components/DataStates';
 import { useHistory } from '@/lib/hooks';
+import { safeDate } from '@/lib/types';
 
 export default function HistoryPage() {
   const { data, isLoading, error, refetch } = useHistory();
