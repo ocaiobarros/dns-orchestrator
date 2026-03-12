@@ -83,7 +83,7 @@ export default function NetworkPage() {
               </tr>
             </thead>
             <tbody className="font-mono">
-              {(routes ?? []).map((r, i) => (
+              {routeList.map((r, i) => (
                 <tr key={i} className="border-b border-border last:border-0">
                   <td className="py-2">{r.destination ?? '—'}</td>
                   <td className="py-2 text-muted-foreground">{r.via || '—'}</td>
