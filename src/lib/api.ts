@@ -427,7 +427,7 @@ function mockApplyResult(req?: { dry_run?: boolean; scope?: string; config?: Wiz
     { order: 3, name: req?.dry_run ? 'Dry-run concluído' : 'Backup configuração atual', status: 'success' as const, output: req?.dry_run ? 'Nenhuma alteração aplicada' : `Snapshot salvo em /var/lib/dns-control/backups/${now.toISOString().slice(0,19).replace(/[:-]/g,'')}`, durationMs: req?.dry_run ? 0 : 340, command: null, rollbackHint: 'Restaurar backup anterior' },
   ];
 
-  const applySteps = req?.dry_run ? [] : [
+  const applySteps: Step[] = req?.dry_run ? [] : [
     { order: 4, name: 'Gravar rede (/etc/network/*)', status: 'success' as const, output: '2 arquivos: interfaces, post-up.sh', durationMs: 80, command: null },
     { order: 5, name: `Gravar Unbound (${instanceNames.length} instâncias)`, status: 'success' as const, output: instanceNames.map(n => `${n}.conf`).join(', '), durationMs: 100, command: null },
     { order: 6, name: 'Gravar nftables (modular)', status: 'success' as const, output: 'DNAT + sticky sets + nth balancing', durationMs: 50, command: null },
