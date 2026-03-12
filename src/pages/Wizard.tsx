@@ -838,17 +838,41 @@ export default function Wizard() {
               </div>
             </div>
 
-            {/* Generated Files Preview */}
+            {/* Generated Files Preview — Grouped */}
             <div className="noc-panel">
               <div className="noc-panel-header flex items-center justify-between">
                 <span>Artefatos de Deploy ({generatedFiles.length} arquivos)</span>
                 <button onClick={() => setShowFiles(!showFiles)}
                   className="text-[10px] text-accent hover:underline">{showFiles ? 'Ocultar conteúdo' : 'Mostrar conteúdo'}</button>
               </div>
+              {/* Category summary */}
+              {(() => {
+                const cats = new Map<string, number>();
+                generatedFiles.forEach(f => {
+                  let cat = 'Config';
+                  if (f.path.includes('/unbound/')) cat = 'Unbound configs';
+                  else if (f.path.includes('/nftables')) cat = 'NFTables rules';
+                  else if (f.path.includes('/sysctl')) cat = 'Sysctl tuning';
+                  else if (f.path.includes('/network/') || f.path.includes('interfaces')) cat = 'Network';
+                  else if (f.path.includes('/frr/')) cat = 'FRR routing';
+                  else if (f.path.includes('systemd') || f.path.endsWith('.service')) cat = 'Systemd units';
+                  else if (f.path.endsWith('.sh') || f.path.endsWith('.txt')) cat = 'Scripts / Manifests';
+                  cats.set(cat, (cats.get(cat) || 0) + 1);
+                });
+                return (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {[...cats.entries()].map(([cat, count]) => (
+                      <span key={cat} className="text-xs px-2 py-1 bg-secondary border border-border rounded font-mono">
+                        {cat} ({count})
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
               {showFiles ? (
                 <FilePreviewAccordion files={generatedFiles} />
               ) : (
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1 max-h-[150px] overflow-y-auto">
                   {generatedFiles.map(f => (
                     <span key={f.path} className="text-xs font-mono px-2 py-0.5 bg-secondary text-secondary-foreground rounded border border-border">{f.path}</span>
                   ))}
