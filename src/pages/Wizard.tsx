@@ -274,8 +274,9 @@ export default function Wizard() {
         return (
           <div className="space-y-4">
             <InfoBox>
-              Configure os endereços DNS que os clientes usarão (ex: 4.2.2.5, 4.2.2.6).
+              Configure os endereços DNS que os clientes usarão como servidores DNS.
               Estes VIPs são os IPs de serviço — não necessariamente os IPs reais dos resolvers.
+              Em ambientes ISP, os VIPs ficam no firewall/router e o tráfego é entregue via DNAT.
             </InfoBox>
             <div className="space-y-3">
               {config.serviceVips.map((vip, i) => (
