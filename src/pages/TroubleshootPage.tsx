@@ -40,7 +40,7 @@ interface HealthBatchResponse {
   results: HealthBatchResult[];
 }
 
-type StatusFilter = 'all' | 'ok' | 'permission_error' | 'inactive' | 'error' | 'failures';
+type StatusFilter = 'all' | 'ok' | 'permission_error' | 'inactive' | 'failures';
 
 // ── Status helpers ──
 
