@@ -1,9 +1,25 @@
-import { useMemo, useState } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { useMemo, useState, lazy, Suspense } from 'react';
 import MetricCard from '@/components/MetricCard';
 import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useDnsMetrics, useTopDomains, useInstanceStats } from '@/lib/hooks';
 import { getInstanceName, getInstanceQueries, getInstanceCacheHit, getInstanceLatency } from '@/lib/types';
+
+const DnsCharts = lazy(() => import('@/components/DnsCharts'));
+
+const ChartSkeleton = () => (
+  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    {[0, 1].map(i => (
+      <div key={i} className="noc-panel">
+        <div className="noc-panel-header">
+          <div className="h-3 w-32 bg-muted rounded animate-pulse" />
+        </div>
+        <div className="h-[250px] flex items-center justify-center">
+          <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </div>
+    ))}
+  </div>
+);
 
 export default function DnsPage() {
   const [selectedInstance, setSelectedInstance] = useState<string | undefined>(undefined);
@@ -90,7 +106,6 @@ export default function DnsPage() {
         <MetricCard label="SERVFAIL Total" value={totalServfail.toLocaleString()} />
       </div>
 
-      {/* Instance stats table */}
       {safeInstanceStats.length > 0 && (
         <div className="noc-panel">
           <div className="noc-panel-header">Instâncias</div>
@@ -134,77 +149,9 @@ export default function DnsPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="noc-panel">
-          <div className="noc-panel-header">QPS ao Longo do Tempo</div>
-          <ResponsiveContainer width="100%" height={250}>
-            <AreaChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 15% 20%)" />
-              <XAxis dataKey="time" tick={{ fontSize: 10, fill: 'hsl(215 15% 55%)' }} />
-              <YAxis tick={{ fontSize: 10, fill: 'hsl(215 15% 55%)' }} />
-              <Tooltip contentStyle={{ backgroundColor: 'hsl(220 18% 13%)', border: '1px solid hsl(220 15% 20%)', borderRadius: 6, fontSize: 12 }} />
-              <Area type="monotone" dataKey="qps" stroke="hsl(160 70% 45%)" fill="hsl(160 70% 45% / 0.15)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="noc-panel">
-          <div className="noc-panel-header">Latência (ms)</div>
-          <ResponsiveContainer width="100%" height={250}>
-            <AreaChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 15% 20%)" />
-              <XAxis dataKey="time" tick={{ fontSize: 10, fill: 'hsl(215 15% 55%)' }} />
-              <YAxis tick={{ fontSize: 10, fill: 'hsl(215 15% 55%)' }} />
-              <Tooltip contentStyle={{ backgroundColor: 'hsl(220 18% 13%)', border: '1px solid hsl(220 15% 20%)', borderRadius: 6, fontSize: 12 }} />
-              <Area type="monotone" dataKey="latency" stroke="hsl(38 92% 50%)" fill="hsl(38 92% 50% / 0.15)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="noc-panel">
-          <div className="noc-panel-header">Cache Hit Ratio (%)</div>
-          <ResponsiveContainer width="100%" height={250}>
-            <AreaChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 15% 20%)" />
-              <XAxis dataKey="time" tick={{ fontSize: 10, fill: 'hsl(215 15% 55%)' }} />
-              <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: 'hsl(215 15% 55%)' }} />
-              <Tooltip contentStyle={{ backgroundColor: 'hsl(220 18% 13%)', border: '1px solid hsl(220 15% 20%)', borderRadius: 6, fontSize: 12 }} />
-              <Area type="monotone" dataKey="hitRatio" stroke="hsl(200 80% 55%)" fill="hsl(200 80% 55% / 0.15)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="noc-panel">
-          <div className="noc-panel-header">Erros (SERVFAIL + NXDOMAIN)</div>
-          <ResponsiveContainer width="100%" height={250}>
-            <AreaChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 15% 20%)" />
-              <XAxis dataKey="time" tick={{ fontSize: 10, fill: 'hsl(215 15% 55%)' }} />
-              <YAxis tick={{ fontSize: 10, fill: 'hsl(215 15% 55%)' }} />
-              <Tooltip contentStyle={{ backgroundColor: 'hsl(220 18% 13%)', border: '1px solid hsl(220 15% 20%)', borderRadius: 6, fontSize: 12 }} />
-              <Area type="monotone" dataKey="servfail" stroke="hsl(0 70% 50%)" fill="hsl(0 70% 50% / 0.15)" name="SERVFAIL" />
-              <Area type="monotone" dataKey="nxdomain" stroke="hsl(280 65% 60%)" fill="hsl(280 65% 60% / 0.15)" name="NXDOMAIN" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {Array.isArray(topDomains) && topDomains.length > 0 && (
-        <div className="noc-panel">
-          <div className="noc-panel-header">Top Domínios Consultados</div>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={topDomains} layout="vertical" margin={{ left: 120 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 15% 20%)" />
-              <XAxis type="number" tick={{ fontSize: 10, fill: 'hsl(215 15% 55%)' }} />
-              <YAxis dataKey="domain" type="category" tick={{ fontSize: 11, fill: 'hsl(215 15% 55%)' }} width={120} />
-              <Tooltip contentStyle={{ backgroundColor: 'hsl(220 18% 13%)', border: '1px solid hsl(220 15% 20%)', borderRadius: 6, fontSize: 12 }} />
-              <Bar dataKey="queryCount" fill="hsl(160 70% 45%)" radius={[0, 4, 4, 0]} name="Queries" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
+      <Suspense fallback={<ChartSkeleton />}>
+        <DnsCharts chartData={chartData} topDomains={topDomains} />
+      </Suspense>
     </div>
   );
 }
