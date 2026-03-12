@@ -1,10 +1,10 @@
 """
 DNS Control — Deploy Routes
-Full deployment lifecycle: apply, rollback, state, backups.
+Full deployment lifecycle: dry-run, apply, rollback, state, backups, history.
 """
 
 import json
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -31,33 +31,25 @@ class RollbackRequest(BaseModel):
     reason: str = ""
 
 
-@router.post("/apply")
-def deploy_apply(body: DeployRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Execute full deployment pipeline."""
-    # Get payload from profile or inline config
+def _resolve_payload(body: DeployRequest, db: Session) -> dict:
+    """Resolve payload from inline config or profile_id."""
     if body.config:
-        payload = body.config
-    elif body.profile_id:
+        return body.config
+    if body.profile_id:
         profile = db.query(ConfigProfile).filter(ConfigProfile.id == body.profile_id).first()
         if not profile:
             raise HTTPException(status_code=404, detail="Perfil não encontrado")
-        payload = json.loads(profile.payload_json)
-    else:
-        raise HTTPException(status_code=400, detail="config ou profile_id necessário")
+        return json.loads(profile.payload_json)
+    raise HTTPException(status_code=400, detail="config ou profile_id necessário")
 
-    result = execute_deploy(
-        payload=payload,
-        scope=body.scope,
-        dry_run=body.dry_run,
-        operator=user.username,
-    )
 
-    # Persist to DB
+def _persist_job(db: Session, result: dict, body: DeployRequest, user: User):
+    """Persist deploy/dry-run job to DB."""
     from datetime import datetime, timezone
     job = ApplyJob(
         id=result["id"],
         profile_id=body.profile_id,
-        job_type=body.scope if not body.dry_run else "dry-run",
+        job_type=body.scope if not result.get("dryRun") else "dry-run",
         status=result["status"],
         started_at=result["steps"][0]["startedAt"] if result["steps"] else None,
         finished_at=result["steps"][-1]["finishedAt"] if result["steps"] else None,
@@ -69,6 +61,32 @@ def deploy_apply(body: DeployRequest, db: Session = Depends(get_db), user: User 
     db.add(job)
     db.commit()
 
+
+@router.post("/dry-run")
+def deploy_dry_run(body: DeployRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Execute dry-run: validate, generate, check — no changes applied."""
+    payload = _resolve_payload(body, db)
+    result = execute_deploy(
+        payload=payload,
+        scope=body.scope,
+        dry_run=True,
+        operator=user.username,
+    )
+    _persist_job(db, result, body, user)
+    return result
+
+
+@router.post("/apply")
+def deploy_apply(body: DeployRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Execute full deployment pipeline."""
+    payload = _resolve_payload(body, db)
+    result = execute_deploy(
+        payload=payload,
+        scope=body.scope,
+        dry_run=body.dry_run,
+        operator=user.username,
+    )
+    _persist_job(db, result, body, user)
     return result
 
 
@@ -79,7 +97,6 @@ def deploy_rollback(body: RollbackRequest, db: Session = Depends(get_db), user: 
     if not result["success"] and "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
 
-    # Persist rollback as a job
     from datetime import datetime, timezone
     job = ApplyJob(
         job_type="rollback",
@@ -107,3 +124,74 @@ def deploy_state(_: User = Depends(get_current_user)):
 def deploy_backups(_: User = Depends(get_current_user)):
     """List available backup snapshots for rollback."""
     return list_backups()
+
+
+@router.get("/history")
+def deploy_history(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=5, le=100),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Deployment history with pagination."""
+    total = db.query(ApplyJob).count()
+    jobs = (
+        db.query(ApplyJob)
+        .order_by(ApplyJob.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return {
+        "items": [
+            {
+                "id": j.id,
+                "profile_id": j.profile_id,
+                "job_type": j.job_type,
+                "status": j.status,
+                "exit_code": j.exit_code,
+                "created_by": j.created_by,
+                "started_at": j.started_at.isoformat() if j.started_at else None,
+                "finished_at": j.finished_at.isoformat() if j.finished_at else None,
+                "created_at": j.created_at.isoformat() if j.created_at else None,
+            }
+            for j in jobs
+        ],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "has_more": (page * page_size) < total,
+    }
+
+
+@router.get("/history/{job_id}")
+def deploy_history_detail(job_id: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    """Get detailed deploy job by ID."""
+    job = db.query(ApplyJob).filter(ApplyJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job não encontrado")
+
+    steps = []
+    health_result = []
+    try:
+        steps = json.loads(job.stdout_log) if job.stdout_log else []
+    except (json.JSONDecodeError, TypeError):
+        pass
+    try:
+        health_result = json.loads(job.stderr_log) if job.stderr_log else []
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    return {
+        "id": job.id,
+        "profile_id": job.profile_id,
+        "job_type": job.job_type,
+        "status": job.status,
+        "exit_code": job.exit_code,
+        "created_by": job.created_by,
+        "started_at": job.started_at.isoformat() if job.started_at else None,
+        "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+        "created_at": job.created_at.isoformat() if j.created_at else None,
+        "steps": steps,
+        "healthResult": health_result,
+    }
