@@ -41,7 +41,6 @@ _PERMISSION_PATTERNS = [
     "operation not permitted",
     "must be root",
     "insufficient permissions",
-    "failed to connect to any daemons",
     "access denied",
 ]
 
@@ -51,10 +50,14 @@ _DEPENDENCY_PATTERNS = [
     "command not found",
 ]
 
-_SERVICE_NOT_RUNNING_PATTERNS = [
+# Patterns indicating a specific daemon/service is not running (not a permission issue)
+_FRR_NOT_RUNNING_PATTERNS = [
     "is not running",
     "not running",
     "failed to connect to any daemons",
+    "instance not found",
+    "is not configured",
+    "no ospf process",
 ]
 
 _TIMEOUT_PATTERNS = [
