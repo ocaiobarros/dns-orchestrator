@@ -101,16 +101,33 @@ export interface SystemInfo {
   os: string;
   kernel: string;
   uptime: string;
-  unboundVersion: string;
-  frrVersion: string;
-  nftablesVersion: string;
-  mainInterface: string;
-  vipAnycast: string;
-  lastApply: string | null;
-  configVersion: string;
-  cpuCount: number;
-  memoryTotalMb: number;
-  memoryUsedMb: number;
+  unboundVersion?: string;
+  unbound_version?: string;
+  frrVersion?: string;
+  frr_version?: string;
+  nftablesVersion?: string;
+  nftables_version?: string;
+  mainInterface?: string;
+  primary_interface?: string;
+  vipAnycast?: string;
+  vip_anycast?: string;
+  lastApply?: string | null;
+  last_apply_at?: string | null;
+  configVersion?: string;
+  config_version?: string;
+  cpuCount?: number;
+  memoryTotalMb?: number;
+  memoryUsedMb?: number;
+  // Dashboard summary fields
+  total_queries?: number;
+  cache_hit_ratio?: number;
+  active_services?: number;
+  total_services?: number;
+  ospf_neighbors_up?: number;
+  ospf_neighbors_total?: number;
+  nat_active_connections?: number;
+  unbound_instances?: number;
+  alerts?: any[];
 }
 
 // ---- Network ----
