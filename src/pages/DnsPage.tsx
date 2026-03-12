@@ -75,9 +75,9 @@ export default function DnsPage() {
           <select value={selectedInstance || 'all'} onChange={e => setSelectedInstance(e.target.value === 'all' ? undefined : e.target.value)}
             className="px-3 py-1.5 text-sm bg-secondary text-secondary-foreground border border-border rounded font-mono">
             <option value="all">Todas instâncias</option>
-            {safeInstanceStats.map(i => {
+            {safeInstanceStats.map((i, idx) => {
               const name = getInstanceName(i);
-              return <option key={name} value={name}>{name}</option>;
+              return <option key={`${name}-${idx}`} value={name}>{name}</option>;
             })}
           </select>
         </div>
