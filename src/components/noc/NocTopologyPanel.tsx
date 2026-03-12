@@ -62,14 +62,17 @@ function formatQps(qps: number) {
 
 /* ── Animated flow particles ── */
 function FlowParticles({ pathId, color, count = 2, duration = 3 }: { pathId: string; color: string; count?: number; duration?: number }) {
+  const safeCount = Math.max(1, Math.floor(safeNum(count, 2)));
+  const safeDuration = Math.max(0.4, safeNum(duration, 3));
+
   return (
     <>
-      {Array.from({ length: count }).map((_, i) => (
-        <circle key={i} r="2" fill={color} opacity="0">
-          <animateMotion dur={`${duration}s`} repeatCount="indefinite" begin={`${(i * duration) / count}s`}>
+      {Array.from({ length: safeCount }).map((_, i) => (
+        <circle key={i} r={safeR(2, 2)} fill={color} opacity={safeOpacity(0)}>
+          <animateMotion dur={`${safeDuration}s`} repeatCount="indefinite" begin={`${(i * safeDuration) / safeCount}s`}>
             <mpath href={`#${pathId}`} />
           </animateMotion>
-          <animate attributeName="opacity" values="0;0.7;0.7;0" dur={`${duration}s`} repeatCount="indefinite" begin={`${(i * duration) / count}s`} />
+          <animate attributeName="opacity" values="0;0.7;0.7;0" dur={`${safeDuration}s`} repeatCount="indefinite" begin={`${(i * safeDuration) / safeCount}s`} />
         </circle>
       ))}
     </>
