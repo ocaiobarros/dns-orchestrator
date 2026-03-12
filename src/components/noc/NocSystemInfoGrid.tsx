@@ -28,9 +28,9 @@ export default function NocSystemInfoGrid({ sysInfo }: NocSystemInfoGridProps) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: 0.3 }}
+      transition={{ duration: 0.4, delay: 0.22 }}
       className="noc-surface"
     >
       <div className="noc-surface-body">
@@ -40,20 +40,22 @@ export default function NocSystemInfoGrid({ sysInfo }: NocSystemInfoGridProps) {
         </div>
         <div className="noc-divider" />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
           {items.map((item, i) => (
             <motion.div
               key={item.label}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.15 + i * 0.025 }}
-              className="noc-info-row"
+              transition={{ delay: 0.12 + i * 0.02 }}
+              className="noc-info-row min-w-0"
             >
-              <span className="noc-label flex items-center gap-2">
+              <span className="noc-label flex items-center gap-2 shrink-0 w-[100px]">
                 <span className="text-muted-foreground/20">{item.icon}</span>
                 {item.label}
               </span>
-              <span className="text-[11px] font-mono text-foreground/80">{item.value || '—'}</span>
+              <span className="text-[10px] font-mono text-foreground/80 truncate min-w-0 text-right" title={typeof item.value === 'string' ? item.value : undefined}>
+                {item.value || '—'}
+              </span>
             </motion.div>
           ))}
         </div>
