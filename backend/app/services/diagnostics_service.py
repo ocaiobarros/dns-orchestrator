@@ -558,6 +558,7 @@ def run_health_check() -> dict:
         "failed": failed,
         "permission_limited": permission_limited,
         "inactive": inactive,
+        "service_not_running": service_not_running,
         "privilege_status": priv_status,
         "results": results,
     }
