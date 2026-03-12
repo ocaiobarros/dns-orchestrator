@@ -98,11 +98,11 @@ function MapNode({ cx, cy, label, sublabel, healthy, icon: Icon, size = 'md', di
       {/* Outer radar ring — healthy nodes */}
       {healthy && !dimmed && (
         <>
-          <circle cx={cx} cy={cy} r={r + 12} fill="none" stroke={color} strokeWidth="0.3" opacity="0.06">
+          <circle cx={scx} cy={scy} r={r + 12} fill="none" stroke={color} strokeWidth="0.3" opacity="0.06">
             <animate attributeName="r" values={`${r + 10};${r + 16};${r + 10}`} dur="6s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="0.06;0.02;0.06" dur="6s" repeatCount="indefinite" />
           </circle>
-          <circle cx={cx} cy={cy} r={r + 6} fill="none" stroke={color} strokeWidth="0.5" opacity="0.08">
+          <circle cx={scx} cy={scy} r={r + 6} fill="none" stroke={color} strokeWidth="0.5" opacity="0.08">
             <animate attributeName="r" values={`${r + 5};${r + 9};${r + 5}`} dur="4s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="0.08;0.03;0.08" dur="4s" repeatCount="indefinite" />
           </circle>
@@ -111,20 +111,20 @@ function MapNode({ cx, cy, label, sublabel, healthy, icon: Icon, size = 'md', di
 
       {/* Failing node alert pulse */}
       {!healthy && !dimmed && (
-        <circle cx={cx} cy={cy} r={r + 4} fill="none" stroke={C.fail} strokeWidth="1" opacity="0">
+        <circle cx={scx} cy={scy} r={r + 4} fill="none" stroke={C.fail} strokeWidth="1" opacity="0">
           <animate attributeName="opacity" values="0;0.3;0" dur="2s" repeatCount="indefinite" />
           <animate attributeName="r" values={`${r + 2};${r + 10};${r + 2}`} dur="2s" repeatCount="indefinite" />
         </circle>
       )}
 
       {/* Node background — glass effect */}
-      <circle cx={cx} cy={cy} r={r} fill={C.surface} stroke={color} strokeWidth={dimmed ? '0.6' : '1.5'} opacity={dimmed ? 0.4 : 1} />
-      <circle cx={cx} cy={cy} r={r - 1} fill={`${color.replace(')', ' / 0.06)')}`} opacity={dimmed ? 0.2 : 0.8} />
+      <circle cx={scx} cy={scy} r={r} fill={C.surface} stroke={color} strokeWidth={dimmed ? '0.6' : '1.5'} opacity={dimmed ? 0.4 : 1} />
+      <circle cx={scx} cy={scy} r={safeR(r - 1, 20)} fill={`${color.replace(')', ' / 0.06)')}`} opacity={dimmed ? 0.2 : 0.8} />
 
       {/* Status dot */}
-      <circle cx={cx + r - 5} cy={cy - r + 5} r="3.5" fill={color} opacity={dimmed ? 0.3 : 0.9} />
+      <circle cx={scx + r - 5} cy={scy - r + 5} r="3.5" fill={color} opacity={dimmed ? 0.3 : 0.9} />
       {healthy && !dimmed && (
-        <circle cx={cx + r - 5} cy={cy - r + 5} r="3.5" fill={color} opacity="0">
+        <circle cx={scx + r - 5} cy={scy - r + 5} r="3.5" fill={color} opacity="0">
           <animate attributeName="opacity" values="0;0.4;0" dur="2.5s" repeatCount="indefinite" />
           <animate attributeName="r" values="3.5;6;3.5" dur="2.5s" repeatCount="indefinite" />
         </circle>
