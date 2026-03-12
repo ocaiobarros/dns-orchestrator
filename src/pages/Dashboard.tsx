@@ -51,8 +51,8 @@ export default function Dashboard() {
     },
   });
 
-  if (sysLoading || svcLoading) return <LoadingState />;
-  if (sysError) return <ErrorState message={sysError.message} />;
+  if (sysLoading && svcLoading) return <LoadingState />;
+  if (sysError && !sysInfo) return <ErrorState message={sysError.message} onRetry={() => qc.invalidateQueries({ queryKey: ['system', 'info'] })} />;
 
   const safeServices = Array.isArray(services) ? services.filter(Boolean) : [];
   const safeStats = Array.isArray(instanceStats) ? instanceStats.filter(Boolean) : [];
