@@ -465,28 +465,58 @@ export default function Wizard() {
               Configure o IP público de saída (outgoing-interface) de cada instância.
               Este é o IP que os servidores autoritativos verão ao receber queries recursivas.
             </InfoBox>
-            <Toggle checked={config.egressFixedIdentity} onChange={v => set('egressFixedIdentity', v)}
-              label="Cada instância tem identidade de saída fixa (1 IP público por instância)" />
+
+            {/* Egress Mode Selection */}
             <div className="space-y-3">
-              {config.instances.map((inst, i) => (
-                <div key={i} className="p-4 rounded bg-secondary border border-border">
-                  <div className="flex items-center gap-3 mb-3">
-                    <span className="text-xs font-medium text-primary uppercase">{inst.name}</span>
-                    <span className="text-xs text-muted-foreground font-mono">listener: {inst.bindIp || '(não definido)'}</span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <FieldGroup label="Egress IPv4 *" error={fieldError(`instances[${i}].egressIpv4`)} hint="IP público de saída para recursão">
-                      <Input value={inst.egressIpv4} onChange={v => updateInstance(i, 'egressIpv4', v)} placeholder="IP público do bloco /29" />
-                    </FieldGroup>
-                    {config.enableIpv6 && (
-                      <FieldGroup label="Egress IPv6">
-                        <Input value={inst.egressIpv6} onChange={v => updateInstance(i, 'egressIpv6', v)} placeholder="IPv6 de saída" />
-                      </FieldGroup>
-                    )}
-                  </div>
-                </div>
-              ))}
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Modo de Egress</div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <ModeCard selected={config.egressMode === 'fixed-per-instance'}
+                  onClick={() => set('egressMode', 'fixed-per-instance')}
+                  label="Fixo por Instância" desc="Cada instância usa 1 IP público fixo de saída. Recomendado para rastreabilidade." />
+                <ModeCard selected={config.egressMode === 'shared-pool'}
+                  onClick={() => set('egressMode', 'shared-pool')}
+                  label="Pool Compartilhado" desc="Todas as instâncias compartilham um pool de IPs de saída." />
+                <ModeCard selected={config.egressMode === 'randomized'}
+                  onClick={() => set('egressMode', 'randomized')}
+                  label="Randomizado" desc="IP de saída selecionado aleatoriamente do pool a cada query." />
+              </div>
             </div>
+
+            {config.egressMode === 'fixed-per-instance' && (
+              <div className="space-y-3">
+                {config.instances.map((inst, i) => (
+                  <div key={i} className="p-4 rounded bg-secondary border border-border">
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className="text-xs font-medium text-primary uppercase">{inst.name}</span>
+                      <span className="text-xs text-muted-foreground font-mono">listener: {inst.bindIp || '(não definido)'}</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <FieldGroup label="Egress IPv4 *" error={fieldError(`instances[${i}].egressIpv4`)} hint="IP público de saída para recursão">
+                        <Input value={inst.egressIpv4} onChange={v => updateInstance(i, 'egressIpv4', v)} placeholder="IP público do bloco /29" />
+                      </FieldGroup>
+                      {config.enableIpv6 && (
+                        <FieldGroup label="Egress IPv6">
+                          <Input value={inst.egressIpv6} onChange={v => updateInstance(i, 'egressIpv6', v)} placeholder="IPv6 de saída" />
+                        </FieldGroup>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {(config.egressMode === 'shared-pool' || config.egressMode === 'randomized') && (
+              <div className="space-y-3">
+                <FieldGroup label="Pool de IPs Públicos de Saída" hint="Adicione os IPs do bloco que serão compartilhados entre instâncias">
+                  <ListInput items={config.egressSharedPool} onChange={v => set('egressSharedPool', v)} placeholder="45.160.X.X" />
+                </FieldGroup>
+                <InfoBox>
+                  {config.egressMode === 'shared-pool'
+                    ? 'Todas as instâncias farão round-robin entre os IPs do pool via outgoing-interface.'
+                    : 'Cada query sairá por um IP aleatório do pool. Útil para distribuir carga em blocos grandes.'}
+                </InfoBox>
+              </div>
+            )}
           </div>
         );
 
