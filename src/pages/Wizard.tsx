@@ -248,7 +248,7 @@ export default function Wizard() {
               {([
                 { value: 'internal-recursive', label: 'DNS Recursivo Interno', desc: 'Resolvers acessíveis apenas na rede interna. Sem VIP público.' },
                 { value: 'public-recursive', label: 'DNS Recursivo Público', desc: 'Resolvers expostos diretamente com IPs públicos.' },
-                { value: 'vip-recursive', label: 'DNS Recursivo via VIP', desc: 'Clientes consultam VIPs (4.2.2.5/6). Tráfego entregue via NAT/DNAT aos resolvers internos. Recomendado para ISP.' },
+                { value: 'vip-recursive', label: 'DNS Recursivo via VIP', desc: 'Clientes consultam VIPs de serviço. Tráfego entregue via NAT/DNAT aos resolvers internos. Recomendado para ISP.' },
                 { value: 'routed-vip', label: 'VIP Roteado', desc: 'VIPs anunciados via roteamento estático. Resolvers internos recebem tráfego diretamente.' },
                 { value: 'frr-ospf-vip', label: 'VIP via FRR/OSPF', desc: 'VIPs anunciados via OSPF usando FRR. Para ambientes com roteamento dinâmico.' },
               ] as { value: DeploymentMode; label: string; desc: string }[]).map(mode => (
