@@ -19,8 +19,8 @@ export default function NetworkPage() {
   if (ifError) return <ErrorState message={ifError.message} />;
 
   const ifaceList = Array.isArray(interfaces) ? interfaces : [];
-
-  return (
+  const routeList = Array.isArray(routes) ? routes : [];
+  const reachabilityList = Array.isArray(reachability.data) ? reachability.data : [];
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold">Rede</h1>
