@@ -202,27 +202,31 @@ function QpsBadge({ cx, cy, qps, dimmed = false }: { cx: number; cy: number; qps
 }
 
 /* ── Tooltip overlay ── */
-function NodeTooltip({ cx, cy, data }: { cx: number; cy: number; data: { title: string; lines: string[] } }) {
-  const w = 140;
-  const lineH = 13;
-  const h = 22 + data.lines.length * lineH;
-  const tx = cx - w / 2;
-  const ty = cy - h - 45;
+const NodeTooltip = forwardRef<SVGGElement, { cx: number; cy: number; data: { title: string; lines: string[] } }>(
+  function NodeTooltipInner({ cx, cy, data }, ref) {
+    const w = 140;
+    const lineH = 13;
+    const h = 22 + data.lines.length * lineH;
+    const scx = safeNum(cx);
+    const scy = safeNum(cy);
+    const tx = scx - w / 2;
+    const ty = scy - h - 45;
 
-  return (
-    <g>
-      <rect x={tx} y={ty} width={w} height={h} rx="6" fill="hsl(225, 25%, 10%)" stroke={C.accent} strokeWidth="0.6" opacity="0.95" />
-      <text x={cx} y={ty + 14} textAnchor="middle" fill={C.accent} fontSize="8" fontWeight="700" fontFamily="var(--font-mono)">
-        {data.title}
-      </text>
-      {data.lines.map((line, i) => (
-        <text key={i} x={tx + 8} y={ty + 27 + i * lineH} fill={C.textMuted} fontSize="7" fontFamily="var(--font-mono)">
-          {line}
+    return (
+      <g ref={ref}>
+        <rect x={tx} y={ty} width={w} height={h} rx="6" fill="hsl(225, 25%, 10%)" stroke={C.accent} strokeWidth="0.6" opacity="0.95" />
+        <text x={scx} y={ty + 14} textAnchor="middle" fill={C.accent} fontSize="8" fontWeight="700" fontFamily="var(--font-mono)">
+          {data.title}
         </text>
-      ))}
-    </g>
-  );
-}
+        {data.lines.map((line, i) => (
+          <text key={i} x={tx + 8} y={ty + 27 + i * lineH} fill={C.textMuted} fontSize="7" fontFamily="var(--font-mono)">
+            {line}
+          </text>
+        ))}
+      </g>
+    );
+  }
+);
 
 /* ── Full topology visualization ── */
 function TopologyView({ health, vipConfigured, vipAddress, totalQueries, cacheHitRatio, avgLatency, dnsMetricsAvailable }: {
