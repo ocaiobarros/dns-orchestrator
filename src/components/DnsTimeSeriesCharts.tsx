@@ -1,30 +1,19 @@
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface ChartDataPoint {
-  ts: string;
   time: string;
   qps: number;
-  hits: number;
-  misses: number;
   latency: number;
   servfail: number;
   nxdomain: number;
   hitRatio: number;
-  count: number;
-}
-
-interface TopDomain {
-  domain: string;
-  queryCount: number;
-  queryType: string;
-  lastSeen: string;
 }
 
 const TOOLTIP_STYLE = { backgroundColor: 'hsl(220 18% 13%)', border: '1px solid hsl(220 15% 20%)', borderRadius: 6, fontSize: 12 };
 const GRID_STROKE = 'hsl(220 15% 20%)';
 const TICK_STYLE = { fontSize: 10, fill: 'hsl(215 15% 55%)' };
 
-export default function DnsCharts({ chartData, topDomains }: { chartData: ChartDataPoint[]; topDomains?: TopDomain[] }) {
+export default function DnsTimeSeriesCharts({ chartData }: { chartData: ChartDataPoint[] }) {
   return (
     <>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -40,7 +29,6 @@ export default function DnsCharts({ chartData, topDomains }: { chartData: ChartD
             </AreaChart>
           </ResponsiveContainer>
         </div>
-
         <div className="noc-panel">
           <div className="noc-panel-header">Latência (ms)</div>
           <ResponsiveContainer width="100%" height={250}>
@@ -54,7 +42,6 @@ export default function DnsCharts({ chartData, topDomains }: { chartData: ChartD
           </ResponsiveContainer>
         </div>
       </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="noc-panel">
           <div className="noc-panel-header">Cache Hit Ratio (%)</div>
@@ -68,7 +55,6 @@ export default function DnsCharts({ chartData, topDomains }: { chartData: ChartD
             </AreaChart>
           </ResponsiveContainer>
         </div>
-
         <div className="noc-panel">
           <div className="noc-panel-header">Erros (SERVFAIL + NXDOMAIN)</div>
           <ResponsiveContainer width="100%" height={250}>
@@ -83,21 +69,6 @@ export default function DnsCharts({ chartData, topDomains }: { chartData: ChartD
           </ResponsiveContainer>
         </div>
       </div>
-
-      {Array.isArray(topDomains) && topDomains.length > 0 && (
-        <div className="noc-panel">
-          <div className="noc-panel-header">Top Domínios Consultados</div>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={topDomains} layout="vertical" margin={{ left: 120 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
-              <XAxis type="number" tick={TICK_STYLE} />
-              <YAxis dataKey="domain" type="category" tick={{ fontSize: 11, fill: 'hsl(215 15% 55%)' }} width={120} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} />
-              <Bar dataKey="queryCount" fill="hsl(160 70% 45%)" radius={[0, 4, 4, 0]} name="Queries" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
     </>
   );
 }

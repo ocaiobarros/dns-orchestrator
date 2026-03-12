@@ -1,23 +1,31 @@
-import { useMemo, useState, lazy, Suspense } from 'react';
+import { useMemo, useState, lazy, Suspense, useEffect } from 'react';
 import MetricCard from '@/components/MetricCard';
 import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useDnsMetrics, useTopDomains, useInstanceStats } from '@/lib/hooks';
 import { getInstanceName, getInstanceQueries, getInstanceCacheHit, getInstanceLatency } from '@/lib/types';
 
-const DnsCharts = lazy(() => import('@/components/DnsCharts'));
+const DnsTimeSeriesCharts = lazy(() => import('@/components/DnsTimeSeriesCharts'));
+const DnsTopDomains = lazy(() => import('@/components/DnsTopDomains'));
 
-const ChartSkeleton = () => (
+const ChartGridSkeleton = () => (
   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
     {[0, 1].map(i => (
       <div key={i} className="noc-panel">
-        <div className="noc-panel-header">
-          <div className="h-3 w-32 bg-muted rounded animate-pulse" />
-        </div>
+        <div className="noc-panel-header"><div className="h-3 w-32 bg-muted rounded animate-pulse" /></div>
         <div className="h-[250px] flex items-center justify-center">
           <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
       </div>
     ))}
+  </div>
+);
+
+const BarChartSkeleton = () => (
+  <div className="noc-panel">
+    <div className="noc-panel-header"><div className="h-3 w-40 bg-muted rounded animate-pulse" /></div>
+    <div className="h-[300px] flex items-center justify-center">
+      <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
   </div>
 );
 
@@ -27,6 +35,21 @@ export default function DnsPage() {
   const { data: allMetrics, isLoading, error } = useDnsMetrics(hours, selectedInstance);
   const { data: topDomains } = useTopDomains(10);
   const { data: instanceStats } = useInstanceStats();
+
+  // Idle prefetch: preload chart chunks after page shell mounts
+  useEffect(() => {
+    const id = requestIdleCallback?.(() => {
+      import('@/components/DnsTimeSeriesCharts');
+      import('@/components/DnsTopDomains');
+    }) ?? setTimeout(() => {
+      import('@/components/DnsTimeSeriesCharts');
+      import('@/components/DnsTopDomains');
+    }, 2000);
+    return () => {
+      if (typeof cancelIdleCallback === 'function') cancelIdleCallback(id as number);
+      else clearTimeout(id as number);
+    };
+  }, []);
 
   const chartData = useMemo(() => {
     if (!Array.isArray(allMetrics)) return [];
@@ -149,9 +172,15 @@ export default function DnsPage() {
         </div>
       )}
 
-      <Suspense fallback={<ChartSkeleton />}>
-        <DnsCharts chartData={chartData} topDomains={topDomains} />
+      <Suspense fallback={<><ChartGridSkeleton /><ChartGridSkeleton /></>}>
+        <DnsTimeSeriesCharts chartData={chartData} />
       </Suspense>
+
+      {Array.isArray(topDomains) && topDomains.length > 0 && (
+        <Suspense fallback={<BarChartSkeleton />}>
+          <DnsTopDomains topDomains={topDomains} />
+        </Suspense>
+      )}
     </div>
   );
 }
