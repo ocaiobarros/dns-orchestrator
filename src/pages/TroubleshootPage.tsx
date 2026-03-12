@@ -65,6 +65,11 @@ const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; badg
     label: 'Inativo',
     badgeClass: 'bg-secondary text-muted-foreground border-border',
   },
+  service_not_running: {
+    icon: <MinusCircle size={14} className="text-amber-400" />,
+    label: 'Não executando',
+    badgeClass: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+  },
   permission_error: {
     icon: <ShieldAlert size={14} className="text-amber-500" />,
     label: 'Sem permissão',
