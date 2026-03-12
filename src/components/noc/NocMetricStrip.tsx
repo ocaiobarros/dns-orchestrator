@@ -8,7 +8,7 @@ interface MetricCardData {
   icon: ReactNode;
   accent?: 'primary' | 'accent' | 'warning' | 'destructive';
   unavailable?: boolean;
-  healthState?: 'healthy' | 'degraded' | 'critical' | 'unknown';
+  healthState?: string;
 }
 
 interface NocMetricStripProps {
