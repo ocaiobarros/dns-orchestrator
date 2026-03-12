@@ -25,7 +25,9 @@ export default function Dashboard() {
   const { data: services, isLoading: svcLoading } = useServices();
   const { data: instanceStats } = useInstanceStats();
   const { data: health } = useInstanceHealth();
+  const { data: deployState } = useDeployState();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [reconciling, setReconciling] = useState(false);
 
   const { data: v2Instances } = useQuery({
