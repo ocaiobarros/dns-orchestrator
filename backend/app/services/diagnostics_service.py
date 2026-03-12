@@ -538,3 +538,40 @@ def _get_uptime() -> str:
         return result["stdout"].strip() if result["exit_code"] == 0 else "unknown"
     except Exception:
         return "unknown"
+
+
+def _collect_dns_metrics() -> dict:
+    """Collect real DNS metrics from unbound-control stats_noreset via privileged execution."""
+    try:
+        r = _safe_run("unbound-control", ["stats_noreset"], timeout=10, use_privilege=True)
+        if r["exit_code"] != 0:
+            # Determine if it's a permission issue
+            combined = ((r.get("stdout", "") or "") + " " + (r.get("stderr", "") or "")).lower()
+            if any(kw in combined for kw in _PERMISSION_PATTERNS):
+                return {"available": False, "status": "privilege_limited", "total_queries": 0, "cache_hit_ratio": 0.0, "latency_ms": 0.0}
+            return {"available": False, "status": "error", "total_queries": 0, "cache_hit_ratio": 0.0, "latency_ms": 0.0}
+
+        stats = {}
+        for line in r["stdout"].split("\n"):
+            if "=" in line:
+                key, val = line.split("=", 1)
+                try:
+                    stats[key.strip()] = float(val.strip())
+                except ValueError:
+                    stats[key.strip()] = val.strip()
+
+        total_queries = int(stats.get("total.num.queries", 0))
+        cache_hits = float(stats.get("total.num.cachehits", 0))
+        cache_hit_ratio = (cache_hits / total_queries * 100) if total_queries > 0 else 0.0
+        latency_ms = float(stats.get("total.recursion.time.avg", 0)) * 1000
+
+        return {
+            "available": True,
+            "status": "ok",
+            "total_queries": total_queries,
+            "cache_hit_ratio": round(cache_hit_ratio, 1),
+            "latency_ms": round(latency_ms, 2),
+        }
+    except Exception as e:
+        logger.debug(f"DNS metrics collection failed: {e}")
+        return {"available": False, "status": "error", "total_queries": 0, "cache_hit_ratio": 0.0, "latency_ms": 0.0}

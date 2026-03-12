@@ -59,13 +59,22 @@ export default function Dashboard() {
   const safeV2 = Array.isArray(v2Instances) ? v2Instances.filter(Boolean) : [];
 
   const allRunning = safeServices.every(s => s.status === 'running');
-  const totalQps = safeStats.reduce((a, b) => a + getInstanceQueries(b), 0);
-  const avgCacheHit = safeStats.length > 0
+
+  // Prefer dashboard summary metrics (real unbound-control data) over instance stats aggregation
+  const dnsMetricsAvailable = sysInfo?.dns_metrics_available ?? sysInfo?.dnsMetricsAvailable ?? false;
+  const dnsMetricsStatus = sysInfo?.dns_metrics_status ?? sysInfo?.dnsMetricsStatus ?? 'unknown';
+  const dashTotalQueries = sysInfo?.total_queries ?? sysInfo?.totalQueries ?? 0;
+  const dashCacheHit = sysInfo?.cache_hit_ratio ?? sysInfo?.cacheHitRatio ?? 0;
+  const dashLatency = sysInfo?.latency_ms ?? sysInfo?.latencyMs ?? 0;
+
+  // Fallback to instance stats if dashboard metrics not available
+  const totalQps = dnsMetricsAvailable ? dashTotalQueries : safeStats.reduce((a, b) => a + getInstanceQueries(b), 0);
+  const avgCacheHit = dnsMetricsAvailable ? dashCacheHit.toFixed(1) : (safeStats.length > 0
     ? (safeStats.reduce((a, b) => a + getInstanceCacheHit(b), 0) / safeStats.length).toFixed(1)
-    : '0';
-  const avgLatency = safeStats.length > 0
+    : '0');
+  const avgLatency = dnsMetricsAvailable ? dashLatency.toFixed(1) : (safeStats.length > 0
     ? (safeStats.reduce((a, b) => a + getInstanceLatency(b), 0) / safeStats.length).toFixed(1)
-    : '0';
+    : '0');
 
   const healthyCount = safeV2.length > 0
     ? safeV2.filter(i => i.current_status === 'healthy').length
