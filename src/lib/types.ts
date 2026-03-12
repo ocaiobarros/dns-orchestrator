@@ -571,6 +571,7 @@ export const DEFAULT_CONFIG: WizardConfig = {
   serviceVips: [],
   vipIpv6Enabled: false,
 
+
   // Step 4 - Instâncias de Resolução
   instanceCount: 2,
   instances: [
