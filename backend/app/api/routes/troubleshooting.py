@@ -30,4 +30,19 @@ def run_command(body: RunCommandRequest, db: Session = Depends(get_db), user: Us
 
 @router.get("/health-check")
 def health_check(_: User = Depends(get_current_user)):
-    return run_health_check()
+    """Run all diagnostic commands best-effort. Always returns 200."""
+    try:
+        return run_health_check()
+    except Exception as e:
+        import logging
+        logging.getLogger("dns-control").exception(f"Health check batch error: {e}")
+        return {
+            "success": False,
+            "started_at": "",
+            "finished_at": "",
+            "total": 0,
+            "passed": 0,
+            "failed": 0,
+            "results": [],
+            "error": str(e),
+        }

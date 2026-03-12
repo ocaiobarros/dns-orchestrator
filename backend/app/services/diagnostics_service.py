@@ -294,23 +294,86 @@ def check_reachability() -> list[dict]:
     return results
 
 
-def run_health_check() -> list[dict]:
-    checks = [
-        ("DNS resolution", ["dig", "@127.0.0.1", "google.com", "+short", "+time=2"]),
-        ("FRR running", ["systemctl", "is-active", "frr"]),
-        ("nftables loaded", ["nft", "list", "tables"]),
-        ("System memory", ["free", "-m"]),
-    ]
+def run_health_check() -> dict:
+    """
+    Run ALL catalog commands best-effort.
+    Never raises. Returns consolidated summary + per-item results.
+    Each item matches the DiagResult contract the frontend expects.
+    """
+    from datetime import datetime, timezone
+    from app.executors.command_catalog import COMMAND_CATALOG
+
+    started_at = datetime.now(timezone.utc).isoformat()
     results = []
-    for name, cmd in checks:
-        r = _safe_run(cmd[0], cmd[1:], timeout=10)
-        results.append({
-            "check": name,
-            "status": "ok" if r["exit_code"] == 0 else "fail",
-            "message": r["stdout"][:300] if r["exit_code"] == 0 else r["stderr"][:300],
-            "duration_ms": r["duration_ms"],
-        })
-    return results
+
+    for cmd_def in COMMAND_CATALOG.values():
+        try:
+            r = _safe_run(cmd_def.executable, list(cmd_def.base_args), timeout=min(cmd_def.timeout, 15))
+            exit_code = r.get("exit_code", -1)
+            stdout = r.get("stdout", "")
+            stderr = r.get("stderr", "")
+            duration_ms = r.get("duration_ms", 0)
+            success = exit_code == 0
+
+            # Classify error type for operational visibility
+            status = "ok"
+            if not success:
+                stderr_lower = (stderr or "").lower()
+                if any(kw in stderr_lower for kw in ["permission denied", "operation not permitted", "must be root"]):
+                    status = "permission_error"
+                elif any(kw in stderr_lower for kw in ["not found", "no such file", "failed to connect"]):
+                    status = "dependency_error"
+                elif any(kw in stderr_lower for kw in ["timeout", "timed out", "expirou"]):
+                    status = "timeout_error"
+                else:
+                    status = "error"
+
+            results.append({
+                "commandId": cmd_def.id,
+                "command_id": cmd_def.id,
+                "label": cmd_def.name,
+                "category": cmd_def.category,
+                "exitCode": exit_code,
+                "exit_code": exit_code,
+                "stdout": stdout[:5000],
+                "stderr": stderr[:2000],
+                "durationMs": duration_ms,
+                "duration_ms": duration_ms,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "success": success,
+                "status": status,
+            })
+        except Exception as e:
+            logger.exception(f"Health check failed for {cmd_def.id}: {e}")
+            results.append({
+                "commandId": cmd_def.id,
+                "command_id": cmd_def.id,
+                "label": cmd_def.name,
+                "category": cmd_def.category,
+                "exitCode": -1,
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": str(e)[:500],
+                "durationMs": 0,
+                "duration_ms": 0,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "success": False,
+                "status": "runtime_error",
+            })
+
+    finished_at = datetime.now(timezone.utc).isoformat()
+    passed = sum(1 for r in results if r["success"])
+    failed = len(results) - passed
+
+    return {
+        "success": True,
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "total": len(results),
+        "passed": passed,
+        "failed": failed,
+        "results": results,
+    }
 
 
 def _get_uptime() -> str:
