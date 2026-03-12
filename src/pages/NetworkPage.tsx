@@ -110,7 +110,7 @@ export default function NetworkPage() {
           </button>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {(reachability.data || []).map(target => (
+          {reachabilityList.map(target => (
             <div key={target.target} className="flex items-center gap-2 p-2 rounded bg-secondary border border-border">
               <span className={target.reachable ? 'status-dot-ok' : 'status-dot-error'} />
               <div className="min-w-0">
