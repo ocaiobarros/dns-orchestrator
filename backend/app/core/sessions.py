@@ -42,7 +42,12 @@ def validate_session(db: Session, session_id: str) -> SessionRecord | None:
     if not session:
         return None
 
-    if session.expires_at < datetime.now(timezone.utc):
+    # Normalize naive datetime from SQLite to UTC-aware
+    expires_at = session.expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if expires_at < datetime.now(timezone.utc):
         session.is_active = False
         db.commit()
         return None
