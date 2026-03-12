@@ -65,6 +65,11 @@ export default function TopologySummary({ config, compact = false, showFlowArrow
                 <div className="text-[10px] text-muted-foreground">
                   {v.description || v.label || `VIP ${i + 1}`} · :{v.port || 53} {v.protocol || 'udp+tcp'} · {v.deliveryMode}
                 </div>
+                {v.healthCheckEnabled && (
+                  <div className="text-[10px] text-accent/70">
+                    probe: dig @{v.ipv4} {v.healthCheckDomain || 'google.com'} · {v.healthCheckInterval || 30}s
+                  </div>
+                )}
               </div>
             </div>
           )) : <span className="text-xs text-muted-foreground italic">(nenhum VIP definido)</span>}
