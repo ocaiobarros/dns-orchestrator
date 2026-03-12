@@ -1,0 +1,20 @@
+# DNS Control — Diagnostics sudoers policy
+# Install: sudo cp this-file /etc/sudoers.d/dns-control-diagnostics
+# Validate: sudo visudo -cf /etc/sudoers.d/dns-control-diagnostics
+#
+# This grants the dns-control service user NOPASSWD access to
+# a strict set of READ-ONLY diagnostic commands.
+# No write/restart/modify operations are included.
+
+# Change "dns-control" below to match the actual service user
+Defaults:dns-control !requiretty
+
+dns-control ALL=(root) NOPASSWD: \
+    /usr/sbin/unbound-control stats_noreset, \
+    /usr/sbin/unbound-control status, \
+    /usr/sbin/unbound-control dump_cache, \
+    /usr/sbin/nft list tables, \
+    /usr/sbin/nft list ruleset, \
+    /usr/sbin/nft list counters, \
+    /usr/bin/vtysh -c *, \
+    /usr/bin/journalctl --no-pager *
