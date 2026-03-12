@@ -331,7 +331,7 @@ export default function TroubleshootPage() {
   const [batchResults, setBatchResults] = useState<HealthBatchResult[]>([]);
   const [privilegeStatus, setPrivilegeStatus] = useState<PrivilegeStatus | null>(null);
   const [batchSummary, setBatchSummary] = useState<{
-    total: number; passed: number; failed: number; permission_limited: number; inactive: number; duration?: string;
+    total: number; passed: number; failed: number; permission_limited: number; inactive: number; service_not_running?: number; duration?: string;
   } | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [hideExpectedPerms, setHideExpectedPerms] = useState(false);
