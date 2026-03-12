@@ -162,9 +162,9 @@ export default function NocHeroBar({
             <div className="relative">
               <button
                 onClick={() => setShowMenu(!showMenu)}
-                className="p-2 rounded-lg text-muted-foreground/30 hover:text-foreground/60 hover:bg-secondary/30 transition-colors"
+                className="p-2 rounded-lg border-0 outline-none bg-transparent text-muted-foreground/50 hover:text-foreground/70 hover:bg-secondary/30 transition-colors"
               >
-                <ChevronDown size={14} />
+                <ChevronDown size={14} className={showMenu ? 'rotate-180 transition-transform' : 'transition-transform'} />
               </button>
               <AnimatePresence>
                 {showMenu && (
