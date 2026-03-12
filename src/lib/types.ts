@@ -2,35 +2,82 @@
 // DNS Control — Complete Type System
 // ============================================================
 
+// ---- Deployment Mode ----
+
+export type DeploymentMode =
+  | 'internal-recursive'
+  | 'public-recursive'
+  | 'vip-recursive'
+  | 'routed-vip'
+  | 'frr-ospf-vip';
+
+export type VipDeliveryMode = 'local-vip' | 'routed-vip' | 'firewall-delivered';
+
+export type VipDistributionPolicy =
+  | 'fixed-mapping'
+  | 'round-robin'
+  | 'sticky-source'
+  | 'nth-balancing'
+  | 'active-passive';
+
+export type RoutingMode = 'static' | 'frr-ospf' | 'frr-bgp';
+
+// ---- Service VIP ----
+
+export interface ServiceVip {
+  ipv4: string;
+  ipv6: string;
+  label: string;
+  deliveryMode: VipDeliveryMode;
+}
+
+// ---- DNS Instance (expanded) ----
+
+export interface DnsInstance {
+  name: string;
+  bindIp: string;
+  bindIpv6: string;
+  controlInterface: string;
+  controlPort: number;
+  egressIpv4: string;
+  egressIpv6: string;
+}
+
+// ---- Access Control ----
+
+export interface AccessControlEntry {
+  network: string;
+  action: 'allow' | 'refuse' | 'deny' | 'allow_snoop';
+  label: string;
+}
+
 // ---- Wizard Configuration ----
 
 export interface WizardConfig {
-  // Step 1 - Environment
+  // Step 1 - Host Topology
   hostname: string;
   organization: string;
   project: string;
+  description: string;
   timezone: string;
   mainInterface: string;
-  description: string;
-
-  // Step 2 - Network
   ipv4Address: string;
+  ipv4Cidr: string;
   ipv4Gateway: string;
-  bootstrapDns: string;
   enableIpv6: boolean;
   ipv6Address: string;
   ipv6Gateway: string;
+  vlanTag: string;
+  behindFirewall: boolean;
 
-  // Step 3 - Loopback & VIP
-  dummyInterface: string;
-  vipAnycastIpv4: string;
-  vipAnycastIpv6: string;
-  unboundBindIps: string[];
-  publicExitIps: string[];
-  ipv6BindIps: string[];
-  ipv6ExitIps: string[];
+  // Step 2 - Deployment Mode
+  deploymentMode: DeploymentMode;
 
-  // Step 4 - DNS Instances
+  // Step 3 - Service VIPs
+  serviceVips: ServiceVip[];
+  vipIpv6Enabled: boolean;
+
+  // Step 4 - Resolver Instances
   instanceCount: number;
   instances: DnsInstance[];
   threads: number;
@@ -42,40 +89,53 @@ export interface WizardConfig {
   rootHintsPath: string;
   enableDetailedLogs: boolean;
   enableBlocklist: boolean;
+  dnsIdentity: string;
+  dnsVersion: string;
 
-  // Step 5 - nftables
-  nftVipTarget: string;
-  nftDnatTargets: string[];
-  stickySourceIp: boolean;
+  // Step 5 - VIP Delivery Policy
+  distributionPolicy: VipDistributionPolicy;
   stickyTimeout: number;
-  roundRobin: boolean;
-  dispatchMode: 'round-robin' | 'random' | 'hash';
+  vipMappings: { vipIndex: number; instanceIndex: number }[];
+
+  // Step 6 - Access Control
+  accessControlIpv4: AccessControlEntry[];
+  accessControlIpv6: AccessControlEntry[];
+  openResolverConfirmed: boolean;
   enableDnsProtection: boolean;
 
-  // Step 6 - FRR/OSPF
-  enableFrr: boolean;
+  // Step 7 - Routing Mode
+  routingMode: RoutingMode;
   routerId: string;
   ospfArea: string;
   ospfInterfaces: string[];
   redistributeConnected: boolean;
   ospfCost: number;
   networkType: 'point-to-point' | 'broadcast';
-  optionalRoute: string;
 
-  // Step 7 - Security
+  // Step 8 - Panel / Security
   authType: 'local' | 'pam';
   adminUser: string;
   adminPassword: string;
   panelBind: string;
-  allowedIps: string[];
   panelPort: number;
-}
+  allowedIps: string[];
 
-export interface DnsInstance {
-  name: string;
-  bindIp: string;
-  exitIp: string;
-  controlPort: number;
+  // Legacy compat (used by existing generators until migrated)
+  bootstrapDns: string;
+  dummyInterface: string;
+  vipAnycastIpv4: string;
+  vipAnycastIpv6: string;
+  unboundBindIps: string[];
+  publicExitIps: string[];
+  ipv6BindIps: string[];
+  ipv6ExitIps: string[];
+  nftVipTarget: string;
+  nftDnatTargets: string[];
+  stickySourceIp: boolean;
+  roundRobin: boolean;
+  dispatchMode: 'round-robin' | 'random' | 'hash';
+  enableFrr: boolean;
+  optionalRoute: string;
 }
 
 // ---- Service Status ----
