@@ -46,6 +46,7 @@ interface HealthBatchResponse {
   failed: number;
   permission_limited?: number;
   inactive?: number;
+  service_not_running?: number;
   privilege_status?: PrivilegeStatus;
   results: HealthBatchResult[];
 }
