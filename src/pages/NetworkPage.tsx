@@ -24,10 +24,10 @@ export default function NetworkPage() {
 
   return (
     <div className="space-y-6">
+      <div>
         <h1 className="text-xl font-semibold">Rede</h1>
         <p className="text-sm text-muted-foreground">Interfaces, endereços e rotas</p>
       </div>
-
       <div className="noc-panel">
         <div className="noc-panel-header">Interfaces</div>
         {ifaceList.length === 0 ? <EmptyState title="Nenhuma interface encontrada" /> : (
