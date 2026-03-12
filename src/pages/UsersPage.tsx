@@ -118,9 +118,10 @@ export default function UsersPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (userId: string) => api.deleteUser(userId),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('Usuário removido');
-      queryClient.invalidateQueries({ queryKey: ['users'] });
+      await queryClient.invalidateQueries({ queryKey: ['users'] });
+      await queryClient.refetchQueries({ queryKey: ['users'] });
       setDeleteTarget(null);
     },
   });
