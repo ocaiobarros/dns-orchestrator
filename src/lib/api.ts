@@ -11,7 +11,7 @@ import type {
   OspfNeighbor, OspfRoute, LogEntry, LogSource,
   ApplyRequest, ApplyResult, DiagCommand, DiagResult,
   ConfigProfile, ConfigDiff, GeneratedFile, PaginatedResponse,
-  InstanceHealthReport,
+  InstanceHealthReport, DeployState, RollbackResult, PostDeployCheck,
   V2Event, V2MetricEntry, V2Instance, V2Action, ReconcileSummary,
 } from './types';
 
