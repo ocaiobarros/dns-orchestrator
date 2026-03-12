@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback, useRef } from 'react';
+import { safeNum } from '@/lib/svg-utils';
 
 interface ChartDataPoint {
   time: string;
