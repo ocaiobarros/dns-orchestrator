@@ -119,7 +119,7 @@ export default function NetworkPage() {
               </div>
             </div>
           ))}
-          {!reachability.data && (
+          {reachabilityList.length === 0 && (
             <p className="text-xs text-muted-foreground col-span-full">Clique em "Testar" para verificar conectividade</p>
           )}
         </div>
