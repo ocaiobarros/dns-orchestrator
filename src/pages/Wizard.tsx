@@ -316,7 +316,7 @@ export default function Wizard() {
                       <Trash2 size={12} /> Remover
                     </button>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                     <FieldGroup label="IPv4 *" error={fieldError(`serviceVips[${i}].ipv4`)}>
                       <Input value={vip.ipv4} onChange={v => updateVip(i, 'ipv4', v)} placeholder="IP do serviço DNS" />
                     </FieldGroup>
@@ -325,8 +325,19 @@ export default function Wizard() {
                         <Input value={vip.ipv6} onChange={v => updateVip(i, 'ipv6', v)} placeholder="IPv6 do serviço DNS" />
                       </FieldGroup>
                     )}
-                    <FieldGroup label="Label">
-                      <Input value={vip.label} onChange={v => updateVip(i, 'label', v)} placeholder="DNS Primário" />
+                    <FieldGroup label="Porta" hint="Default: 53">
+                      <Input type="number" value={vip.port} onChange={v => updateVip(i, 'port', v)} placeholder="53" />
+                    </FieldGroup>
+                    <FieldGroup label="Protocolo">
+                      <Select value={vip.protocol} onChange={v => updateVip(i, 'protocol', v)}
+                        options={[
+                          { value: 'udp+tcp', label: 'UDP + TCP' },
+                          { value: 'udp', label: 'UDP only' },
+                          { value: 'tcp', label: 'TCP only' },
+                        ]} />
+                    </FieldGroup>
+                    <FieldGroup label="Descrição">
+                      <Input value={vip.description} onChange={v => updateVip(i, 'description', v)} placeholder="DNS Público" />
                     </FieldGroup>
                     <FieldGroup label="Modo de Entrega">
                       <Select value={vip.deliveryMode} onChange={v => updateVip(i, 'deliveryMode', v)}
