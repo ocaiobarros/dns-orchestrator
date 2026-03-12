@@ -344,6 +344,7 @@ export default function TroubleshootPage() {
     if (statusFilter === 'ok') items = items.filter(r => r.status === 'ok');
     else if (statusFilter === 'permission_error') items = items.filter(r => r.status === 'permission_error');
     else if (statusFilter === 'inactive') items = items.filter(r => r.status === 'inactive');
+    else if (statusFilter === 'service_not_running') items = items.filter(r => r.status === 'service_not_running');
     else if (statusFilter === 'failures') items = items.filter(r => ['error', 'runtime_error', 'timeout_error', 'dependency_error'].includes(r.status));
     if (categoryFilter !== 'all') items = items.filter(r => r.category === categoryFilter);
     return items;
