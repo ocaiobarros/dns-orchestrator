@@ -11,14 +11,16 @@ import {
   type RoutingMode,
   type ObservabilityConfig,
 } from '@/lib/types';
-import { validateConfig, getStepErrors, isConfigValid } from '@/lib/validation';
+import { validateConfig, getStepErrors, isConfigValid, getValidationSummary } from '@/lib/validation';
 import { generateAllFiles } from '@/lib/config-generator';
 import { useApplyConfig } from '@/lib/hooks';
 import ApplyStepsViewer from '@/components/ApplyStepsViewer';
+import TopologySummary from '@/components/TopologySummary';
+import FilePreviewAccordion from '@/components/FilePreviewAccordion';
 import {
   Check, ChevronLeft, ChevronRight, AlertTriangle, Play, Eye, AlertCircle,
   Loader2, Server, Network, Shield, Globe, Layers, Route, Settings, FileText,
-  Plus, Trash2, Info, ExternalLink, Activity, Lock, BarChart3,
+  Plus, Trash2, Info, ExternalLink, Activity, Lock, BarChart3, Download,
 } from 'lucide-react';
 import type { ApplyResult } from '@/lib/types';
 
@@ -134,10 +136,12 @@ export default function Wizard() {
   const [config, setConfig] = useState<WizardConfig>({ ...DEFAULT_CONFIG });
   const [applyResult, setApplyResult] = useState<ApplyResult | null>(null);
   const [showValidation, setShowValidation] = useState(false);
+  const [showFiles, setShowFiles] = useState(false);
   const applyMutation = useApplyConfig();
   const navigate = useNavigate();
 
   const validationErrors = validateConfig(config);
+  const validationSummary = getValidationSummary(validationErrors);
   const stepErrors = (s: number) => getStepErrors(validationErrors, s);
 
   const set = <K extends keyof WizardConfig>(key: K, val: WizardConfig[K]) =>
@@ -202,6 +206,16 @@ export default function Wizard() {
 
   const generatedFiles = generateAllFiles(config);
 
+  const exportConfig = () => {
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dns-control-${config.hostname || 'config'}-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const renderStep = () => {
     switch (step) {
       // ═══ STEP 1: Topologia do Host ═══
@@ -265,12 +279,12 @@ export default function Wizard() {
             </InfoBox>
             <div className="grid grid-cols-1 gap-3">
               {([
-                { value: 'internal-recursive', label: 'DNS Recursivo Interno', desc: 'Resolvers acessíveis apenas na rede interna. Sem VIP público. Ideal para redes corporativas.' },
+                { value: 'internal-recursive', label: 'DNS Recursivo Interno', desc: 'Resolvers acessíveis apenas na rede interna. Sem VIP público.' },
                 { value: 'public-controlled', label: 'DNS Público Controlado', desc: 'Resolvers com IPs públicos atribuídos diretamente. Sem VIP ou NAT intermediário.' },
-                { value: 'pseudo-anycast-local', label: 'Pseudo-Anycast com VIP Local', desc: 'VIP configurado na dummy interface do host. Tráfego entregue localmente via nftables DNAT. Funciona sem roteamento dinâmico.' },
-                { value: 'vip-routed-border', label: 'VIP Roteado via Borda / Firewall', desc: 'VIPs ficam no firewall/router de borda. Tráfego entregue ao host via rota estática ou NAT. Recomendado para ISP.' },
-                { value: 'vip-local-dummy', label: 'VIP Local em Dummy Interface', desc: 'VIPs configurados em dummy interface. Host responde diretamente por IPs de serviço. Sem dependência de equipamento externo.' },
-                { value: 'anycast-frr-ospf', label: 'Anycast com FRR / OSPF', desc: 'VIPs anunciados via OSPF usando FRR. Roteadores da rede aprendem rotas automaticamente.' },
+                { value: 'pseudo-anycast-local', label: 'Pseudo-Anycast com VIP Local', desc: 'VIP na dummy interface do host. Tráfego entregue via nftables DNAT.' },
+                { value: 'vip-routed-border', label: 'VIP Roteado via Borda / Firewall', desc: 'VIPs no firewall/router. Tráfego entregue ao host via rota estática ou NAT. Recomendado para ISP.' },
+                { value: 'vip-local-dummy', label: 'VIP Local em Dummy Interface', desc: 'VIPs em dummy interface. Host responde diretamente.' },
+                { value: 'anycast-frr-ospf', label: 'Anycast com FRR / OSPF', desc: 'VIPs anunciados via OSPF usando FRR.' },
                 { value: 'anycast-frr-bgp', label: 'Anycast com FRR / BGP (futuro)', desc: 'VIPs anunciados via BGP usando FRR. Em desenvolvimento.' },
               ] as { value: DeploymentMode; label: string; desc: string }[]).map(mode => (
                 <ModeCard key={mode.value}
@@ -290,7 +304,6 @@ export default function Wizard() {
             <InfoBox>
               Configure os IPs que os clientes usarão como servidor DNS.
               Estes são os IPs de serviço — a identidade pública do resolver.
-              Não são necessariamente os IPs reais onde o Unbound escuta.
             </InfoBox>
             <div className="space-y-3">
               {config.serviceVips.map((vip, i) => (
@@ -342,7 +355,6 @@ export default function Wizard() {
           <div className="space-y-4">
             <InfoBox>
               Cada instância é um processo Unbound independente com listener e interface de controle próprios.
-              O listener é o IP interno onde o Unbound recebe queries. A interface de controle permite operar via unbound-control.
             </InfoBox>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <FieldGroup label="Threads por instância *" error={fieldError('threads')}>
@@ -389,11 +401,11 @@ export default function Wizard() {
                         <Input value={inst.bindIp} onChange={v => updateInstance(i, 'bindIp', v)} placeholder="100.127.255.101" />
                       </FieldGroup>
                       {config.enableIpv6 && (
-                        <FieldGroup label="Listener IPv6" hint="IP IPv6 listener">
+                        <FieldGroup label="Listener IPv6">
                           <Input value={inst.bindIpv6} onChange={v => updateInstance(i, 'bindIpv6', v)} />
                         </FieldGroup>
                       )}
-                      <FieldGroup label="Control Interface" hint="IP do remote-control">
+                      <FieldGroup label="Control Interface" error={fieldError(`instances[${i}].controlInterface`)} hint="IP do remote-control">
                         <Input value={inst.controlInterface} onChange={v => updateInstance(i, 'controlInterface', v)} placeholder="127.0.0.11" />
                       </FieldGroup>
                       <FieldGroup label="Control Port">
@@ -414,11 +426,9 @@ export default function Wizard() {
             <InfoBox>
               Configure o IP público de saída (outgoing-interface) de cada instância.
               Este é o IP que os servidores autoritativos verão ao receber queries recursivas.
-              Cada instância pode ter uma identidade pública diferente.
             </InfoBox>
             <Toggle checked={config.egressFixedIdentity} onChange={v => set('egressFixedIdentity', v)}
               label="Cada instância tem identidade de saída fixa (1 IP público por instância)" />
-
             <div className="space-y-3">
               {config.instances.map((inst, i) => (
                 <div key={i} className="p-4 rounded bg-secondary border border-border">
@@ -431,7 +441,7 @@ export default function Wizard() {
                       <Input value={inst.egressIpv4} onChange={v => updateInstance(i, 'egressIpv4', v)} placeholder="IP público do bloco /29" />
                     </FieldGroup>
                     {config.enableIpv6 && (
-                      <FieldGroup label="Egress IPv6" hint="IP público IPv6 de saída">
+                      <FieldGroup label="Egress IPv6">
                         <Input value={inst.egressIpv6} onChange={v => updateInstance(i, 'egressIpv6', v)} placeholder="IPv6 de saída" />
                       </FieldGroup>
                     )}
@@ -448,15 +458,14 @@ export default function Wizard() {
           <div className="space-y-4">
             <InfoBox>
               Define como o tráfego dos VIPs de serviço é distribuído entre as instâncias resolver.
-              O modo determina as regras nftables que serão geradas.
             </InfoBox>
             <div className="grid grid-cols-1 gap-3">
               {([
-                { value: 'fixed-mapping', label: 'Mapeamento Fixo', desc: 'Cada VIP é associado a uma instância específica.' },
+                { value: 'fixed-mapping', label: 'Mapeamento Fixo', desc: 'Cada VIP associado a uma instância específica.' },
                 { value: 'round-robin', label: 'Round Robin (numgen)', desc: 'Distribuição sequencial entre todas as instâncias.' },
-                { value: 'sticky-source', label: 'Sticky por Origem (Recomendado)', desc: 'Memoriza o resolver por IP de origem via nftables sets com timeout. Fallback nth balancing.' },
-                { value: 'nth-balancing', label: 'Nth Balancing', desc: 'Balanceamento nth com numgen e decrementação progressiva do módulo.' },
-                { value: 'active-passive', label: 'Ativo / Passivo', desc: 'Uma instância primária, demais em standby para failover.' },
+                { value: 'sticky-source', label: 'Sticky por Origem (Recomendado)', desc: 'Memoriza o resolver por IP de origem via nftables sets. Fallback nth balancing.' },
+                { value: 'nth-balancing', label: 'Nth Balancing', desc: 'Balanceamento nth com numgen e decrementação progressiva.' },
+                { value: 'active-passive', label: 'Ativo / Passivo', desc: 'Uma instância primária, demais em standby.' },
               ] as { value: VipDistributionPolicy; label: string; desc: string }[]).map(policy => (
                 <ModeCard key={policy.value}
                   selected={config.distributionPolicy === policy.value}
@@ -465,7 +474,7 @@ export default function Wizard() {
               ))}
             </div>
             {config.distributionPolicy === 'sticky-source' && (
-              <FieldGroup label="Sticky Timeout (minutos)" hint="Tempo que o IP de origem permanece vinculado ao resolver">
+              <FieldGroup label="Sticky Timeout (minutos)">
                 <Input type="number" value={Math.floor(config.stickyTimeout / 60)} onChange={v => set('stickyTimeout', (parseInt(v) || 20) * 60)} />
               </FieldGroup>
             )}
@@ -476,15 +485,12 @@ export default function Wizard() {
       case 6:
         return (
           <div className="space-y-4">
-            <InfoBox>
-              Define como os VIPs serão alcançáveis na rede.
-              Em modo estático, rotas são configuradas manualmente no firewall/router.
-            </InfoBox>
+            <InfoBox>Define como os VIPs serão alcançáveis na rede.</InfoBox>
             <div className="grid grid-cols-1 gap-3">
               {([
-                { value: 'static', label: 'Sem Roteamento Dinâmico', desc: 'VIPs alcançáveis via rotas estáticas no firewall/router. DNS Control não gera configuração de roteamento.' },
-                { value: 'frr-ospf', label: 'FRR / OSPF', desc: 'VIPs anunciados via OSPF. Gera configuração completa do FRR com redistribute connected.' },
-                { value: 'frr-bgp', label: 'FRR / BGP (futuro)', desc: 'Suporte a BGP via FRR. Em desenvolvimento.' },
+                { value: 'static', label: 'Sem Roteamento Dinâmico', desc: 'VIPs alcançáveis via rotas estáticas.' },
+                { value: 'frr-ospf', label: 'FRR / OSPF', desc: 'VIPs anunciados via OSPF com redistribute connected.' },
+                { value: 'frr-bgp', label: 'FRR / BGP (futuro)', desc: 'Em desenvolvimento.' },
               ] as { value: RoutingMode; label: string; desc: string }[]).map(mode => (
                 <ModeCard key={mode.value}
                   selected={config.routingMode === mode.value}
@@ -507,10 +513,7 @@ export default function Wizard() {
                   </FieldGroup>
                   <FieldGroup label="Network Type">
                     <Select value={config.networkType} onChange={v => set('networkType', v as 'point-to-point' | 'broadcast')}
-                      options={[
-                        { value: 'point-to-point', label: 'Point-to-Point' },
-                        { value: 'broadcast', label: 'Broadcast' },
-                      ]} />
+                      options={[{ value: 'point-to-point', label: 'Point-to-Point' }, { value: 'broadcast', label: 'Broadcast' }]} />
                   </FieldGroup>
                 </div>
                 <Toggle checked={config.redistributeConnected} onChange={v => set('redistributeConnected', v)} label="Redistribuir connected" />
@@ -528,14 +531,12 @@ export default function Wizard() {
           <div className="space-y-4">
             <InfoBox>
               Configure controle de acesso, proteção contra amplificação e autenticação do painel.
-              ACLs abertas (0.0.0.0/0 allow) configuram um open resolver — exige confirmação explícita.
             </InfoBox>
-
             <div className="space-y-3">
               <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">ACLs IPv4 (access-control do Unbound)</div>
               {config.accessControlIpv4.map((acl, i) => (
                 <div key={i} className="grid grid-cols-3 md:grid-cols-4 gap-3 p-3 rounded bg-secondary border border-border">
-                  <FieldGroup label="Rede">
+                  <FieldGroup label="Rede" error={fieldError(`accessControlIpv4[${i}].network`)}>
                     <Input value={acl.network} onChange={v => updateAcl('ipv4', i, 'network', v)} placeholder="172.16.0.0/12" />
                   </FieldGroup>
                   <FieldGroup label="Ação">
@@ -567,20 +568,12 @@ export default function Wizard() {
                 <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">ACLs IPv6</div>
                 {config.accessControlIpv6.map((acl, i) => (
                   <div key={i} className="grid grid-cols-3 md:grid-cols-4 gap-3 p-3 rounded bg-secondary border border-border">
-                    <FieldGroup label="Rede">
-                      <Input value={acl.network} onChange={v => updateAcl('ipv6', i, 'network', v)} placeholder="::/0" />
-                    </FieldGroup>
+                    <FieldGroup label="Rede"><Input value={acl.network} onChange={v => updateAcl('ipv6', i, 'network', v)} placeholder="::/0" /></FieldGroup>
                     <FieldGroup label="Ação">
                       <Select value={acl.action} onChange={v => updateAcl('ipv6', i, 'action', v)}
-                        options={[
-                          { value: 'allow', label: 'allow' },
-                          { value: 'refuse', label: 'refuse' },
-                          { value: 'deny', label: 'deny' },
-                        ]} />
+                        options={[{ value: 'allow', label: 'allow' }, { value: 'refuse', label: 'refuse' }, { value: 'deny', label: 'deny' }]} />
                     </FieldGroup>
-                    <FieldGroup label="Label">
-                      <Input value={acl.label} onChange={v => updateAcl('ipv6', i, 'label', v)} />
-                    </FieldGroup>
+                    <FieldGroup label="Label"><Input value={acl.label} onChange={v => updateAcl('ipv6', i, 'label', v)} /></FieldGroup>
                     <div className="flex items-end">
                       <button onClick={() => set('accessControlIpv6', config.accessControlIpv6.filter((_, j) => j !== i))}
                         className="px-2 py-2 text-xs text-destructive hover:bg-destructive/10 rounded"><Trash2 size={12} /></button>
@@ -600,7 +593,7 @@ export default function Wizard() {
                   <AlertTriangle size={14} /> Open Resolver Detectado
                 </div>
                 <p className="text-xs text-destructive/80">
-                  A ACL 0.0.0.0/0 allow configura um open resolver. Isso pode ser explorado para ataques de amplificação DNS.
+                  A ACL 0.0.0.0/0 allow configura um open resolver. Risco de amplificação DNS.
                 </p>
                 <Toggle checked={config.openResolverConfirmed} onChange={v => set('openResolverConfirmed', v)}
                   label="Confirmo que quero operar como open resolver" />
@@ -625,7 +618,7 @@ export default function Wizard() {
                 <FieldGroup label="Senha Inicial">
                   <Input value={config.adminPassword} onChange={v => set('adminPassword', v)} type="password" placeholder="Definida no primeiro acesso" />
                 </FieldGroup>
-                <FieldGroup label="Bind do Painel">
+                <FieldGroup label="Bind do Painel" error={fieldError('panelBind')}>
                   <Select value={config.panelBind} onChange={v => set('panelBind', v)}
                     options={[
                       { value: '127.0.0.1', label: '127.0.0.1 (local only)' },
@@ -645,10 +638,8 @@ export default function Wizard() {
         return (
           <div className="space-y-4">
             <InfoBox>
-              Configure quais métricas e sinais operacionais o DNS Control deve coletar e exibir no dashboard.
-              Todos os sinais são coletados via unbound-control, nftables counters e systemd.
+              Configure quais métricas e sinais operacionais o DNS Control deve coletar.
             </InfoBox>
-
             <div className="space-y-3">
               <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Métricas de Tráfego</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -658,7 +649,6 @@ export default function Wizard() {
                 <Toggle checked={config.observability.nftablesCounters} onChange={v => updateObs('nftablesCounters', v)} label="Counters nftables (pacotes/bytes por VIP)" />
               </div>
             </div>
-
             <div className="space-y-3">
               <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Saúde & Status</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -666,7 +656,6 @@ export default function Wizard() {
                 <Toggle checked={config.observability.healthChecks} onChange={v => updateObs('healthChecks', v)} label="Health checks ativos (DNS probe)" />
               </div>
             </div>
-
             <div className="space-y-3">
               <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Performance DNS</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -675,11 +664,10 @@ export default function Wizard() {
                 <Toggle checked={config.observability.recursionTimeTracking} onChange={v => updateObs('recursionTimeTracking', v)} label="Recursion time (avg/median)" />
               </div>
             </div>
-
             <div className="space-y-3">
               <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Eventos</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <Toggle checked={config.observability.operationalEvents} onChange={v => updateObs('operationalEvents', v)} label="Eventos operacionais (incidentes, mudanças, diagnósticos)" />
+                <Toggle checked={config.observability.operationalEvents} onChange={v => updateObs('operationalEvents', v)} label="Eventos operacionais" />
               </div>
             </div>
           </div>
@@ -712,90 +700,36 @@ export default function Wizard() {
         }
         return (
           <div className="space-y-4">
+            {/* Validation Summary */}
             {validationErrors.length > 0 && (
-              <div className="noc-panel border-warning/30">
-                <div className="noc-panel-header">Validação ({validationErrors.filter(e => e.severity === 'error').length} erros, {validationErrors.filter(e => e.severity === 'warning').length} avisos)</div>
-                <div className="space-y-1">
+              <div className={`noc-panel ${validationSummary.totalErrors > 0 ? 'border-destructive/30' : 'border-warning/30'}`}>
+                <div className="noc-panel-header flex items-center gap-3">
+                  {validationSummary.totalErrors > 0 ? <AlertCircle size={14} className="text-destructive" /> : <AlertTriangle size={14} className="text-warning" />}
+                  Validação — {validationSummary.totalErrors} erro{validationSummary.totalErrors !== 1 ? 's' : ''}, {validationSummary.totalWarnings} aviso{validationSummary.totalWarnings !== 1 ? 's' : ''}
+                </div>
+                <div className="space-y-1 max-h-[200px] overflow-y-auto">
                   {validationErrors.map((e, i) => (
                     <div key={i} className={`flex items-center gap-2 text-xs py-1 ${e.severity === 'error' ? 'text-destructive' : 'text-warning'}`}>
                       {e.severity === 'error' ? <AlertCircle size={10} /> : <AlertTriangle size={10} />}
-                      <span className="font-mono">[Etapa {e.step + 1}]</span>
-                      <span>{e.message}</span>
+                      <span className="font-mono text-muted-foreground">[{STEPS[e.step]?.slice(0, 12)}]</span>
+                      <span className="flex-1">{e.message}</span>
                       <button onClick={() => { setStep(e.step); setShowValidation(true); }}
-                        className="ml-auto text-accent underline">Ir</button>
+                        className="text-accent underline shrink-0">Ir</button>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Architecture Summary */}
-            <div className="noc-panel">
-              <div className="noc-panel-header">Arquitetura do Deploy</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm">
-                {[
-                  ['Hostname', config.hostname || '(não definido)'],
-                  ['Interface', config.mainInterface ? `${config.mainInterface} — ${config.ipv4Address}` : '(não definido)'],
-                  ['Modo de Publicação', config.deploymentMode],
-                  ['Atrás de Firewall', config.behindFirewall ? 'Sim' : 'Não'],
-                  ['VIPs de Serviço', config.serviceVips.length > 0 ? config.serviceVips.map(v => v.ipv4).join(', ') : '(nenhum)'],
-                  ['Instâncias Resolver', String(config.instances.length)],
-                  ['Mapeamento', config.distributionPolicy],
-                  ['Roteamento', config.routingMode],
-                  ['IPv6', config.enableIpv6 ? 'Habilitado' : 'Desabilitado'],
-                  ['Proteção DNS', config.enableDnsProtection ? 'Ativo' : 'Inativo'],
-                  ['Egress Fixo', config.egressFixedIdentity ? 'Sim (1 IP/instância)' : 'Compartilhado'],
-                ].map(([k, v]) => (
-                  <div key={k} className="flex justify-between py-1 border-b border-border">
-                    <span className="text-muted-foreground">{k}</span>
-                    <span className="font-mono text-right">{v}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
             {/* 4-Layer Architecture View */}
             <div className="noc-panel">
-              <div className="noc-panel-header">Camadas da Arquitetura</div>
-              <div className="space-y-4 text-xs font-mono">
-                {/* Layer 1: VIPs */}
-                <div>
-                  <div className="text-muted-foreground uppercase mb-1">Camada 1 — VIPs de Serviço (cliente consulta)</div>
-                  <div className="flex flex-wrap gap-2">
-                    {config.serviceVips.length > 0 ? config.serviceVips.map((v, i) => (
-                      <span key={i} className="px-2 py-1 rounded bg-primary/10 border border-primary/30 text-primary">{v.ipv4}{v.ipv6 ? ` / ${v.ipv6}` : ''}</span>
-                    )) : <span className="text-muted-foreground">(nenhum VIP definido)</span>}
-                  </div>
-                </div>
-                {/* Layer 2: Listeners */}
-                <div>
-                  <div className="text-muted-foreground uppercase mb-1">Camada 2 — Listeners Internos (Unbound escuta)</div>
-                  <div className="flex flex-wrap gap-2">
-                    {config.instances.map((inst, i) => (
-                      <span key={i} className="px-2 py-1 rounded bg-accent/10 border border-accent/30">{inst.name}: {inst.bindIp || '(vazio)'}</span>
-                    ))}
-                  </div>
-                </div>
-                {/* Layer 3: Egress */}
-                <div>
-                  <div className="text-muted-foreground uppercase mb-1">Camada 3 — Egress Público (outgoing-interface)</div>
-                  <div className="flex flex-wrap gap-2">
-                    {config.instances.map((inst, i) => (
-                      <span key={i} className="px-2 py-1 rounded bg-warning/10 border border-warning/30">{inst.name}: {inst.egressIpv4 || '(vazio)'}</span>
-                    ))}
-                  </div>
-                </div>
-                {/* Layer 4: Transport */}
-                <div>
-                  <div className="text-muted-foreground uppercase mb-1">Camada 4 — Transporte / Entrega</div>
-                  <span className="px-2 py-1 rounded bg-secondary border border-border">{config.distributionPolicy} via nftables → {config.routingMode}</span>
-                </div>
-              </div>
+              <div className="noc-panel-header">Arquitetura do Deploy — 4 Camadas</div>
+              <TopologySummary config={config} />
             </div>
 
             {/* Instance Table */}
             <div className="noc-panel">
-              <div className="noc-panel-header">Instâncias Resolver</div>
+              <div className="noc-panel-header">Instâncias Resolver ({config.instances.length})</div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs font-mono">
                   <thead>
@@ -824,13 +758,76 @@ export default function Wizard() {
               </div>
             </div>
 
-            {/* Generated Files */}
+            {/* Deployment Summary */}
             <div className="noc-panel">
-              <div className="noc-panel-header">Artefatos de Deploy ({generatedFiles.length} arquivos)</div>
-              <div className="flex flex-wrap gap-1">
-                {generatedFiles.map(f => (
-                  <span key={f.path} className="text-xs font-mono px-2 py-0.5 bg-secondary text-secondary-foreground rounded border border-border">{f.path}</span>
+              <div className="noc-panel-header">Resumo do Deploy</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                {[
+                  ['Hostname', config.hostname || '—'],
+                  ['Interface', `${config.mainInterface} — ${config.ipv4Address}`],
+                  ['Modo', config.deploymentMode],
+                  ['Roteamento', config.routingMode],
+                  ['VIPs', `${config.serviceVips.length} IPv4${config.vipIpv6Enabled ? ' + IPv6' : ''}`],
+                  ['Instâncias', String(config.instances.length)],
+                  ['Distribuição', config.distributionPolicy],
+                  ['Firewall', config.behindFirewall ? 'Sim' : 'Não'],
+                  ['Rate Limit', config.enableDnsProtection ? 'Ativo' : 'Inativo'],
+                  ['IPv6', config.enableIpv6 ? 'Dual-stack' : 'IPv4 only'],
+                  ['ACLs', `${config.accessControlIpv4.length} IPv4`],
+                  ['Arquivos', `${generatedFiles.length}`],
+                ].map(([k, v]) => (
+                  <div key={k} className="py-1">
+                    <div className="text-muted-foreground uppercase tracking-wider text-[10px]">{k}</div>
+                    <div className="font-mono font-medium">{v}</div>
+                  </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Generated Files Preview */}
+            <div className="noc-panel">
+              <div className="noc-panel-header flex items-center justify-between">
+                <span>Artefatos de Deploy ({generatedFiles.length} arquivos)</span>
+                <button onClick={() => setShowFiles(!showFiles)}
+                  className="text-[10px] text-accent hover:underline">{showFiles ? 'Ocultar conteúdo' : 'Mostrar conteúdo'}</button>
+              </div>
+              {showFiles ? (
+                <FilePreviewAccordion files={generatedFiles} />
+              ) : (
+                <div className="flex flex-wrap gap-1">
+                  {generatedFiles.map(f => (
+                    <span key={f.path} className="text-xs font-mono px-2 py-0.5 bg-secondary text-secondary-foreground rounded border border-border">{f.path}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Risk Warnings */}
+            <div className="noc-panel border-warning/20">
+              <div className="noc-panel-header flex items-center gap-2 text-warning">
+                <AlertTriangle size={12} /> Ações Privilegiadas
+              </div>
+              <div className="space-y-1 text-xs">
+                <div className="flex items-center gap-2">
+                  <Lock size={10} className="text-muted-foreground" />
+                  <span>systemctl daemon-reload</span>
+                </div>
+                {config.instances.map(inst => (
+                  <div key={inst.name} className="flex items-center gap-2">
+                    <Lock size={10} className="text-muted-foreground" />
+                    <span>systemctl restart {inst.name}</span>
+                  </div>
+                ))}
+                <div className="flex items-center gap-2">
+                  <Lock size={10} className="text-muted-foreground" />
+                  <span>nft -f /etc/nftables.conf</span>
+                </div>
+                {config.routingMode === 'frr-ospf' && (
+                  <div className="flex items-center gap-2">
+                    <Lock size={10} className="text-muted-foreground" />
+                    <span>systemctl restart frr</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -840,9 +837,16 @@ export default function Wizard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Wizard de Deploy DNS Recursivo</h1>
-        <p className="text-sm text-muted-foreground">Infraestrutura DNS recursiva multi-instância · VIP + listeners + egress + roteamento + observabilidade</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold">Wizard de Deploy DNS Recursivo</h1>
+          <p className="text-sm text-muted-foreground">Infraestrutura DNS recursiva multi-instância · VIP + listeners + egress + roteamento</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={exportConfig} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
+            <Download size={12} /> Exportar JSON
+          </button>
+        </div>
       </div>
 
       {/* Step Navigation */}
