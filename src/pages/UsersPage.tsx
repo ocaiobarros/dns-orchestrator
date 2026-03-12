@@ -14,9 +14,39 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/lib/auth';
-import { api, type AuthUserRecord } from '@/lib/api';
+import { api } from '@/lib/api';
+import { safeDate } from '@/lib/types';
 import { Loader2, Plus, KeyRound, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
+
+// Backend returns snake_case; we accept both shapes defensively
+interface UserRecord {
+  id: string;
+  username: string;
+  is_active?: boolean;
+  isActive?: boolean;
+  must_change_password?: boolean;
+  mustChangePassword?: boolean;
+  created_at?: string;
+  createdAt?: string;
+  updated_at?: string;
+  updatedAt?: string;
+  last_login_at?: string | null;
+  lastLoginAt?: string | null;
+}
+
+function isActive(u: UserRecord): boolean {
+  return u.is_active ?? u.isActive ?? false;
+}
+function mustChange(u: UserRecord): boolean {
+  return u.must_change_password ?? u.mustChangePassword ?? false;
+}
+function createdAt(u: UserRecord): string {
+  return u.created_at ?? u.createdAt ?? '';
+}
+function lastLogin(u: UserRecord): string | null {
+  return u.last_login_at ?? u.lastLoginAt ?? null;
+}
 
 export default function UsersPage() {
   const queryClient = useQueryClient();
@@ -32,16 +62,17 @@ export default function UsersPage() {
   const [changePassword, setChangePassword] = useState('');
   const [changePasswordConfirm, setChangePasswordConfirm] = useState('');
 
-  const { data: users = [], isLoading } = useQuery<AuthUserRecord[]>({
+  const { data: users = [], isLoading } = useQuery<UserRecord[]>({
     queryKey: ['users'],
     queryFn: async () => {
       const res = await api.getUsers();
-      return res.success ? res.data : [];
+      if (!res.success) return [];
+      return Array.isArray(res.data) ? res.data : [];
     },
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { username: string; password: string }) => api.createUser(data.username, data.password),
+    mutationFn: (data: { username: string; password: string }) => api.createUser(data.username, data.password, mustChangePassword),
     onSuccess: (res) => {
       if (res.success) {
         toast.success('Usuário criado com sucesso');
@@ -63,6 +94,8 @@ export default function UsersPage() {
       if (res.success) {
         toast.success('Status do usuário atualizado');
         queryClient.invalidateQueries({ queryKey: ['users'] });
+      } else {
+        toast.error(res.error || 'Erro ao atualizar status');
       }
     },
   });
@@ -83,12 +116,10 @@ export default function UsersPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (userId: string) => api.deleteUser(userId),
-    onSuccess: (res) => {
-      if (res.success) {
-        toast.success('Usuário removido');
-        queryClient.invalidateQueries({ queryKey: ['users'] });
-        setDeleteTarget(null);
-      }
+    onSuccess: () => {
+      toast.success('Usuário removido');
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      setDeleteTarget(null);
     },
   });
 
@@ -133,54 +164,58 @@ export default function UsersPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              users.map(u => (
-                <TableRow key={u.id}>
-                  <TableCell className="font-mono text-sm">{u.username}</TableCell>
-                  <TableCell>
-                    <Badge variant={u.isActive ? 'default' : 'secondary'} className={u.isActive ? 'bg-success/20 text-success border-success/30' : ''}>
-                      {u.isActive ? 'Ativo' : 'Inativo'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {u.mustChangePassword && (
-                      <Badge variant="outline" className="text-warning border-warning/30">
-                        Pendente
+              users.map(u => {
+                const active = isActive(u);
+                const needsChange = mustChange(u);
+                return (
+                  <TableRow key={u.id}>
+                    <TableCell className="font-mono text-sm">{u.username}</TableCell>
+                    <TableCell>
+                      <Badge variant={active ? 'default' : 'secondary'} className={active ? 'bg-success/20 text-success border-success/30' : ''}>
+                        {active ? 'Ativo' : 'Inativo'}
                       </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground font-mono">
-                    {new Date(u.createdAt).toLocaleString('pt-BR')}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground font-mono">
-                    {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString('pt-BR') : '—'}
-                  </TableCell>
-                  <TableCell className="text-right space-x-1">
-                    <Button variant="ghost" size="icon" title="Alterar senha" onClick={() => setPasswordOpen(u.id)}>
-                      <KeyRound size={14} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      title={u.isActive ? 'Desativar' : 'Ativar'}
-                      onClick={() => toggleMutation.mutate({ userId: u.id, active: !u.isActive })}
-                      disabled={u.id === currentUser?.id}
-                      className="px-2"
-                    >
-                      {u.isActive ? 'Desativar' : 'Ativar'}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      title="Excluir"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => setDeleteTarget(u.id)}
-                      disabled={u.id === currentUser?.id}
-                    >
-                      <Trash2 size={14} />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
+                    </TableCell>
+                    <TableCell>
+                      {needsChange && (
+                        <Badge variant="outline" className="text-warning border-warning/30">
+                          Pendente
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground font-mono">
+                      {safeDate(createdAt(u))}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground font-mono">
+                      {safeDate(lastLogin(u))}
+                    </TableCell>
+                    <TableCell className="text-right space-x-1">
+                      <Button variant="ghost" size="icon" title="Alterar senha" onClick={() => setPasswordOpen(u.id)}>
+                        <KeyRound size={14} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        title={active ? 'Desativar' : 'Ativar'}
+                        onClick={() => toggleMutation.mutate({ userId: u.id, active: !active })}
+                        disabled={u.id === currentUser?.id}
+                        className="px-2"
+                      >
+                        {active ? 'Desativar' : 'Ativar'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Excluir"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleteTarget(u.id)}
+                        disabled={u.id === currentUser?.id}
+                      >
+                        <Trash2 size={14} />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>

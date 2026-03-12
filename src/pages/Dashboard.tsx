@@ -3,13 +3,14 @@ import MetricCard from '@/components/MetricCard';
 import StatusBadge from '@/components/StatusBadge';
 import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useSystemInfo, useServices, useInstanceStats, useInstanceHealth } from '@/lib/hooks';
+import { getInstanceQueries, getInstanceCacheHit, getInstanceLatency, safeDate } from '@/lib/types';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useState } from 'react';
 
-function formatBytes(bytes: number | null): string {
-  if (bytes === null) return 'N/A';
+function formatBytes(bytes: number | null | undefined): string {
+  if (bytes == null) return 'N/A';
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)}MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)}GB`;
@@ -53,21 +54,30 @@ export default function Dashboard() {
   if (sysLoading || svcLoading) return <LoadingState />;
   if (sysError) return <ErrorState message={sysError.message} />;
 
-  const allRunning = services?.every(s => s.status === 'running') ?? false;
-  const totalQps = instanceStats?.reduce((a, b) => a + b.totalQueries, 0) ?? 0;
-  const avgCacheHit = instanceStats && instanceStats.length > 0
-    ? (instanceStats.reduce((a, b) => a + b.cacheHitRatio, 0) / instanceStats.length).toFixed(1)
+  const safeServices = Array.isArray(services) ? services : [];
+  const safeStats = Array.isArray(instanceStats) ? instanceStats : [];
+  const safeV2 = Array.isArray(v2Instances) ? v2Instances : [];
+
+  const allRunning = safeServices.every(s => s.status === 'running');
+  const totalQps = safeStats.reduce((a, b) => a + getInstanceQueries(b), 0);
+  const avgCacheHit = safeStats.length > 0
+    ? (safeStats.reduce((a, b) => a + getInstanceCacheHit(b), 0) / safeStats.length).toFixed(1)
     : '0';
-  const avgLatency = instanceStats && instanceStats.length > 0
-    ? (instanceStats.reduce((a, b) => a + b.avgLatencyMs, 0) / instanceStats.length).toFixed(1)
+  const avgLatency = safeStats.length > 0
+    ? (safeStats.reduce((a, b) => a + getInstanceLatency(b), 0) / safeStats.length).toFixed(1)
     : '0';
 
-  const healthyCount = v2Instances?.filter(i => i.current_status === 'healthy').length ?? health?.healthy ?? 0;
-  const totalInstances = v2Instances?.length ?? health?.total ?? 0;
-  const failedCount = v2Instances?.filter(i => i.current_status === 'failed' || i.current_status === 'withdrawn').length ?? 0;
-  const inRotation = v2Instances?.filter(i => i.in_rotation).length ?? totalInstances;
+  const healthyCount = safeV2.length > 0
+    ? safeV2.filter(i => i.current_status === 'healthy').length
+    : (health?.healthy ?? 0);
+  const totalInstances = safeV2.length > 0 ? safeV2.length : (health?.total ?? 0);
+  const failedCount = safeV2.filter(i => i.current_status === 'failed' || i.current_status === 'withdrawn').length;
+  const inRotation = safeV2.length > 0
+    ? safeV2.filter(i => i.in_rotation).length
+    : totalInstances;
 
-  const criticalEvents = recentEvents?.items?.filter(e => e.severity === 'critical').length ?? 0;
+  const eventItems = recentEvents?.items ?? (Array.isArray(recentEvents) ? recentEvents : []);
+  const criticalEvents = eventItems.filter((e: any) => e.severity === 'critical').length;
   const statusLabel = failedCount > 0 ? 'Degradado' : 'Todas saudáveis';
 
   return (
@@ -96,7 +106,7 @@ export default function Dashboard() {
         <MetricCard label="Total Queries" value={totalQps.toLocaleString()} sub="Acumulado" icon={<Activity size={16} />} />
         <MetricCard label="Cache Hit" value={`${avgCacheHit}%`} sub="Média geral" icon={<Server size={16} />} />
         <MetricCard label="Latência" value={`${avgLatency}ms`} sub="Média DNS" icon={<Timer size={16} />} />
-        <MetricCard label="Uptime" value={sysInfo?.uptime ?? '-'} sub="Sistema" icon={<Clock size={16} />} />
+        <MetricCard label="Uptime" value={sysInfo?.uptime ?? '—'} sub="Sistema" icon={<Clock size={16} />} />
       </div>
 
       {/* Reconciliation result */}
@@ -104,16 +114,16 @@ export default function Dashboard() {
         <div className="noc-panel border-l-2 border-l-primary">
           <div className="text-sm">
             <span className="font-medium">Reconciliação executada:</span>{' '}
-            <span className="font-mono">{reconcileMutation.data.instances_checked} verificadas</span>{' · '}
-            <span className="font-mono text-destructive">{reconcileMutation.data.instances_failed} falhas</span>{' · '}
-            <span className="font-mono">{reconcileMutation.data.backends_removed} removidas</span>{' · '}
-            <span className="font-mono text-emerald-500">{reconcileMutation.data.backends_restored} restauradas</span>
+            <span className="font-mono">{reconcileMutation.data.instances_checked ?? 0} verificadas</span>{' · '}
+            <span className="font-mono text-destructive">{reconcileMutation.data.instances_failed ?? 0} falhas</span>{' · '}
+            <span className="font-mono">{reconcileMutation.data.backends_removed ?? 0} removidas</span>{' · '}
+            <span className="font-mono text-emerald-500">{reconcileMutation.data.backends_restored ?? 0} restauradas</span>
           </div>
         </div>
       )}
 
       {/* v2.1 Instance State Table with cooldown */}
-      {v2Instances && v2Instances.length > 0 && (
+      {safeV2.length > 0 && (
         <div className="noc-panel">
           <div className="noc-panel-header flex items-center gap-2">
             <HeartPulse size={14} />
@@ -134,10 +144,10 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {v2Instances.map(inst => (
+                {safeV2.map(inst => (
                   <tr key={inst.id} className="border-b border-border last:border-0">
-                    <td className="py-2 pr-3 font-mono">{inst.instance_name}</td>
-                    <td className="py-2 pr-3 font-mono text-muted-foreground">{inst.bind_ip}:{inst.bind_port}</td>
+                    <td className="py-2 pr-3 font-mono">{inst.instance_name ?? '—'}</td>
+                    <td className="py-2 pr-3 font-mono text-muted-foreground">{inst.bind_ip ?? '—'}:{inst.bind_port ?? 53}</td>
                     <td className="py-2 pr-3">
                       <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded ${
                         inst.current_status === 'healthy' ? 'bg-emerald-500/10 text-emerald-500' :
@@ -145,7 +155,7 @@ export default function Dashboard() {
                         'bg-destructive/10 text-destructive'
                       }`}>
                         {inst.current_status === 'healthy' ? <CheckCircle size={12} /> : inst.current_status === 'degraded' ? <AlertTriangle size={12} /> : <XCircle size={12} />}
-                        {inst.current_status}
+                        {inst.current_status ?? 'unknown'}
                       </span>
                     </td>
                     <td className="py-2 pr-3">
@@ -153,10 +163,10 @@ export default function Dashboard() {
                         {inst.in_rotation ? 'SIM' : 'NÃO'}
                       </span>
                     </td>
-                    <td className="py-2 pr-3 text-right font-mono">{inst.consecutive_failures}</td>
-                    <td className="py-2 pr-3 text-right font-mono">{inst.consecutive_successes}</td>
+                    <td className="py-2 pr-3 text-right font-mono">{inst.consecutive_failures ?? 0}</td>
+                    <td className="py-2 pr-3 text-right font-mono">{inst.consecutive_successes ?? 0}</td>
                     <td className="py-2 pr-3 text-right">
-                      {inst.cooldown_remaining > 0 ? (
+                      {(inst.cooldown_remaining ?? 0) > 0 ? (
                         <span className="text-xs font-mono text-yellow-500">{inst.cooldown_remaining}s</span>
                       ) : (
                         <span className="text-xs font-mono text-muted-foreground">—</span>
@@ -172,7 +182,7 @@ export default function Dashboard() {
       )}
 
       {/* Health Check Panel (dig-based) */}
-      {health && (
+      {health && Array.isArray(health.instances) && health.instances.length > 0 && (
         <div className="noc-panel">
           <div className="noc-panel-header flex items-center gap-2">
             <HeartPulse size={14} />
@@ -186,7 +196,7 @@ export default function Dashboard() {
                 <span className="text-xs text-muted-foreground">VIP Anycast</span>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-xs font-mono text-muted-foreground">{health.vip.latency_ms}ms</span>
+                <span className="text-xs font-mono text-muted-foreground">{health.vip.latency_ms ?? 0}ms</span>
                 {health.vip.healthy ? (
                   <span className="flex items-center gap-1 text-xs font-medium text-emerald-500"><CheckCircle size={12} /> OK</span>
                 ) : (
@@ -204,9 +214,9 @@ export default function Dashboard() {
                   <span className="text-xs text-muted-foreground font-mono">{inst.bind_ip}:{inst.port}</span>
                 </div>
                 <div className="flex items-center gap-4">
-                  {inst.healthy && <span className="text-xs text-muted-foreground font-mono">→ {inst.resolved_ip}</span>}
-                  <span className={`text-xs font-mono ${inst.latency_ms < 10 ? 'text-emerald-500' : inst.latency_ms < 50 ? 'text-yellow-500' : 'text-destructive'}`}>
-                    {inst.latency_ms}ms
+                  {inst.healthy && inst.resolved_ip && <span className="text-xs text-muted-foreground font-mono">→ {inst.resolved_ip}</span>}
+                  <span className={`text-xs font-mono ${(inst.latency_ms ?? 0) < 10 ? 'text-emerald-500' : (inst.latency_ms ?? 0) < 50 ? 'text-yellow-500' : 'text-destructive'}`}>
+                    {inst.latency_ms ?? 0}ms
                   </span>
                 </div>
               </div>
@@ -231,14 +241,14 @@ export default function Dashboard() {
             <button onClick={() => navigate('/events')} className="text-xs text-primary hover:underline">Ver todos</button>
           </div>
           <div className="space-y-1">
-            {recentEvents?.items && recentEvents.items.length > 0 ? recentEvents.items.map(ev => (
+            {eventItems.length > 0 ? eventItems.slice(0, 5).map((ev: any) => (
               <div key={ev.id} className="flex items-start gap-2 py-1.5 border-b border-border last:border-0">
                 {ev.severity === 'critical' ? <XCircle size={12} className="text-destructive mt-0.5" /> :
                  ev.severity === 'warning' ? <AlertTriangle size={12} className="text-yellow-500 mt-0.5" /> :
                  <CheckCircle size={12} className="text-muted-foreground mt-0.5" />}
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-foreground truncate">{ev.message}</p>
-                  <span className="text-xs text-muted-foreground">{new Date(ev.created_at).toLocaleString('pt-BR')}</span>
+                  <span className="text-xs text-muted-foreground">{safeDate(ev.created_at)}</span>
                 </div>
               </div>
             )) : (
@@ -251,7 +261,7 @@ export default function Dashboard() {
         <div className="noc-panel">
           <div className="noc-panel-header">Serviços</div>
           <div className="space-y-2">
-            {services?.map(svc => (
+            {safeServices.map(svc => (
               <div key={svc.name} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
                 <div className="flex items-center gap-2">
                   <Server size={14} className="text-muted-foreground" />
@@ -271,18 +281,18 @@ export default function Dashboard() {
         <div className="noc-panel-header">Informações do Sistema</div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 text-sm">
           {sysInfo && [
-            ['Hostname', sysInfo.hostname],
-            ['OS', sysInfo.os],
-            ['Kernel', sysInfo.kernel],
-            ['Unbound', sysInfo.unboundVersion],
-            ['FRR', sysInfo.frrVersion],
-            ['nftables', sysInfo.nftablesVersion],
-            ['Interface', sysInfo.mainInterface],
-            ['VIP Anycast', sysInfo.vipAnycast],
-            ['Config Version', sysInfo.configVersion],
-            ['Última aplicação', sysInfo.lastApply ? new Date(sysInfo.lastApply).toLocaleString('pt-BR') : 'Nunca'],
+            ['Hostname', sysInfo.hostname ?? '—'],
+            ['OS', sysInfo.os ?? '—'],
+            ['Kernel', sysInfo.kernel ?? '—'],
+            ['Unbound', sysInfo.unboundVersion ?? '—'],
+            ['FRR', sysInfo.frrVersion ?? '—'],
+            ['nftables', sysInfo.nftablesVersion ?? '—'],
+            ['Interface', sysInfo.mainInterface ?? '—'],
+            ['VIP Anycast', sysInfo.vipAnycast ?? '—'],
+            ['Config Version', sysInfo.configVersion ?? '—'],
+            ['Última aplicação', safeDate(sysInfo.lastApply)],
           ].map(([label, value]) => (
-            <div key={label} className="flex justify-between py-1 border-b border-border last:border-0">
+            <div key={label as string} className="flex justify-between py-1 border-b border-border last:border-0">
               <span className="text-muted-foreground">{label}</span>
               <span className="font-mono text-foreground">{value}</span>
             </div>

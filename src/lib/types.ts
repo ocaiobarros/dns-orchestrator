@@ -114,19 +114,27 @@ export interface SystemInfo {
 }
 
 // ---- Network ----
+// Real API returns flat objects; mock returns rich objects.
+// We normalize to a common shape in the hooks/pages.
 
 export interface NetworkInterface {
   name: string;
-  type: 'physical' | 'dummy' | 'loopback' | 'vlan' | 'bridge';
-  state: 'UP' | 'DOWN' | 'UNKNOWN';
-  mtu: number;
-  macAddress: string;
-  ipv4Addresses: string[];
-  ipv6Addresses: string[];
-  rxBytes: number;
-  txBytes: number;
-  rxPackets: number;
-  txPackets: number;
+  // Real API fields (flat)
+  status?: string;
+  ipv4?: string;
+  ipv6?: string;
+  mac?: string;
+  // Mock/rich fields
+  type?: 'physical' | 'dummy' | 'loopback' | 'vlan' | 'bridge';
+  state?: 'UP' | 'DOWN' | 'UNKNOWN';
+  mtu?: number;
+  macAddress?: string;
+  ipv4Addresses?: string[];
+  ipv6Addresses?: string[];
+  rxBytes?: number;
+  txBytes?: number;
+  rxPackets?: number;
+  txPackets?: number;
 }
 
 export interface Route {
@@ -168,14 +176,23 @@ export interface DnsTopDomain {
   lastSeen: string;
 }
 
+// Real API shape from /api/dns/instances
 export interface DnsInstanceStats {
-  instance: string;
-  totalQueries: number;
-  cacheHitRatio: number;
-  avgLatencyMs: number;
-  uptime: string;
-  threads: number;
-  currentConnections: number;
+  // Real API fields (snake_case)
+  name?: string;
+  instance?: string;
+  bind_ip?: string;
+  port?: number;
+  status?: string;
+  queries_total?: number;
+  cache_entries?: number;
+  // Mock/rich fields (camelCase)
+  totalQueries?: number;
+  cacheHitRatio?: number;
+  avgLatencyMs?: number;
+  uptime?: string;
+  threads?: number;
+  currentConnections?: number;
 }
 
 // ---- Instance Health Check ----
@@ -499,4 +516,62 @@ export interface ReconcileSummary {
   instances_failed: number;
   backends_removed: number;
   backends_restored: number;
+}
+
+// ---- Helpers for normalizing real API data ----
+
+/** Safely get instance display name from DnsInstanceStats (handles both real API and mock) */
+export function getInstanceName(inst: DnsInstanceStats): string {
+  return inst.instance || inst.name || 'unknown';
+}
+
+/** Safely get total queries from DnsInstanceStats */
+export function getInstanceQueries(inst: DnsInstanceStats): number {
+  return inst.totalQueries ?? inst.queries_total ?? 0;
+}
+
+/** Safely get cache hit ratio */
+export function getInstanceCacheHit(inst: DnsInstanceStats): number {
+  return inst.cacheHitRatio ?? 0;
+}
+
+/** Safely get avg latency */
+export function getInstanceLatency(inst: DnsInstanceStats): number {
+  return inst.avgLatencyMs ?? 0;
+}
+
+/** Get interface display state (handles both real 'status' and mock 'state') */
+export function getIfaceState(iface: NetworkInterface): string {
+  return iface.state || iface.status || 'UNKNOWN';
+}
+
+/** Get interface IPv4 addresses as array */
+export function getIfaceIpv4(iface: NetworkInterface): string[] {
+  if (iface.ipv4Addresses && iface.ipv4Addresses.length > 0) return iface.ipv4Addresses;
+  if (iface.ipv4) return [iface.ipv4];
+  return [];
+}
+
+/** Get interface IPv6 addresses as array */
+export function getIfaceIpv6(iface: NetworkInterface): string[] {
+  if (iface.ipv6Addresses && iface.ipv6Addresses.length > 0) return iface.ipv6Addresses;
+  if (iface.ipv6) return [iface.ipv6];
+  return [];
+}
+
+/** Get MAC address */
+export function getIfaceMac(iface: NetworkInterface): string {
+  return iface.macAddress || iface.mac || '';
+}
+
+/** Safe date formatting */
+export function safeDate(dateStr: string | null | undefined, locale = 'pt-BR'): string {
+  if (!dateStr) return '—';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleString(locale);
+  } catch {
+    return '—';
+  }
 }

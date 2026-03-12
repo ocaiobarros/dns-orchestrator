@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import MetricCard from '@/components/MetricCard';
 import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useDnsMetrics, useTopDomains, useInstanceStats } from '@/lib/hooks';
-
-const CHART_COLORS = ['hsl(160 70% 45%)', 'hsl(200 80% 55%)', 'hsl(38 92% 50%)', 'hsl(280 65% 60%)'];
+import { getInstanceName, getInstanceQueries, getInstanceCacheHit, getInstanceLatency } from '@/lib/types';
 
 export default function DnsPage() {
   const [selectedInstance, setSelectedInstance] = useState<string | undefined>(undefined);
@@ -14,23 +13,24 @@ export default function DnsPage() {
   const { data: instanceStats } = useInstanceStats();
 
   const chartData = useMemo(() => {
-    if (!allMetrics) return [];
+    if (!allMetrics || !Array.isArray(allMetrics)) return [];
     const byTs = new Map<string, { ts: string; qps: number; hits: number; misses: number; latency: number; servfail: number; nxdomain: number; count: number }>();
     allMetrics.forEach(m => {
+      if (!m?.timestamp) return;
       const key = m.timestamp.slice(0, 16);
       const existing = byTs.get(key) || { ts: key, qps: 0, hits: 0, misses: 0, latency: 0, servfail: 0, nxdomain: 0, count: 0 };
-      existing.qps += m.qps;
-      existing.hits += m.cacheHits;
-      existing.misses += m.cacheMisses;
-      existing.latency += m.avgLatencyMs;
-      existing.servfail += m.servfail;
-      existing.nxdomain += m.nxdomain;
+      existing.qps += m.qps ?? 0;
+      existing.hits += m.cacheHits ?? 0;
+      existing.misses += m.cacheMisses ?? 0;
+      existing.latency += m.avgLatencyMs ?? 0;
+      existing.servfail += m.servfail ?? 0;
+      existing.nxdomain += m.nxdomain ?? 0;
       existing.count += 1;
       byTs.set(key, existing);
     });
     return Array.from(byTs.values()).map(d => ({
       ...d,
-      latency: +(d.latency / d.count).toFixed(1),
+      latency: d.count > 0 ? +(d.latency / d.count).toFixed(1) : 0,
       hitRatio: d.hits + d.misses > 0 ? +((d.hits / (d.hits + d.misses)) * 100).toFixed(1) : 0,
       time: d.ts.slice(11, 16),
     }));
@@ -43,6 +43,8 @@ export default function DnsPage() {
   const avgHitRatio = chartData.length > 0 ? (chartData.reduce((a, b) => a + b.hitRatio, 0) / chartData.length).toFixed(1) : '0';
   const avgLatency = chartData.length > 0 ? (chartData.reduce((a, b) => a + b.latency, 0) / chartData.length).toFixed(1) : '0';
   const totalServfail = chartData.reduce((a, b) => a + b.servfail, 0);
+
+  const safeInstanceStats = Array.isArray(instanceStats) ? instanceStats : [];
 
   return (
     <div className="space-y-6">
@@ -62,20 +64,23 @@ export default function DnsPage() {
           <select value={selectedInstance || 'all'} onChange={e => setSelectedInstance(e.target.value === 'all' ? undefined : e.target.value)}
             className="px-3 py-1.5 text-sm bg-secondary text-secondary-foreground border border-border rounded font-mono">
             <option value="all">Todas instâncias</option>
-            {instanceStats?.map(i => <option key={i.instance} value={i.instance}>{i.instance}</option>)}
+            {safeInstanceStats.map(i => {
+              const name = getInstanceName(i);
+              return <option key={name} value={name}>{name}</option>;
+            })}
           </select>
         </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard label="QPS Atual" value={lastPoint?.qps.toLocaleString() ?? '0'} />
+        <MetricCard label="QPS Atual" value={lastPoint?.qps?.toLocaleString() ?? '0'} />
         <MetricCard label="Cache Hit Ratio" value={`${avgHitRatio}%`} />
         <MetricCard label="Latência Média" value={`${avgLatency}ms`} />
         <MetricCard label="SERVFAIL Total" value={totalServfail.toLocaleString()} />
       </div>
 
       {/* Instance stats table */}
-      {instanceStats && (
+      {safeInstanceStats.length > 0 && (
         <div className="noc-panel">
           <div className="noc-panel-header">Instâncias</div>
           <div className="overflow-x-auto">
@@ -83,26 +88,35 @@ export default function DnsPage() {
               <thead>
                 <tr className="text-left text-muted-foreground border-b border-border">
                   <th className="pb-2 font-medium">Instância</th>
+                  <th className="pb-2 font-medium">Status</th>
                   <th className="pb-2 font-medium text-right">Queries</th>
                   <th className="pb-2 font-medium text-right">Cache Hit</th>
                   <th className="pb-2 font-medium text-right">Latência</th>
-                  <th className="pb-2 font-medium text-right">Conexões</th>
-                  <th className="pb-2 font-medium text-right">Threads</th>
                   <th className="pb-2 font-medium">Uptime</th>
                 </tr>
               </thead>
               <tbody className="font-mono">
-                {instanceStats.map(inst => (
-                  <tr key={inst.instance} className="border-b border-border last:border-0">
-                    <td className="py-2 text-primary">{inst.instance}</td>
-                    <td className="py-2 text-right">{inst.totalQueries.toLocaleString()}</td>
-                    <td className="py-2 text-right">{inst.cacheHitRatio}%</td>
-                    <td className="py-2 text-right">{inst.avgLatencyMs}ms</td>
-                    <td className="py-2 text-right">{inst.currentConnections}</td>
-                    <td className="py-2 text-right">{inst.threads}</td>
-                    <td className="py-2 text-muted-foreground">{inst.uptime}</td>
-                  </tr>
-                ))}
+                {safeInstanceStats.map(inst => {
+                  const name = getInstanceName(inst);
+                  const queries = getInstanceQueries(inst);
+                  const cacheHit = getInstanceCacheHit(inst);
+                  const latency = getInstanceLatency(inst);
+                  const status = inst.status ?? 'unknown';
+                  return (
+                    <tr key={name} className="border-b border-border last:border-0">
+                      <td className="py-2 text-primary">{name}</td>
+                      <td className="py-2">
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${
+                          status === 'running' ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive'
+                        }`}>{status}</span>
+                      </td>
+                      <td className="py-2 text-right">{queries.toLocaleString()}</td>
+                      <td className="py-2 text-right">{cacheHit > 0 ? `${cacheHit}%` : '—'}</td>
+                      <td className="py-2 text-right">{latency > 0 ? `${latency}ms` : '—'}</td>
+                      <td className="py-2 text-muted-foreground">{inst.uptime || '—'}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -166,18 +180,20 @@ export default function DnsPage() {
         </div>
       </div>
 
-      <div className="noc-panel">
-        <div className="noc-panel-header">Top Domínios Consultados</div>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={topDomains} layout="vertical" margin={{ left: 120 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 15% 20%)" />
-            <XAxis type="number" tick={{ fontSize: 10, fill: 'hsl(215 15% 55%)' }} />
-            <YAxis dataKey="domain" type="category" tick={{ fontSize: 11, fill: 'hsl(215 15% 55%)' }} width={120} />
-            <Tooltip contentStyle={{ backgroundColor: 'hsl(220 18% 13%)', border: '1px solid hsl(220 15% 20%)', borderRadius: 6, fontSize: 12 }} />
-            <Bar dataKey="queryCount" fill="hsl(160 70% 45%)" radius={[0, 4, 4, 0]} name="Queries" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+      {Array.isArray(topDomains) && topDomains.length > 0 && (
+        <div className="noc-panel">
+          <div className="noc-panel-header">Top Domínios Consultados</div>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={topDomains} layout="vertical" margin={{ left: 120 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 15% 20%)" />
+              <XAxis type="number" tick={{ fontSize: 10, fill: 'hsl(215 15% 55%)' }} />
+              <YAxis dataKey="domain" type="category" tick={{ fontSize: 11, fill: 'hsl(215 15% 55%)' }} width={120} />
+              <Tooltip contentStyle={{ backgroundColor: 'hsl(220 18% 13%)', border: '1px solid hsl(220 15% 20%)', borderRadius: 6, fontSize: 12 }} />
+              <Bar dataKey="queryCount" fill="hsl(160 70% 45%)" radius={[0, 4, 4, 0]} name="Queries" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   );
 }
