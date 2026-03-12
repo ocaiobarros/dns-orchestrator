@@ -121,6 +121,8 @@ export interface WizardConfig {
   // Step 5 - Egress Público (outgoing-interface per instance)
   // (egress fields live on DnsInstance but are edited in step 5)
   egressFixedIdentity: boolean;
+  egressMode: EgressMode;
+  egressSharedPool: string[];
 
   // Step 6 - Mapeamento VIP → Instância
   distributionPolicy: VipDistributionPolicy;
