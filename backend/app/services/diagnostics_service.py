@@ -196,9 +196,15 @@ def get_dashboard_summary() -> dict:
             "config_version": "", "last_apply_at": None,
         }
 
+    # Collect real DNS metrics via privileged unbound-control
+    dns_metrics = _collect_dns_metrics()
+
     return {
-        "total_queries": 0,
-        "cache_hit_ratio": 0.0,
+        "total_queries": dns_metrics.get("total_queries", 0),
+        "cache_hit_ratio": dns_metrics.get("cache_hit_ratio", 0.0),
+        "latency_ms": dns_metrics.get("latency_ms", 0.0),
+        "dns_metrics_available": dns_metrics.get("available", False),
+        "dns_metrics_status": dns_metrics.get("status", "unknown"),
         "active_services": active,
         "total_services": len(services),
         "ospf_neighbors_up": 0,
@@ -214,7 +220,7 @@ def get_dashboard_summary() -> dict:
         "frr_version": sys_info.get("frr_version", ""),
         "nftables_version": sys_info.get("nftables_version", ""),
         "primary_interface": sys_info.get("primary_interface", ""),
-        "vip_anycast": sys_info.get("vip_anycast", ""),
+        "vip_anycast": sys_info.get("vip_anycast", "not configured"),
         "config_version": sys_info.get("config_version", ""),
         "last_apply_at": sys_info.get("last_apply_at") or "",
     }
@@ -532,3 +538,40 @@ def _get_uptime() -> str:
         return result["stdout"].strip() if result["exit_code"] == 0 else "unknown"
     except Exception:
         return "unknown"
+
+
+def _collect_dns_metrics() -> dict:
+    """Collect real DNS metrics from unbound-control stats_noreset via privileged execution."""
+    try:
+        r = _safe_run("unbound-control", ["stats_noreset"], timeout=10, use_privilege=True)
+        if r["exit_code"] != 0:
+            # Determine if it's a permission issue
+            combined = ((r.get("stdout", "") or "") + " " + (r.get("stderr", "") or "")).lower()
+            if any(kw in combined for kw in _PERMISSION_PATTERNS):
+                return {"available": False, "status": "privilege_limited", "total_queries": 0, "cache_hit_ratio": 0.0, "latency_ms": 0.0}
+            return {"available": False, "status": "error", "total_queries": 0, "cache_hit_ratio": 0.0, "latency_ms": 0.0}
+
+        stats = {}
+        for line in r["stdout"].split("\n"):
+            if "=" in line:
+                key, val = line.split("=", 1)
+                try:
+                    stats[key.strip()] = float(val.strip())
+                except ValueError:
+                    stats[key.strip()] = val.strip()
+
+        total_queries = int(stats.get("total.num.queries", 0))
+        cache_hits = float(stats.get("total.num.cachehits", 0))
+        cache_hit_ratio = (cache_hits / total_queries * 100) if total_queries > 0 else 0.0
+        latency_ms = float(stats.get("total.recursion.time.avg", 0)) * 1000
+
+        return {
+            "available": True,
+            "status": "ok",
+            "total_queries": total_queries,
+            "cache_hit_ratio": round(cache_hit_ratio, 1),
+            "latency_ms": round(latency_ms, 2),
+        }
+    except Exception as e:
+        logger.debug(f"DNS metrics collection failed: {e}")
+        return {"available": False, "status": "error", "total_queries": 0, "cache_hit_ratio": 0.0, "latency_ms": 0.0}

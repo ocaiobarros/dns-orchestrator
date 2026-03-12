@@ -49,11 +49,13 @@ def is_sudo_available() -> bool:
         return False
 
     try:
-        # Test with a harmless command — sudo -n (non-interactive) validates without prompting
+        # Use sudo -n -l to check if the user has ANY sudo privileges.
+        # We cannot use "sudo -n true" because the sudoers policy only allows specific commands.
         result = subprocess.run(
-            ["sudo", "-n", "true"],
+            ["sudo", "-n", "-l"],
             capture_output=True, text=True, timeout=5, shell=False,
         )
+        # sudo -l returns 0 if the user has any sudo rules configured
         _sudo_available = result.returncode == 0
     except Exception:
         _sudo_available = False

@@ -59,13 +59,22 @@ export default function Dashboard() {
   const safeV2 = Array.isArray(v2Instances) ? v2Instances.filter(Boolean) : [];
 
   const allRunning = safeServices.every(s => s.status === 'running');
-  const totalQps = safeStats.reduce((a, b) => a + getInstanceQueries(b), 0);
-  const avgCacheHit = safeStats.length > 0
+
+  // Prefer dashboard summary metrics (real unbound-control data) over instance stats aggregation
+  const dnsMetricsAvailable = sysInfo?.dns_metrics_available ?? false;
+  const dnsMetricsStatus = sysInfo?.dns_metrics_status ?? 'unknown';
+  const dashTotalQueries = sysInfo?.total_queries ?? 0;
+  const dashCacheHit = sysInfo?.cache_hit_ratio ?? 0;
+  const dashLatency = sysInfo?.latency_ms ?? 0;
+
+  // Fallback to instance stats if dashboard metrics not available
+  const totalQps = dnsMetricsAvailable ? dashTotalQueries : safeStats.reduce((a, b) => a + getInstanceQueries(b), 0);
+  const avgCacheHit = dnsMetricsAvailable ? dashCacheHit.toFixed(1) : (safeStats.length > 0
     ? (safeStats.reduce((a, b) => a + getInstanceCacheHit(b), 0) / safeStats.length).toFixed(1)
-    : '0';
-  const avgLatency = safeStats.length > 0
+    : '0');
+  const avgLatency = dnsMetricsAvailable ? dashLatency.toFixed(1) : (safeStats.length > 0
     ? (safeStats.reduce((a, b) => a + getInstanceLatency(b), 0) / safeStats.length).toFixed(1)
-    : '0';
+    : '0');
 
   const healthyCount = safeV2.length > 0
     ? safeV2.filter(i => i.current_status === 'healthy').length
@@ -103,11 +112,18 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <MetricCard label="Instâncias" value={`${healthyCount}/${totalInstances}`} sub={statusLabel} icon={<Globe size={16} />} />
         <MetricCard label="Em Rotação" value={`${inRotation}/${totalInstances}`} sub="DNAT ativo" icon={<Zap size={16} />} />
-        <MetricCard label="Total Queries" value={totalQps.toLocaleString()} sub="Acumulado" icon={<Activity size={16} />} />
-        <MetricCard label="Cache Hit" value={`${avgCacheHit}%`} sub="Média geral" icon={<Server size={16} />} />
-        <MetricCard label="Latência" value={`${avgLatency}ms`} sub="Média DNS" icon={<Timer size={16} />} />
+        <MetricCard label="Total Queries" value={dnsMetricsAvailable ? totalQps.toLocaleString() : '—'} sub={dnsMetricsAvailable ? 'Acumulado' : dnsMetricsStatus === 'privilege_limited' ? 'Sem privilégio' : 'Indisponível'} icon={<Activity size={16} />} />
+        <MetricCard label="Cache Hit" value={dnsMetricsAvailable ? `${avgCacheHit}%` : '—'} sub={dnsMetricsAvailable ? 'Média geral' : dnsMetricsStatus === 'privilege_limited' ? 'Sem privilégio' : 'Indisponível'} icon={<Server size={16} />} />
+        <MetricCard label="Latência" value={dnsMetricsAvailable ? `${avgLatency}ms` : '—'} sub={dnsMetricsAvailable ? 'Média DNS' : dnsMetricsStatus === 'privilege_limited' ? 'Sem privilégio' : 'Indisponível'} icon={<Timer size={16} />} />
         <MetricCard label="Uptime" value={sysInfo?.uptime ?? '—'} sub="Sistema" icon={<Clock size={16} />} />
       </div>
+
+      {!dnsMetricsAvailable && dnsMetricsStatus === 'privilege_limited' && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded text-xs bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20">
+          <AlertTriangle size={14} />
+          <span>Métricas DNS limitadas por privilégio — ative o modelo de execução privilegiada para dados reais</span>
+        </div>
+      )}
 
       {/* Reconciliation result */}
       {reconcileMutation.data && (
