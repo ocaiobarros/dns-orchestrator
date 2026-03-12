@@ -132,6 +132,13 @@ export interface SystemInfo {
   dns_metrics_available?: boolean;
   dns_metrics_status?: string;
   latency_ms?: number;
+  // Availability metadata
+  vip_anycast_available?: boolean;
+  vip_anycast_status?: string;
+  config_version_available?: boolean;
+  config_version_status?: string;
+  last_apply_available?: boolean;
+  last_apply_status?: string;
 }
 
 // ---- Network ----

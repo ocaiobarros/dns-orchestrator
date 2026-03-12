@@ -250,9 +250,15 @@ def get_dashboard_summary() -> dict:
         "frr_version": sys_info.get("frr_version", ""),
         "nftables_version": sys_info.get("nftables_version", ""),
         "primary_interface": sys_info.get("primary_interface", ""),
-        "vip_anycast": sys_info.get("vip_anycast", "not configured"),
+        "vip_anycast": sys_info.get("vip_anycast", ""),
+        "vip_anycast_available": sys_info.get("vip_anycast_available", False),
+        "vip_anycast_status": sys_info.get("vip_anycast_status", "unknown"),
         "config_version": sys_info.get("config_version", ""),
+        "config_version_available": sys_info.get("config_version_available", False),
+        "config_version_status": sys_info.get("config_version_status", "unknown"),
         "last_apply_at": sys_info.get("last_apply_at") or "",
+        "last_apply_available": sys_info.get("last_apply_available", False),
+        "last_apply_status": sys_info.get("last_apply_status", "unknown"),
     }
 
 
