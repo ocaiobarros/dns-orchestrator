@@ -372,7 +372,7 @@ export interface LogEntry {
 
 // ---- Apply / History ----
 
-export type ApplyStatus = 'success' | 'failed' | 'partial' | 'running' | 'dry-run';
+export type ApplyStatus = 'success' | 'failed' | 'partial' | 'running' | 'dry-run' | 'rolled-back';
 export type ApplyScope = 'full' | 'dns' | 'network' | 'frr' | 'nftables';
 
 export interface ApplyRequest {
@@ -382,7 +382,39 @@ export interface ApplyRequest {
   comment: string;
 }
 
-export interface ApplyResult {
+export interface ApplyStep {
+  order: number;
+  name: string;
+  status: 'success' | 'failed' | 'skipped' | 'running' | 'pending';
+  output: string;
+  durationMs: number;
+  command: string | null;
+  startedAt?: string;
+  finishedAt?: string;
+  rollbackHint?: string;
+  stderr?: string;
+}
+
+export interface GeneratedFile {
+  path: string;
+  content: string;
+  permissions: string;
+  owner: string;
+  backupPath: string | null;
+  changed: boolean;
+  diffStatus?: 'new' | 'changed' | 'unchanged';
+  previousContent?: string;
+}
+
+export interface PostDeployCheck {
+  name: string;
+  target: string;
+  status: 'pass' | 'fail' | 'skip';
+  detail: string;
+  durationMs: number;
+}
+
+export interface DeploymentRecord {
   id: string;
   timestamp: string;
   user: string;
@@ -394,24 +426,40 @@ export interface ApplyResult {
   filesGenerated: GeneratedFile[];
   duration: number;
   configSnapshot: WizardConfig;
+  configVersion: string;
+  environment: string;
+  changedFiles: string[];
+  healthResult: PostDeployCheck[];
+  rollbackAvailable: boolean;
+  backupId: string | null;
 }
 
-export interface ApplyStep {
-  order: number;
-  name: string;
-  status: 'success' | 'failed' | 'skipped' | 'running' | 'pending';
-  output: string;
-  durationMs: number;
-  command: string | null;
+export interface ApplyResult extends DeploymentRecord {}
+
+export interface RollbackRequest {
+  deploymentId: string;
+  reason: string;
 }
 
-export interface GeneratedFile {
-  path: string;
-  content: string;
-  permissions: string;
-  owner: string;
-  backupPath: string | null;
-  changed: boolean;
+export interface RollbackResult {
+  success: boolean;
+  restoredFiles: string[];
+  restartedServices: string[];
+  steps: ApplyStep[];
+  duration: number;
+}
+
+// ---- Deploy State (for dashboard) ----
+
+export interface DeployState {
+  configVersion: string;
+  lastApplyAt: string | null;
+  lastApplyOperator: string | null;
+  lastApplyStatus: ApplyStatus | null;
+  pendingChanges: boolean;
+  lastDeploymentId: string | null;
+  totalDeployments: number;
+  rollbackAvailable: boolean;
 }
 
 // ---- Troubleshoot Commands ----
