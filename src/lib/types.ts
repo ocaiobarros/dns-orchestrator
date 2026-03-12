@@ -6,10 +6,12 @@
 
 export type DeploymentMode =
   | 'internal-recursive'
-  | 'public-recursive'
-  | 'vip-recursive'
-  | 'routed-vip'
-  | 'frr-ospf-vip';
+  | 'public-controlled'
+  | 'pseudo-anycast-local'
+  | 'anycast-frr-ospf'
+  | 'anycast-frr-bgp'
+  | 'vip-routed-border'
+  | 'vip-local-dummy';
 
 export type VipDeliveryMode = 'local-vip' | 'routed-vip' | 'firewall-delivered';
 
@@ -51,10 +53,25 @@ export interface AccessControlEntry {
   label: string;
 }
 
+// ---- Observability Config ----
+
+export interface ObservabilityConfig {
+  metricsPerVip: boolean;
+  metricsPerInstance: boolean;
+  metricsPerEgress: boolean;
+  nftablesCounters: boolean;
+  systemdStatus: boolean;
+  healthChecks: boolean;
+  latencyTracking: boolean;
+  cacheHitTracking: boolean;
+  recursionTimeTracking: boolean;
+  operationalEvents: boolean;
+}
+
 // ---- Wizard Configuration ----
 
 export interface WizardConfig {
-  // Step 1 - Host Topology
+  // Step 1 - Topologia do Host
   hostname: string;
   organization: string;
   project: string;
@@ -70,14 +87,14 @@ export interface WizardConfig {
   vlanTag: string;
   behindFirewall: boolean;
 
-  // Step 2 - Deployment Mode
+  // Step 2 - Modelo de Publicação DNS
   deploymentMode: DeploymentMode;
 
-  // Step 3 - Service VIPs
+  // Step 3 - VIPs de Serviço
   serviceVips: ServiceVip[];
   vipIpv6Enabled: boolean;
 
-  // Step 4 - Resolver Instances
+  // Step 4 - Instâncias de Resolução (listeners + control)
   instanceCount: number;
   instances: DnsInstance[];
   threads: number;
@@ -92,18 +109,16 @@ export interface WizardConfig {
   dnsIdentity: string;
   dnsVersion: string;
 
-  // Step 5 - VIP Delivery Policy
+  // Step 5 - Egress Público (outgoing-interface per instance)
+  // (egress fields live on DnsInstance but are edited in step 5)
+  egressFixedIdentity: boolean;
+
+  // Step 6 - Mapeamento VIP → Instância
   distributionPolicy: VipDistributionPolicy;
   stickyTimeout: number;
   vipMappings: { vipIndex: number; instanceIndex: number }[];
 
-  // Step 6 - Access Control
-  accessControlIpv4: AccessControlEntry[];
-  accessControlIpv6: AccessControlEntry[];
-  openResolverConfirmed: boolean;
-  enableDnsProtection: boolean;
-
-  // Step 7 - Routing Mode
+  // Step 7 - Roteamento
   routingMode: RoutingMode;
   routerId: string;
   ospfArea: string;
@@ -112,7 +127,13 @@ export interface WizardConfig {
   ospfCost: number;
   networkType: 'point-to-point' | 'broadcast';
 
-  // Step 8 - Panel / Security
+  // Step 8 - Segurança
+  accessControlIpv4: AccessControlEntry[];
+  accessControlIpv6: AccessControlEntry[];
+  openResolverConfirmed: boolean;
+  enableDnsProtection: boolean;
+  enableAntiAmplification: boolean;
+  recursionAllowed: boolean;
   authType: 'local' | 'pam';
   adminUser: string;
   adminPassword: string;
@@ -120,7 +141,10 @@ export interface WizardConfig {
   panelPort: number;
   allowedIps: string[];
 
-  // DNS Bootstrap (for /etc/resolv.conf during setup)
+  // Step 9 - Observabilidade
+  observability: ObservabilityConfig;
+
+  // Bootstrap DNS
   bootstrapDns: string;
 }
 
@@ -473,7 +497,7 @@ export interface PaginatedResponse<T> {
 // ---- Defaults ----
 
 export const DEFAULT_CONFIG: WizardConfig = {
-  // Step 1 - Host Topology (all empty — operator fills)
+  // Step 1 - Topologia do Host (vazio — operador preenche)
   hostname: '',
   organization: '',
   project: '',
@@ -489,14 +513,14 @@ export const DEFAULT_CONFIG: WizardConfig = {
   vlanTag: '',
   behindFirewall: true,
 
-  // Step 2 - Deployment Mode
-  deploymentMode: 'vip-recursive',
+  // Step 2 - Modelo de Publicação
+  deploymentMode: 'vip-routed-border',
 
-  // Step 3 - Service VIPs (empty — operator defines)
+  // Step 3 - VIPs de Serviço
   serviceVips: [],
   vipIpv6Enabled: false,
 
-  // Step 4 - Resolver Instances (start with 2 blank instances)
+  // Step 4 - Instâncias de Resolução
   instanceCount: 2,
   instances: [
     { name: 'unbound01', bindIp: '', bindIpv6: '', controlInterface: '127.0.0.11', controlPort: 8953, egressIpv4: '', egressIpv6: '' },
@@ -514,20 +538,15 @@ export const DEFAULT_CONFIG: WizardConfig = {
   dnsIdentity: '',
   dnsVersion: '1.0',
 
-  // Step 5 - VIP Delivery Policy
+  // Step 5 - Egress Público
+  egressFixedIdentity: true,
+
+  // Step 6 - Mapeamento VIP → Instância
   distributionPolicy: 'sticky-source',
   stickyTimeout: 1200,
   vipMappings: [],
 
-  // Step 6 - Access Control (safe defaults)
-  accessControlIpv4: [
-    { network: '127.0.0.0/8', action: 'allow', label: 'Loopback' },
-  ],
-  accessControlIpv6: [],
-  openResolverConfirmed: false,
-  enableDnsProtection: true,
-
-  // Step 7 - Routing Mode
+  // Step 7 - Roteamento
   routingMode: 'static',
   routerId: '',
   ospfArea: '0.0.0.0',
@@ -536,13 +555,35 @@ export const DEFAULT_CONFIG: WizardConfig = {
   ospfCost: 10,
   networkType: 'point-to-point',
 
-  // Step 8 - Panel / Security
+  // Step 8 - Segurança
+  accessControlIpv4: [
+    { network: '127.0.0.0/8', action: 'allow', label: 'Loopback' },
+  ],
+  accessControlIpv6: [],
+  openResolverConfirmed: false,
+  enableDnsProtection: true,
+  enableAntiAmplification: true,
+  recursionAllowed: true,
   authType: 'local',
   adminUser: 'admin',
   adminPassword: '',
   panelBind: '127.0.0.1',
   panelPort: 8443,
   allowedIps: [],
+
+  // Step 9 - Observabilidade
+  observability: {
+    metricsPerVip: true,
+    metricsPerInstance: true,
+    metricsPerEgress: true,
+    nftablesCounters: true,
+    systemdStatus: true,
+    healthChecks: true,
+    latencyTracking: true,
+    cacheHitTracking: true,
+    recursionTimeTracking: true,
+    operationalEvents: true,
+  },
 
   // Bootstrap DNS
   bootstrapDns: '8.8.8.8',

@@ -1,5 +1,5 @@
 // ============================================================
-// DNS Control — Validation Engine (Multi-Instance Architecture)
+// DNS Control — Validation Engine (10-Step Wizard)
 // ============================================================
 
 import type { WizardConfig, ValidationError } from './types';
@@ -25,7 +25,7 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
   const e = (field: string, step: number, message: string, severity: 'error' | 'warning' = 'error') =>
     errors.push({ field, step, message, severity });
 
-  // Step 1 — Host Topology
+  // Step 0 — Topologia do Host
   if (!config.hostname.trim()) e('hostname', 0, 'Hostname é obrigatório');
   else if (!HOSTNAME.test(config.hostname)) e('hostname', 0, 'Hostname contém caracteres inválidos');
   if (!config.organization.trim()) e('organization', 0, 'Organização é obrigatória');
@@ -40,16 +40,16 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
     if (!config.ipv6Gateway) e('ipv6Gateway', 0, 'Gateway IPv6 é obrigatório quando IPv6 está habilitado');
   }
 
-  // Step 2 — Deployment Mode (no validation needed, always has a value)
+  // Step 1 — Modelo de Publicação (always valid)
 
-  // Step 3 — Service VIPs
+  // Step 2 — VIPs de Serviço
   if (config.serviceVips.length === 0) e('serviceVips', 2, 'Pelo menos um VIP de serviço é necessário');
   config.serviceVips.forEach((vip, i) => {
     if (!vip.ipv4.trim()) e(`serviceVips[${i}].ipv4`, 2, `IPv4 do VIP ${i + 1} é obrigatório`);
     else if (!isValidIpv4(vip.ipv4)) e(`serviceVips[${i}].ipv4`, 2, `IPv4 do VIP ${i + 1} é inválido`);
   });
 
-  // Step 4 — Resolver Instances
+  // Step 3 — Instâncias de Resolução
   if (config.instances.length === 0) e('instances', 3, 'Pelo menos uma instância resolver é necessária');
   const names = new Set<string>();
   config.instances.forEach((inst, i) => {
@@ -57,25 +57,19 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
     if (names.has(inst.name)) e(`instances[${i}].name`, 3, `Nome duplicado: "${inst.name}"`);
     names.add(inst.name);
     if (!inst.bindIp.trim()) e(`instances[${i}].bindIp`, 3, `Listener IPv4 da instância "${inst.name}" é obrigatório`);
-    if (!inst.egressIpv4.trim()) e(`instances[${i}].egressIpv4`, 3, `Egress IPv4 da instância "${inst.name}" é obrigatório`);
     if (inst.controlPort < 1024 || inst.controlPort > 65535) e(`instances[${i}].controlPort`, 3, `Porta inválida: ${inst.controlPort}`);
   });
   if (config.threads < 1 || config.threads > 64) e('threads', 3, 'Threads deve ser entre 1 e 64');
   if (config.maxTtl < config.minTtl) e('maxTtl', 3, 'Max TTL deve ser maior que Min TTL');
 
-  // Step 5 — Delivery Policy (no strict validation needed)
+  // Step 4 — Egress Público
+  config.instances.forEach((inst, i) => {
+    if (!inst.egressIpv4.trim()) e(`instances[${i}].egressIpv4`, 4, `Egress IPv4 da instância "${inst.name}" é obrigatório`);
+  });
 
-  // Step 6 — Access Control
-  if (config.accessControlIpv4.length === 0) e('accessControlIpv4', 5, 'Pelo menos uma ACL IPv4 é necessária');
-  const hasOpenResolver = config.accessControlIpv4.some(a => a.network === '0.0.0.0/0' && a.action === 'allow');
-  if (hasOpenResolver && !config.openResolverConfirmed) {
-    e('openResolverConfirmed', 5, 'Open resolver requer confirmação explícita');
-  }
-  if (hasOpenResolver) {
-    e('openResolver', 5, 'Configurado como open resolver — risco de amplificação DNS', 'warning');
-  }
+  // Step 5 — Mapeamento VIP → Instância (always valid)
 
-  // Step 7 — Routing
+  // Step 6 — Roteamento
   if (config.routingMode === 'frr-ospf') {
     if (!config.routerId) e('routerId', 6, 'Router ID é obrigatório');
     else if (!isValidIpv4(config.routerId)) e('routerId', 6, 'Router ID deve ser um IPv4 válido');
@@ -84,9 +78,19 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
     if (config.ospfCost < 1 || config.ospfCost > 65535) e('ospfCost', 6, 'Custo OSPF deve ser entre 1 e 65535');
   }
 
-  // Step 8 — Security
+  // Step 7 — Segurança
+  if (config.accessControlIpv4.length === 0) e('accessControlIpv4', 7, 'Pelo menos uma ACL IPv4 é necessária');
+  const hasOpenResolver = config.accessControlIpv4.some(a => a.network === '0.0.0.0/0' && a.action === 'allow');
+  if (hasOpenResolver && !config.openResolverConfirmed) {
+    e('openResolverConfirmed', 7, 'Open resolver requer confirmação explícita');
+  }
+  if (hasOpenResolver) {
+    e('openResolver', 7, 'Configurado como open resolver — risco de amplificação DNS', 'warning');
+  }
   if (!config.adminUser.trim()) e('adminUser', 7, 'Usuário admin é obrigatório');
   if (config.panelPort < 1 || config.panelPort > 65535) e('panelPort', 7, 'Porta do painel inválida');
+
+  // Step 8 — Observabilidade (always valid)
 
   return errors;
 }
