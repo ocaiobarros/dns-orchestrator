@@ -1,20 +1,21 @@
-import { Activity, Clock, Globe, Server, Zap, AlertTriangle, Timer, Database } from 'lucide-react';
+import { Activity, Clock, Globe, Zap, AlertTriangle, Timer, Database } from 'lucide-react';
 import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useSystemInfo, useServices, useInstanceStats, useInstanceHealth } from '@/lib/hooks';
 import { getInstanceQueries, getInstanceCacheHit, getInstanceLatency } from '@/lib/types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 
-import NocStatusBanner from '@/components/noc/NocStatusBanner';
-import NocMetricCard from '@/components/noc/NocMetricCard';
+import NocHeroBar from '@/components/noc/NocHeroBar';
+import NocMetricStrip from '@/components/noc/NocMetricStrip';
 import NocInstanceTable from '@/components/noc/NocInstanceTable';
-import NocHealthPanel from '@/components/noc/NocHealthPanel';
+import NocDnsFlowPanel from '@/components/noc/NocDnsFlowPanel';
 import NocEventsTimeline from '@/components/noc/NocEventsTimeline';
-import NocServicesPanel from '@/components/noc/NocServicesPanel';
-import NocSystemInfo from '@/components/noc/NocSystemInfo';
+import NocResolverPanel from '@/components/noc/NocResolverPanel';
+import NocHealthMatrix from '@/components/noc/NocHealthMatrix';
+import NocSystemInfoGrid from '@/components/noc/NocSystemInfoGrid';
 import NocQuickActions from '@/components/noc/NocQuickActions';
-import NocSystemHealth from '@/components/noc/NocSystemHealth';
 
 export default function Dashboard() {
   const { data: sysInfo, isLoading: sysLoading, error: sysError } = useSystemInfo();
@@ -50,7 +51,8 @@ export default function Dashboard() {
     },
   });
 
-  if (sysLoading && svcLoading) return <LoadingState />;
+  const isLoading = sysLoading && svcLoading;
+
   if (sysError && !sysInfo) return <ErrorState message={sysError.message} onRetry={() => qc.invalidateQueries({ queryKey: ['system', 'info'] })} />;
 
   const safeServices = Array.isArray(services) ? services.filter(Boolean) : [];
@@ -82,10 +84,19 @@ export default function Dashboard() {
   const eventItems = recentEvents?.items ?? (Array.isArray(recentEvents) ? recentEvents : []);
   const unavailableSub = dnsMetricsStatus === 'privilege_limited' ? 'Privilege limited' : 'Unavailable';
 
+  const metricCards = [
+    { label: 'Resolvers', value: `${healthyCount}/${totalInstances}`, sub: failedCount > 0 ? 'DEGRADED' : 'HEALTHY', icon: <Globe size={18} />, accent: 'primary' as const },
+    { label: 'DNAT Active', value: `${inRotation}/${totalInstances}`, sub: 'In rotation', icon: <Zap size={18} />, accent: 'accent' as const },
+    { label: 'Total Queries', value: dnsMetricsAvailable ? totalQps.toLocaleString() : '—', sub: dnsMetricsAvailable ? 'Accumulated' : unavailableSub, icon: <Activity size={18} />, accent: 'primary' as const, unavailable: !dnsMetricsAvailable },
+    { label: 'Cache Hit', value: dnsMetricsAvailable ? `${avgCacheHit}%` : '—', sub: dnsMetricsAvailable ? 'Average' : unavailableSub, icon: <Database size={18} />, accent: 'accent' as const, unavailable: !dnsMetricsAvailable },
+    { label: 'Latency', value: dnsMetricsAvailable ? `${avgLatency}ms` : '—', sub: dnsMetricsAvailable ? 'DNS avg' : unavailableSub, icon: <Timer size={18} />, accent: (dnsMetricsAvailable && Number(avgLatency) > 50 ? 'warning' : 'primary') as any, unavailable: !dnsMetricsAvailable },
+    { label: 'Uptime', value: sysInfo?.uptime ?? '—', sub: 'System', icon: <Clock size={18} />, accent: 'primary' as const },
+  ];
+
   return (
-    <div className="space-y-3">
-      {/* ─── TIER 1: GLOBAL STATUS BANNER ─── */}
-      <NocStatusBanner
+    <div className="space-y-4">
+      {/* ─── TIER 1: OPERATIONAL HERO BAR ─── */}
+      <NocHeroBar
         allHealthy={allRunning && failedCount === 0}
         failedCount={failedCount}
         totalInstances={totalInstances}
@@ -96,46 +107,48 @@ export default function Dashboard() {
 
       {/* Privilege warning */}
       {!dnsMetricsAvailable && dnsMetricsStatus === 'privilege_limited' && (
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded text-[11px] font-mono bg-warning/8 text-warning border border-warning/20 animate-slide-in-up">
+        <motion.div
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-[11px] font-mono bg-warning/5 text-warning/80 border border-warning/15"
+        >
           <AlertTriangle size={13} />
-          DNS METRICS LIMITED — Enable privileged execution model for real-time data
-        </div>
+          DNS metrics limited — Enable privileged execution model for real-time data
+        </motion.div>
       )}
 
-      {/* ─── TIER 2: PRIMARY METRICS STRIP ─── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <NocMetricCard label="Resolvers" value={`${healthyCount}/${totalInstances}`} sub={failedCount > 0 ? 'DEGRADED' : 'HEALTHY'} icon={<Globe size={18} />} accent="primary" />
-        <NocMetricCard label="DNAT Active" value={`${inRotation}/${totalInstances}`} sub="In rotation" icon={<Zap size={18} />} accent="accent" />
-        <NocMetricCard label="Total Queries" value={dnsMetricsAvailable ? totalQps.toLocaleString() : '—'} sub={dnsMetricsAvailable ? 'Accumulated' : unavailableSub} icon={<Activity size={18} />} accent="primary" />
-        <NocMetricCard label="Cache Hit" value={dnsMetricsAvailable ? `${avgCacheHit}%` : '—'} sub={dnsMetricsAvailable ? 'Average' : unavailableSub} icon={<Database size={18} />} accent="accent" />
-        <NocMetricCard label="Latency" value={dnsMetricsAvailable ? `${avgLatency}ms` : '—'} sub={dnsMetricsAvailable ? 'DNS avg' : unavailableSub} icon={<Timer size={18} />} accent={dnsMetricsAvailable && Number(avgLatency) > 50 ? 'warning' : 'primary'} />
-        <NocMetricCard label="Uptime" value={sysInfo?.uptime ?? '—'} sub="System" icon={<Clock size={18} />} accent="primary" />
-      </div>
+      {/* ─── TIER 2: PRIMARY KPI STRIP ─── */}
+      <NocMetricStrip cards={metricCards} loading={isLoading} />
 
-      {/* Reconciliation result flash */}
+      {/* Reconciliation result */}
       {reconcileMutation.data && (
-        <div className="noc-card animate-slide-in-up" style={{ borderLeftColor: 'hsl(var(--primary))', borderLeftWidth: 3 }}>
-          <div className="noc-card-body">
-            <div className="text-[12px] font-mono flex items-center gap-3 flex-wrap">
-              <span className="font-bold text-foreground">RECONCILIATION</span>
-              <span className="text-muted-foreground">{reconcileMutation.data.instances_checked ?? 0} checked</span>
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          className="noc-glass"
+          style={{ borderLeft: '2px solid hsl(var(--primary))' }}
+        >
+          <div className="noc-glass-body py-3">
+            <div className="text-[11px] font-mono flex items-center gap-4 flex-wrap">
+              <span className="font-bold text-foreground/90">RECONCILIATION</span>
+              <span className="text-muted-foreground/50">{reconcileMutation.data.instances_checked ?? 0} checked</span>
               <span className="text-destructive font-bold">{reconcileMutation.data.instances_failed ?? 0} failed</span>
-              <span className="text-muted-foreground">{reconcileMutation.data.backends_removed ?? 0} removed</span>
+              <span className="text-muted-foreground/50">{reconcileMutation.data.backends_removed ?? 0} removed</span>
               <span className="text-success font-bold">{reconcileMutation.data.backends_restored ?? 0} restored</span>
             </div>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* ─── TIER 3: INSTANCE STATE TABLE ─── */}
       <NocInstanceTable instances={safeV2} />
 
       {/* ─── TIER 4: DNS HEALTH + SYSTEM HEALTH MATRIX ─── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
-          <NocHealthPanel health={health} />
+          <NocDnsFlowPanel health={health} />
         </div>
-        <NocSystemHealth
+        <NocHealthMatrix
           services={safeServices}
           dnsHealthy={healthyCount === totalInstances && totalInstances > 0}
           networkOk={allRunning}
@@ -143,13 +156,13 @@ export default function Dashboard() {
       </div>
 
       {/* ─── TIER 5: EVENTS + SERVICES ─── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <NocEventsTimeline events={eventItems} />
-        <NocServicesPanel services={safeServices} />
+        <NocResolverPanel services={safeServices} />
       </div>
 
-      {/* ─── TIER 6: SYSTEM INFO ─── */}
-      <NocSystemInfo sysInfo={sysInfo} />
+      {/* ─── TIER 6: SYSTEM INFORMATION ─── */}
+      <NocSystemInfoGrid sysInfo={sysInfo} />
 
       {/* ─── TIER 7: COMMAND CONSOLE ─── */}
       <NocQuickActions />
