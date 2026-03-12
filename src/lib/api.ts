@@ -368,6 +368,44 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   return {};
 }
 
+function mockDeployState(): DeployState {
+  return {
+    configVersion: 'v3',
+    lastApplyAt: '2026-03-10T14:30:00Z',
+    lastApplyOperator: 'admin',
+    lastApplyStatus: 'success',
+    pendingChanges: false,
+    lastDeploymentId: 'apply-001',
+    totalDeployments: 3,
+    rollbackAvailable: true,
+  };
+}
+
+function mockDeployBackups() {
+  return [
+    { backupId: 'bk-20260310_143000_apply-001', timestamp: '2026-03-10T14:30:00Z', operator: 'admin', fileCount: 11, filePaths: ['/etc/unbound/unbound01.conf', '/etc/nftables.conf'], deployId: 'apply-001' },
+    { backupId: 'bk-20260308_091500_apply-002', timestamp: '2026-03-08T09:15:00Z', operator: 'admin', fileCount: 3, filePaths: ['/etc/network/interfaces'], deployId: 'apply-002' },
+  ];
+}
+
+function mockRollbackResult(): RollbackResult {
+  return {
+    success: true,
+    restoredFiles: ['/etc/unbound/unbound01.conf', '/etc/unbound/unbound02.conf', '/etc/nftables.conf'],
+    restartedServices: ['unbound01', 'unbound02', 'nftables'],
+    steps: [
+      { order: 1, name: 'Restaurar arquivos', status: 'success', output: '3 arquivos restaurados', durationMs: 200, command: null },
+      { order: 2, name: 'daemon-reload', status: 'success', output: 'OK', durationMs: 300, command: 'systemctl daemon-reload' },
+      { order: 3, name: 'Reiniciar unbound01', status: 'success', output: 'OK', durationMs: 800, command: 'systemctl restart unbound01' },
+      { order: 4, name: 'Reiniciar nftables', status: 'success', output: 'OK', durationMs: 200, command: 'nft -f /etc/nftables.conf' },
+    ],
+    duration: 1500,
+  };
+}
+
+  return {};
+}
+
 function mockUsers(): AuthUserRecord[] {
   return [
     { id: 'usr-001', username: 'admin', isActive: true, mustChangePassword: false, createdAt: '2026-01-15T10:00:00Z', updatedAt: '2026-03-10T08:00:00Z', lastLoginAt: '2026-03-11T09:30:00Z' },
