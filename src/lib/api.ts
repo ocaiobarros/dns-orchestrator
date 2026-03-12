@@ -18,11 +18,16 @@ import type {
 export interface AuthUserRecord {
   id: string;
   username: string;
-  isActive: boolean;
-  mustChangePassword: boolean;
-  createdAt: string;
-  updatedAt: string;
-  lastLoginAt: string | null;
+  is_active?: boolean;
+  isActive?: boolean;
+  must_change_password?: boolean;
+  mustChangePassword?: boolean;
+  created_at?: string;
+  createdAt?: string;
+  updated_at?: string;
+  updatedAt?: string;
+  last_login_at?: string | null;
+  lastLoginAt?: string | null;
 }
 import {
   mockSystemInfo, mockServices, mockInterfaces, mockRoutes,
