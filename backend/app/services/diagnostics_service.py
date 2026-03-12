@@ -372,6 +372,10 @@ def _get_system_info() -> dict:
     except Exception:
         pass
 
+    # Determine config version availability
+    config_version_available = bool(config_version and config_version != "0.0.0")
+    last_apply_available = last_apply_at is not None
+
     return {
         "hostname": hostname,
         "os": os_name,
@@ -380,9 +384,15 @@ def _get_system_info() -> dict:
         "frr_version": frr_version,
         "nftables_version": nftables_version,
         "primary_interface": primary_interface,
-        "vip_anycast": vip_anycast,
-        "config_version": config_version,
+        "vip_anycast": vip_anycast if vip_anycast else "",
+        "vip_anycast_available": vip_anycast_available,
+        "vip_anycast_status": "configured" if vip_anycast_available else "not_configured",
+        "config_version": config_version if config_version_available else "",
+        "config_version_available": config_version_available,
+        "config_version_status": "available" if config_version_available else "not_configured",
         "last_apply_at": last_apply_at,
+        "last_apply_available": last_apply_available,
+        "last_apply_status": "available" if last_apply_available else "no_history",
     }
 
 
