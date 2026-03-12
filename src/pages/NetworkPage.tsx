@@ -115,7 +115,9 @@ export default function NetworkPage() {
               <span className={target.reachable ? 'status-dot-ok' : 'status-dot-error'} />
               <div className="min-w-0">
                 <span className="text-xs font-mono block truncate">{target.target}</span>
-                <span className="text-xs text-muted-foreground">{target.label} {target.latencyMs !== null ? `${target.latencyMs}ms` : ''}</span>
+                <span className="text-xs text-muted-foreground">
+                  {target.label ?? '—'} {typeof target.latencyMs === 'number' ? `${target.latencyMs}ms` : ''}
+                </span>
               </div>
             </div>
           ))}
