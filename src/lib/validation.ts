@@ -70,7 +70,7 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
     if (names.has(inst.name)) e(`instances[${i}].name`, 3, `Nome duplicado: "${inst.name}"`);
     names.add(inst.name);
     if (!inst.bindIp.trim()) e(`instances[${i}].bindIp`, 3, `Bind IP da instância "${inst.name}" é obrigatório`);
-    if (!inst.exitIp.trim()) e(`instances[${i}].exitIp`, 3, `Exit IP da instância "${inst.name}" é obrigatório`);
+    if (!inst.egressIpv4.trim()) e(`instances[${i}].egressIpv4`, 3, `Egress IPv4 da instância "${inst.name}" é obrigatório`);
     if (ports.has(inst.controlPort)) e(`instances[${i}].controlPort`, 3, `Porta de controle duplicada: ${inst.controlPort}`);
     ports.add(inst.controlPort);
     if (inst.controlPort < 1024 || inst.controlPort > 65535) e(`instances[${i}].controlPort`, 3, `Porta inválida: ${inst.controlPort}`);

@@ -16,7 +16,7 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
 server:
     interface: ${inst.bindIp}
     port: 53
-    outgoing-interface: ${inst.exitIp}
+    outgoing-interface: ${inst.egressIpv4}
 
     num-threads: ${config.threads}
     msg-cache-slabs: ${config.threads}
