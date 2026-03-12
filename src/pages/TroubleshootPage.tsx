@@ -283,7 +283,7 @@ function CategoryGroup({ category, results, individualResults, onRun, isRunning 
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const okCount = results.filter(r => r.status === 'ok').length;
-  const failCount = results.filter(r => !['ok', 'inactive', 'permission_error'].includes(r.status)).length;
+  const failCount = results.filter(r => !['ok', 'inactive', 'permission_error', 'service_not_running'].includes(r.status)).length;
   const permCount = results.filter(r => r.status === 'permission_error').length;
 
   return (
