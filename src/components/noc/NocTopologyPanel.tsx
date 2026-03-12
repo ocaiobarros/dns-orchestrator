@@ -93,8 +93,9 @@ function TopologyView({ health, vipConfigured, vipAddress }: {
   health: InstanceHealthReport; vipConfigured?: boolean; vipAddress?: string | null;
 }) {
   const instances = health.instances || [];
-  const hasVip = vipConfigured ?? !!health.vip;
-  const vipHealthy = health.vip?.healthy ?? false;
+  // Always show VIP node — dimmed if not configured
+  const vipHealthy = health.vip?.healthy ?? (vipConfigured ?? false);
+  const vipDimmed = !vipConfigured && !health.vip;
 
   const svgW = 680;
   const svgH = instances.length <= 2 ? 180 : Math.min(50 + instances.length * 65, 320);
@@ -135,17 +136,15 @@ function TopologyView({ health, vipConfigured, vipAddress }: {
         return (
           <g key={inst.instance}>
             {/* VIP → Resolver */}
-            {hasVip && (
-              <>
-                <path id={pathId1}
-                  d={`M ${vipX + 28} ${vipY} Q ${(vipX + resolverX) / 2} ${(vipY + ry) / 2} ${resolverX - 22} ${ry}`}
-                  fill="none" stroke={isDegraded ? dimColor() : color} strokeWidth="0.8"
-                  opacity={isDegraded ? 0.2 : 0.25}
-                  strokeDasharray={isDegraded ? '3 3' : 'none'}
-                />
-                {inst.healthy && <FlowParticles pathId={pathId1} color={color} count={2} duration={2.8 + i * 0.3} />}
-              </>
-            )}
+            <>
+              <path id={pathId1}
+                d={`M ${vipX + 28} ${vipY} Q ${(vipX + resolverX) / 2} ${(vipY + ry) / 2} ${resolverX - 22} ${ry}`}
+                fill="none" stroke={vipDimmed ? dimColor() : (isDegraded ? dimColor() : color)} strokeWidth="0.8"
+                opacity={vipDimmed ? 0.12 : isDegraded ? 0.2 : 0.25}
+                strokeDasharray={vipDimmed || isDegraded ? '3 3' : 'none'}
+              />
+              {inst.healthy && !vipDimmed && <FlowParticles pathId={pathId1} color={color} count={2} duration={2.8 + i * 0.3} />}
+            </>
             {/* Resolver → Upstream */}
             <path id={pathId2}
               d={`M ${resolverX + 22} ${ry} Q ${(resolverX + upstreamX) / 2} ${(ry + upstreamY) / 2} ${upstreamX - 28} ${upstreamY}`}
@@ -167,15 +166,13 @@ function TopologyView({ health, vipConfigured, vipAddress }: {
       })}
 
       {/* Nodes */}
-      {hasVip && (
-        <TopoNode cx={vipX} cy={vipY}
-          label={vipConfigured ? 'VIP ANYCAST' : 'VIP'}
-          sublabel={vipAddress || health.vip?.bind_ip || (vipConfigured ? undefined : 'Not configured')}
-          healthy={vipHealthy || (vipConfigured ?? false)}
-          icon={Zap} size="lg"
-          dimmed={!vipConfigured && !health.vip}
-        />
-      )}
+      <TopoNode cx={vipX} cy={vipY}
+        label={vipConfigured ? 'VIP ANYCAST' : 'VIP ANYCAST'}
+        sublabel={vipAddress || health.vip?.bind_ip || (vipConfigured ? undefined : 'Not configured')}
+        healthy={vipHealthy}
+        icon={Zap} size="lg"
+        dimmed={vipDimmed}
+      />
 
       {instances.map((inst, i) => {
         const ry = instances.length === 1 ? svgH / 2 : resolverStartY + i * resolverSpacing;
