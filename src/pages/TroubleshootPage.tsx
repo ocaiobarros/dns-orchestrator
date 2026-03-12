@@ -180,6 +180,7 @@ function FilterBar({ active, onChange, counts }: {
     { key: 'ok', label: 'OK' },
     { key: 'permission_error', label: 'Sem permissão' },
     { key: 'inactive', label: 'Inativos' },
+    { key: 'service_not_running', label: 'Não executando' },
     { key: 'failures', label: 'Erros reais' },
   ];
 
