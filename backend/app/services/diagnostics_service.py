@@ -3,6 +3,17 @@ DNS Control — Diagnostics Service
 System status, health checks, service management.
 All collection is best-effort: no single failure crashes the endpoint.
 Supports controlled privileged execution for diagnostic commands.
+
+Status taxonomy:
+  ok                  → Command succeeded (INFO)
+  inactive            → Service loaded but not active (INFO/WARNING)
+  permission_limited  → Expected privilege limitation (WARNING, never ERROR)
+  service_not_running → Specific daemon not started (WARNING)
+  misconfigured       → Configuration issue detected (WARNING)
+  dependency_error    → Binary/package not found (WARNING)
+  timeout_error       → Command exceeded time limit (ERROR)
+  runtime_error       → Unexpected runtime failure (ERROR)
+  error               → Generic failure (ERROR)
 """
 
 import json
@@ -66,6 +77,16 @@ _TIMEOUT_PATTERNS = [
     "expirou",
 ]
 
+# Misconfiguration patterns
+_MISCONFIGURED_PATTERNS = [
+    "syntax error",
+    "parse error",
+    "invalid configuration",
+    "configuration error",
+    "bad config",
+    "could not load",
+]
+
 
 def _safe_read_file(path: str, default: str = "") -> str:
     try:
@@ -84,6 +105,13 @@ def _safe_run(executable: str, args: list[str], timeout: int = 5, use_privilege:
 
 
 def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) -> dict:
+    """
+    Classify command result into semantic status taxonomy.
+
+    Returns dict with:
+      status, summary, remediation, privileged, requires_root,
+      expected_in_unprivileged_mode, category (for structured events)
+    """
     combined_lower = ((stdout or "") + " " + (stderr or "")).lower()
 
     priv_meta = _PRIVILEGED_COMMANDS.get(executable, {})
@@ -92,14 +120,18 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
     expected_unpriv = priv_meta.get("expected_in_unprivileged_mode", False)
     default_remediation = priv_meta.get("remediation", "")
 
+    base_fields = {
+        "privileged": privileged,
+        "requires_root": requires_root,
+        "expected_in_unprivileged_mode": expected_unpriv,
+    }
+
     if exit_code == 0:
         return {
             "status": "ok",
             "summary": "Comando executado com sucesso",
             "remediation": "",
-            "privileged": privileged,
-            "requires_root": requires_root,
-            "expected_in_unprivileged_mode": expected_unpriv,
+            **base_fields,
         }
 
     # Inactive service
@@ -116,18 +148,11 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
         }
 
     # Service not running — for vtysh/FRR commands, distinguish daemon-not-running from permission
-    # This MUST be checked before permission patterns because "failed to connect to any daemons"
-    # can appear in both contexts but means different things:
-    # - Without sudo: permission denied → can't read config → can't connect (permission_error)
-    # - With sudo: config readable but specific daemon (ospfd) not started (service_not_running)
     if executable == "vtysh":
         combined_has_permission = any(kw in combined_lower for kw in ("permission denied", "must be root"))
         combined_has_not_running = any(kw in combined_lower for kw in _FRR_NOT_RUNNING_PATTERNS)
 
-        # If we see explicit permission denied, it's a permission issue
-        # If no permission keywords but daemon-not-running keywords, it's service_not_running
         if combined_has_not_running and not combined_has_permission:
-            # Extract which daemon is not running
             daemon_name = ""
             for line in (stderr or "").split("\n"):
                 line_lower = line.strip().lower()
@@ -138,20 +163,18 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
                 "status": "service_not_running",
                 "summary": f"Daemon {daemon_name} não está em execução" if daemon_name else "Daemon FRR necessário não está ativo",
                 "remediation": "Verificar se este daemon deve estar habilitado neste host. Se sim, habilitar no FRR daemons config.",
-                "privileged": privileged,
-                "requires_root": requires_root,
+                **base_fields,
                 "expected_in_unprivileged_mode": False,
             }
 
-    # Permission error — but NOT for vtysh when the issue is daemon-not-running
+    # Permission / privilege limitation
+    # Key change: use "permission_limited" instead of "permission_error"
+    # to semantically distinguish expected limitations from real errors
     is_permission = any(kw in combined_lower for kw in _PERMISSION_PATTERNS)
     if not is_permission and ("no journal files were opened" in combined_lower
         or ("users in groups" in combined_lower and "can see all messages" in combined_lower)):
         is_permission = True
-    # For vtysh: "failed to connect to any daemons" WITH "permission denied" = permission issue
-    # Without "permission denied" = already handled above as service_not_running
     if is_permission and executable == "vtysh" and "failed to connect to any daemons" in combined_lower:
-        # Only classify as permission if there's an actual permission keyword
         if not any(kw in combined_lower for kw in ("permission denied", "must be root")):
             is_permission = False
 
@@ -173,12 +196,22 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
             remediation = "Adicionar o usuário ao grupo systemd-journal ou usar wrapper controlado"
 
         return {
-            "status": "permission_error",
+            "status": "permission_limited",
             "summary": summary,
             "remediation": remediation,
             "privileged": True,
             "requires_root": requires_root or (executable in ("nft", "vtysh")),
             "expected_in_unprivileged_mode": True,
+        }
+
+    # Misconfiguration
+    if any(kw in combined_lower for kw in _MISCONFIGURED_PATTERNS):
+        first_stderr = (stderr or "").strip().split("\n")[0][:120] if stderr else ""
+        return {
+            "status": "misconfigured",
+            "summary": first_stderr if first_stderr else "Problema de configuração detectado",
+            "remediation": "Verificar a configuração do serviço e corrigir a sintaxe",
+            **base_fields,
         }
 
     # Dependency error
@@ -188,9 +221,7 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
             "status": "dependency_error",
             "summary": "Comando ou dependência não encontrada",
             "remediation": f"Verificar se {executable} está instalado e no PATH",
-            "privileged": privileged,
-            "requires_root": requires_root,
-            "expected_in_unprivileged_mode": expected_unpriv,
+            **base_fields,
         }
 
     # Timeout
@@ -199,12 +230,10 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
             "status": "timeout_error",
             "summary": "Comando excedeu tempo limite",
             "remediation": "Verificar se o serviço está responsivo",
-            "privileged": privileged,
-            "requires_root": requires_root,
-            "expected_in_unprivileged_mode": expected_unpriv,
+            **base_fields,
         }
 
-    # Generic error
+    # Generic error — only real runtime failures reach here
     first_stderr = (stderr or "").strip().split("\n")[0][:120] if stderr else ""
     summary = first_stderr if first_stderr else "Comando retornou erro"
 
@@ -212,9 +241,7 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
         "status": "error",
         "summary": summary,
         "remediation": "Verificar logs do serviço para mais detalhes",
-        "privileged": privileged,
-        "requires_root": requires_root,
-        "expected_in_unprivileged_mode": expected_unpriv,
+        **base_fields,
     }
 
 
@@ -355,7 +382,6 @@ def _get_system_info() -> dict:
             vip_candidates = []
             for iface in all_ifaces:
                 ifname = iface.get("ifname", "")
-                # Check loopback, dummy, and lo0-style interfaces
                 if ifname in ("lo", "lo0") or ifname.startswith("dummy") or ifname.startswith("lo"):
                     for addr in iface.get("addr_info", []):
                         if addr.get("family") == "inet" and addr.get("local") != "127.0.0.1":
@@ -391,7 +417,6 @@ def _get_system_info() -> dict:
     except Exception:
         pass
 
-    # Determine config version availability
     config_version_available = bool(config_version and config_version != "0.0.0")
     last_apply_available = last_apply_at is not None
 
@@ -510,6 +535,14 @@ def run_health_check() -> dict:
     Run ALL catalog commands best-effort.
     Privileged commands use sudo when available.
     Returns consolidated summary + per-item results + privilege environment info.
+
+    Status counts:
+      passed             = ok
+      failed             = error, runtime_error, timeout_error, dependency_error
+      permission_limited = permission_limited (never counted as failed)
+      inactive           = inactive
+      service_not_running = service_not_running
+      misconfigured      = misconfigured
     """
     from datetime import datetime, timezone
     from app.executors.command_catalog import COMMAND_CATALOG
@@ -557,6 +590,11 @@ def run_health_check() -> dict:
                 "expected_in_unprivileged_mode": classification["expected_in_unprivileged_mode"],
                 "executed_privileged": executed_privileged,
                 "requires_privilege": cmd_def.requires_privilege,
+                # Structured fields for event enrichment
+                "event_type": "diagnostic",
+                "severity": _status_to_event_severity(classification["status"]),
+                "expected": classification["expected_in_unprivileged_mode"],
+                "remediation_hint": cmd_def.remediation_hint or classification["remediation"],
             })
         except Exception as e:
             logger.exception(f"Health check failed for {cmd_def.id}: {e}")
@@ -581,14 +619,20 @@ def run_health_check() -> dict:
                 "expected_in_unprivileged_mode": False,
                 "executed_privileged": False,
                 "requires_privilege": cmd_def.requires_privilege,
+                "event_type": "diagnostic",
+                "severity": "critical",
+                "expected": False,
+                "remediation_hint": "Verificar logs do backend",
             })
 
     finished_at = datetime.now(timezone.utc).isoformat()
     passed = sum(1 for r in results if r["status"] == "ok")
-    failed = sum(1 for r in results if r["status"] in ("error", "runtime_error", "timeout_error", "dependency_error"))
-    permission_limited = sum(1 for r in results if r["status"] == "permission_error")
+    failed = sum(1 for r in results if r["status"] in ("error", "runtime_error", "timeout_error"))
+    permission_limited = sum(1 for r in results if r["status"] == "permission_limited")
     inactive = sum(1 for r in results if r["status"] == "inactive")
     service_not_running = sum(1 for r in results if r["status"] == "service_not_running")
+    misconfigured = sum(1 for r in results if r["status"] == "misconfigured")
+    dependency_error = sum(1 for r in results if r["status"] == "dependency_error")
 
     return {
         "success": True,
@@ -600,9 +644,20 @@ def run_health_check() -> dict:
         "permission_limited": permission_limited,
         "inactive": inactive,
         "service_not_running": service_not_running,
+        "misconfigured": misconfigured,
+        "dependency_error": dependency_error,
         "privilege_status": priv_status,
         "results": results,
     }
+
+
+def _status_to_event_severity(status: str) -> str:
+    """Map diagnostic status to event severity for the frontend."""
+    if status == "ok":
+        return "info"
+    if status in ("permission_limited", "inactive", "service_not_running", "misconfigured", "dependency_error"):
+        return "warning"
+    return "critical"
 
 
 def _get_uptime() -> str:
@@ -618,7 +673,6 @@ def _collect_dns_metrics() -> dict:
     try:
         r = _safe_run("unbound-control", ["stats_noreset"], timeout=10, use_privilege=True)
         if r["exit_code"] != 0:
-            # Determine if it's a permission issue
             combined = ((r.get("stdout", "") or "") + " " + (r.get("stderr", "") or "")).lower()
             if any(kw in combined for kw in _PERMISSION_PATTERNS):
                 return {"available": False, "status": "privilege_limited", "total_queries": 0, "cache_hit_ratio": 0.0, "latency_ms": 0.0}
