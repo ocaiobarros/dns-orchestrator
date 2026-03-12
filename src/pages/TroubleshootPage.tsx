@@ -471,6 +471,36 @@ export default function TroubleshootPage() {
         </button>
       </div>
 
+      {/* Privilege warning banner */}
+      {privilegeStatus && !privilegeStatus.privileged_commands_enabled && batchSummary && batchSummary.permission_limited > 0 && (
+        <div className="noc-panel border-amber-500/30 bg-amber-500/5">
+          <div className="flex items-start gap-2">
+            <ShieldAlert size={16} className="text-amber-500 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-400">Diagnósticos avançados limitados por privilégio</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Backend executando como <code className="text-xs font-mono bg-secondary px-1 rounded">{privilegeStatus.backend_running_as_user}</code>.
+                {' '}{batchSummary.permission_limited} checks requerem sudo controlado.
+                Consulte a documentação de habilitação de privilégios.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Privilege status indicator when enabled */}
+      {privilegeStatus && privilegeStatus.privileged_commands_enabled && (
+        <div className="noc-panel border-green-500/30 bg-green-500/5">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 size={14} className="text-green-500" />
+            <span className="text-xs text-green-400 font-medium">Diagnósticos privilegiados habilitados</span>
+            <span className="text-xs text-muted-foreground font-mono ml-auto">
+              user: {privilegeStatus.backend_running_as_user}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Batch summary */}
       {batchSummary && (
         <BatchSummaryPanel
