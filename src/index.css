@@ -249,12 +249,7 @@
 
   .noc-dot-fail {
     @apply w-2 h-2 rounded-full bg-destructive flex-shrink-0;
-    box-shadow: 0 0 10px hsl(var(--destructive) / 0.5);
-    animation: noc-fail-throb 1.5s ease-in-out infinite;
-  }
-  @keyframes noc-fail-throb {
-    0%, 100% { box-shadow: 0 0 8px hsl(var(--destructive) / 0.4); }
-    50% { box-shadow: 0 0 18px hsl(var(--destructive) / 0.7); }
+    box-shadow: 0 0 8px hsl(var(--destructive) / 0.4);
   }
 
   .noc-dot-warn {
