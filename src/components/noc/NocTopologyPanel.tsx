@@ -131,18 +131,18 @@ function MapNode({ cx, cy, label, sublabel, healthy, icon: Icon, size = 'md', di
       )}
 
       {/* Icon */}
-      <foreignObject x={cx - iconSize / 2} y={cy - iconSize / 2} width={iconSize} height={iconSize}>
+      <foreignObject x={scx - iconSize / 2} y={scy - iconSize / 2} width={iconSize} height={iconSize}>
         <div className="flex items-center justify-center w-full h-full">
           <Icon size={iconSize} style={{ color, opacity: dimmed ? 0.4 : 1 }} />
         </div>
       </foreignObject>
 
       {/* Label */}
-      <text x={cx} y={cy + r + 14} textAnchor="middle" fill={C.text} fontSize="9" fontWeight="700" fontFamily="var(--font-mono)" opacity={dimmed ? 0.3 : 0.85} letterSpacing="0.5">
+      <text x={scx} y={scy + r + 14} textAnchor="middle" fill={C.text} fontSize="9" fontWeight="700" fontFamily="var(--font-mono)" opacity={dimmed ? 0.3 : 0.85} letterSpacing="0.5">
         {label}
       </text>
       {sublabel && (
-        <text x={cx} y={cy + r + 25} textAnchor="middle" fill={C.textMuted} fontSize="7.5" fontFamily="var(--font-mono)" opacity={dimmed ? 0.2 : 0.45}>
+        <text x={scx} y={scy + r + 25} textAnchor="middle" fill={C.textMuted} fontSize="7.5" fontFamily="var(--font-mono)" opacity={dimmed ? 0.2 : 0.45}>
           {sublabel}
         </text>
       )}
@@ -151,17 +151,17 @@ function MapNode({ cx, cy, label, sublabel, healthy, icon: Icon, size = 'md', di
       {metrics && (
         <g>
           {metrics.line1 && (
-            <text x={cx} y={cy + r + (sublabel ? 37 : 27)} textAnchor="middle" fill={color} fontSize="8.5" fontWeight="700" fontFamily="var(--font-mono)" opacity={dimmed ? 0.25 : 0.8}>
+            <text x={scx} y={scy + r + (sublabel ? 37 : 27)} textAnchor="middle" fill={color} fontSize="8.5" fontWeight="700" fontFamily="var(--font-mono)" opacity={dimmed ? 0.25 : 0.8}>
               {metrics.line1}
             </text>
           )}
           {metrics.line2 && (
-            <text x={cx} y={cy + r + (sublabel ? 48 : 38)} textAnchor="middle" fill={C.textMuted} fontSize="7" fontFamily="var(--font-mono)" opacity={dimmed ? 0.2 : 0.5}>
+            <text x={scx} y={scy + r + (sublabel ? 48 : 38)} textAnchor="middle" fill={C.textMuted} fontSize="7" fontFamily="var(--font-mono)" opacity={dimmed ? 0.2 : 0.5}>
               {metrics.line2}
             </text>
           )}
           {metrics.line3 && (
-            <text x={cx} y={cy + r + (sublabel ? 58 : 48)} textAnchor="middle" fill={C.textDim} fontSize="7" fontFamily="var(--font-mono)" opacity={dimmed ? 0.15 : 0.4}>
+            <text x={scx} y={scy + r + (sublabel ? 58 : 48)} textAnchor="middle" fill={C.textDim} fontSize="7" fontFamily="var(--font-mono)" opacity={dimmed ? 0.15 : 0.4}>
               {metrics.line3}
             </text>
           )}
