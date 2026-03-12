@@ -55,7 +55,7 @@ export default function DnsPage() {
   const avgLatency = chartData.length > 0 ? (chartData.reduce((a, b) => a + b.latency, 0) / chartData.length).toFixed(1) : '0';
   const totalServfail = chartData.reduce((a, b) => a + b.servfail, 0);
 
-  const safeInstanceStats = Array.isArray(instanceStats) ? instanceStats : [];
+  const safeInstanceStats = Array.isArray(instanceStats) ? instanceStats.filter(Boolean) : [];
 
   return (
     <div className="space-y-6">
