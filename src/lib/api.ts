@@ -419,8 +419,9 @@ function mockApplyResult(req?: { dry_run?: boolean; scope?: string; config?: Wiz
   const instanceNames = cfg?.instances?.map(i => i.name) || ['unbound01', 'unbound02'];
   const vipIps = cfg?.serviceVips?.map(v => v.ipv4).filter(Boolean) || [];
   const now = new Date();
+  type Step = ApplyResult['steps'][number];
 
-  const baseSteps = [
+  const baseSteps: Step[] = [
     { order: 1, name: 'Validar modelo', status: 'success' as const, output: 'Validação OK — 0 erros, 0 avisos', durationMs: 120, command: null, startedAt: now.toISOString(), finishedAt: now.toISOString() },
     { order: 2, name: 'Gerar artefatos', status: 'success' as const, output: `${cfg ? 10 + instanceNames.length * 2 : 11} arquivos gerados`, durationMs: 200, command: null },
     { order: 3, name: req?.dry_run ? 'Dry-run concluído' : 'Backup configuração atual', status: 'success' as const, output: req?.dry_run ? 'Nenhuma alteração aplicada' : `Snapshot salvo em /var/lib/dns-control/backups/${now.toISOString().slice(0,19).replace(/[:-]/g,'')}`, durationMs: req?.dry_run ? 0 : 340, command: null, rollbackHint: 'Restaurar backup anterior' },
