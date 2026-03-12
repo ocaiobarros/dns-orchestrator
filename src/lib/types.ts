@@ -520,6 +520,15 @@ export interface ReconcileSummary {
 
 // ---- Helpers for normalizing real API data ----
 
+function toSafeNumber(value: unknown, fallback = 0): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
+  if (typeof value === 'string') {
+    const parsed = Number(value.replace(',', '.'));
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  return fallback;
+}
+
 /** Safely get instance display name from DnsInstanceStats (handles both real API and mock) */
 export function getInstanceName(inst: DnsInstanceStats): string {
   return inst.instance || inst.name || 'unknown';
@@ -527,17 +536,17 @@ export function getInstanceName(inst: DnsInstanceStats): string {
 
 /** Safely get total queries from DnsInstanceStats */
 export function getInstanceQueries(inst: DnsInstanceStats): number {
-  return inst.totalQueries ?? inst.queries_total ?? 0;
+  return toSafeNumber(inst.totalQueries ?? inst.queries_total, 0);
 }
 
 /** Safely get cache hit ratio */
 export function getInstanceCacheHit(inst: DnsInstanceStats): number {
-  return inst.cacheHitRatio ?? 0;
+  return toSafeNumber(inst.cacheHitRatio, 0);
 }
 
 /** Safely get avg latency */
 export function getInstanceLatency(inst: DnsInstanceStats): number {
-  return inst.avgLatencyMs ?? 0;
+  return toSafeNumber(inst.avgLatencyMs, 0);
 }
 
 /** Get interface display state (handles both real 'status' and mock 'state') */
@@ -547,14 +556,14 @@ export function getIfaceState(iface: NetworkInterface): string {
 
 /** Get interface IPv4 addresses as array */
 export function getIfaceIpv4(iface: NetworkInterface): string[] {
-  if (iface.ipv4Addresses && iface.ipv4Addresses.length > 0) return iface.ipv4Addresses;
+  if (Array.isArray(iface.ipv4Addresses) && iface.ipv4Addresses.length > 0) return iface.ipv4Addresses.filter(Boolean);
   if (iface.ipv4) return [iface.ipv4];
   return [];
 }
 
 /** Get interface IPv6 addresses as array */
 export function getIfaceIpv6(iface: NetworkInterface): string[] {
-  if (iface.ipv6Addresses && iface.ipv6Addresses.length > 0) return iface.ipv6Addresses;
+  if (Array.isArray(iface.ipv6Addresses) && iface.ipv6Addresses.length > 0) return iface.ipv6Addresses.filter(Boolean);
   if (iface.ipv6) return [iface.ipv6];
   return [];
 }
