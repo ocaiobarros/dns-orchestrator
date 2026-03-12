@@ -17,27 +17,27 @@ export default function NocQuickActions() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: 0.3 }}
-      className="noc-glass"
+      transition={{ duration: 0.5, delay: 0.35 }}
+      className="noc-surface"
     >
-      <div className="noc-glass-body">
-        <div className="noc-section-title">
-          <Terminal size={12} className="text-muted-foreground/60" />
+      <div className="noc-surface-body">
+        <div className="noc-section-head">
+          <Terminal size={12} className="text-muted-foreground/40" />
           COMMAND CONSOLE
         </div>
-        <div className="noc-section-divider" />
+        <div className="noc-divider" />
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2.5">
           {actions.map((a, i) => (
             <motion.button
               key={a.label}
-              initial={{ opacity: 0, y: 6 }}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: 0.15 + i * 0.03 }}
               onClick={() => navigate(a.path)}
-              className="noc-action-chip"
+              className="noc-chip"
             >
               {a.icon}
               {a.label}

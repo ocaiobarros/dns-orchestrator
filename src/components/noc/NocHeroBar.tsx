@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Radio, Shield, Clock, ChevronDown } from 'lucide-react';
+import { RefreshCw, Shield, Clock, ChevronDown, Activity } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface NocHeroBarProps {
@@ -12,12 +12,38 @@ interface NocHeroBarProps {
   reconciling: boolean;
 }
 
+function RadarSweep({ color }: { color: string }) {
+  return (
+    <div className="absolute right-8 top-1/2 -translate-y-1/2 w-[120px] h-[120px] opacity-[0.07] hidden lg:block">
+      <svg viewBox="0 0 120 120" className="w-full h-full">
+        {/* Concentric rings */}
+        {[20, 35, 50].map(r => (
+          <circle key={r} cx="60" cy="60" r={r} fill="none" stroke={color} strokeWidth="0.5" opacity="0.5" />
+        ))}
+        {/* Sweep */}
+        <g style={{ transformOrigin: '60px 60px', animation: 'noc-radar 4s linear infinite' }}>
+          <defs>
+            <linearGradient id="sweep-grad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor={color} stopOpacity="0" />
+              <stop offset="100%" stopColor={color} stopOpacity="0.6" />
+            </linearGradient>
+          </defs>
+          <path d={`M60,60 L60,10 A50,50 0 0,1 ${60 + 50 * Math.sin(Math.PI / 6)},${60 - 50 * Math.cos(Math.PI / 6)} Z`}
+                fill="url(#sweep-grad)" />
+        </g>
+        {/* Center dot */}
+        <circle cx="60" cy="60" r="2" fill={color} />
+      </svg>
+    </div>
+  );
+}
+
 export default function NocHeroBar({
   allHealthy, failedCount, totalInstances, healthyCount,
   onReconcile, reconciling,
 }: NocHeroBarProps) {
   const [now, setNow] = useState(new Date());
-  const [showActions, setShowActions] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -28,132 +54,120 @@ export default function NocHeroBar({
   const isCritical = failedCount > 0 && failedCount >= totalInstances;
   const isDegraded = failedCount > 0 && !isCritical;
 
-  const statusLabel = isCritical
-    ? 'CRITICAL'
+  const statusText = isCritical ? 'CRITICAL' : isDegraded ? 'DEGRADED' : 'OPERATIONAL';
+  const statusSub = isCritical ? 'All resolvers down' : isDegraded ? `${failedCount} resolver${failedCount > 1 ? 's' : ''} failed` : 'All systems nominal';
+  const heroClass = isCritical ? 'noc-hero-crit' : isDegraded ? 'noc-hero-warn' : 'noc-hero-ok';
+  const accentColor = isCritical ? 'hsl(0, 76%, 50%)' : isDegraded ? 'hsl(38, 95%, 50%)' : 'hsl(152, 76%, 40%)';
+  const dotBg = isCritical ? 'bg-destructive' : isDegraded ? 'bg-warning' : 'bg-success';
+  const pillClass = isCritical
+    ? 'bg-destructive/12 text-destructive border-destructive/20'
     : isDegraded
-    ? 'DEGRADED'
-    : 'OPERATIONAL';
-
-  const statusDetail = isCritical
-    ? 'All resolvers down'
-    : isDegraded
-    ? `${failedCount} resolver${failedCount > 1 ? 's' : ''} failed`
-    : 'All systems nominal';
-
-  const heroClass = isCritical
-    ? 'noc-hero-critical'
-    : isDegraded
-    ? 'noc-hero-degraded'
-    : 'noc-hero-operational';
-
-  const dotColor = isCritical ? 'bg-destructive' : isDegraded ? 'bg-warning' : 'bg-success';
-  const pillBg = isCritical ? 'bg-destructive/15 text-destructive border-destructive/25' : isDegraded ? 'bg-warning/15 text-warning border-warning/25' : 'bg-success/15 text-success border-success/25';
-
-  const secondaryActions = [
-    { label: 'Diagnostics', path: '/troubleshoot' },
-    { label: 'Wizard', path: '/wizard' },
-    { label: 'Gen Files', path: '/files' },
-  ];
+    ? 'bg-warning/12 text-warning border-warning/20'
+    : 'bg-success/12 text-success border-success/20';
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -8 }}
+      initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
       className={`noc-hero ${heroClass}`}
     >
-      {/* Scanning glow */}
-      <div className="noc-scan-line" />
+      {/* Sweep light */}
+      <div className="absolute inset-0 z-[2] pointer-events-none overflow-hidden">
+        <div className="w-1/4 h-full" style={{
+          background: `linear-gradient(90deg, transparent, ${accentColor.replace(')', ' / 0.03)')}, transparent)`,
+          animation: 'noc-sweep 8s ease-in-out infinite',
+        }} />
+      </div>
 
-      <div className="relative z-10 px-5 py-4">
+      <RadarSweep color={accentColor} />
+
+      <div className="relative z-10 px-6 py-5">
         <div className="flex items-center justify-between flex-wrap gap-4">
-          {/* Left: brand + status */}
+          {/* Left: Status cluster */}
           <div className="flex items-center gap-5">
-            {/* Status dot with ping */}
+            {/* Animated status ring */}
             <div className="relative">
               <motion.div
-                className={`noc-status-dot ${dotColor}`}
-                animate={{ scale: [1, 1.1, 1] }}
-                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                className={`noc-pulse ${dotBg}`}
+                animate={{ scale: [1, 1.15, 1] }}
+                transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
               />
             </div>
 
-            <div>
-              <div className="flex items-center gap-2.5 mb-1">
-                <Radio size={11} className="text-muted-foreground/60" />
-                <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-muted-foreground/60">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Activity size={10} className="text-muted-foreground/40" />
+                <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-muted-foreground/40">
                   DNS CONTROL
                 </span>
               </div>
 
               <div className="flex items-center gap-3">
-                {/* Operational pill */}
                 <motion.span
-                  key={statusLabel}
+                  key={statusText}
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-mono font-bold tracking-wider border ${pillBg}`}
+                  className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[11px] font-mono font-extrabold tracking-wider border ${pillClass}`}
                 >
-                  <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-                  {statusLabel}
+                  <span className={`w-1.5 h-1.5 rounded-full ${dotBg}`} />
+                  {statusText}
                 </motion.span>
-                <span className="text-[11px] text-muted-foreground/50 font-mono hidden sm:inline">
-                  {statusDetail}
+                <span className="text-[11px] text-muted-foreground/35 font-mono hidden sm:inline">
+                  {statusSub}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Right: metadata + actions */}
-          <div className="flex items-center gap-5">
-            {/* Telemetry metadata */}
-            <div className="hidden md:flex items-center gap-4 text-[10px] text-muted-foreground/50 uppercase tracking-wider">
+          {/* Right: Metadata + Actions */}
+          <div className="flex items-center gap-6">
+            <div className="hidden md:flex items-center gap-5 text-[9px] text-muted-foreground/40 uppercase tracking-wider">
               <div className="flex items-center gap-1.5">
-                <Shield size={10} />
-                <span className="font-mono font-bold text-foreground/80">{healthyCount}/{totalInstances}</span>
+                <Shield size={9} />
+                <span className="font-mono font-bold text-foreground/70 text-[11px]">{healthyCount}/{totalInstances}</span>
                 <span>resolvers</span>
               </div>
-              <div className="w-px h-4 bg-border/40" />
+              <div className="w-px h-4 bg-border/30" />
               <div className="flex items-center gap-1.5">
-                <Clock size={10} />
-                <span className="font-mono tabular-nums text-foreground/70">
+                <Clock size={9} />
+                <span className="font-mono tabular-nums text-foreground/60 text-[11px]">
                   {now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                 </span>
               </div>
             </div>
 
-            {/* Reconcile */}
-            <button
-              onClick={onReconcile}
-              disabled={reconciling}
-              className="noc-btn-reconcile"
-            >
+            <button onClick={onReconcile} disabled={reconciling} className="noc-btn-action">
               <RefreshCw size={12} className={reconciling ? 'animate-spin' : ''} />
               Reconcile
             </button>
 
-            {/* Secondary actions dropdown */}
             <div className="relative">
               <button
-                onClick={() => setShowActions(!showActions)}
-                className="p-2 rounded-lg text-muted-foreground/50 hover:text-foreground hover:bg-secondary/50 transition-colors"
+                onClick={() => setShowMenu(!showMenu)}
+                className="p-2 rounded-lg text-muted-foreground/30 hover:text-foreground/60 hover:bg-secondary/30 transition-colors"
               >
                 <ChevronDown size={14} />
               </button>
               <AnimatePresence>
-                {showActions && (
+                {showMenu && (
                   <motion.div
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    className="absolute right-0 top-full mt-1 z-50 min-w-[160px] rounded-lg border border-border/50 overflow-hidden"
-                    style={{ background: 'hsl(222 24% 10%)' }}
+                    initial={{ opacity: 0, y: -6, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -6, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-full mt-2 z-50 min-w-[160px] rounded-lg border border-border/40 overflow-hidden"
+                    style={{ background: 'hsl(225 25% 9%)' }}
                   >
-                    {secondaryActions.map(a => (
+                    {[
+                      { label: 'Diagnostics', path: '/troubleshoot' },
+                      { label: 'Wizard', path: '/wizard' },
+                      { label: 'Files', path: '/files' },
+                    ].map(a => (
                       <button
                         key={a.label}
-                        onClick={() => { navigate(a.path); setShowActions(false); }}
-                        className="block w-full text-left px-4 py-2.5 text-[11px] font-mono text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+                        onClick={() => { navigate(a.path); setShowMenu(false); }}
+                        className="block w-full text-left px-4 py-2.5 text-[11px] font-mono text-muted-foreground/60 hover:text-foreground hover:bg-secondary/40 transition-colors"
                       >
                         {a.label}
                       </button>
