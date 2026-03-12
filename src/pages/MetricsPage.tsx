@@ -47,7 +47,7 @@ export default function MetricsPage() {
   })();
 
   // Normalize instance stats
-  const instanceStats: Array<Record<string, unknown>> = Array.isArray(rawInstanceStats) ? rawInstanceStats : [];
+  const instanceStats = Array.isArray(rawInstanceStats) ? rawInstanceStats : [] as any[];
 
   // Group metrics by instance
   const byInstance: Record<string, Record<string, number>> = {};

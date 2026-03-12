@@ -153,7 +153,7 @@ export default function NatPage() {
                 </tr>
               </thead>
               <tbody className="font-mono">
-                {sticky.map((s: Record<string, unknown>, i: number) => (
+                {sticky.map((s: any, i: number) => (
                   <tr key={i} className="border-b border-border last:border-0">
                     <td className="py-2">{String(s.sourceIp ?? s.source_ip ?? s.client_ip ?? '—')}</td>
                     <td className="py-2 text-primary">{String(s.backend ?? s.backend_ip ?? '—')}</td>
