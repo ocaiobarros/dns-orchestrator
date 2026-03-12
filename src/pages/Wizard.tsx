@@ -14,6 +14,7 @@ import {
 import { validateConfig, getStepErrors, isConfigValid, getValidationSummary } from '@/lib/validation';
 import { generateAllFiles } from '@/lib/config-generator';
 import { useApplyConfig } from '@/lib/hooks';
+import { api } from '@/lib/api';
 import ApplyStepsViewer from '@/components/ApplyStepsViewer';
 import TopologySummary from '@/components/TopologySummary';
 import FilePreviewAccordion from '@/components/FilePreviewAccordion';
