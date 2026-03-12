@@ -2,6 +2,7 @@ import StatusBadge from '@/components/StatusBadge';
 import ApplyStepsViewer from '@/components/ApplyStepsViewer';
 import { LoadingState, ErrorState, EmptyState } from '@/components/DataStates';
 import { useHistory } from '@/lib/hooks';
+import { safeDate } from '@/lib/types';
 
 export default function HistoryPage() {
   const { data, isLoading, error, refetch } = useHistory();
@@ -30,7 +31,7 @@ export default function HistoryPage() {
                 <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border">{h.scope}</span>
               </div>
               <div className="text-right">
-                <span className="text-xs text-muted-foreground font-mono block">{new Date(h.timestamp).toLocaleString('pt-BR')}</span>
+                <span className="text-xs text-muted-foreground font-mono block">{safeDate(h.timestamp)}</span>
                 <span className="text-xs text-muted-foreground">{h.duration}ms · {h.user}</span>
               </div>
             </div>

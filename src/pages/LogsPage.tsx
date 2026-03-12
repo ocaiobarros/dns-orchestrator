@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { LoadingState, ErrorState, EmptyState } from '@/components/DataStates';
 import { useLogs } from '@/lib/hooks';
-import type { LogSource } from '@/lib/types';
+import { type LogSource, safeDateShort } from '@/lib/types';
 import { Download } from 'lucide-react';
 
 const logSources: { value: LogSource | 'all'; label: string }[] = [
@@ -70,7 +70,7 @@ export default function LogsPage() {
         <div className="terminal-output max-h-[500px]">
           {data.items.map(entry => (
             <div key={entry.id} className={`py-0.5 flex gap-2 ${levelColors[entry.level] || ''}`}>
-              <span className="text-muted-foreground shrink-0">{new Date(entry.timestamp).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+              <span className="text-muted-foreground shrink-0">{safeDateShort(entry.timestamp)}</span>
               <span className={`shrink-0 w-12 text-right ${levelColors[entry.level]}`}>[{entry.level.toUpperCase()}]</span>
               {entry.service && <span className="text-accent shrink-0">{entry.service}</span>}
               <span>{entry.message}</span>
