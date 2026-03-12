@@ -1,8 +1,10 @@
 import { LoadingState, ErrorState, EmptyState } from '@/components/DataStates';
 import { useInterfaces, useRoutes, useReachability } from '@/lib/hooks';
+import { getIfaceState, getIfaceIpv4, getIfaceIpv6, getIfaceMac } from '@/lib/types';
 import { RefreshCw } from 'lucide-react';
 
-function formatTraffic(bytes: number): string {
+function formatTraffic(bytes: number | undefined | null): string {
+  if (bytes == null || isNaN(bytes)) return '—';
   if (bytes > 1e9) return `${(bytes / 1e9).toFixed(1)}GB`;
   if (bytes > 1e6) return `${(bytes / 1e6).toFixed(1)}MB`;
   return `${(bytes / 1e3).toFixed(0)}KB`;
@@ -16,6 +18,8 @@ export default function NetworkPage() {
   if (ifLoading || rtLoading) return <LoadingState />;
   if (ifError) return <ErrorState message={ifError.message} />;
 
+  const ifaceList = Array.isArray(interfaces) ? interfaces : [];
+
   return (
     <div className="space-y-6">
       <div>
@@ -25,29 +29,40 @@ export default function NetworkPage() {
 
       <div className="noc-panel">
         <div className="noc-panel-header">Interfaces</div>
-        {!interfaces?.length ? <EmptyState title="Nenhuma interface encontrada" /> : (
+        {ifaceList.length === 0 ? <EmptyState title="Nenhuma interface encontrada" /> : (
           <div className="space-y-4">
-            {interfaces.map(iface => (
-              <div key={iface.name} className="border-b border-border last:border-0 pb-3 last:pb-0">
-                <div className="flex items-center gap-3 mb-1">
-                  <span className="font-mono font-medium">{iface.name}</span>
-                  <span className={`text-xs px-1.5 py-0.5 rounded border ${
-                    iface.state === 'UP' ? 'bg-success/15 text-success border-success/30' : 'bg-destructive/15 text-destructive border-destructive/30'
-                  }`}>{iface.state}</span>
-                  <span className="text-xs text-muted-foreground">{iface.type}</span>
-                  <span className="text-xs text-muted-foreground">MTU {iface.mtu}</span>
-                  <span className="text-xs text-muted-foreground ml-auto">↓{formatTraffic(iface.rxBytes)} ↑{formatTraffic(iface.txBytes)}</span>
+            {ifaceList.map(iface => {
+              const state = getIfaceState(iface);
+              const ipv4List = getIfaceIpv4(iface);
+              const ipv6List = getIfaceIpv6(iface);
+              const mac = getIfaceMac(iface);
+              const hasTraffic = iface.rxBytes != null || iface.txBytes != null;
+
+              return (
+                <div key={iface.name} className="border-b border-border last:border-0 pb-3 last:pb-0">
+                  <div className="flex items-center gap-3 mb-1 flex-wrap">
+                    <span className="font-mono font-medium">{iface.name}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded border ${
+                      state === 'UP' ? 'bg-success/15 text-success border-success/30' : 'bg-destructive/15 text-destructive border-destructive/30'
+                    }`}>{state}</span>
+                    {iface.type && <span className="text-xs text-muted-foreground">{iface.type}</span>}
+                    {iface.mtu != null && <span className="text-xs text-muted-foreground">MTU {iface.mtu}</span>}
+                    {mac && <span className="text-xs text-muted-foreground font-mono">{mac}</span>}
+                    {hasTraffic && (
+                      <span className="text-xs text-muted-foreground ml-auto">↓{formatTraffic(iface.rxBytes)} ↑{formatTraffic(iface.txBytes)}</span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ipv4List.map(ip => (
+                      <span key={ip} className="text-xs font-mono px-2 py-0.5 rounded bg-secondary text-secondary-foreground">{ip}</span>
+                    ))}
+                    {ipv6List.filter(Boolean).map(ip => (
+                      <span key={ip} className="text-xs font-mono px-2 py-0.5 rounded bg-accent/15 text-accent">{ip}</span>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {iface.ipv4Addresses.map(ip => (
-                    <span key={ip} className="text-xs font-mono px-2 py-0.5 rounded bg-secondary text-secondary-foreground">{ip}</span>
-                  ))}
-                  {iface.ipv6Addresses.map(ip => (
-                    <span key={ip} className="text-xs font-mono px-2 py-0.5 rounded bg-accent/15 text-accent">{ip}</span>
-                  ))}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -67,14 +82,14 @@ export default function NetworkPage() {
               </tr>
             </thead>
             <tbody className="font-mono">
-              {routes?.map((r, i) => (
+              {(routes ?? []).map((r, i) => (
                 <tr key={i} className="border-b border-border last:border-0">
-                  <td className="py-2">{r.destination}</td>
-                  <td className="py-2 text-muted-foreground">{r.via || '-'}</td>
-                  <td className="py-2">{r.device}</td>
-                  <td className="py-2 text-muted-foreground">{r.protocol}</td>
-                  <td className="py-2 text-muted-foreground">{r.scope}</td>
-                  <td className="py-2 text-right text-muted-foreground">{r.metric}</td>
+                  <td className="py-2">{r.destination ?? '—'}</td>
+                  <td className="py-2 text-muted-foreground">{r.via || '—'}</td>
+                  <td className="py-2">{r.device ?? '—'}</td>
+                  <td className="py-2 text-muted-foreground">{r.protocol ?? '—'}</td>
+                  <td className="py-2 text-muted-foreground">{r.scope ?? '—'}</td>
+                  <td className="py-2 text-right text-muted-foreground">{r.metric ?? '—'}</td>
                 </tr>
               ))}
             </tbody>

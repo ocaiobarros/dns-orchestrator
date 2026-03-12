@@ -35,8 +35,9 @@ import {
 
 // ---- Configuration ----
 
-const IS_PREVIEW = !import.meta.env.VITE_API_URL;
-const API_BASE = import.meta.env.VITE_API_URL || '';
+// Production: VITE_API_URL must be set. Preview mode uses mocks only when explicitly no URL.
+const IS_PREVIEW = import.meta.env.MODE === 'development' && !import.meta.env.VITE_API_URL;
+const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
 async function apiCall<T>(
   method: string,
