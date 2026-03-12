@@ -173,12 +173,14 @@ function MapNode({ cx, cy, label, sublabel, healthy, icon: Icon, size = 'md', di
 
 /* ── Latency badge ── */
 function LatencyBadge({ cx, cy, ms, dimmed = false }: { cx: number; cy: number; ms: number; dimmed?: boolean }) {
-  const color = dimmed ? C.dim : latencyColor(ms);
+  const color = dimmed ? C.dim : latencyColor(safeNum(ms, 0));
+  const scx = safeNum(cx);
+  const scy = safeNum(cy);
   return (
     <g opacity={dimmed ? 0.3 : 1}>
-      <rect x={cx - 20} y={cy - 9} width="40" height="18" rx="9" fill={C.bg} stroke={color} strokeWidth="0.6" />
-      <text x={cx} y={cy + 4} textAnchor="middle" fill={color} fontSize="8" fontWeight="700" fontFamily="var(--font-mono)">
-        {ms}ms
+      <rect x={scx - 20} y={scy - 9} width="40" height="18" rx="9" fill={C.bg} stroke={color} strokeWidth="0.6" />
+      <text x={scx} y={scy + 4} textAnchor="middle" fill={color} fontSize="8" fontWeight="700" fontFamily="var(--font-mono)">
+        {safeNum(ms, 0)}ms
       </text>
     </g>
   );
