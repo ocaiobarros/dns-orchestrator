@@ -166,15 +166,13 @@ function TopologyView({ health, vipConfigured, vipAddress }: {
       })}
 
       {/* Nodes */}
-      {hasVip && (
-        <TopoNode cx={vipX} cy={vipY}
-          label={vipConfigured ? 'VIP ANYCAST' : 'VIP'}
-          sublabel={vipAddress || health.vip?.bind_ip || (vipConfigured ? undefined : 'Not configured')}
-          healthy={vipHealthy || (vipConfigured ?? false)}
-          icon={Zap} size="lg"
-          dimmed={!vipConfigured && !health.vip}
-        />
-      )}
+      <TopoNode cx={vipX} cy={vipY}
+        label={vipConfigured ? 'VIP ANYCAST' : 'VIP ANYCAST'}
+        sublabel={vipAddress || health.vip?.bind_ip || (vipConfigured ? undefined : 'Not configured')}
+        healthy={vipHealthy}
+        icon={Zap} size="lg"
+        dimmed={vipDimmed}
+      />
 
       {instances.map((inst, i) => {
         const ry = instances.length === 1 ? svgH / 2 : resolverStartY + i * resolverSpacing;
