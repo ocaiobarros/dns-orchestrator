@@ -84,8 +84,10 @@ function MapNode({ cx, cy, label, sublabel, healthy, icon: Icon, size = 'md', di
   onHover?: (entering: boolean) => void;
 }) {
   const color = dimmed ? C.dim : statusColor(healthy);
-  const r = size === 'lg' ? 32 : 24;
+  const r = safeR(size === 'lg' ? 32 : 24, 24);
   const iconSize = size === 'lg' ? 18 : 14;
+  const scx = safeNum(cx, 100);
+  const scy = safeNum(cy, 100);
 
   return (
     <g
