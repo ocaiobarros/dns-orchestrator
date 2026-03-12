@@ -11,6 +11,51 @@ from app.executors.command_runner import run_command
 
 logger = logging.getLogger("dns-control.diagnostics")
 
+# ── Privilege metadata per command prefix ──
+_PRIVILEGED_COMMANDS = {
+    "unbound-control": {
+        "requires_root": True,
+        "expected_in_unprivileged_mode": True,
+        "remediation": "Executar via sudo controlado ou ajustar permissões do socket /run/unbound.ctl",
+    },
+    "nft": {
+        "requires_root": True,
+        "expected_in_unprivileged_mode": True,
+        "remediation": "Executar backend com sudo restrito para diagnósticos de nftables",
+    },
+    "vtysh": {
+        "requires_root": True,
+        "expected_in_unprivileged_mode": True,
+        "remediation": "Ajustar permissões de /etc/frr/vtysh.conf ou adicionar usuário ao grupo frrvty",
+    },
+    "journalctl": {
+        "requires_root": False,
+        "expected_in_unprivileged_mode": True,
+        "remediation": "Adicionar usuário do backend ao grupo systemd-journal",
+    },
+}
+
+_PERMISSION_PATTERNS = [
+    "permission denied",
+    "operation not permitted",
+    "must be root",
+    "insufficient permissions",
+    "failed to connect to any daemons",
+    "access denied",
+]
+
+_DEPENDENCY_PATTERNS = [
+    "not found",
+    "no such file",
+    "command not found",
+]
+
+_TIMEOUT_PATTERNS = [
+    "timeout",
+    "timed out",
+    "expirou",
+]
+
 
 def _safe_read_file(path: str, default: str = "") -> str:
     """Read a text file, returning default on any failure."""
@@ -29,6 +74,104 @@ def _safe_run(executable: str, args: list[str], timeout: int = 5) -> dict:
         logger.debug(f"Command {executable} failed: {e}")
         return {"exit_code": -1, "stdout": "", "stderr": str(e), "duration_ms": 0}
 
+
+def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) -> dict:
+    """
+    Classify a command result into a status + summary + remediation.
+    Returns dict with: status, summary, remediation, privileged, requires_root, expected_in_unprivileged_mode.
+    """
+    combined_lower = ((stdout or "") + " " + (stderr or "")).lower()
+    stderr_lower = (stderr or "").lower()
+    stdout_lower = (stdout or "").lower()
+
+    priv_meta = _PRIVILEGED_COMMANDS.get(executable, {})
+    privileged = bool(priv_meta)
+    requires_root = priv_meta.get("requires_root", False)
+    expected_unpriv = priv_meta.get("expected_in_unprivileged_mode", False)
+    default_remediation = priv_meta.get("remediation", "")
+
+    # ── OK ──
+    if exit_code == 0:
+        return {
+            "status": "ok",
+            "summary": "Comando executado com sucesso",
+            "remediation": "",
+            "privileged": privileged,
+            "requires_root": requires_root,
+            "expected_in_unprivileged_mode": expected_unpriv,
+        }
+
+    # ── Inactive service (systemctl exit code 3) ──
+    if exit_code == 3 and "inactive" in combined_lower:
+        return {
+            "status": "inactive",
+            "summary": "Serviço está inativo (dead)",
+            "remediation": "Validar se o serviço deve estar ativo neste ambiente",
+            "privileged": False,
+            "requires_root": False,
+            "expected_in_unprivileged_mode": False,
+        }
+
+    # ── Permission error ──
+    if any(kw in combined_lower for kw in _PERMISSION_PATTERNS):
+        # Build specific summary from stderr
+        summary = "Sem permissão para executar este comando"
+        if "unbound" in executable:
+            summary = "Sem permissão para acessar /run/unbound.ctl"
+        elif executable == "nft":
+            summary = "Comando nft requer privilégio administrativo"
+        elif executable == "vtysh":
+            summary = "Sem permissão para acessar configuração do FRR"
+        elif executable == "journalctl":
+            summary = "Usuário do backend não possui acesso ao journal"
+
+        return {
+            "status": "permission_error",
+            "summary": summary,
+            "remediation": default_remediation or "Verificar permissões do usuário de serviço",
+            "privileged": True,
+            "requires_root": requires_root or True,
+            "expected_in_unprivileged_mode": True,
+        }
+
+    # ── Dependency error ──
+    if any(kw in stderr_lower for kw in _DEPENDENCY_PATTERNS):
+        return {
+            "status": "dependency_error",
+            "summary": "Comando ou dependência não encontrada",
+            "remediation": f"Verificar se {executable} está instalado e no PATH",
+            "privileged": privileged,
+            "requires_root": requires_root,
+            "expected_in_unprivileged_mode": expected_unpriv,
+        }
+
+    # ── Timeout ──
+    if any(kw in combined_lower for kw in _TIMEOUT_PATTERNS):
+        return {
+            "status": "timeout_error",
+            "summary": "Comando excedeu tempo limite",
+            "remediation": "Verificar se o serviço está responsivo",
+            "privileged": privileged,
+            "requires_root": requires_root,
+            "expected_in_unprivileged_mode": expected_unpriv,
+        }
+
+    # ── Generic error ──
+    # Try to extract first meaningful line from stderr for summary
+    first_stderr = (stderr or "").strip().split("\n")[0][:120] if stderr else ""
+    summary = first_stderr if first_stderr else "Comando retornou erro"
+
+    return {
+        "status": "error",
+        "summary": summary,
+        "remediation": "Verificar logs do serviço para mais detalhes",
+        "privileged": privileged,
+        "requires_root": requires_root,
+        "expected_in_unprivileged_mode": expected_unpriv,
+    }
+
+
+# ── Dashboard ──
 
 def get_dashboard_summary() -> dict:
     """Collect live data — best effort, never raises."""
@@ -87,14 +230,12 @@ def _get_system_info() -> dict:
     config_version = ""
     last_apply_at = None
 
-    # Hostname & kernel
     try:
         hostname = platform.node() or ""
         kernel = platform.release() or ""
     except Exception:
         pass
 
-    # OS from /etc/os-release
     try:
         content = _safe_read_file("/etc/os-release")
         for line in content.split("\n"):
@@ -104,7 +245,6 @@ def _get_system_info() -> dict:
     except Exception:
         pass
 
-    # Unbound version
     try:
         r = _safe_run("unbound", ["-V"], timeout=5)
         if r["exit_code"] == 0:
@@ -120,7 +260,6 @@ def _get_system_info() -> dict:
     except Exception:
         pass
 
-    # FRR version
     try:
         r = _safe_run("vtysh", ["-c", "show version"], timeout=5)
         if r["exit_code"] == 0:
@@ -131,7 +270,6 @@ def _get_system_info() -> dict:
     except Exception:
         pass
 
-    # nftables version
     try:
         r = _safe_run("nft", ["--version"], timeout=5)
         if r["exit_code"] == 0:
@@ -139,7 +277,6 @@ def _get_system_info() -> dict:
     except Exception:
         pass
 
-    # Primary interface (default route)
     try:
         r = _safe_run("ip", ["route", "show", "default"], timeout=5)
         if r["exit_code"] == 0 and "dev" in r["stdout"]:
@@ -149,7 +286,6 @@ def _get_system_info() -> dict:
     except Exception:
         pass
 
-    # VIP anycast — look for anycast/loopback secondary IPs
     try:
         r = _safe_run("ip", ["-j", "addr", "show", "lo"], timeout=5)
         if r["exit_code"] == 0 and r["stdout"].strip():
@@ -162,7 +298,6 @@ def _get_system_info() -> dict:
     except Exception:
         pass
 
-    # Config version — try to read from a version file
     for path in ["/etc/dns-control/version", "/opt/dns-control/VERSION", "/opt/dns-control/package.json"]:
         try:
             content = _safe_read_file(path)
@@ -174,10 +309,9 @@ def _get_system_info() -> dict:
                 config_version = content
             if config_version:
                 break
-        except Exception:
+        except (FileNotFoundError, PermissionError, OSError, json.JSONDecodeError):
             continue
 
-    # Last apply timestamp
     try:
         from app.core.database import get_db
         db = next(get_db())
@@ -202,6 +336,8 @@ def _get_system_info() -> dict:
         "last_apply_at": last_apply_at,
     }
 
+
+# ── Services ──
 
 def get_services_status() -> list[dict]:
     service_names = ["unbound", "frr", "nftables", "systemd-resolved"]
@@ -242,6 +378,8 @@ def restart_service(name: str) -> dict:
     result = _safe_run("systemctl", ["restart", name], timeout=30)
     return {"success": result["exit_code"] == 0, "output": result["stdout"], "stderr": result["stderr"]}
 
+
+# ── Network ──
 
 def get_network_interfaces() -> list[dict]:
     result = _safe_run("ip", ["-j", "addr", "show"], timeout=10)
@@ -294,11 +432,13 @@ def check_reachability() -> list[dict]:
     return results
 
 
+# ── Health Check (batch) ──
+
 def run_health_check() -> dict:
     """
     Run ALL catalog commands best-effort.
     Never raises. Returns consolidated summary + per-item results.
-    Each item matches the DiagResult contract the frontend expects.
+    Each result is enriched with classification, summary, remediation, privilege metadata.
     """
     from datetime import datetime, timezone
     from app.executors.command_catalog import COMMAND_CATALOG
@@ -315,18 +455,7 @@ def run_health_check() -> dict:
             duration_ms = r.get("duration_ms", 0)
             success = exit_code == 0
 
-            # Classify error type for operational visibility
-            status = "ok"
-            if not success:
-                stderr_lower = (stderr or "").lower()
-                if any(kw in stderr_lower for kw in ["permission denied", "operation not permitted", "must be root"]):
-                    status = "permission_error"
-                elif any(kw in stderr_lower for kw in ["not found", "no such file", "failed to connect"]):
-                    status = "dependency_error"
-                elif any(kw in stderr_lower for kw in ["timeout", "timed out", "expirou"]):
-                    status = "timeout_error"
-                else:
-                    status = "error"
+            classification = _classify_result(exit_code, stdout, stderr, cmd_def.executable)
 
             results.append({
                 "commandId": cmd_def.id,
@@ -341,7 +470,12 @@ def run_health_check() -> dict:
                 "duration_ms": duration_ms,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "success": success,
-                "status": status,
+                "status": classification["status"],
+                "summary": classification["summary"],
+                "remediation": classification["remediation"],
+                "privileged": classification["privileged"],
+                "requires_root": classification["requires_root"],
+                "expected_in_unprivileged_mode": classification["expected_in_unprivileged_mode"],
             })
         except Exception as e:
             logger.exception(f"Health check failed for {cmd_def.id}: {e}")
@@ -359,11 +493,18 @@ def run_health_check() -> dict:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "success": False,
                 "status": "runtime_error",
+                "summary": f"Exceção interna: {str(e)[:100]}",
+                "remediation": "Verificar logs do backend para stack trace completo",
+                "privileged": False,
+                "requires_root": False,
+                "expected_in_unprivileged_mode": False,
             })
 
     finished_at = datetime.now(timezone.utc).isoformat()
-    passed = sum(1 for r in results if r["success"])
-    failed = len(results) - passed
+    passed = sum(1 for r in results if r["status"] == "ok")
+    failed = sum(1 for r in results if r["status"] in ("error", "runtime_error", "timeout_error", "dependency_error"))
+    permission_limited = sum(1 for r in results if r["status"] == "permission_error")
+    inactive = sum(1 for r in results if r["status"] == "inactive")
 
     return {
         "success": True,
@@ -372,6 +513,8 @@ def run_health_check() -> dict:
         "total": len(results),
         "passed": passed,
         "failed": failed,
+        "permission_limited": permission_limited,
+        "inactive": inactive,
         "results": results,
     }
 
