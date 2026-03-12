@@ -333,14 +333,14 @@ function TopologyView({ health, vipConfigured, vipAddress, totalQueries, cacheHi
       </defs>
 
       {/* Background layers */}
-      <rect width={svgW} height={svgH} fill="transparent" />
-      <rect width={svgW} height={svgH} fill="url(#noc-grid)" opacity="0.25" />
-      <ellipse cx={svgW / 2} cy={svgH / 2} rx={svgW * 0.4} ry={svgH * 0.4} fill="url(#radar-fade)" />
+      <rect width={safeDim(svgW, 0)} height={safeDim(svgH, 0)} fill="transparent" />
+      <rect width={safeDim(svgW, 0)} height={safeDim(svgH, 0)} fill="url(#noc-grid)" opacity={safeOpacity(0.25, 0.25)} />
+      <ellipse cx={safeNum(svgW / 2)} cy={safeNum(svgH / 2)} rx={safeDim(svgW * 0.4, 0)} ry={safeDim(svgH * 0.4, 0)} fill="url(#radar-fade)" />
 
       {/* Concentric radar rings */}
       {[0.15, 0.25, 0.38].map((r, i) => (
-        <ellipse key={i} cx={svgW / 2} cy={svgH / 2} rx={svgW * r} ry={svgH * r}
-          fill="none" stroke={C.accent} strokeWidth="0.2" opacity="0.04" strokeDasharray="4 6" />
+        <ellipse key={i} cx={safeNum(svgW / 2)} cy={safeNum(svgH / 2)} rx={safeDim(svgW * r, 0)} ry={safeDim(svgH * r, 0)}
+          fill="none" stroke={C.accent} strokeWidth={safeSW(0.2, 0.2)} opacity={safeOpacity(0.04, 0.04)} strokeDasharray="4 6" />
       ))}
 
       {/* ── Connection Paths ── */}

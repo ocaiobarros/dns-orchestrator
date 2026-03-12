@@ -84,8 +84,8 @@ export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' 
 
         {/* Radar rings */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-[0.03]">
-          {[120, 200, 300].map(r => (
-            <circle key={r} cx="500" cy="240" r={r} fill="none" stroke="hsl(var(--primary))" strokeWidth="1" />
+          {[120, 200, 300].map((ringRadius) => (
+            <circle key={ringRadius} cx={safeNum(500)} cy={safeNum(240)} r={safeR(ringRadius, 120)} fill="none" stroke="hsl(var(--primary))" strokeWidth="1" />
           ))}
         </svg>
 
