@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback, useRef } from 'react';
+import { safeNum } from '@/lib/svg-utils';
 
 interface ChartDataPoint {
   time: string;
@@ -137,9 +138,10 @@ function MiniAreaChart({ data, dataKey, stroke, fill, yDomain, label, secondaryK
       {/* tooltip */}
       {tooltip && tooltip.idx >= 0 && tooltip.idx < data.length && (() => {
         const d = data[tooltip.idx];
-        const cx = PAD.left + tooltip.idx * xStep;
+        const cx = safeNum(PAD.left + tooltip.idx * xStep, PAD.left);
         const val = Number(d[dataKey]) || 0;
-        const cy = PAD.top + INNER_H - ((val - (yDomain?.[0] ?? 0)) / (maxY - (yDomain?.[0] ?? 0))) * INNER_H;
+        const range = (maxY - (yDomain?.[0] ?? 0)) || 1;
+        const cy = safeNum(PAD.top + INNER_H - ((val - (yDomain?.[0] ?? 0)) / range) * INNER_H, PAD.top);
         return (
           <>
             <line x1={cx} x2={cx} y1={PAD.top} y2={PAD.top + INNER_H} stroke="hsl(215 15% 40%)" strokeWidth={0.5} />
