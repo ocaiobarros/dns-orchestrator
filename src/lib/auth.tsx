@@ -282,7 +282,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const token = localStorage.getItem(TOKEN_KEY);
       if (!token) return false;
 
-      const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+      const res = await fetch(buildAuthUrl('/auth/refresh'), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
