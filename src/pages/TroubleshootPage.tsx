@@ -46,6 +46,7 @@ interface HealthBatchResponse {
   failed: number;
   permission_limited?: number;
   inactive?: number;
+  service_not_running?: number;
   privilege_status?: PrivilegeStatus;
   results: HealthBatchResult[];
 }
@@ -430,7 +431,7 @@ export default function TroubleshootPage() {
 
           const permLimited = data.permission_limited ?? data.results.filter(r => r.status === 'permission_error').length;
           const inactiveCount = data.inactive ?? data.results.filter(r => r.status === 'inactive').length;
-          const svcNotRunning = (data as any).service_not_running ?? data.results.filter(r => r.status === 'service_not_running').length;
+          const svcNotRunning = data.service_not_running ?? data.results.filter(r => r.status === 'service_not_running').length;
           const passedCount = data.passed ?? data.results.filter(r => r.status === 'ok').length;
           const failedCount = data.failed ?? data.results.filter(r => ['error', 'runtime_error', 'timeout_error', 'dependency_error'].includes(r.status)).length;
 
