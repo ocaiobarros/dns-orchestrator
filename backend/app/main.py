@@ -15,7 +15,7 @@ from app.api.routes import (
     auth, users, dashboard, services, network, dns,
     nat, ospf, logs, troubleshooting, configs, apply,
     files, history, settings as settings_route,
-    healthcheck,
+    healthcheck, deploy,
 )
 from app.api.routes import (
     health_v2, metrics_v2, events, actions, instances,
