@@ -37,10 +37,25 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const IS_PREVIEW = !import.meta.env.VITE_API_URL;
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const IS_PREVIEW = import.meta.env.MODE === 'development' && !import.meta.env.VITE_API_URL;
+const API_BASE = (import.meta.env.VITE_API_URL ?? '').trim();
+const API_BASE_TRIMMED = API_BASE.replace(/\/+$/, '');
+const API_ROOT = API_BASE_TRIMMED
+  ? (API_BASE_TRIMMED.endsWith('/api') ? API_BASE_TRIMMED : `${API_BASE_TRIMMED}/api`)
+  : '';
 const SESSION_KEY = 'dns-control-session';
 const TOKEN_KEY = 'dns-control-token';
+
+function normalizeAuthPath(path: string): string {
+  const withLeadingSlash = path.startsWith('/') ? path : `/${path}`;
+  if (withLeadingSlash === '/api') return '/';
+  return withLeadingSlash.startsWith('/api/') ? withLeadingSlash.slice(4) : withLeadingSlash;
+}
+
+function buildAuthUrl(path: string): string {
+  const normalizedPath = normalizeAuthPath(path);
+  return API_ROOT ? `${API_ROOT}${normalizedPath}` : normalizedPath;
+}
 
 const MOCK_USER: AuthUser = {
   id: 'usr-001',
