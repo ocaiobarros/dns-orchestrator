@@ -65,6 +65,11 @@ export default function TopologySummary({ config, compact = false, showFlowArrow
                 <div className="text-[10px] text-muted-foreground">
                   {v.description || v.label || `VIP ${i + 1}`} · :{v.port || 53} {v.protocol || 'udp+tcp'} · {v.deliveryMode}
                 </div>
+                {v.healthCheckEnabled && (
+                  <div className="text-[10px] text-accent/70">
+                    probe: dig @{v.ipv4} {v.healthCheckDomain || 'google.com'} · {v.healthCheckInterval || 30}s
+                  </div>
+                )}
               </div>
             </div>
           )) : <span className="text-xs text-muted-foreground italic">(nenhum VIP definido)</span>}
@@ -116,21 +121,37 @@ export default function TopologySummary({ config, compact = false, showFlowArrow
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider font-medium">
           <ExternalLink size={12} /> Camada 3 — Egress Público
-          <span className="text-muted-foreground/50 normal-case">(identidade de saída)</span>
+          <span className="text-muted-foreground/50 normal-case">
+            ({config.egressMode === 'fixed-per-instance' ? 'fixo por instância' :
+              config.egressMode === 'shared-pool' ? 'pool compartilhado' :
+              config.egressMode === 'randomized' ? 'randomizado' : 'identidade de saída'})
+          </span>
         </div>
         <div className="flex flex-wrap gap-2">
-          {config.instances.map((inst, i) => (
-            <div key={i} className="flex items-center gap-2 px-3 py-2 rounded bg-warning/5 border border-warning/20">
+          {config.egressMode === 'fixed-per-instance' || !config.egressMode ? (
+            config.instances.map((inst, i) => (
+              <div key={i} className="flex items-center gap-2 px-3 py-2 rounded bg-warning/5 border border-warning/20">
+                <ExternalLink size={12} className="text-warning" />
+                <div>
+                  <div className="text-xs font-mono font-medium">{inst.name}</div>
+                  <div className="text-[10px] font-mono text-muted-foreground">
+                    {inst.egressIpv4 || '(vazio)'}
+                    {config.enableIpv6 && inst.egressIpv6 ? ` / ${inst.egressIpv6}` : ''}
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-2 rounded bg-warning/5 border border-warning/20">
               <ExternalLink size={12} className="text-warning" />
               <div>
-                <div className="text-xs font-mono font-medium">{inst.name}</div>
+                <div className="text-xs font-mono font-medium">Pool: {config.egressSharedPool?.length || 0} IPs</div>
                 <div className="text-[10px] font-mono text-muted-foreground">
-                  {inst.egressIpv4 || '(vazio)'}
-                  {config.enableIpv6 && inst.egressIpv6 ? ` / ${inst.egressIpv6}` : ''}
+                  {config.egressSharedPool?.join(', ') || '(vazio)'}
                 </div>
               </div>
             </div>
-          ))}
+          )}
         </div>
       </div>
 

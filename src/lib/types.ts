@@ -34,7 +34,13 @@ export interface ServiceVip {
   description: string;
   label: string;
   deliveryMode: VipDeliveryMode;
+  healthCheckEnabled: boolean;
+  healthCheckDomain: string;
+  healthCheckInterval: number;
 }
+
+export type EgressMode = 'fixed-per-instance' | 'shared-pool' | 'randomized';
+
 
 // ---- DNS Instance (expanded) ----
 
@@ -115,6 +121,8 @@ export interface WizardConfig {
   // Step 5 - Egress Público (outgoing-interface per instance)
   // (egress fields live on DnsInstance but are edited in step 5)
   egressFixedIdentity: boolean;
+  egressMode: EgressMode;
+  egressSharedPool: string[];
 
   // Step 6 - Mapeamento VIP → Instância
   distributionPolicy: VipDistributionPolicy;
@@ -568,7 +576,7 @@ export const DEFAULT_CONFIG: WizardConfig = {
   deploymentMode: 'vip-routed-border',
 
   // Step 3 - VIPs de Serviço
-  serviceVips: [],
+  serviceVips: [] as ServiceVip[],
   vipIpv6Enabled: false,
 
 
@@ -592,6 +600,8 @@ export const DEFAULT_CONFIG: WizardConfig = {
 
   // Step 5 - Egress Público
   egressFixedIdentity: true,
+  egressMode: 'fixed-per-instance' as EgressMode,
+  egressSharedPool: [],
 
   // Step 6 - Mapeamento VIP → Instância
   distributionPolicy: 'sticky-source',

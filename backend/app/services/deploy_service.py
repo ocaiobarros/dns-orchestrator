@@ -505,14 +505,25 @@ def _run_health_checks(payload: dict) -> list[dict]:
         "durationMs": int((time.monotonic() - t0) * 1000),
     })
 
-    # Check VIP reachability
+    # Check VIP reachability using configured health check domains
     for vip in vips:
         vip_ip = vip.get("ipv4", "")
         if vip_ip:
+            probe_domain = vip.get("healthCheckDomain", "google.com") or "google.com"
+            health_enabled = vip.get("healthCheckEnabled", True)
+            if not health_enabled:
+                checks.append({
+                    "name": f"VIP {vip_ip} health check",
+                    "target": vip_ip,
+                    "status": "skip",
+                    "detail": "Health check desabilitado para este VIP",
+                    "durationMs": 0,
+                })
+                continue
             t0 = time.monotonic()
-            r = run_command("dig", [f"@{vip_ip}", "localhost", "+short", "+time=2", "+tries=1"], timeout=5)
+            r = run_command("dig", [f"@{vip_ip}", probe_domain, "+short", "+time=2", "+tries=1"], timeout=5)
             checks.append({
-                "name": f"VIP {vip_ip} reachable",
+                "name": f"VIP {vip_ip} reachable (dig {probe_domain})",
                 "target": vip_ip,
                 "status": "pass" if r["exit_code"] == 0 else "fail",
                 "detail": r["stdout"].strip()[:200] or "No response",
@@ -547,7 +558,7 @@ def _generate_health_checks(payload: dict, dry_run: bool = False) -> list[dict]:
 
 
 def _save_deploy_state(deploy_id: str, operator: str, success: bool, backup_id: str | None):
-    """Persist deploy state to disk."""
+    """Persist deploy state and deployment record to disk."""
     try:
         existing = get_deploy_state()
         total = existing.get("totalDeployments", 0) + 1
@@ -564,6 +575,21 @@ def _save_deploy_state(deploy_id: str, operator: str, success: bool, backup_id: 
         os.makedirs(os.path.dirname(DEPLOY_STATE_FILE), exist_ok=True)
         with open(DEPLOY_STATE_FILE, "w") as f:
             json.dump(state, f, indent=2)
+
+        # Also persist deployment record in /var/lib/dns-control/deployments/
+        deploy_dir = os.path.join(
+            getattr(settings, "DATA_DIR", "/var/lib/dns-control"), "deployments", deploy_id
+        )
+        os.makedirs(deploy_dir, exist_ok=True)
+        with open(os.path.join(deploy_dir, "manifest.json"), "w") as f:
+            json.dump({
+                "deploy_id": deploy_id,
+                "timestamp": _now_iso(),
+                "operator": operator,
+                "status": "success" if success else "failed",
+                "config_version": f"v{total}",
+                "backup_id": backup_id,
+            }, f, indent=2)
     except Exception as e:
         logger.error(f"Failed to save deploy state: {e}")
 
