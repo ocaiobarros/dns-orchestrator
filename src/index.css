@@ -239,17 +239,8 @@
   }
 
   .noc-dot-live {
-    @apply w-2 h-2 rounded-full bg-success relative flex-shrink-0;
-    box-shadow: 0 0 8px hsl(var(--success) / 0.4);
-  }
-  .noc-dot-live::after {
-    content: '';
-    @apply absolute inset-0 rounded-full bg-success;
-    animation: noc-breathe 2.5s ease-in-out infinite;
-  }
-  @keyframes noc-breathe {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.25; transform: scale(1.6); }
+    @apply w-2 h-2 rounded-full bg-success flex-shrink-0;
+    box-shadow: 0 0 6px hsl(var(--success) / 0.3);
   }
 
   .noc-dot-dead {
