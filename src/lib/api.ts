@@ -187,9 +187,9 @@ export const api = {
 
   // History
   getHistory: (page: number = 1) =>
-    apiCall<PaginatedResponse<ApplyResult>>('GET', `/history?page=${page}`),
+    apiCall<PaginatedResponse<ApplyResult>>('GET', `/deploy/history?page=${page}`),
   getHistoryEntry: (id: string) =>
-    apiCall<ApplyResult>('GET', `/apply/jobs/${id}`),
+    apiCall<ApplyResult>('GET', `/deploy/history/${id}`),
 
   // Files
   getGeneratedFiles: () => apiCall<GeneratedFile[]>('GET', '/files/generated'),
