@@ -73,10 +73,11 @@ export default function UsersPage() {
 
   const createMutation = useMutation({
     mutationFn: (data: { username: string; password: string }) => api.createUser(data.username, data.password, mustChangePassword),
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       if (res.success) {
         toast.success('Usuário criado com sucesso');
-        queryClient.invalidateQueries({ queryKey: ['users'] });
+        await queryClient.invalidateQueries({ queryKey: ['users'] });
+        await queryClient.refetchQueries({ queryKey: ['users'] });
         setCreateOpen(false);
         setNewUsername('');
         setNewPassword('');
@@ -90,10 +91,11 @@ export default function UsersPage() {
 
   const toggleMutation = useMutation({
     mutationFn: (data: { userId: string; active: boolean }) => api.toggleUser(data.userId, data.active),
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       if (res.success) {
         toast.success('Status do usuário atualizado');
-        queryClient.invalidateQueries({ queryKey: ['users'] });
+        await queryClient.invalidateQueries({ queryKey: ['users'] });
+        await queryClient.refetchQueries({ queryKey: ['users'] });
       } else {
         toast.error(res.error || 'Erro ao atualizar status');
       }
@@ -116,9 +118,10 @@ export default function UsersPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (userId: string) => api.deleteUser(userId),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('Usuário removido');
-      queryClient.invalidateQueries({ queryKey: ['users'] });
+      await queryClient.invalidateQueries({ queryKey: ['users'] });
+      await queryClient.refetchQueries({ queryKey: ['users'] });
       setDeleteTarget(null);
     },
   });

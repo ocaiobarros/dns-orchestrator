@@ -37,10 +37,25 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const IS_PREVIEW = !import.meta.env.VITE_API_URL;
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const IS_PREVIEW = import.meta.env.MODE === 'development' && !import.meta.env.VITE_API_URL;
+const API_BASE = (import.meta.env.VITE_API_URL ?? '').trim();
+const API_BASE_TRIMMED = API_BASE.replace(/\/+$/, '');
+const API_ROOT = API_BASE_TRIMMED
+  ? (API_BASE_TRIMMED.endsWith('/api') ? API_BASE_TRIMMED : `${API_BASE_TRIMMED}/api`)
+  : '';
 const SESSION_KEY = 'dns-control-session';
 const TOKEN_KEY = 'dns-control-token';
+
+function normalizeAuthPath(path: string): string {
+  const withLeadingSlash = path.startsWith('/') ? path : `/${path}`;
+  if (withLeadingSlash === '/api') return '/';
+  return withLeadingSlash.startsWith('/api/') ? withLeadingSlash.slice(4) : withLeadingSlash;
+}
+
+function buildAuthUrl(path: string): string {
+  const normalizedPath = normalizeAuthPath(path);
+  return API_ROOT ? `${API_ROOT}${normalizedPath}` : normalizedPath;
+}
 
 const MOCK_USER: AuthUser = {
   id: 'usr-001',
@@ -127,7 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const token = localStorage.getItem(TOKEN_KEY);
       if (!token) return;
 
-      const res = await fetch(`${API_BASE}/api/auth/me`, {
+      const res = await fetch(buildAuthUrl('/auth/me'), {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -187,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: true, mustChangePassword: mustChange };
       }
 
-      const res = await fetch(`${API_BASE}/api/auth/login`, {
+      const res = await fetch(buildAuthUrl('/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
@@ -227,7 +242,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!IS_PREVIEW) {
         const token = localStorage.getItem(TOKEN_KEY);
         if (token) {
-          await fetch(`${API_BASE}/api/auth/logout`, {
+          await fetch(buildAuthUrl('/auth/logout'), {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}` },
           }).catch(() => {});
@@ -267,7 +282,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const token = localStorage.getItem(TOKEN_KEY);
       if (!token) return false;
 
-      const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+      const res = await fetch(buildAuthUrl('/auth/refresh'), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -309,7 +324,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const token = localStorage.getItem(TOKEN_KEY);
-      const res = await fetch(`${API_BASE}/api/auth/force-change-password`, {
+      const res = await fetch(buildAuthUrl('/auth/force-change-password'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -54,9 +54,9 @@ export default function Dashboard() {
   if (sysLoading || svcLoading) return <LoadingState />;
   if (sysError) return <ErrorState message={sysError.message} />;
 
-  const safeServices = Array.isArray(services) ? services : [];
-  const safeStats = Array.isArray(instanceStats) ? instanceStats : [];
-  const safeV2 = Array.isArray(v2Instances) ? v2Instances : [];
+  const safeServices = Array.isArray(services) ? services.filter(Boolean) : [];
+  const safeStats = Array.isArray(instanceStats) ? instanceStats.filter(Boolean) : [];
+  const safeV2 = Array.isArray(v2Instances) ? v2Instances.filter(Boolean) : [];
 
   const allRunning = safeServices.every(s => s.status === 'running');
   const totalQps = safeStats.reduce((a, b) => a + getInstanceQueries(b), 0);

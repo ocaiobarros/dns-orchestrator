@@ -19,6 +19,8 @@ export default function NetworkPage() {
   if (ifError) return <ErrorState message={ifError.message} />;
 
   const ifaceList = Array.isArray(interfaces) ? interfaces : [];
+  const routeList = Array.isArray(routes) ? routes : [];
+  const reachabilityList = Array.isArray(reachability.data) ? reachability.data : [];
 
   return (
     <div className="space-y-6">
@@ -26,7 +28,6 @@ export default function NetworkPage() {
         <h1 className="text-xl font-semibold">Rede</h1>
         <p className="text-sm text-muted-foreground">Interfaces, endereços e rotas</p>
       </div>
-
       <div className="noc-panel">
         <div className="noc-panel-header">Interfaces</div>
         {ifaceList.length === 0 ? <EmptyState title="Nenhuma interface encontrada" /> : (
@@ -82,7 +83,7 @@ export default function NetworkPage() {
               </tr>
             </thead>
             <tbody className="font-mono">
-              {(routes ?? []).map((r, i) => (
+              {routeList.map((r, i) => (
                 <tr key={i} className="border-b border-border last:border-0">
                   <td className="py-2">{r.destination ?? '—'}</td>
                   <td className="py-2 text-muted-foreground">{r.via || '—'}</td>
@@ -109,16 +110,18 @@ export default function NetworkPage() {
           </button>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {(reachability.data || []).map(target => (
+          {reachabilityList.map(target => (
             <div key={target.target} className="flex items-center gap-2 p-2 rounded bg-secondary border border-border">
               <span className={target.reachable ? 'status-dot-ok' : 'status-dot-error'} />
               <div className="min-w-0">
                 <span className="text-xs font-mono block truncate">{target.target}</span>
-                <span className="text-xs text-muted-foreground">{target.label} {target.latencyMs !== null ? `${target.latencyMs}ms` : ''}</span>
+                <span className="text-xs text-muted-foreground">
+                  {target.label ?? '—'} {typeof target.latencyMs === 'number' ? `${target.latencyMs}ms` : ''}
+                </span>
               </div>
             </div>
           ))}
-          {!reachability.data && (
+          {reachabilityList.length === 0 && (
             <p className="text-xs text-muted-foreground col-span-full">Clique em "Testar" para verificar conectividade</p>
           )}
         </div>
