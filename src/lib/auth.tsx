@@ -43,12 +43,18 @@ const SESSION_KEY = 'dns-control-session';
 const TOKEN_KEY = 'dns-control-token';
 
 function normalizeAuthPath(path: string): string {
-  return path.startsWith('/') ? path : `/${path}`;
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  return normalized.startsWith('/api/') ? normalized : `/api${normalized}`;
 }
 
 function buildAuthUrl(path: string): string {
   const normalizedPath = normalizeAuthPath(path);
-  return API_BASE ? `${API_BASE}${normalizedPath}` : normalizedPath;
+  if (!API_BASE) return normalizedPath;
+  const base = API_BASE.replace(/\/+$/, '');
+  if (base.endsWith('/api')) {
+    return `${base}${normalizedPath.replace(/^\/api/, '')}`;
+  }
+  return `${base}${normalizedPath}`;
 }
 
 const MOCK_USER: AuthUser = {
