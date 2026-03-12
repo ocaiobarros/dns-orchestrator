@@ -147,6 +147,9 @@ function BatchSummaryPanel({ summary, onRerun, isPending }: {
         {summary.inactive > 0 && (
           <SummaryChip label="Inativos" value={summary.inactive} className="bg-secondary text-muted-foreground border-border" />
         )}
+        {(summary.service_not_running ?? 0) > 0 && (
+          <SummaryChip label="Não executando" value={summary.service_not_running!} className="bg-amber-500/10 text-amber-400 border-amber-500/20" />
+        )}
         {summary.failed > 0 && (
           <SummaryChip label="Erros reais" value={summary.failed} className="bg-destructive/15 text-destructive border-destructive/30" />
         )}
