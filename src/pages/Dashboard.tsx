@@ -218,6 +218,10 @@ export default function Dashboard() {
         vipConfigured={vipConfigured}
         vipAddress={vipAddress}
         dnsAvailable={dnsAvail}
+        totalQueries={totalQps}
+        cacheHitRatio={Number(avgCacheHit)}
+        avgLatency={Number(avgLatency)}
+        dnsMetricsAvailable={dnsAvail}
       />
 
       {/* ═══ TIER 5: INSTANCE TABLE ═══ */}
