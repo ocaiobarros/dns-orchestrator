@@ -4,59 +4,64 @@
 
 @layer base {
   :root {
-    --background: 220 20% 10%;
-    --foreground: 210 20% 90%;
+    --background: 222 25% 7%;
+    --foreground: 210 20% 92%;
 
-    --card: 220 18% 13%;
-    --card-foreground: 210 20% 90%;
+    --card: 222 22% 10%;
+    --card-foreground: 210 20% 92%;
 
-    --popover: 220 18% 13%;
-    --popover-foreground: 210 20% 90%;
+    --popover: 222 22% 10%;
+    --popover-foreground: 210 20% 92%;
 
     --primary: 160 70% 45%;
-    --primary-foreground: 220 20% 10%;
+    --primary-foreground: 222 25% 7%;
 
-    --secondary: 220 15% 18%;
+    --secondary: 222 18% 14%;
     --secondary-foreground: 210 20% 80%;
 
-    --muted: 220 15% 16%;
-    --muted-foreground: 215 15% 55%;
+    --muted: 222 18% 12%;
+    --muted-foreground: 215 15% 50%;
 
-    --accent: 200 80% 55%;
-    --accent-foreground: 220 20% 10%;
+    --accent: 187 80% 50%;
+    --accent-foreground: 222 25% 7%;
 
-    --destructive: 0 70% 50%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
     --warning: 38 92% 50%;
-    --warning-foreground: 220 20% 10%;
+    --warning-foreground: 222 25% 7%;
 
-    --success: 160 70% 45%;
-    --success-foreground: 220 20% 10%;
+    --success: 142 71% 45%;
+    --success-foreground: 222 25% 7%;
 
-    --border: 220 15% 20%;
-    --input: 220 15% 20%;
+    --border: 222 18% 16%;
+    --input: 222 18% 16%;
     --ring: 160 70% 45%;
 
-    --radius: 0.5rem;
+    --radius: 0.375rem;
 
-    --sidebar-background: 220 20% 8%;
-    --sidebar-foreground: 210 20% 75%;
+    --sidebar-background: 222 25% 5%;
+    --sidebar-foreground: 210 20% 70%;
     --sidebar-primary: 160 70% 45%;
-    --sidebar-primary-foreground: 220 20% 10%;
-    --sidebar-accent: 220 15% 14%;
+    --sidebar-primary-foreground: 222 25% 7%;
+    --sidebar-accent: 222 18% 11%;
     --sidebar-accent-foreground: 210 20% 90%;
-    --sidebar-border: 220 15% 18%;
+    --sidebar-border: 222 18% 14%;
     --sidebar-ring: 160 70% 45%;
 
     --font-sans: 'Inter', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
     --chart-1: 160 70% 45%;
-    --chart-2: 200 80% 55%;
+    --chart-2: 187 80% 50%;
     --chart-3: 38 92% 50%;
     --chart-4: 280 65% 60%;
-    --chart-5: 0 70% 50%;
+    --chart-5: 0 72% 51%;
+
+    --noc-glow-primary: 0 0 20px hsl(160 70% 45% / 0.15);
+    --noc-glow-accent: 0 0 20px hsl(187 80% 50% / 0.15);
+    --noc-glow-warning: 0 0 20px hsl(38 92% 50% / 0.15);
+    --noc-glow-destructive: 0 0 20px hsl(0 72% 51% / 0.15);
   }
 }
 
@@ -79,8 +84,9 @@
 }
 
 @layer components {
+  /* === Legacy panel classes (used by non-dashboard pages) === */
   .noc-panel {
-    @apply bg-card border border-border rounded-lg p-4;
+    @apply bg-card border border-border rounded p-4;
   }
 
   .noc-panel-header {
@@ -92,7 +98,7 @@
   }
 
   .status-dot-ok {
-    @apply status-dot bg-success animate-pulse;
+    @apply status-dot bg-success;
   }
 
   .status-dot-error {
@@ -127,83 +133,229 @@
     @apply text-xs text-muted-foreground uppercase tracking-wider;
   }
 
-  /* NOC Dashboard */
-  .noc-grid {
-    @apply grid gap-3;
+  /* ================================================================
+     NOC DASHBOARD — War Room Design System
+     Inspired by Cloudflare Radar / Datadog / Grafana
+     ================================================================ */
+
+  /* -- NOC Card -- */
+  .noc-card {
+    @apply relative overflow-hidden rounded border border-border;
+    background: linear-gradient(
+      180deg,
+      hsl(222 22% 11%) 0%,
+      hsl(222 22% 9%) 100%
+    );
   }
 
-  .noc-card {
-    @apply bg-card border border-border rounded-lg p-4 relative overflow-hidden;
+  .noc-card::before {
+    content: '';
+    @apply absolute inset-x-0 top-0 h-px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(var(--border)) 20%,
+      hsl(var(--muted-foreground) / 0.3) 50%,
+      hsl(var(--border)) 80%,
+      transparent 100%
+    );
+  }
+
+  .noc-card-body {
+    @apply relative z-10 p-4;
   }
 
   .noc-card-glow {
-    @apply absolute inset-0 opacity-0 transition-opacity duration-500;
+    @apply absolute inset-0 opacity-0 transition-opacity duration-700 pointer-events-none;
   }
 
   .noc-card:hover .noc-card-glow {
     @apply opacity-100;
   }
 
+  /* -- NOC Status Banner -- */
   .noc-banner {
-    @apply bg-card border border-border rounded-lg px-5 py-4 flex items-center justify-between;
+    @apply relative overflow-hidden rounded border border-border px-5 py-4;
+    background: linear-gradient(
+      135deg,
+      hsl(222 25% 8%) 0%,
+      hsl(222 22% 11%) 50%,
+      hsl(222 25% 8%) 100%
+    );
   }
 
+  .noc-banner::after {
+    content: '';
+    @apply absolute inset-0 pointer-events-none;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      hsl(210 20% 92% / 0.008) 2px,
+      hsl(210 20% 92% / 0.008) 4px
+    );
+  }
+
+  .noc-banner-operational {
+    border-color: hsl(var(--success) / 0.3);
+    box-shadow: inset 0 1px 0 hsl(var(--success) / 0.1), var(--noc-glow-primary);
+  }
+
+  .noc-banner-degraded {
+    border-color: hsl(var(--warning) / 0.3);
+    box-shadow: inset 0 1px 0 hsl(var(--warning) / 0.1), var(--noc-glow-warning);
+  }
+
+  .noc-banner-critical {
+    border-color: hsl(var(--destructive) / 0.3);
+    box-shadow: inset 0 1px 0 hsl(var(--destructive) / 0.1), var(--noc-glow-destructive);
+  }
+
+  /* -- Status indicator with ping -- */
   .noc-status-ring {
-    @apply w-3 h-3 rounded-full relative;
+    @apply w-3 h-3 rounded-full relative flex-shrink-0;
   }
 
   .noc-status-ring::after {
     content: '';
-    @apply absolute inset-0 rounded-full animate-ping;
+    @apply absolute -inset-0.5 rounded-full;
     background: inherit;
-    opacity: 0.4;
+    animation: noc-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
   }
 
+  @keyframes noc-ping {
+    0% { transform: scale(1); opacity: 0.6; }
+    75%, 100% { transform: scale(2.2); opacity: 0; }
+  }
+
+  /* -- Animated running dot -- */
+  .noc-dot-running {
+    @apply w-2 h-2 rounded-full bg-success relative flex-shrink-0;
+    box-shadow: 0 0 6px hsl(var(--success) / 0.5);
+  }
+
+  .noc-dot-running::after {
+    content: '';
+    @apply absolute inset-0 rounded-full bg-success;
+    animation: noc-dot-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes noc-dot-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.4); }
+  }
+
+  .noc-dot-stopped {
+    @apply w-2 h-2 rounded-full bg-muted-foreground/40 flex-shrink-0;
+  }
+
+  .noc-dot-error {
+    @apply w-2 h-2 rounded-full bg-destructive flex-shrink-0;
+    box-shadow: 0 0 6px hsl(var(--destructive) / 0.5);
+  }
+
+  /* -- NOC Typography -- */
   .noc-metric-xl {
-    @apply text-3xl font-bold font-mono text-foreground leading-none;
+    @apply text-[2rem] font-bold font-mono text-foreground leading-none tracking-tight;
+  }
+
+  .noc-metric-lg {
+    @apply text-xl font-bold font-mono text-foreground leading-none;
   }
 
   .noc-metric-label {
-    @apply text-[10px] text-muted-foreground uppercase tracking-[0.15em] font-medium;
+    @apply text-[10px] text-muted-foreground uppercase tracking-[0.18em] font-semibold;
   }
 
   .noc-metric-sub {
-    @apply text-xs text-muted-foreground font-mono;
+    @apply text-[11px] text-muted-foreground font-mono;
   }
 
   .noc-section-title {
-    @apply text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.15em] flex items-center gap-2;
+    @apply text-[11px] font-bold text-muted-foreground uppercase tracking-[0.18em] flex items-center gap-2 pb-3 mb-0 border-b border-border/60;
   }
 
+  /* -- NOC Table -- */
   .noc-table {
     @apply w-full text-sm;
   }
 
   .noc-table thead tr {
-    @apply text-left text-muted-foreground border-b border-border;
+    @apply text-left border-b border-border/80;
   }
 
   .noc-table thead th {
-    @apply py-2 pr-3 text-[10px] uppercase tracking-wider font-semibold;
+    @apply py-2.5 pr-3 text-[10px] uppercase tracking-[0.15em] font-bold text-muted-foreground;
   }
 
   .noc-table tbody tr {
-    @apply border-b border-border/50 last:border-0 transition-colors hover:bg-secondary/30;
+    @apply border-b border-border/30 last:border-0 transition-colors;
+  }
+
+  .noc-table tbody tr:hover {
+    background: hsl(222 22% 12%);
   }
 
   .noc-table tbody td {
-    @apply py-2 pr-3;
+    @apply py-2.5 pr-3;
   }
 
+  /* -- NOC Health Row -- */
   .noc-health-row {
-    @apply flex items-center justify-between py-2 border-b border-border/50 last:border-0;
+    @apply flex items-center justify-between py-2.5 border-b border-border/30 last:border-0 transition-colors;
   }
 
+  .noc-health-row:hover {
+    background: hsl(222 22% 12%);
+  }
+
+  /* -- NOC Event Row -- */
   .noc-event-row {
-    @apply flex items-start gap-3 py-2.5 border-b border-border/50 last:border-0;
+    @apply flex items-start gap-3 py-3 border-b border-border/30 last:border-0 relative;
+  }
+
+  .noc-event-row::before {
+    content: '';
+    @apply absolute left-[7px] top-[26px] bottom-0 w-px bg-border/40;
+  }
+
+  .noc-event-row:last-child::before {
+    @apply hidden;
   }
 
   .noc-event-time {
-    @apply text-[10px] font-mono text-muted-foreground whitespace-nowrap min-w-[60px];
+    @apply text-[10px] font-mono text-muted-foreground whitespace-nowrap;
+  }
+
+  /* -- NOC Latency Bar -- */
+  .noc-latency-bar {
+    @apply h-1 rounded-full;
+    transition: width 0.6s ease-out;
+  }
+
+  /* -- NOC Quick Action Button -- */
+  .noc-action-btn {
+    @apply px-3 py-2 text-[11px] font-mono font-medium rounded border border-border
+           bg-secondary/60 text-muted-foreground
+           transition-all duration-200;
+  }
+
+  .noc-action-btn:hover {
+    @apply text-foreground border-primary/40;
+    background: hsl(222 22% 14%);
+    box-shadow: 0 0 12px hsl(var(--primary) / 0.08);
+  }
+
+  /* -- NOC System Info Terminal Row -- */
+  .noc-sysinfo-row {
+    @apply flex justify-between items-center py-2 border-b border-border/30 last:border-0;
+  }
+
+  .noc-sysinfo-label {
+    @apply text-[11px] text-muted-foreground uppercase tracking-wider;
+  }
+
+  .noc-sysinfo-value {
+    @apply text-[11px] font-mono text-foreground;
   }
 }

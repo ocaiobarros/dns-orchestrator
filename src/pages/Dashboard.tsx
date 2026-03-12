@@ -1,4 +1,4 @@
-import { Activity, Clock, Globe, Server, Zap, AlertTriangle, Timer } from 'lucide-react';
+import { Activity, Clock, Globe, Server, Zap, AlertTriangle, Timer, Database } from 'lucide-react';
 import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useSystemInfo, useServices, useInstanceStats, useInstanceHealth } from '@/lib/hooks';
 import { getInstanceQueries, getInstanceCacheHit, getInstanceLatency } from '@/lib/types';
@@ -32,7 +32,7 @@ export default function Dashboard() {
 
   const { data: recentEvents } = useQuery({
     queryKey: ['events', 'recent'],
-    queryFn: async () => { const r = await api.getEvents(undefined, 5); if (!r.success) throw new Error(r.error!); return r.data; },
+    queryFn: async () => { const r = await api.getEvents(undefined, 8); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 5000,
   });
 
@@ -80,71 +80,78 @@ export default function Dashboard() {
     : totalInstances;
 
   const eventItems = recentEvents?.items ?? (Array.isArray(recentEvents) ? recentEvents : []);
-  const unavailableSub = dnsMetricsStatus === 'privilege_limited' ? 'Sem privilégio' : 'Indisponível';
+  const unavailableSub = dnsMetricsStatus === 'privilege_limited' ? 'Privilege limited' : 'Unavailable';
 
   return (
-    <div className="space-y-4">
-      {/* Status Banner */}
+    <div className="space-y-3">
+      {/* ─── TIER 1: GLOBAL STATUS BANNER ─── */}
       <NocStatusBanner
         allHealthy={allRunning && failedCount === 0}
         failedCount={failedCount}
         totalInstances={totalInstances}
+        healthyCount={healthyCount}
         onReconcile={() => reconcileMutation.mutate()}
         reconciling={reconciling}
       />
 
       {/* Privilege warning */}
       {!dnsMetricsAvailable && dnsMetricsStatus === 'privilege_limited' && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs bg-warning/10 text-warning border border-warning/20 animate-slide-in-up">
-          <AlertTriangle size={14} />
-          <span>Métricas DNS limitadas por privilégio — ative o modelo de execução privilegiada para dados reais</span>
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded text-[11px] font-mono bg-warning/8 text-warning border border-warning/20 animate-slide-in-up">
+          <AlertTriangle size={13} />
+          DNS METRICS LIMITED — Enable privileged execution model for real-time data
         </div>
       )}
 
-      {/* Core Metrics */}
+      {/* ─── TIER 2: PRIMARY METRICS STRIP ─── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <NocMetricCard label="Resolvers" value={`${healthyCount}/${totalInstances}`} sub={failedCount > 0 ? 'Degradado' : 'Saudáveis'} icon={<Globe size={16} />} accent="primary" />
-        <NocMetricCard label="Em Rotação" value={`${inRotation}/${totalInstances}`} sub="DNAT ativo" icon={<Zap size={16} />} accent="accent" />
-        <NocMetricCard label="Total Queries" value={dnsMetricsAvailable ? totalQps.toLocaleString() : '—'} sub={dnsMetricsAvailable ? 'Acumulado' : unavailableSub} icon={<Activity size={16} />} accent="primary" />
-        <NocMetricCard label="Cache Hit" value={dnsMetricsAvailable ? `${avgCacheHit}%` : '—'} sub={dnsMetricsAvailable ? 'Média geral' : unavailableSub} icon={<Server size={16} />} accent="accent" />
-        <NocMetricCard label="Latência" value={dnsMetricsAvailable ? `${avgLatency}ms` : '—'} sub={dnsMetricsAvailable ? 'Média DNS' : unavailableSub} icon={<Timer size={16} />} accent={dnsMetricsAvailable && Number(avgLatency) > 50 ? 'warning' : 'primary'} />
-        <NocMetricCard label="Uptime" value={sysInfo?.uptime ?? '—'} sub="Sistema" icon={<Clock size={16} />} accent="primary" />
+        <NocMetricCard label="Resolvers" value={`${healthyCount}/${totalInstances}`} sub={failedCount > 0 ? 'DEGRADED' : 'HEALTHY'} icon={<Globe size={18} />} accent="primary" />
+        <NocMetricCard label="DNAT Active" value={`${inRotation}/${totalInstances}`} sub="In rotation" icon={<Zap size={18} />} accent="accent" />
+        <NocMetricCard label="Total Queries" value={dnsMetricsAvailable ? totalQps.toLocaleString() : '—'} sub={dnsMetricsAvailable ? 'Accumulated' : unavailableSub} icon={<Activity size={18} />} accent="primary" />
+        <NocMetricCard label="Cache Hit" value={dnsMetricsAvailable ? `${avgCacheHit}%` : '—'} sub={dnsMetricsAvailable ? 'Average' : unavailableSub} icon={<Database size={18} />} accent="accent" />
+        <NocMetricCard label="Latency" value={dnsMetricsAvailable ? `${avgLatency}ms` : '—'} sub={dnsMetricsAvailable ? 'DNS avg' : unavailableSub} icon={<Timer size={18} />} accent={dnsMetricsAvailable && Number(avgLatency) > 50 ? 'warning' : 'primary'} />
+        <NocMetricCard label="Uptime" value={sysInfo?.uptime ?? '—'} sub="System" icon={<Clock size={18} />} accent="primary" />
       </div>
 
-      {/* Reconciliation result */}
+      {/* Reconciliation result flash */}
       {reconcileMutation.data && (
-        <div className="noc-card border-l-2 border-l-primary animate-slide-in-up">
-          <div className="text-sm">
-            <span className="font-medium">Reconciliação:</span>{' '}
-            <span className="font-mono">{reconcileMutation.data.instances_checked ?? 0} verificadas</span>{' · '}
-            <span className="font-mono text-destructive">{reconcileMutation.data.instances_failed ?? 0} falhas</span>{' · '}
-            <span className="font-mono">{reconcileMutation.data.backends_removed ?? 0} removidas</span>{' · '}
-            <span className="font-mono text-success">{reconcileMutation.data.backends_restored ?? 0} restauradas</span>
+        <div className="noc-card animate-slide-in-up" style={{ borderLeftColor: 'hsl(var(--primary))', borderLeftWidth: 3 }}>
+          <div className="noc-card-body">
+            <div className="text-[12px] font-mono flex items-center gap-3 flex-wrap">
+              <span className="font-bold text-foreground">RECONCILIATION</span>
+              <span className="text-muted-foreground">{reconcileMutation.data.instances_checked ?? 0} checked</span>
+              <span className="text-destructive font-bold">{reconcileMutation.data.instances_failed ?? 0} failed</span>
+              <span className="text-muted-foreground">{reconcileMutation.data.backends_removed ?? 0} removed</span>
+              <span className="text-success font-bold">{reconcileMutation.data.backends_restored ?? 0} restored</span>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Instance State Table */}
+      {/* ─── TIER 3: INSTANCE STATE TABLE ─── */}
       <NocInstanceTable instances={safeV2} />
 
-      {/* Two-column: Health + System Health sidebar */}
+      {/* ─── TIER 4: DNS HEALTH + SYSTEM HEALTH MATRIX ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <div className="lg:col-span-2">
           <NocHealthPanel health={health} />
         </div>
-        <NocSystemHealth services={safeServices} dnsHealthy={healthyCount === totalInstances && totalInstances > 0} networkOk={allRunning} />
+        <NocSystemHealth
+          services={safeServices}
+          dnsHealthy={healthyCount === totalInstances && totalInstances > 0}
+          networkOk={allRunning}
+        />
       </div>
 
-      {/* Two-column: Events + Services */}
+      {/* ─── TIER 5: EVENTS + SERVICES ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <NocEventsTimeline events={eventItems} />
         <NocServicesPanel services={safeServices} />
       </div>
 
-      {/* System Info */}
+      {/* ─── TIER 6: SYSTEM INFO ─── */}
       <NocSystemInfo sysInfo={sysInfo} />
 
-      {/* Quick Actions */}
+      {/* ─── TIER 7: COMMAND CONSOLE ─── */}
       <NocQuickActions />
     </div>
   );
