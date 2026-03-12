@@ -19,6 +19,9 @@ import NocResolverPanel from '@/components/noc/NocResolverPanel';
 import NocHealthMatrix from '@/components/noc/NocHealthMatrix';
 import NocSystemInfoGrid from '@/components/noc/NocSystemInfoGrid';
 import NocQuickActions from '@/components/noc/NocQuickActions';
+import NocDnsPathFlow from '@/components/noc/NocDnsPathFlow';
+import NocIncidentDetector from '@/components/noc/NocIncidentDetector';
+import NocDeploySimulation from '@/components/noc/NocDeploySimulation';
 
 export default function Dashboard() {
   const { data: sysInfo, isLoading: sysLoading, error: sysError } = useSystemInfo();
