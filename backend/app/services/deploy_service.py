@@ -558,7 +558,7 @@ def _generate_health_checks(payload: dict, dry_run: bool = False) -> list[dict]:
 
 
 def _save_deploy_state(deploy_id: str, operator: str, success: bool, backup_id: str | None):
-    """Persist deploy state to disk."""
+    """Persist deploy state and deployment record to disk."""
     try:
         existing = get_deploy_state()
         total = existing.get("totalDeployments", 0) + 1
@@ -575,6 +575,21 @@ def _save_deploy_state(deploy_id: str, operator: str, success: bool, backup_id: 
         os.makedirs(os.path.dirname(DEPLOY_STATE_FILE), exist_ok=True)
         with open(DEPLOY_STATE_FILE, "w") as f:
             json.dump(state, f, indent=2)
+
+        # Also persist deployment record in /var/lib/dns-control/deployments/
+        deploy_dir = os.path.join(
+            getattr(settings, "DATA_DIR", "/var/lib/dns-control"), "deployments", deploy_id
+        )
+        os.makedirs(deploy_dir, exist_ok=True)
+        with open(os.path.join(deploy_dir, "manifest.json"), "w") as f:
+            json.dump({
+                "deploy_id": deploy_id,
+                "timestamp": _now_iso(),
+                "operator": operator,
+                "status": "success" if success else "failed",
+                "config_version": f"v{total}",
+                "backup_id": backup_id,
+            }, f, indent=2)
     except Exception as e:
         logger.error(f"Failed to save deploy state: {e}")
 
