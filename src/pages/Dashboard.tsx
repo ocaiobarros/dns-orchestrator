@@ -438,7 +438,15 @@ export default function Dashboard() {
         </motion.div>
       )}
 
-      {/* ═══ TIER 8: COMMAND CONSOLE ═══ */}
+      {/* ═══ TIER 8: DNS REPLAY SIMULATION ═══ */}
+      <NocDeploySimulation
+        listeners={safeV2.map(inst => ({
+          name: inst.instance_name || `resolver-${inst.id}`,
+          ip: inst.bind_ip || '127.0.0.1',
+        }))}
+      />
+
+      {/* ═══ TIER 9: COMMAND CONSOLE ═══ */}
       <NocQuickActions />
     </div>
   );
