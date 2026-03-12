@@ -127,7 +127,7 @@ export default function SettingsPage() {
             ['Kernel', systemInfo?.kernel || '—'],
             ['OS', systemInfo?.os || '—'],
             ['Uptime', systemInfo?.uptime || '—'],
-            ['Última aplicação', safeDate(systemInfo?.lastApply || null)],
+            ['Última aplicação', safeDate(systemInfo?.last_apply_at ?? systemInfo?.lastApply ?? null)],
           ].map(([k, v]) => (
             <div key={k} className="flex justify-between py-1 border-b border-border last:border-0">
               <span className="text-muted-foreground">{k}</span>
