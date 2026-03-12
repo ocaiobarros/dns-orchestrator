@@ -505,14 +505,25 @@ def _run_health_checks(payload: dict) -> list[dict]:
         "durationMs": int((time.monotonic() - t0) * 1000),
     })
 
-    # Check VIP reachability
+    # Check VIP reachability using configured health check domains
     for vip in vips:
         vip_ip = vip.get("ipv4", "")
         if vip_ip:
+            probe_domain = vip.get("healthCheckDomain", "google.com") or "google.com"
+            health_enabled = vip.get("healthCheckEnabled", True)
+            if not health_enabled:
+                checks.append({
+                    "name": f"VIP {vip_ip} health check",
+                    "target": vip_ip,
+                    "status": "skip",
+                    "detail": "Health check desabilitado para este VIP",
+                    "durationMs": 0,
+                })
+                continue
             t0 = time.monotonic()
-            r = run_command("dig", [f"@{vip_ip}", "localhost", "+short", "+time=2", "+tries=1"], timeout=5)
+            r = run_command("dig", [f"@{vip_ip}", probe_domain, "+short", "+time=2", "+tries=1"], timeout=5)
             checks.append({
-                "name": f"VIP {vip_ip} reachable",
+                "name": f"VIP {vip_ip} reachable (dig {probe_domain})",
                 "target": vip_ip,
                 "status": "pass" if r["exit_code"] == 0 else "fail",
                 "detail": r["stdout"].strip()[:200] or "No response",
