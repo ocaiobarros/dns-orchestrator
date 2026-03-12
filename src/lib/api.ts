@@ -403,8 +403,8 @@ function mockRollbackResult(): RollbackResult {
   };
 }
 
-  return {};
-}
+
+
 
 function mockUsers(): AuthUserRecord[] {
   return [
