@@ -1,8 +1,10 @@
 """
 DNS Control — Auth Routes
 Login, logout, session management, password change.
+Implements login event throttling to reduce operational noise.
 """
 
+import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
@@ -11,9 +13,10 @@ from app.core.database import get_db
 from app.core.security import verify_password, hash_password, validate_password_strength
 from app.core.sessions import create_session, invalidate_session, refresh_session
 from app.core.config import settings
-from app.core.logging import log_auth_event
+from app.core.logging import log_auth_event, log_event
 from app.api.deps import get_current_user, get_session_id
 from app.models.user import User
+from app.models.log_entry import LogEntry
 from app.schemas.auth import (
     LoginRequest, LoginResponse, UserResponse,
     SessionInfoResponse, ChangePasswordRequest,
@@ -21,6 +24,22 @@ from app.schemas.auth import (
 )
 
 router = APIRouter()
+
+# ── Login Event Throttling ──
+# Suppress repeated successful login log entries for the same user
+# within a short window to reduce NOC event noise.
+_LOGIN_THROTTLE_SECONDS = 60
+_last_login_log: dict[str, float] = {}
+
+
+def _should_log_login(username: str) -> bool:
+    """Returns True if we should log this login event (throttle repeated logins)."""
+    now = datetime.now(timezone.utc).timestamp()
+    last = _last_login_log.get(username, 0)
+    if now - last < _LOGIN_THROTTLE_SECONDS:
+        return False
+    _last_login_log[username] = now
+    return True
 
 
 def _user_response(user: User) -> UserResponse:
@@ -41,6 +60,7 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
 
     user = db.query(User).filter(User.username == body.username).first()
     if not user or not verify_password(body.password, user.password_hash):
+        # Failed logins are ALWAYS logged (security-relevant)
         log_auth_event(db, f"Login falhou para '{body.username}'", body.username, client_ip, False)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais inválidas")
 
@@ -54,7 +74,9 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
 
-    log_auth_event(db, f"Login bem-sucedido: '{user.username}'", user.username, client_ip, True)
+    # Throttle repeated successful login log entries
+    if _should_log_login(user.username):
+        log_auth_event(db, f"Login bem-sucedido: '{user.username}'", user.username, client_ip, True)
 
     return LoginResponse(
         token=token,
