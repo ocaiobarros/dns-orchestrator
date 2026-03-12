@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { LoadingState, ErrorState, EmptyState } from '@/components/DataStates';
 import { useLogs } from '@/lib/hooks';
-import type { LogSource } from '@/lib/types';
+import { type LogSource, safeDateShort } from '@/lib/types';
 import { Download } from 'lucide-react';
 
 const logSources: { value: LogSource | 'all'; label: string }[] = [
