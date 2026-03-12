@@ -56,7 +56,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <SessionTimeoutModal />
+          <NocProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/force-change-password" element={<Suspense fallback={<PageLoader />}><ForceChangePasswordPage /></Suspense>} />
