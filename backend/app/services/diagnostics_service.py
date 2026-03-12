@@ -101,36 +101,50 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
             "expected_in_unprivileged_mode": expected_unpriv,
         }
 
-    # ── Inactive service (systemctl exit code 3) ──
-    if exit_code == 3 and "inactive" in combined_lower:
+    # ── Inactive service ──
+    # systemctl exit code 3 = inactive, also match stdout patterns
+    if ("inactive (dead)" in combined_lower
+        or ("active: inactive" in combined_lower and executable == "systemctl")
+        or (exit_code == 3 and "inactive" in combined_lower)):
         return {
             "status": "inactive",
-            "summary": "Serviço está inativo (dead)",
-            "remediation": "Validar se o serviço deve estar ativo neste ambiente",
+            "summary": "Serviço inativo",
+            "remediation": "Validar se este serviço deve estar ativo neste host",
             "privileged": False,
             "requires_root": False,
             "expected_in_unprivileged_mode": False,
         }
 
     # ── Permission error ──
-    if any(kw in combined_lower for kw in _PERMISSION_PATTERNS):
-        # Build specific summary from stderr
+    is_permission = any(kw in combined_lower for kw in _PERMISSION_PATTERNS)
+    # journalctl-specific: stdout says "No journal files were opened due to insufficient permissions"
+    if not is_permission and ("no journal files were opened" in combined_lower
+        or ("users in groups" in combined_lower and "can see all messages" in combined_lower)):
+        is_permission = True
+
+    if is_permission:
         summary = "Sem permissão para executar este comando"
+        remediation = default_remediation or "Verificar permissões do usuário de serviço"
+
         if "unbound" in executable:
-            summary = "Sem permissão para acessar /run/unbound.ctl"
+            summary = "Sem acesso ao socket do unbound-control"
+            remediation = "Ajustar permissão do socket ou usar execução controlada"
         elif executable == "nft":
-            summary = "Comando nft requer privilégio administrativo"
+            summary = "Leitura de nftables requer privilégio administrativo"
+            remediation = "Executar diagnóstico via sudo restrito"
         elif executable == "vtysh":
-            summary = "Sem permissão para acessar configuração do FRR"
+            summary = "Acesso ao FRR exige permissão adicional"
+            remediation = "Ajustar grupo/permissão do backend ou usar wrapper privilegiado"
         elif executable == "journalctl":
-            summary = "Usuário do backend não possui acesso ao journal"
+            summary = "Usuário do backend sem acesso ao journal"
+            remediation = "Adicionar o usuário ao grupo systemd-journal ou usar wrapper controlado"
 
         return {
             "status": "permission_error",
             "summary": summary,
-            "remediation": default_remediation or "Verificar permissões do usuário de serviço",
+            "remediation": remediation,
             "privileged": True,
-            "requires_root": requires_root or True,
+            "requires_root": requires_root or (executable in ("nft", "vtysh")),
             "expected_in_unprivileged_mode": True,
         }
 
