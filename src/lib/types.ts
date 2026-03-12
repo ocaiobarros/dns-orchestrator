@@ -600,6 +600,8 @@ export const DEFAULT_CONFIG: WizardConfig = {
 
   // Step 5 - Egress Público
   egressFixedIdentity: true,
+  egressMode: 'fixed-per-instance' as EgressMode,
+  egressSharedPool: [],
 
   // Step 6 - Mapeamento VIP → Instância
   distributionPolicy: 'sticky-source',
