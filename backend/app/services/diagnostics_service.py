@@ -196,9 +196,15 @@ def get_dashboard_summary() -> dict:
             "config_version": "", "last_apply_at": None,
         }
 
+    # Collect real DNS metrics via privileged unbound-control
+    dns_metrics = _collect_dns_metrics()
+
     return {
-        "total_queries": 0,
-        "cache_hit_ratio": 0.0,
+        "total_queries": dns_metrics.get("total_queries", 0),
+        "cache_hit_ratio": dns_metrics.get("cache_hit_ratio", 0.0),
+        "latency_ms": dns_metrics.get("latency_ms", 0.0),
+        "dns_metrics_available": dns_metrics.get("available", False),
+        "dns_metrics_status": dns_metrics.get("status", "unknown"),
         "active_services": active,
         "total_services": len(services),
         "ospf_neighbors_up": 0,
@@ -214,7 +220,7 @@ def get_dashboard_summary() -> dict:
         "frr_version": sys_info.get("frr_version", ""),
         "nftables_version": sys_info.get("nftables_version", ""),
         "primary_interface": sys_info.get("primary_interface", ""),
-        "vip_anycast": sys_info.get("vip_anycast", ""),
+        "vip_anycast": sys_info.get("vip_anycast", "not configured"),
         "config_version": sys_info.get("config_version", ""),
         "last_apply_at": sys_info.get("last_apply_at") or "",
     }
