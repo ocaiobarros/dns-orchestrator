@@ -45,12 +45,27 @@ const IS_PREVIEW = import.meta.env.MODE === 'development' && !import.meta.env.VI
 const API_BASE = (import.meta.env.VITE_API_URL ?? '').trim().replace(/\/+$/, '');
 
 function normalizeApiPath(path: string): string {
-  return path.startsWith('/') ? path : `/${path}`;
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  if (normalized === '/api') return '/api';
+  return normalized.startsWith('/api/') ? normalized : `/api${normalized}`;
 }
 
 function buildApiUrl(path: string): string {
   const normalizedPath = normalizeApiPath(path);
-  return API_BASE ? `${API_BASE}${normalizedPath}` : normalizedPath;
+  if (!API_BASE) return normalizedPath;
+
+  const base = API_BASE.replace(/\/+$/, '');
+  if (base.endsWith('/api')) {
+    return `${base}${normalizedPath.replace(/^\/api/, '')}`;
+  }
+  return `${base}${normalizedPath}`;
+}
+
+function buildLegacyApiUrl(path: string): string {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  if (!API_BASE) return normalizedPath;
+  const baseWithoutApi = API_BASE.replace(/\/+$/, '').replace(/\/api$/, '');
+  return `${baseWithoutApi}${normalizedPath}`;
 }
 
 async function apiCall<T>(
