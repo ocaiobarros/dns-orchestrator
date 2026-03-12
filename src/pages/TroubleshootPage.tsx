@@ -320,6 +320,7 @@ export default function TroubleshootPage() {
   const healthCheck = useHealthCheck();
   const [results, setResults] = useState<Record<string, DiagResult>>({});
   const [batchResults, setBatchResults] = useState<HealthBatchResult[]>([]);
+  const [privilegeStatus, setPrivilegeStatus] = useState<PrivilegeStatus | null>(null);
   const [batchSummary, setBatchSummary] = useState<{
     total: number; passed: number; failed: number; permission_limited: number; inactive: number; duration?: string;
   } | null>(null);
