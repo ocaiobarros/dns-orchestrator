@@ -475,7 +475,7 @@ function mockApplyResult(req?: { dry_run?: boolean; scope?: string; config?: Wiz
     healthResult: healthChecks,
     rollbackAvailable: !req?.dry_run,
     backupId: req?.dry_run ? null : `bk-${now.toISOString().slice(0,19).replace(/[:-]/g, '')}`,
-    steps: [...baseSteps, ...applySteps],
+    steps: ([...baseSteps, ...applySteps] as ApplyResult['steps']),
     filesGenerated: [],
   };
 }
