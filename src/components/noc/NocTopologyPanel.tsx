@@ -255,9 +255,9 @@ function TopologyView({ health, vipConfigured, vipAddress, totalQueries, cacheHi
   const resolverSpacing = instances.length <= 1 ? 0 : (svgH - 130) / Math.max(instances.length - 1, 1);
 
   const anyHealthy = instances.some(i => i.healthy);
-  const qps = totalQueries ?? 0;
-  const sw = qpsStrokeWidth(qps);
-  const pCount = qpsParticleCount(qps);
+  const qps = safeNum(totalQueries, 0);
+  const sw = safeSW(qpsStrokeWidth(qps), 1);
+  const pCount = Math.max(1, Math.floor(safeNum(qpsParticleCount(qps), 1)));
 
   const upstreamIp = instances.find(i => i.healthy)?.resolved_ip || '—';
   const upstreamLatency = instances.length > 0
