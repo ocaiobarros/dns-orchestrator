@@ -96,125 +96,125 @@ async function apiCall<T>(
 
 export const api = {
   // Dashboard
-  getSystemInfo: () => apiCall<SystemInfo>('GET', '/api/dashboard/summary'),
-  getInstanceHealth: () => apiCall<InstanceHealthReport>('GET', '/api/healthcheck'),
-  getInstanceRealStats: () => apiCall<DnsInstanceStats[]>('GET', '/api/dashboard/instance-stats'),
+  getSystemInfo: () => apiCall<SystemInfo>('GET', '/dashboard/summary'),
+  getInstanceHealth: () => apiCall<InstanceHealthReport>('GET', '/healthcheck'),
+  getInstanceRealStats: () => apiCall<DnsInstanceStats[]>('GET', '/dashboard/instance-stats'),
 
   // Services
-  getServices: () => apiCall<ServiceStatus[]>('GET', '/api/services'),
-  restartService: (name: string) => apiCall<{ success: boolean }>('POST', `/api/services/${name}/restart`),
+  getServices: () => apiCall<ServiceStatus[]>('GET', '/services'),
+  restartService: (name: string) => apiCall<{ success: boolean }>('POST', `/services/${name}/restart`),
 
   // Network
-  getInterfaces: () => apiCall<NetworkInterface[]>('GET', '/api/network/interfaces'),
-  getRoutes: () => apiCall<Route[]>('GET', '/api/network/routes'),
-  checkReachability: () => apiCall<ReachabilityResult[]>('GET', '/api/network/reachability'),
+  getInterfaces: () => apiCall<NetworkInterface[]>('GET', '/network/interfaces'),
+  getRoutes: () => apiCall<Route[]>('GET', '/network/routes'),
+  checkReachability: () => apiCall<ReachabilityResult[]>('GET', '/network/reachability'),
 
   // DNS
   getDnsMetrics: (hours: number = 6, instance?: string) =>
-    apiCall<DnsMetrics[]>('GET', `/api/dns/metrics?hours=${hours}${instance ? `&instance=${instance}` : ''}`),
+    apiCall<DnsMetrics[]>('GET', `/dns/metrics?hours=${hours}${instance ? `&instance=${instance}` : ''}`),
   getTopDomains: (limit: number = 20) =>
-    apiCall<DnsTopDomain[]>('GET', `/api/dns/top-domains?limit=${limit}`),
-  getInstanceStats: () => apiCall<DnsInstanceStats[]>('GET', '/api/dns/instances'),
+    apiCall<DnsTopDomain[]>('GET', `/dns/top-domains?limit=${limit}`),
+  getInstanceStats: () => apiCall<DnsInstanceStats[]>('GET', '/dns/instances'),
 
   // NAT / nftables
-  getNftCounters: () => apiCall<NftCounter[]>('GET', '/api/nat/summary'),
-  getStickyTable: () => apiCall<NftStickyEntry[]>('GET', '/api/nat/sticky'),
-  getNftRuleset: () => apiCall<{ ruleset: string }>('GET', '/api/nat/ruleset'),
+  getNftCounters: () => apiCall<NftCounter[]>('GET', '/nat/summary'),
+  getStickyTable: () => apiCall<NftStickyEntry[]>('GET', '/nat/sticky'),
+  getNftRuleset: () => apiCall<{ ruleset: string }>('GET', '/nat/ruleset'),
 
   // OSPF / FRR
-  getOspfNeighbors: () => apiCall<OspfNeighbor[]>('GET', '/api/ospf/neighbors'),
-  getOspfRoutes: () => apiCall<OspfRoute[]>('GET', '/api/ospf/routes'),
-  getFrrRunningConfig: () => apiCall<{ config: string }>('GET', '/api/ospf/running-config'),
+  getOspfNeighbors: () => apiCall<OspfNeighbor[]>('GET', '/ospf/neighbors'),
+  getOspfRoutes: () => apiCall<OspfRoute[]>('GET', '/ospf/routes'),
+  getFrrRunningConfig: () => apiCall<{ config: string }>('GET', '/ospf/running-config'),
 
   // Logs
   getLogs: (source?: LogSource, search?: string, page: number = 1, pageSize: number = 100) =>
     apiCall<PaginatedResponse<LogEntry>>('GET',
-      `/api/logs?page=${page}&page_size=${pageSize}${source ? `&source=${source}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
+      `/logs?page=${page}&page_size=${pageSize}${source ? `&source=${source}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
   exportLogs: (source?: LogSource) =>
-    apiCall<{ content: string; count: number }>('GET', `/api/logs/export${source ? `?source=${source}` : ''}`),
+    apiCall<{ content: string; count: number }>('GET', `/logs/export${source ? `?source=${source}` : ''}`),
 
   // Troubleshooting
-  getDiagCommands: () => apiCall<DiagCommand[]>('GET', '/api/troubleshooting/commands'),
+  getDiagCommands: () => apiCall<DiagCommand[]>('GET', '/troubleshooting/commands'),
   runDiagCommand: (commandId: string, args?: Record<string, string>) =>
-    apiCall<DiagResult>('POST', '/api/troubleshooting/run', { command_id: commandId, args: args || {} }),
-  runHealthCheck: () => apiCall<DiagResult[]>('GET', '/api/troubleshooting/health-check'),
+    apiCall<DiagResult>('POST', '/troubleshooting/run', { command_id: commandId, args: args || {} }),
+  runHealthCheck: () => apiCall<DiagResult[]>('GET', '/troubleshooting/health-check'),
 
   // Config Profiles
-  getProfiles: () => apiCall<ConfigProfile[]>('GET', '/api/configs'),
+  getProfiles: () => apiCall<ConfigProfile[]>('GET', '/configs'),
   saveProfile: (profile: { name: string; description?: string; payload: Record<string, unknown> }) =>
-    apiCall<ConfigProfile>('POST', '/api/configs', profile),
-  getProfile: (id: string) => apiCall<ConfigProfile>('GET', `/api/configs/${id}`),
+    apiCall<ConfigProfile>('POST', '/configs', profile),
+  getProfile: (id: string) => apiCall<ConfigProfile>('GET', `/configs/${id}`),
   updateProfile: (id: string, profile: { name: string; description?: string; payload: Record<string, unknown> }) =>
-    apiCall<{ success: boolean }>('PATCH', `/api/configs/${id}`, profile),
-  cloneProfile: (id: string) => apiCall<{ id: string; name: string }>('POST', `/api/configs/${id}/clone`),
-  previewFiles: (id: string) => apiCall<GeneratedFile[]>('GET', `/api/configs/${id}/preview`),
-  getConfigFiles: (id: string) => apiCall<GeneratedFile[]>('GET', `/api/configs/${id}/files`),
+    apiCall<{ success: boolean }>('PATCH', `/configs/${id}`, profile),
+  cloneProfile: (id: string) => apiCall<{ id: string; name: string }>('POST', `/configs/${id}/clone`),
+  previewFiles: (id: string) => apiCall<GeneratedFile[]>('GET', `/configs/${id}/preview`),
+  getConfigFiles: (id: string) => apiCall<GeneratedFile[]>('GET', `/configs/${id}/files`),
   getConfigDiff: (id: string, revA: string, revB: string) =>
-    apiCall<ConfigDiff[]>('GET', `/api/configs/${id}/diff/${revA}/${revB}`),
-  getConfigHistory: (id: string) => apiCall<unknown[]>('GET', `/api/configs/${id}/history`),
-  deleteProfile: (id: string) => apiCall<void>('DELETE', `/api/configs/${id}`),
+    apiCall<ConfigDiff[]>('GET', `/configs/${id}/diff/${revA}/${revB}`),
+  getConfigHistory: (id: string) => apiCall<unknown[]>('GET', `/configs/${id}/history`),
+  deleteProfile: (id: string) => apiCall<void>('DELETE', `/configs/${id}`),
 
   // Config validation (standalone, without saved profile)
-  getCurrentConfig: () => apiCall<WizardConfig>('GET', '/api/configs'),
+  getCurrentConfig: () => apiCall<WizardConfig>('GET', '/configs'),
   validateConfig: (config: WizardConfig) =>
-    apiCall<{ valid: boolean; errors: Array<{ field: string; message: string }> }>('POST', '/api/configs', config),
+    apiCall<{ valid: boolean; errors: Array<{ field: string; message: string }> }>('POST', '/configs', config),
   previewFilesFromConfig: (config: WizardConfig) =>
-    apiCall<GeneratedFile[]>('POST', '/api/configs', config),
+    apiCall<GeneratedFile[]>('POST', '/configs', config),
 
   // Apply
   applyConfig: (request: ApplyRequest) =>
-    apiCall<ApplyResult>('POST', `/api/apply/${request.scope || 'full'}`, request),
+    apiCall<ApplyResult>('POST', `/apply/${request.scope || 'full'}`, request),
   dryRunConfig: (request: ApplyRequest) =>
-    apiCall<ApplyResult>('POST', '/api/apply/dry-run', request),
-  getApplyJobs: () => apiCall<ApplyResult[]>('GET', '/api/apply/jobs'),
-  getApplyJob: (id: string) => apiCall<ApplyResult>('GET', `/api/apply/jobs/${id}`),
+    apiCall<ApplyResult>('POST', '/apply/dry-run', request),
+  getApplyJobs: () => apiCall<ApplyResult[]>('GET', '/apply/jobs'),
+  getApplyJob: (id: string) => apiCall<ApplyResult>('GET', `/apply/jobs/${id}`),
 
   // History
   getHistory: (page: number = 1) =>
-    apiCall<PaginatedResponse<ApplyResult>>('GET', `/api/history?page=${page}`),
+    apiCall<PaginatedResponse<ApplyResult>>('GET', `/history?page=${page}`),
   getHistoryEntry: (id: string) =>
-    apiCall<ApplyResult>('GET', `/api/apply/jobs/${id}`),
+    apiCall<ApplyResult>('GET', `/apply/jobs/${id}`),
 
   // Files
-  getGeneratedFiles: () => apiCall<GeneratedFile[]>('GET', '/api/files/generated'),
-  getFileContent: (path: string) => apiCall<{ path: string; content: string }>('GET', `/api/files/generated/${path}`),
+  getGeneratedFiles: () => apiCall<GeneratedFile[]>('GET', '/files/generated'),
+  getFileContent: (path: string) => apiCall<{ path: string; content: string }>('GET', `/files/generated/${path}`),
 
   // Settings
-  getSettings: () => apiCall<Record<string, string>>('GET', '/api/settings'),
+  getSettings: () => apiCall<Record<string, string>>('GET', '/settings'),
   updateSettings: (settings: Record<string, string>) =>
-    apiCall<{ success: boolean }>('PATCH', '/api/settings', { settings }),
+    apiCall<{ success: boolean }>('PATCH', '/settings', { settings }),
 
   // Reports
-  generateReport: () => apiCall<{ downloadUrl: string; html: string }>('POST', '/api/dashboard/summary'),
+  generateReport: () => apiCall<{ downloadUrl: string; html: string }>('POST', '/dashboard/summary'),
 
   // Users (admin)
-  getUsers: () => apiCall<AuthUserRecord[]>('GET', '/api/users'),
+  getUsers: () => apiCall<AuthUserRecord[]>('GET', '/users'),
   createUser: (username: string, password: string, mustChangePassword: boolean = true) =>
-    apiCall<AuthUserRecord>('POST', '/api/users', { username, password, must_change_password: mustChangePassword }),
+    apiCall<AuthUserRecord>('POST', '/users', { username, password, must_change_password: mustChangePassword }),
   toggleUser: (userId: string, active: boolean) =>
-    apiCall<{ success: boolean }>('POST', `/api/users/${userId}/${active ? 'enable' : 'disable'}`),
+    apiCall<{ success: boolean }>('POST', `/users/${userId}/${active ? 'enable' : 'disable'}`),
   changeUserPassword: (userId: string, password: string) =>
-    apiCall<{ success: boolean }>('POST', `/api/users/${userId}/change-password`, { password }),
+    apiCall<{ success: boolean }>('POST', `/users/${userId}/change-password`, { password }),
   deleteUser: (userId: string) =>
-    apiCall<void>('DELETE', `/api/users/${userId}`),
+    apiCall<void>('DELETE', `/users/${userId}`),
 
   // ---- v2: Events, Metrics, Actions, Instances ----
   getEvents: (severity?: string, limit: number = 100) =>
-    apiCall<{ items: V2Event[]; total: number }>('GET', `/api/events${severity ? `?severity=${severity}` : ''}${severity ? '&' : '?'}limit=${limit}`),
+    apiCall<{ items: V2Event[]; total: number }>('GET', `/events${severity ? `?severity=${severity}` : ''}${severity ? '&' : '?'}limit=${limit}`),
   getV2Metrics: () =>
-    apiCall<V2MetricEntry[]>('GET', '/api/metrics/dns'),
+    apiCall<V2MetricEntry[]>('GET', '/metrics/dns'),
   getV2Instances: () =>
-    apiCall<V2Instance[]>('GET', '/api/health/instances'),
+    apiCall<V2Instance[]>('GET', '/health/instances'),
   getV2Actions: () =>
-    apiCall<V2Action[]>('GET', '/api/actions'),
+    apiCall<V2Action[]>('GET', '/actions'),
   removeBackend: (instanceId: string) =>
-    apiCall<{ success: boolean }>('POST', `/api/actions/remove-backend/${instanceId}`),
+    apiCall<{ success: boolean }>('POST', `/actions/remove-backend/${instanceId}`),
   restoreBackend: (instanceId: string) =>
-    apiCall<{ success: boolean }>('POST', `/api/actions/restore-backend/${instanceId}`),
+    apiCall<{ success: boolean }>('POST', `/actions/restore-backend/${instanceId}`),
   reconcileNow: () =>
-    apiCall<ReconcileSummary>('POST', '/api/actions/reconcile-now'),
+    apiCall<ReconcileSummary>('POST', '/actions/reconcile-now'),
   getSchedulerStatus: () =>
-    apiCall<{ running: boolean; jobs: Array<{ id: string; name: string; next_run: string | null }> }>('GET', '/api/health'),
+    apiCall<{ running: boolean; jobs: Array<{ id: string; name: string; next_run: string | null }> }>('GET', '/health'),
 };
 
 // ---- Mock Response Router ----
