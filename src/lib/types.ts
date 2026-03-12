@@ -576,7 +576,7 @@ export const DEFAULT_CONFIG: WizardConfig = {
   deploymentMode: 'vip-routed-border',
 
   // Step 3 - VIPs de Serviço
-  serviceVips: [],
+  serviceVips: [] as ServiceVip[],
   vipIpv6Enabled: false,
 
 
