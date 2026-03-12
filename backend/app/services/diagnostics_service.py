@@ -327,15 +327,23 @@ def _get_system_info() -> dict:
     except Exception:
         pass
 
+    # VIP Anycast: check loopback and dummy interfaces for non-standard IPs
+    vip_anycast_available = False
     try:
-        r = _safe_run("ip", ["-j", "addr", "show", "lo"], timeout=5)
+        r = _safe_run("ip", ["-j", "addr", "show"], timeout=5)
         if r["exit_code"] == 0 and r["stdout"].strip():
-            lo_data = json.loads(r["stdout"])
-            for iface in lo_data:
-                for addr in iface.get("addr_info", []):
-                    if addr.get("family") == "inet" and addr.get("local") != "127.0.0.1":
-                        vip_anycast = addr["local"]
-                        break
+            all_ifaces = json.loads(r["stdout"])
+            vip_candidates = []
+            for iface in all_ifaces:
+                ifname = iface.get("ifname", "")
+                # Check loopback, dummy, and lo0-style interfaces
+                if ifname in ("lo", "lo0") or ifname.startswith("dummy") or ifname.startswith("lo"):
+                    for addr in iface.get("addr_info", []):
+                        if addr.get("family") == "inet" and addr.get("local") != "127.0.0.1":
+                            vip_candidates.append(addr["local"])
+            if vip_candidates:
+                vip_anycast = ", ".join(vip_candidates)
+                vip_anycast_available = True
     except Exception:
         pass
 
