@@ -6,10 +6,12 @@
 
 export type DeploymentMode =
   | 'internal-recursive'
-  | 'public-recursive'
-  | 'vip-recursive'
-  | 'routed-vip'
-  | 'frr-ospf-vip';
+  | 'public-controlled'
+  | 'pseudo-anycast-local'
+  | 'anycast-frr-ospf'
+  | 'anycast-frr-bgp'
+  | 'vip-routed-border'
+  | 'vip-local-dummy';
 
 export type VipDeliveryMode = 'local-vip' | 'routed-vip' | 'firewall-delivered';
 
