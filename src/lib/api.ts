@@ -223,7 +223,7 @@ function getMockResponse<T>(method: string, path: string, body?: unknown): Promi
   return new Promise(resolve => {
     const delay = 200 + Math.random() * 300;
     setTimeout(() => {
-      const data = routeMock(method, path, body);
+      const data = routeMock(method, normalizeMockPath(path), body);
       resolve({
         success: true,
         data: data as T,
@@ -232,6 +232,11 @@ function getMockResponse<T>(method: string, path: string, body?: unknown): Promi
       });
     }, delay);
   });
+}
+
+function normalizeMockPath(path: string): string {
+  const normalized = normalizeApiPath(path);
+  return normalized.startsWith('/api/') ? normalized : `/api${normalized}`;
 }
 
 function routeMock(method: string, path: string, body?: unknown): unknown {
