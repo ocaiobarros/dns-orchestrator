@@ -115,35 +115,45 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
             "expected_in_unprivileged_mode": False,
         }
 
-    # Service not running (e.g. "ospfd is not running") — distinct from permission
-    # Check this BEFORE permission to avoid misclassifying "failed to connect to any daemons"
-    # when the real issue is a daemon not running (e.g. ospfd) rather than a permission problem
-    is_service_not_running = False
+    # Service not running — for vtysh/FRR commands, distinguish daemon-not-running from permission
+    # This MUST be checked before permission patterns because "failed to connect to any daemons"
+    # can appear in both contexts but means different things:
+    # - Without sudo: permission denied → can't read config → can't connect (permission_error)
+    # - With sudo: config readable but specific daemon (ospfd) not started (service_not_running)
     if executable == "vtysh":
-        # For vtysh: "is not running" means a specific FRR daemon isn't enabled
-        if "is not running" in combined_lower:
-            is_service_not_running = True
-    if is_service_not_running:
-        # Extract which daemon is not running from stderr
-        daemon_name = ""
-        for line in (stderr or "").split("\n"):
-            if "is not running" in line.lower():
-                daemon_name = line.strip().split(" ")[0] if line.strip() else ""
-                break
-        return {
-            "status": "service_not_running",
-            "summary": f"Daemon {daemon_name} não está em execução" if daemon_name else "Serviço dependente não está ativo",
-            "remediation": "Verificar se este daemon deve estar habilitado neste host. Se sim, habilitar no FRR daemons config.",
-            "privileged": privileged,
-            "requires_root": requires_root,
-            "expected_in_unprivileged_mode": False,
-        }
+        combined_has_permission = any(kw in combined_lower for kw in ("permission denied", "must be root"))
+        combined_has_not_running = any(kw in combined_lower for kw in _FRR_NOT_RUNNING_PATTERNS)
 
-    # Permission error
+        # If we see explicit permission denied, it's a permission issue
+        # If no permission keywords but daemon-not-running keywords, it's service_not_running
+        if combined_has_not_running and not combined_has_permission:
+            # Extract which daemon is not running
+            daemon_name = ""
+            for line in (stderr or "").split("\n"):
+                line_lower = line.strip().lower()
+                if "is not running" in line_lower or "not running" in line_lower:
+                    daemon_name = line.strip().split(" ")[0] if line.strip() else ""
+                    break
+            return {
+                "status": "service_not_running",
+                "summary": f"Daemon {daemon_name} não está em execução" if daemon_name else "Daemon FRR necessário não está ativo",
+                "remediation": "Verificar se este daemon deve estar habilitado neste host. Se sim, habilitar no FRR daemons config.",
+                "privileged": privileged,
+                "requires_root": requires_root,
+                "expected_in_unprivileged_mode": False,
+            }
+
+    # Permission error — but NOT for vtysh when the issue is daemon-not-running
     is_permission = any(kw in combined_lower for kw in _PERMISSION_PATTERNS)
     if not is_permission and ("no journal files were opened" in combined_lower
         or ("users in groups" in combined_lower and "can see all messages" in combined_lower)):
         is_permission = True
+    # For vtysh: "failed to connect to any daemons" WITH "permission denied" = permission issue
+    # Without "permission denied" = already handled above as service_not_running
+    if is_permission and executable == "vtysh" and "failed to connect to any daemons" in combined_lower:
+        # Only classify as permission if there's an actual permission keyword
+        if not any(kw in combined_lower for kw in ("permission denied", "must be root")):
+            is_permission = False
 
     if is_permission:
         summary = "Sem permissão para executar este comando"
