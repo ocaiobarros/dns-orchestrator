@@ -152,7 +152,7 @@ export default function EventsPage() {
                 </span>
                 <span className="text-xs text-muted-foreground flex items-center gap-1">
                   <Clock size={10} />
-                  {new Date(ev.created_at).toLocaleString('pt-BR')}
+                  {safeDate(ev.created_at)}
                 </span>
               </div>
               <p className="text-sm mt-1 text-foreground">{ev.message}</p>
