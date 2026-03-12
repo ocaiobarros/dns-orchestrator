@@ -317,6 +317,63 @@ export default function TroubleshootPage() {
   const [hideExpectedPerms, setHideExpectedPerms] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
+  // ── ALL hooks must be above any early return ──
+
+  const filteredBatch = useMemo(() => {
+    let items = batchResults;
+    if (hideExpectedPerms) {
+      items = items.filter(r => !(r.status === 'permission_error' && r.expected_in_unprivileged_mode));
+    }
+    if (statusFilter === 'ok') items = items.filter(r => r.status === 'ok');
+    else if (statusFilter === 'permission_error') items = items.filter(r => r.status === 'permission_error');
+    else if (statusFilter === 'inactive') items = items.filter(r => r.status === 'inactive');
+    else if (statusFilter === 'failures') items = items.filter(r => ['error', 'runtime_error', 'timeout_error', 'dependency_error'].includes(r.status));
+    if (categoryFilter !== 'all') items = items.filter(r => r.category === categoryFilter);
+    return items;
+  }, [batchResults, statusFilter, categoryFilter, hideExpectedPerms]);
+
+  const groupedBatch = useMemo(() => {
+    const groups: Record<string, HealthBatchResult[]> = {};
+    const order = ['services', 'network', 'dns', 'nftables', 'ospf', 'system', 'logs'];
+    filteredBatch.forEach(r => {
+      const cat = r.category || 'other';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(r);
+    });
+    const sorted: [string, HealthBatchResult[]][] = [];
+    order.forEach(cat => { if (groups[cat]) sorted.push([cat, groups[cat]]); });
+    Object.keys(groups).forEach(cat => { if (!order.includes(cat)) sorted.push([cat, groups[cat]]); });
+    return sorted;
+  }, [filteredBatch]);
+
+  const filterCounts: Record<StatusFilter, number> = useMemo(() => {
+    const src = hideExpectedPerms
+      ? batchResults.filter(r => !(r.status === 'permission_error' && r.expected_in_unprivileged_mode))
+      : batchResults;
+    return {
+      all: src.length,
+      ok: src.filter(r => r.status === 'ok').length,
+      permission_error: src.filter(r => r.status === 'permission_error').length,
+      inactive: src.filter(r => r.status === 'inactive').length,
+      failures: src.filter(r => ['error', 'runtime_error', 'timeout_error', 'dependency_error'].includes(r.status)).length,
+    };
+  }, [batchResults, hideExpectedPerms]);
+
+  const categories = useMemo(() => {
+    const cats = new Set(batchResults.map(r => r.category || 'other'));
+    return ['all', ...cats];
+  }, [batchResults]);
+
+  const commandCategories = useMemo(() =>
+    ['all', ...new Set(commands?.map(c => c.category) ?? [])],
+  [commands]);
+
+  const filteredCommands = useMemo(() =>
+    categoryFilter === 'all' ? (commands ?? []) : (commands ?? []).filter(c => c.category === categoryFilter),
+  [commands, categoryFilter]);
+
+  // ── Early returns AFTER all hooks ──
+
   if (isLoading) return <LoadingState />;
   if (error) return <ErrorState message={error.message} />;
 
@@ -334,7 +391,6 @@ export default function TroubleshootPage() {
         const data = rawData as HealthBatchResponse;
         if (data && data.results && Array.isArray(data.results)) {
           setBatchResults(data.results);
-          // Populate individual results for display compat
           const diagMap: Record<string, DiagResult> = {};
           data.results.forEach((r: HealthBatchResult) => {
             const id = r.commandId || r.command_id || '';
@@ -349,7 +405,6 @@ export default function TroubleshootPage() {
           });
           setResults(prev => ({ ...prev, ...diagMap }));
 
-          // Compute summary
           const permLimited = data.permission_limited ?? data.results.filter(r => r.status === 'permission_error').length;
           const inactiveCount = data.inactive ?? data.results.filter(r => r.status === 'inactive').length;
           const passedCount = data.passed ?? data.results.filter(r => r.status === 'ok').length;
@@ -370,7 +425,6 @@ export default function TroubleshootPage() {
             duration,
           });
         } else if (Array.isArray(rawData)) {
-          // Legacy fallback
           const diagMap: Record<string, DiagResult> = {};
           (rawData as DiagResult[]).forEach((r: DiagResult) => {
             const id = r.commandId || (r as any).command_id || '';
@@ -386,63 +440,6 @@ export default function TroubleshootPage() {
       },
     });
   };
-
-  // ── Filter logic ──
-  const filteredBatch = useMemo(() => {
-    let items = batchResults;
-
-    if (hideExpectedPerms) {
-      items = items.filter(r => !(r.status === 'permission_error' && r.expected_in_unprivileged_mode));
-    }
-
-    if (statusFilter === 'ok') items = items.filter(r => r.status === 'ok');
-    else if (statusFilter === 'permission_error') items = items.filter(r => r.status === 'permission_error');
-    else if (statusFilter === 'inactive') items = items.filter(r => r.status === 'inactive');
-    else if (statusFilter === 'failures') items = items.filter(r => ['error', 'runtime_error', 'timeout_error', 'dependency_error'].includes(r.status));
-
-    if (categoryFilter !== 'all') items = items.filter(r => r.category === categoryFilter);
-
-    return items;
-  }, [batchResults, statusFilter, categoryFilter, hideExpectedPerms]);
-
-  // Group by category
-  const groupedBatch = useMemo(() => {
-    const groups: Record<string, HealthBatchResult[]> = {};
-    const order = ['services', 'network', 'dns', 'nftables', 'ospf', 'system', 'logs'];
-    filteredBatch.forEach(r => {
-      const cat = r.category || 'other';
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(r);
-    });
-    // Sort by predefined order
-    const sorted: [string, HealthBatchResult[]][] = [];
-    order.forEach(cat => { if (groups[cat]) sorted.push([cat, groups[cat]]); });
-    Object.keys(groups).forEach(cat => { if (!order.includes(cat)) sorted.push([cat, groups[cat]]); });
-    return sorted;
-  }, [filteredBatch]);
-
-  // Filter counts
-  const filterCounts: Record<StatusFilter, number> = useMemo(() => {
-    const src = hideExpectedPerms
-      ? batchResults.filter(r => !(r.status === 'permission_error' && r.expected_in_unprivileged_mode))
-      : batchResults;
-    return {
-      all: src.length,
-      ok: src.filter(r => r.status === 'ok').length,
-      permission_error: src.filter(r => r.status === 'permission_error').length,
-      inactive: src.filter(r => r.status === 'inactive').length,
-      failures: src.filter(r => ['error', 'runtime_error', 'timeout_error', 'dependency_error'].includes(r.status)).length,
-    };
-  }, [batchResults, hideExpectedPerms]);
-
-  const categories = useMemo(() => {
-    const cats = new Set(batchResults.map(r => r.category || 'other'));
-    return ['all', ...cats];
-  }, [batchResults]);
-
-  // ── Pre-batch: show command list with category filter ──
-  const commandCategories = ['all', ...new Set(commands?.map(c => c.category) ?? [])];
-  const filteredCommands = categoryFilter === 'all' ? commands : commands?.filter(c => c.category === categoryFilter);
 
   return (
     <div className="space-y-6">
