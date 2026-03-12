@@ -172,7 +172,7 @@ export default function Wizard() {
     const n = config.instances.length + 1;
     const newInst: DnsInstance = {
       name: `unbound${String(n).padStart(2, '0')}`,
-      bindIp: `100.127.255.${100 + n}`,
+      bindIp: '',
       bindIpv6: '',
       controlInterface: `127.0.0.${10 + n}`,
       controlPort: 8953,
@@ -248,7 +248,7 @@ export default function Wizard() {
               {([
                 { value: 'internal-recursive', label: 'DNS Recursivo Interno', desc: 'Resolvers acessíveis apenas na rede interna. Sem VIP público.' },
                 { value: 'public-recursive', label: 'DNS Recursivo Público', desc: 'Resolvers expostos diretamente com IPs públicos.' },
-                { value: 'vip-recursive', label: 'DNS Recursivo via VIP', desc: 'Clientes consultam VIPs (4.2.2.5/6). Tráfego entregue via NAT/DNAT aos resolvers internos. Recomendado para ISP.' },
+                { value: 'vip-recursive', label: 'DNS Recursivo via VIP', desc: 'Clientes consultam VIPs de serviço. Tráfego entregue via NAT/DNAT aos resolvers internos. Recomendado para ISP.' },
                 { value: 'routed-vip', label: 'VIP Roteado', desc: 'VIPs anunciados via roteamento estático. Resolvers internos recebem tráfego diretamente.' },
                 { value: 'frr-ospf-vip', label: 'VIP via FRR/OSPF', desc: 'VIPs anunciados via OSPF usando FRR. Para ambientes com roteamento dinâmico.' },
               ] as { value: DeploymentMode; label: string; desc: string }[]).map(mode => (
@@ -274,8 +274,9 @@ export default function Wizard() {
         return (
           <div className="space-y-4">
             <InfoBox>
-              Configure os endereços DNS que os clientes usarão (ex: 4.2.2.5, 4.2.2.6).
+              Configure os endereços DNS que os clientes usarão como servidores DNS.
               Estes VIPs são os IPs de serviço — não necessariamente os IPs reais dos resolvers.
+              Em ambientes ISP, os VIPs ficam no firewall/router e o tráfego é entregue via DNAT.
             </InfoBox>
             <div className="space-y-3">
               {config.serviceVips.map((vip, i) => (

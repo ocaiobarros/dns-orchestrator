@@ -120,22 +120,8 @@ export interface WizardConfig {
   panelPort: number;
   allowedIps: string[];
 
-  // Legacy compat (used by existing generators until migrated)
+  // DNS Bootstrap (for /etc/resolv.conf during setup)
   bootstrapDns: string;
-  dummyInterface: string;
-  vipAnycastIpv4: string;
-  vipAnycastIpv6: string;
-  unboundBindIps: string[];
-  publicExitIps: string[];
-  ipv6BindIps: string[];
-  ipv6ExitIps: string[];
-  nftVipTarget: string;
-  nftDnatTargets: string[];
-  stickySourceIp: boolean;
-  roundRobin: boolean;
-  dispatchMode: 'round-robin' | 'random' | 'hash';
-  enableFrr: boolean;
-  optionalRoute: string;
 }
 
 // ---- Service Status ----
@@ -487,39 +473,34 @@ export interface PaginatedResponse<T> {
 // ---- Defaults ----
 
 export const DEFAULT_CONFIG: WizardConfig = {
-  // Step 1 - Host Topology
+  // Step 1 - Host Topology (all empty — operator fills)
   hostname: '',
   organization: '',
   project: '',
   description: '',
   timezone: 'America/Sao_Paulo',
-  mainInterface: 'ens192',
-  ipv4Address: '172.29.22.6/30',
-  ipv4Cidr: '/30',
-  ipv4Gateway: '172.29.22.5',
-  enableIpv6: true,
-  ipv6Address: '2804:4AFC:8844::2/64',
-  ipv6Gateway: '2804:4AFC:8844::1',
+  mainInterface: '',
+  ipv4Address: '',
+  ipv4Cidr: '',
+  ipv4Gateway: '',
+  enableIpv6: false,
+  ipv6Address: '',
+  ipv6Gateway: '',
   vlanTag: '',
   behindFirewall: true,
 
   // Step 2 - Deployment Mode
   deploymentMode: 'vip-recursive',
 
-  // Step 3 - Service VIPs
-  serviceVips: [
-    { ipv4: '4.2.2.5', ipv6: '2620:119:35::35', label: 'DNS Primário', deliveryMode: 'firewall-delivered' },
-    { ipv4: '4.2.2.6', ipv6: '2620:119:53::53', label: 'DNS Secundário', deliveryMode: 'firewall-delivered' },
-  ],
-  vipIpv6Enabled: true,
+  // Step 3 - Service VIPs (empty — operator defines)
+  serviceVips: [],
+  vipIpv6Enabled: false,
 
-  // Step 4 - Resolver Instances
-  instanceCount: 4,
+  // Step 4 - Resolver Instances (start with 2 blank instances)
+  instanceCount: 2,
   instances: [
-    { name: 'unbound01', bindIp: '100.127.255.101', bindIpv6: '2001:db8:ffff:ffff:100:127:255:101', controlInterface: '127.0.0.11', controlPort: 8953, egressIpv4: '45.232.215.20', egressIpv6: '2804:4afc:8888::1000' },
-    { name: 'unbound02', bindIp: '100.127.255.102', bindIpv6: '2001:db8:ffff:ffff:100:127:255:102', controlInterface: '127.0.0.12', controlPort: 8953, egressIpv4: '45.232.215.21', egressIpv6: '2804:4afc:8888::1001' },
-    { name: 'unbound03', bindIp: '100.127.255.103', bindIpv6: '2001:db8:ffff:ffff:100:127:255:103', controlInterface: '127.0.0.13', controlPort: 8953, egressIpv4: '45.232.215.22', egressIpv6: '2804:4afc:8888::1002' },
-    { name: 'unbound04', bindIp: '100.127.255.104', bindIpv6: '2001:db8:ffff:ffff:100:127:255:104', controlInterface: '127.0.0.14', controlPort: 8953, egressIpv4: '45.232.215.23', egressIpv6: '2804:4afc:8888::1003' },
+    { name: 'unbound01', bindIp: '', bindIpv6: '', controlInterface: '127.0.0.11', controlPort: 8953, egressIpv4: '', egressIpv6: '' },
+    { name: 'unbound02', bindIp: '', bindIpv6: '', controlInterface: '127.0.0.12', controlPort: 8953, egressIpv4: '', egressIpv6: '' },
   ],
   threads: 4,
   msgCacheSize: '512m',
@@ -530,7 +511,7 @@ export const DEFAULT_CONFIG: WizardConfig = {
   rootHintsPath: '/etc/unbound/named.cache',
   enableDetailedLogs: false,
   enableBlocklist: false,
-  dnsIdentity: '67-DNS',
+  dnsIdentity: '',
   dnsVersion: '1.0',
 
   // Step 5 - VIP Delivery Policy
@@ -538,19 +519,17 @@ export const DEFAULT_CONFIG: WizardConfig = {
   stickyTimeout: 1200,
   vipMappings: [],
 
-  // Step 6 - Access Control
+  // Step 6 - Access Control (safe defaults)
   accessControlIpv4: [
-    { network: '0.0.0.0/0', action: 'allow', label: 'All IPv4' },
+    { network: '127.0.0.0/8', action: 'allow', label: 'Loopback' },
   ],
-  accessControlIpv6: [
-    { network: '::/0', action: 'allow', label: 'All IPv6' },
-  ],
+  accessControlIpv6: [],
   openResolverConfirmed: false,
   enableDnsProtection: true,
 
   // Step 7 - Routing Mode
   routingMode: 'static',
-  routerId: '172.29.22.6',
+  routerId: '',
   ospfArea: '0.0.0.0',
   ospfInterfaces: [],
   redistributeConnected: true,
@@ -561,26 +540,12 @@ export const DEFAULT_CONFIG: WizardConfig = {
   authType: 'local',
   adminUser: 'admin',
   adminPassword: '',
-  panelBind: '0.0.0.0',
+  panelBind: '127.0.0.1',
   panelPort: 8443,
   allowedIps: [],
 
-  // Legacy compat
+  // Bootstrap DNS
   bootstrapDns: '8.8.8.8',
-  dummyInterface: 'lo',
-  vipAnycastIpv4: '4.2.2.5/32',
-  vipAnycastIpv6: '2620:119:35::35/128',
-  unboundBindIps: ['100.127.255.101/32', '100.127.255.102/32', '100.127.255.103/32', '100.127.255.104/32'],
-  publicExitIps: ['45.232.215.20/32', '45.232.215.21/32', '45.232.215.22/32', '45.232.215.23/32'],
-  ipv6BindIps: ['2001:db8:ffff:ffff:100:127:255:101/128', '2001:db8:ffff:ffff:100:127:255:102/128', '2001:db8:ffff:ffff:100:127:255:103/128', '2001:db8:ffff:ffff:100:127:255:104/128'],
-  ipv6ExitIps: ['2804:4afc:8888::1000/128', '2804:4afc:8888::1001/128', '2804:4afc:8888::1002/128', '2804:4afc:8888::1003/128'],
-  nftVipTarget: '4.2.2.5',
-  nftDnatTargets: ['100.127.255.101', '100.127.255.102', '100.127.255.103', '100.127.255.104'],
-  stickySourceIp: true,
-  roundRobin: true,
-  dispatchMode: 'round-robin',
-  enableFrr: false,
-  optionalRoute: '',
 };
 
 // ---- v2: Operational Types ----
