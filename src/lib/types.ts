@@ -53,10 +53,25 @@ export interface AccessControlEntry {
   label: string;
 }
 
+// ---- Observability Config ----
+
+export interface ObservabilityConfig {
+  metricsPerVip: boolean;
+  metricsPerInstance: boolean;
+  metricsPerEgress: boolean;
+  nftablesCounters: boolean;
+  systemdStatus: boolean;
+  healthChecks: boolean;
+  latencyTracking: boolean;
+  cacheHitTracking: boolean;
+  recursionTimeTracking: boolean;
+  operationalEvents: boolean;
+}
+
 // ---- Wizard Configuration ----
 
 export interface WizardConfig {
-  // Step 1 - Host Topology
+  // Step 1 - Topologia do Host
   hostname: string;
   organization: string;
   project: string;
@@ -72,14 +87,14 @@ export interface WizardConfig {
   vlanTag: string;
   behindFirewall: boolean;
 
-  // Step 2 - Deployment Mode
+  // Step 2 - Modelo de Publicação DNS
   deploymentMode: DeploymentMode;
 
-  // Step 3 - Service VIPs
+  // Step 3 - VIPs de Serviço
   serviceVips: ServiceVip[];
   vipIpv6Enabled: boolean;
 
-  // Step 4 - Resolver Instances
+  // Step 4 - Instâncias de Resolução (listeners + control)
   instanceCount: number;
   instances: DnsInstance[];
   threads: number;
@@ -94,18 +109,16 @@ export interface WizardConfig {
   dnsIdentity: string;
   dnsVersion: string;
 
-  // Step 5 - VIP Delivery Policy
+  // Step 5 - Egress Público (outgoing-interface per instance)
+  // (egress fields live on DnsInstance but are edited in step 5)
+  egressFixedIdentity: boolean;
+
+  // Step 6 - Mapeamento VIP → Instância
   distributionPolicy: VipDistributionPolicy;
   stickyTimeout: number;
   vipMappings: { vipIndex: number; instanceIndex: number }[];
 
-  // Step 6 - Access Control
-  accessControlIpv4: AccessControlEntry[];
-  accessControlIpv6: AccessControlEntry[];
-  openResolverConfirmed: boolean;
-  enableDnsProtection: boolean;
-
-  // Step 7 - Routing Mode
+  // Step 7 - Roteamento
   routingMode: RoutingMode;
   routerId: string;
   ospfArea: string;
@@ -114,7 +127,13 @@ export interface WizardConfig {
   ospfCost: number;
   networkType: 'point-to-point' | 'broadcast';
 
-  // Step 8 - Panel / Security
+  // Step 8 - Segurança
+  accessControlIpv4: AccessControlEntry[];
+  accessControlIpv6: AccessControlEntry[];
+  openResolverConfirmed: boolean;
+  enableDnsProtection: boolean;
+  enableAntiAmplification: boolean;
+  recursionAllowed: boolean;
   authType: 'local' | 'pam';
   adminUser: string;
   adminPassword: string;
@@ -122,7 +141,10 @@ export interface WizardConfig {
   panelPort: number;
   allowedIps: string[];
 
-  // DNS Bootstrap (for /etc/resolv.conf during setup)
+  // Step 9 - Observabilidade
+  observability: ObservabilityConfig;
+
+  // Bootstrap DNS
   bootstrapDns: string;
 }
 
