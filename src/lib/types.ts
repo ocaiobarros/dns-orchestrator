@@ -120,22 +120,8 @@ export interface WizardConfig {
   panelPort: number;
   allowedIps: string[];
 
-  // Legacy compat (used by existing generators until migrated)
+  // DNS Bootstrap (for /etc/resolv.conf during setup)
   bootstrapDns: string;
-  dummyInterface: string;
-  vipAnycastIpv4: string;
-  vipAnycastIpv6: string;
-  unboundBindIps: string[];
-  publicExitIps: string[];
-  ipv6BindIps: string[];
-  ipv6ExitIps: string[];
-  nftVipTarget: string;
-  nftDnatTargets: string[];
-  stickySourceIp: boolean;
-  roundRobin: boolean;
-  dispatchMode: 'round-robin' | 'random' | 'hash';
-  enableFrr: boolean;
-  optionalRoute: string;
 }
 
 // ---- Service Status ----
