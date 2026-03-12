@@ -160,13 +160,30 @@ export const api = {
   previewFilesFromConfig: (config: WizardConfig) =>
     apiCall<GeneratedFile[]>('POST', '/configs', config),
 
-  // Apply
+  // Apply / Deploy
   applyConfig: (request: ApplyRequest) =>
-    apiCall<ApplyResult>('POST', `/apply/${request.scope || 'full'}`, request),
+    apiCall<ApplyResult>('POST', `/deploy/apply`, {
+      config: request.config,
+      scope: request.scope || 'full',
+      dry_run: request.dryRun,
+      comment: request.comment,
+    }),
   dryRunConfig: (request: ApplyRequest) =>
-    apiCall<ApplyResult>('POST', '/apply/dry-run', request),
+    apiCall<ApplyResult>('POST', '/deploy/apply', {
+      config: request.config,
+      scope: request.scope || 'full',
+      dry_run: true,
+      comment: request.comment,
+    }),
   getApplyJobs: () => apiCall<ApplyResult[]>('GET', '/apply/jobs'),
   getApplyJob: (id: string) => apiCall<ApplyResult>('GET', `/apply/jobs/${id}`),
+
+  // Deploy State
+  getDeployState: () => apiCall<DeployState>('GET', '/deploy/state'),
+  getDeployBackups: () =>
+    apiCall<Array<{ backupId: string; timestamp: string; operator: string; fileCount: number; filePaths: string[] }>>('GET', '/deploy/backups'),
+  rollback: (backupId: string, reason: string) =>
+    apiCall<RollbackResult>('POST', '/deploy/rollback', { backup_id: backupId, reason }),
 
   // History
   getHistory: (page: number = 1) =>
