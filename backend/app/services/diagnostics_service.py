@@ -2,36 +2,37 @@
 DNS Control — Diagnostics Service
 System status, health checks, service management.
 All collection is best-effort: no single failure crashes the endpoint.
+Supports controlled privileged execution for diagnostic commands.
 """
 
 import json
 import platform
 import logging
-from app.executors.command_runner import run_command
+from app.executors.command_runner import run_command, get_privilege_status
 
 logger = logging.getLogger("dns-control.diagnostics")
 
-# ── Privilege metadata per command prefix ──
+# ── Privilege metadata per executable ──
 _PRIVILEGED_COMMANDS = {
     "unbound-control": {
         "requires_root": True,
         "expected_in_unprivileged_mode": True,
-        "remediation": "Executar via sudo controlado ou ajustar permissões do socket /run/unbound.ctl",
+        "remediation": "Ajustar permissão do socket ou usar execução controlada",
     },
     "nft": {
         "requires_root": True,
         "expected_in_unprivileged_mode": True,
-        "remediation": "Executar backend com sudo restrito para diagnósticos de nftables",
+        "remediation": "Executar diagnóstico via sudo restrito",
     },
     "vtysh": {
         "requires_root": True,
         "expected_in_unprivileged_mode": True,
-        "remediation": "Ajustar permissões de /etc/frr/vtysh.conf ou adicionar usuário ao grupo frrvty",
+        "remediation": "Ajustar grupo/permissão do backend ou usar wrapper privilegiado",
     },
     "journalctl": {
         "requires_root": False,
         "expected_in_unprivileged_mode": True,
-        "remediation": "Adicionar usuário do backend ao grupo systemd-journal",
+        "remediation": "Adicionar usuário ao grupo systemd-journal ou usar wrapper controlado",
     },
 }
 
@@ -58,7 +59,6 @@ _TIMEOUT_PATTERNS = [
 
 
 def _safe_read_file(path: str, default: str = "") -> str:
-    """Read a text file, returning default on any failure."""
     try:
         with open(path, "r") as f:
             return f.read().strip()
@@ -66,23 +66,16 @@ def _safe_read_file(path: str, default: str = "") -> str:
         return default
 
 
-def _safe_run(executable: str, args: list[str], timeout: int = 5) -> dict:
-    """Run a command, returning a safe default on any failure."""
+def _safe_run(executable: str, args: list[str], timeout: int = 5, use_privilege: bool = False) -> dict:
     try:
-        return run_command(executable, args, timeout=timeout)
+        return run_command(executable, args, timeout=timeout, use_privilege=use_privilege)
     except Exception as e:
         logger.debug(f"Command {executable} failed: {e}")
         return {"exit_code": -1, "stdout": "", "stderr": str(e), "duration_ms": 0}
 
 
 def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) -> dict:
-    """
-    Classify a command result into a status + summary + remediation.
-    Returns dict with: status, summary, remediation, privileged, requires_root, expected_in_unprivileged_mode.
-    """
     combined_lower = ((stdout or "") + " " + (stderr or "")).lower()
-    stderr_lower = (stderr or "").lower()
-    stdout_lower = (stdout or "").lower()
 
     priv_meta = _PRIVILEGED_COMMANDS.get(executable, {})
     privileged = bool(priv_meta)
@@ -90,7 +83,6 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
     expected_unpriv = priv_meta.get("expected_in_unprivileged_mode", False)
     default_remediation = priv_meta.get("remediation", "")
 
-    # ── OK ──
     if exit_code == 0:
         return {
             "status": "ok",
@@ -101,8 +93,7 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
             "expected_in_unprivileged_mode": expected_unpriv,
         }
 
-    # ── Inactive service ──
-    # systemctl exit code 3 = inactive, also match stdout patterns
+    # Inactive service
     if ("inactive (dead)" in combined_lower
         or ("active: inactive" in combined_lower and executable == "systemctl")
         or (exit_code == 3 and "inactive" in combined_lower)):
@@ -115,9 +106,8 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
             "expected_in_unprivileged_mode": False,
         }
 
-    # ── Permission error ──
+    # Permission error
     is_permission = any(kw in combined_lower for kw in _PERMISSION_PATTERNS)
-    # journalctl-specific: stdout says "No journal files were opened due to insufficient permissions"
     if not is_permission and ("no journal files were opened" in combined_lower
         or ("users in groups" in combined_lower and "can see all messages" in combined_lower)):
         is_permission = True
@@ -148,7 +138,8 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
             "expected_in_unprivileged_mode": True,
         }
 
-    # ── Dependency error ──
+    # Dependency error
+    stderr_lower = (stderr or "").lower()
     if any(kw in stderr_lower for kw in _DEPENDENCY_PATTERNS):
         return {
             "status": "dependency_error",
@@ -159,7 +150,7 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
             "expected_in_unprivileged_mode": expected_unpriv,
         }
 
-    # ── Timeout ──
+    # Timeout
     if any(kw in combined_lower for kw in _TIMEOUT_PATTERNS):
         return {
             "status": "timeout_error",
@@ -170,8 +161,7 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
             "expected_in_unprivileged_mode": expected_unpriv,
         }
 
-    # ── Generic error ──
-    # Try to extract first meaningful line from stderr for summary
+    # Generic error
     first_stderr = (stderr or "").strip().split("\n")[0][:120] if stderr else ""
     summary = first_stderr if first_stderr else "Comando retornou erro"
 
@@ -188,7 +178,6 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
 # ── Dashboard ──
 
 def get_dashboard_summary() -> dict:
-    """Collect live data — best effort, never raises."""
     try:
         services = get_services_status()
     except Exception:
@@ -232,7 +221,6 @@ def get_dashboard_summary() -> dict:
 
 
 def _get_system_info() -> dict:
-    """Collect real system info — each field independently, never crashes."""
     hostname = ""
     kernel = ""
     os_name = ""
@@ -262,10 +250,9 @@ def _get_system_info() -> dict:
     try:
         r = _safe_run("unbound", ["-V"], timeout=5)
         if r["exit_code"] == 0:
-            first_line = r["stdout"].split("\n")[0]
-            unbound_version = first_line.strip()
+            unbound_version = r["stdout"].split("\n")[0].strip()
         else:
-            r2 = _safe_run("unbound-control", ["status"], timeout=5)
+            r2 = _safe_run("unbound-control", ["status"], timeout=5, use_privilege=True)
             if r2["exit_code"] == 0:
                 for line in r2["stdout"].split("\n"):
                     if "version" in line.lower():
@@ -275,7 +262,7 @@ def _get_system_info() -> dict:
         pass
 
     try:
-        r = _safe_run("vtysh", ["-c", "show version"], timeout=5)
+        r = _safe_run("vtysh", ["-c", "show version"], timeout=5, use_privilege=True)
         if r["exit_code"] == 0:
             for line in r["stdout"].split("\n"):
                 if "FRRouting" in line or "frr" in line.lower():
@@ -368,21 +355,14 @@ def get_services_status() -> list[dict]:
             "active": active,
             "status": "running" if active else "stopped",
             "enabled": True,
-            "pid": None,
-            "uptime": "",
-            "memory": "",
-            "cpu": "",
+            "pid": None, "uptime": "", "memory": "", "cpu": "",
         })
     return results
 
 
 def get_service_detail(name: str) -> dict:
     result = _safe_run("systemctl", ["status", name], timeout=10)
-    return {
-        "name": name,
-        "status_output": result["stdout"],
-        "active": result["exit_code"] == 0,
-    }
+    return {"name": name, "status_output": result["stdout"], "active": result["exit_code"] == 0}
 
 
 def restart_service(name: str) -> dict:
@@ -451,23 +431,31 @@ def check_reachability() -> list[dict]:
 def run_health_check() -> dict:
     """
     Run ALL catalog commands best-effort.
-    Never raises. Returns consolidated summary + per-item results.
-    Each result is enriched with classification, summary, remediation, privilege metadata.
+    Privileged commands use sudo when available.
+    Returns consolidated summary + per-item results + privilege environment info.
     """
     from datetime import datetime, timezone
     from app.executors.command_catalog import COMMAND_CATALOG
 
     started_at = datetime.now(timezone.utc).isoformat()
     results = []
+    priv_status = get_privilege_status()
 
     for cmd_def in COMMAND_CATALOG.values():
         try:
-            r = _safe_run(cmd_def.executable, list(cmd_def.base_args), timeout=min(cmd_def.timeout, 15))
+            use_priv = cmd_def.requires_privilege
+            r = _safe_run(
+                cmd_def.executable,
+                list(cmd_def.base_args),
+                timeout=min(cmd_def.timeout, 15),
+                use_privilege=use_priv,
+            )
             exit_code = r.get("exit_code", -1)
             stdout = r.get("stdout", "")
             stderr = r.get("stderr", "")
             duration_ms = r.get("duration_ms", 0)
             success = exit_code == 0
+            executed_privileged = r.get("executed_privileged", False)
 
             classification = _classify_result(exit_code, stdout, stderr, cmd_def.executable)
 
@@ -490,6 +478,8 @@ def run_health_check() -> dict:
                 "privileged": classification["privileged"],
                 "requires_root": classification["requires_root"],
                 "expected_in_unprivileged_mode": classification["expected_in_unprivileged_mode"],
+                "executed_privileged": executed_privileged,
+                "requires_privilege": cmd_def.requires_privilege,
             })
         except Exception as e:
             logger.exception(f"Health check failed for {cmd_def.id}: {e}")
@@ -512,6 +502,8 @@ def run_health_check() -> dict:
                 "privileged": False,
                 "requires_root": False,
                 "expected_in_unprivileged_mode": False,
+                "executed_privileged": False,
+                "requires_privilege": cmd_def.requires_privilege,
             })
 
     finished_at = datetime.now(timezone.utc).isoformat()
@@ -529,6 +521,7 @@ def run_health_check() -> dict:
         "failed": failed,
         "permission_limited": permission_limited,
         "inactive": inactive,
+        "privilege_status": priv_status,
         "results": results,
     }
 
