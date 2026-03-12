@@ -4,12 +4,15 @@ import MetricCard from '@/components/MetricCard';
 import { LoadingState } from '@/components/DataStates';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+
+function safeNum(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
 
 export default function MetricsPage() {
   const [selectedMetric, setSelectedMetric] = useState('dns_queries_total');
 
-  const { data: metrics, isLoading } = useQuery({
+  const { data: rawMetrics, isLoading } = useQuery({
     queryKey: ['v2-metrics'],
     queryFn: async () => {
       const r = await api.getV2Metrics();
@@ -19,7 +22,7 @@ export default function MetricsPage() {
     refetchInterval: 10000,
   });
 
-  const { data: instanceStats } = useQuery({
+  const { data: rawInstanceStats } = useQuery({
     queryKey: ['dns', 'instances'],
     queryFn: async () => {
       const r = await api.getInstanceStats();
@@ -31,22 +34,40 @@ export default function MetricsPage() {
 
   if (isLoading) return <LoadingState />;
 
+  // Normalize metrics: accept [], { items: [] }, { data: [] }, etc.
+  const metrics: Array<Record<string, unknown>> = (() => {
+    if (Array.isArray(rawMetrics)) return rawMetrics;
+    if (rawMetrics && typeof rawMetrics === 'object') {
+      const r = rawMetrics as Record<string, unknown>;
+      if (Array.isArray(r.items)) return r.items;
+      if (Array.isArray(r.data)) return r.data;
+      if (Array.isArray(r.samples)) return r.samples;
+    }
+    return [];
+  })();
+
+  // Normalize instance stats
+  const instanceStats = Array.isArray(rawInstanceStats) ? rawInstanceStats : [] as any[];
+
   // Group metrics by instance
   const byInstance: Record<string, Record<string, number>> = {};
-  for (const m of (metrics ?? [])) {
-    if (!byInstance[m.instance_name]) byInstance[m.instance_name] = {};
-    byInstance[m.instance_name][m.metric_name] = m.metric_value;
+  for (const m of metrics) {
+    const instName = String(m.instance_name ?? m.instanceName ?? m.instance ?? 'unknown');
+    const metricName = String(m.metric_name ?? m.metricName ?? m.name ?? '');
+    const metricValue = safeNum(m.metric_value ?? m.metricValue ?? m.value);
+    if (!byInstance[instName]) byInstance[instName] = {};
+    if (metricName) byInstance[instName][metricName] = metricValue;
   }
 
   const instanceNames = Object.keys(byInstance);
-  const totalQueries = instanceNames.reduce((sum, n) => sum + (byInstance[n]?.dns_queries_total ?? 0), 0);
+  const totalQueries = instanceNames.reduce((sum, n) => sum + safeNum(byInstance[n]?.dns_queries_total), 0);
   const avgHitRatio = instanceNames.length > 0
-    ? instanceNames.reduce((sum, n) => sum + (byInstance[n]?.dns_cache_hit_ratio ?? 0), 0) / instanceNames.length
+    ? instanceNames.reduce((sum, n) => sum + safeNum(byInstance[n]?.dns_cache_hit_ratio), 0) / instanceNames.length
     : 0;
   const avgLatency = instanceNames.length > 0
-    ? instanceNames.reduce((sum, n) => sum + (byInstance[n]?.dns_latency_ms ?? 0), 0) / instanceNames.length
+    ? instanceNames.reduce((sum, n) => sum + safeNum(byInstance[n]?.dns_latency_ms), 0) / instanceNames.length
     : 0;
-  const totalServfail = instanceNames.reduce((sum, n) => sum + (byInstance[n]?.dns_servfail_total ?? 0), 0);
+  const totalServfail = instanceNames.reduce((sum, n) => sum + safeNum(byInstance[n]?.dns_servfail_total), 0);
 
   const metricOptions = [
     { key: 'dns_queries_total', label: 'Total Queries' },
@@ -55,6 +76,8 @@ export default function MetricsPage() {
     { key: 'dns_servfail_total', label: 'SERVFAIL' },
     { key: 'dns_nxdomain_total', label: 'NXDOMAIN' },
   ];
+
+  const hasMetrics = metrics.length > 0;
 
   return (
     <div className="space-y-6">
@@ -65,8 +88,8 @@ export default function MetricsPage() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard label="Total Queries" value={totalQueries.toLocaleString()} sub="Todas as instâncias" icon={<BarChart3 size={16} />} />
-        <MetricCard label="Cache Hit" value={`${(avgHitRatio * 100).toFixed(1)}%`} sub="Média geral" icon={<Activity size={16} />} />
-        <MetricCard label="Latência" value={`${avgLatency.toFixed(1)}ms`} sub="Recursion avg" icon={<Timer size={16} />} />
+        <MetricCard label="Cache Hit" value={`${(safeNum(avgHitRatio) * 100).toFixed(1)}%`} sub="Média geral" icon={<Activity size={16} />} />
+        <MetricCard label="Latência" value={`${safeNum(avgLatency).toFixed(1)}ms`} sub="Recursion avg" icon={<Timer size={16} />} />
         <MetricCard label="SERVFAIL" value={totalServfail.toLocaleString()} sub="Total" icon={<AlertTriangle size={16} />} />
       </div>
 
@@ -87,64 +110,76 @@ export default function MetricsPage() {
         ))}
       </div>
 
-      {/* Per-instance table */}
+      {/* Per-instance metrics table */}
       <div className="noc-panel">
         <div className="noc-panel-header">Métricas por Instância</div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-muted-foreground border-b border-border">
-                <th className="py-2 pr-4 font-medium">Instância</th>
-                <th className="py-2 pr-4 font-medium text-right">Queries</th>
-                <th className="py-2 pr-4 font-medium text-right">Cache Hit</th>
-                <th className="py-2 pr-4 font-medium text-right">Latência</th>
-                <th className="py-2 pr-4 font-medium text-right">SERVFAIL</th>
-                <th className="py-2 pr-4 font-medium text-right">NXDOMAIN</th>
-              </tr>
-            </thead>
-            <tbody>
-              {instanceNames.map(name => {
-                const m = byInstance[name];
-                return (
-                  <tr key={name} className="border-b border-border last:border-0">
-                    <td className="py-2 pr-4 font-mono">{name}</td>
-                    <td className="py-2 pr-4 text-right font-mono">{(m.dns_queries_total ?? 0).toLocaleString()}</td>
-                    <td className="py-2 pr-4 text-right font-mono text-emerald-500">{((m.dns_cache_hit_ratio ?? 0) * 100).toFixed(1)}%</td>
-                    <td className="py-2 pr-4 text-right font-mono">{(m.dns_latency_ms ?? 0).toFixed(1)}ms</td>
-                    <td className="py-2 pr-4 text-right font-mono">{(m.dns_servfail_total ?? 0).toLocaleString()}</td>
-                    <td className="py-2 pr-4 text-right font-mono">{(m.dns_nxdomain_total ?? 0).toLocaleString()}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          {!hasMetrics ? (
+            <div className="p-6 text-center text-muted-foreground text-sm">
+              Nenhuma métrica coletada ainda. O collector pode não ter executado ou as instâncias Unbound não estão reportando.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b border-border">
+                  <th className="py-2 pr-4 font-medium">Instância</th>
+                  <th className="py-2 pr-4 font-medium text-right">Queries</th>
+                  <th className="py-2 pr-4 font-medium text-right">Cache Hit</th>
+                  <th className="py-2 pr-4 font-medium text-right">Latência</th>
+                  <th className="py-2 pr-4 font-medium text-right">SERVFAIL</th>
+                  <th className="py-2 pr-4 font-medium text-right">NXDOMAIN</th>
+                </tr>
+              </thead>
+              <tbody>
+                {instanceNames.map(name => {
+                  const m = byInstance[name];
+                  return (
+                    <tr key={name} className="border-b border-border last:border-0">
+                      <td className="py-2 pr-4 font-mono">{name}</td>
+                      <td className="py-2 pr-4 text-right font-mono">{safeNum(m.dns_queries_total).toLocaleString()}</td>
+                      <td className="py-2 pr-4 text-right font-mono text-emerald-500">{(safeNum(m.dns_cache_hit_ratio) * 100).toFixed(1)}%</td>
+                      <td className="py-2 pr-4 text-right font-mono">{safeNum(m.dns_latency_ms).toFixed(1)}ms</td>
+                      <td className="py-2 pr-4 text-right font-mono">{safeNum(m.dns_servfail_total).toLocaleString()}</td>
+                      <td className="py-2 pr-4 text-right font-mono">{safeNum(m.dns_nxdomain_total).toLocaleString()}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
-      {/* Instance stats from v1 (mock in preview) */}
-      {instanceStats && instanceStats.length > 0 && (
+      {/* Instance stats from /dns/instances */}
+      {instanceStats.length > 0 && (
         <div className="noc-panel">
           <div className="noc-panel-header">Visão de Instâncias (Live Stats)</div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {instanceStats.map(inst => (
-              <div key={inst.instance} className="p-3 rounded border border-border bg-secondary/20">
-                <div className="font-mono text-sm font-medium mb-2">{inst.instance}</div>
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div>
-                    <span className="text-muted-foreground block">Queries</span>
-                    <span className="font-mono">{inst.totalQueries.toLocaleString()}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground block">Cache Hit</span>
-                    <span className="font-mono text-emerald-500">{inst.cacheHitRatio}%</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground block">Latência</span>
-                    <span className="font-mono">{inst.avgLatencyMs}ms</span>
+            {instanceStats.map((inst, idx) => {
+              const name = String(inst.instance ?? inst.name ?? `inst-${idx}`);
+              const queries = safeNum(inst.totalQueries ?? inst.queries_total ?? inst.total_queries);
+              const cacheHit = safeNum(inst.cacheHitRatio ?? inst.cache_hit_ratio ?? inst.cache_entries);
+              const latency = safeNum(inst.avgLatencyMs ?? inst.avg_latency_ms ?? inst.latency);
+              return (
+                <div key={name} className="p-3 rounded border border-border bg-secondary/20">
+                  <div className="font-mono text-sm font-medium mb-2">{name}</div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <span className="text-muted-foreground block">Queries</span>
+                      <span className="font-mono">{queries.toLocaleString()}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block">Cache</span>
+                      <span className="font-mono text-emerald-500">{cacheHit}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block">Latência</span>
+                      <span className="font-mono">{latency}ms</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
