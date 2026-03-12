@@ -29,6 +29,9 @@ export type RoutingMode = 'static' | 'frr-ospf' | 'frr-bgp';
 export interface ServiceVip {
   ipv4: string;
   ipv6: string;
+  port: number;
+  protocol: 'udp+tcp' | 'udp' | 'tcp';
+  description: string;
   label: string;
   deliveryMode: VipDeliveryMode;
 }
@@ -567,6 +570,7 @@ export const DEFAULT_CONFIG: WizardConfig = {
   // Step 3 - VIPs de Serviço
   serviceVips: [],
   vipIpv6Enabled: false,
+
 
   // Step 4 - Instâncias de Resolução
   instanceCount: 2,

@@ -414,40 +414,69 @@ function mockUsers(): AuthUserRecord[] {
   ];
 }
 
-function mockApplyResult(req?: { dry_run?: boolean; scope?: string }): ApplyResult {
+function mockApplyResult(req?: { dry_run?: boolean; scope?: string; config?: WizardConfig }): ApplyResult {
+  const cfg = req?.config;
+  const instanceNames = cfg?.instances?.map(i => i.name) || ['unbound01', 'unbound02'];
+  const vipIps = cfg?.serviceVips?.map(v => v.ipv4).filter(Boolean) || [];
+  const now = new Date();
+  type Step = ApplyResult['steps'][number];
+
+  const baseSteps: Step[] = [
+    { order: 1, name: 'Validar modelo', status: 'success' as const, output: 'Validação OK — 0 erros, 0 avisos', durationMs: 120, command: null, startedAt: now.toISOString(), finishedAt: now.toISOString() },
+    { order: 2, name: 'Gerar artefatos', status: 'success' as const, output: `${cfg ? 10 + instanceNames.length * 2 : 11} arquivos gerados`, durationMs: 200, command: null },
+    { order: 3, name: req?.dry_run ? 'Dry-run concluído' : 'Backup configuração atual', status: 'success' as const, output: req?.dry_run ? 'Nenhuma alteração aplicada' : `Snapshot salvo em /var/lib/dns-control/backups/${now.toISOString().slice(0,19).replace(/[:-]/g,'')}`, durationMs: req?.dry_run ? 0 : 340, command: null, rollbackHint: 'Restaurar backup anterior' },
+  ];
+
+  const applySteps: Step[] = req?.dry_run ? [] : [
+    { order: 4, name: 'Gravar rede (/etc/network/*)', status: 'success' as const, output: '2 arquivos: interfaces, post-up.sh', durationMs: 80, command: null },
+    { order: 5, name: `Gravar Unbound (${instanceNames.length} instâncias)`, status: 'success' as const, output: instanceNames.map(n => `${n}.conf`).join(', '), durationMs: 100, command: null },
+    { order: 6, name: 'Gravar nftables (modular)', status: 'success' as const, output: 'DNAT + sticky sets + nth balancing', durationMs: 50, command: null },
+    { order: 7, name: 'Gravar sysctl', status: 'success' as const, output: 'Tuning de rede, conntrack, kernel', durationMs: 30, command: null },
+    { order: 8, name: 'daemon-reload', status: 'success' as const, output: 'OK', durationMs: 300, command: 'systemctl daemon-reload', startedAt: now.toISOString(), finishedAt: now.toISOString() },
+    ...instanceNames.map((name, i) => ({
+      order: 9 + i, name: `Reiniciar ${name}`, status: 'success' as const, output: `active (running) pid ${1234 + i}`, durationMs: 600 + Math.floor(Math.random() * 400),
+      command: `systemctl restart ${name}`, startedAt: now.toISOString(), finishedAt: now.toISOString(), rollbackHint: `systemctl restart ${name} (restore config first)`,
+    })),
+    { order: 9 + instanceNames.length, name: 'Aplicar nftables', status: 'success' as const, output: 'Ruleset loaded', durationMs: 300, command: 'nft -f /etc/nftables.conf' },
+    { order: 10 + instanceNames.length, name: 'Verificação pós-deploy', status: 'success' as const, output: `${2 + instanceNames.length + vipIps.length}/${2 + instanceNames.length + vipIps.length} checks OK`, durationMs: 1500, command: null },
+  ];
+
+  const healthChecks: PostDeployCheck[] = req?.dry_run ? [] : [
+    ...instanceNames.map(name => ({
+      name: `${name} systemd status`, target: name, status: 'pass' as const, detail: 'active (running)', durationMs: 50,
+    })),
+    ...instanceNames.map(name => ({
+      name: `${name} DNS probe`, target: name, status: 'pass' as const, detail: 'google.com → 142.250.79.46', durationMs: 3 + Math.floor(Math.random() * 8),
+    })),
+    ...vipIps.map(ip => ({
+      name: `VIP ${ip} reachability`, target: ip, status: 'pass' as const, detail: `dig @${ip} google.com → OK`, durationMs: 4 + Math.floor(Math.random() * 6),
+    })),
+    { name: 'nftables rules loaded', target: 'nftables', status: 'pass', detail: 'table ip nat { PREROUTING, chains OK }', durationMs: 30 },
+    { name: 'Control interfaces reachable', target: 'unbound-control', status: 'pass', detail: `${instanceNames.length}/${instanceNames.length} responding`, durationMs: 100 },
+  ];
+
   return {
     id: `apply-${Date.now()}`,
-    timestamp: new Date().toISOString(),
+    timestamp: now.toISOString(),
     user: 'admin',
     status: req?.dry_run ? 'dry-run' : 'success',
     scope: (req?.scope as ApplyResult['scope']) || 'full',
     dryRun: req?.dry_run || false,
     comment: '',
-    duration: 8500,
-    configSnapshot: {} as WizardConfig,
-    configVersion: 'v3',
+    duration: baseSteps.concat(applySteps).reduce((sum, s) => sum + s.durationMs, 0),
+    configSnapshot: (cfg || {}) as WizardConfig,
+    configVersion: `v${Math.floor(Math.random() * 10) + 3}`,
     environment: 'production',
-    changedFiles: ['/etc/unbound/unbound01.conf', '/etc/nftables.conf'],
-    healthResult: [
-      { name: 'unbound01 systemd status', target: 'unbound01', status: 'pass', detail: 'active', durationMs: 50 },
-      { name: 'nftables rules loaded', target: 'nftables', status: 'pass', detail: 'table ip nat', durationMs: 30 },
+    changedFiles: [
+      ...instanceNames.map(n => `/etc/unbound/${n}.conf`),
+      '/etc/nftables.conf',
+      '/etc/network/interfaces',
+      '/etc/network/post-up.sh',
     ],
+    healthResult: healthChecks,
     rollbackAvailable: !req?.dry_run,
-    backupId: req?.dry_run ? null : `bk-${Date.now()}`,
-    steps: [
-      { order: 1, name: 'Validar modelo', status: 'success', output: 'Validação OK', durationMs: 120, command: null, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() },
-      { order: 2, name: 'Gerar artefatos', status: 'success', output: '11 arquivos gerados', durationMs: 200, command: null },
-      { order: 3, name: req?.dry_run ? 'Dry-run concluído' : 'Backup configuração', status: 'success', output: req?.dry_run ? 'Nenhuma alteração' : 'Backup salvo', durationMs: req?.dry_run ? 0 : 340, command: null },
-      ...(!req?.dry_run ? [
-        { order: 4, name: 'Gravar rede', status: 'success' as const, output: '3 arquivos de rede', durationMs: 80, command: null },
-        { order: 5, name: 'Gravar Unbound', status: 'success' as const, output: '4 arquivos', durationMs: 100, command: null },
-        { order: 6, name: 'Gravar nftables', status: 'success' as const, output: '12 arquivos', durationMs: 50, command: null },
-        { order: 7, name: 'daemon-reload', status: 'success' as const, output: 'OK', durationMs: 300, command: 'systemctl daemon-reload' },
-        { order: 8, name: 'Reiniciar unbound01', status: 'success' as const, output: 'OK', durationMs: 800, command: 'systemctl restart unbound01' },
-        { order: 9, name: 'Aplicar nftables', status: 'success' as const, output: 'Ruleset loaded', durationMs: 300, command: 'nft -f /etc/nftables.conf' },
-        { order: 10, name: 'Verificação pós-deploy', status: 'success' as const, output: '6/6 checks OK', durationMs: 1500, command: null },
-      ] : []),
-    ],
+    backupId: req?.dry_run ? null : `bk-${now.toISOString().slice(0,19).replace(/[:-]/g, '')}`,
+    steps: ([...baseSteps, ...applySteps] as ApplyResult['steps']),
     filesGenerated: [],
   };
 }

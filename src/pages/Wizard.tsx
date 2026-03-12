@@ -154,9 +154,9 @@ export default function Wizard() {
     set('instances', instances);
   };
 
-  const updateVip = (idx: number, field: keyof ServiceVip, val: string) => {
+  const updateVip = (idx: number, field: keyof ServiceVip, val: string | number) => {
     const vips = [...config.serviceVips];
-    vips[idx] = { ...vips[idx], [field]: val };
+    vips[idx] = { ...vips[idx], [field]: field === 'port' ? (parseInt(String(val)) || 53) : val };
     set('serviceVips', vips);
   };
 
@@ -316,7 +316,7 @@ export default function Wizard() {
                       <Trash2 size={12} /> Remover
                     </button>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                     <FieldGroup label="IPv4 *" error={fieldError(`serviceVips[${i}].ipv4`)}>
                       <Input value={vip.ipv4} onChange={v => updateVip(i, 'ipv4', v)} placeholder="IP do serviço DNS" />
                     </FieldGroup>
@@ -325,8 +325,19 @@ export default function Wizard() {
                         <Input value={vip.ipv6} onChange={v => updateVip(i, 'ipv6', v)} placeholder="IPv6 do serviço DNS" />
                       </FieldGroup>
                     )}
-                    <FieldGroup label="Label">
-                      <Input value={vip.label} onChange={v => updateVip(i, 'label', v)} placeholder="DNS Primário" />
+                    <FieldGroup label="Porta" hint="Default: 53">
+                      <Input type="number" value={vip.port} onChange={v => updateVip(i, 'port', v)} placeholder="53" />
+                    </FieldGroup>
+                    <FieldGroup label="Protocolo">
+                      <Select value={vip.protocol} onChange={v => updateVip(i, 'protocol', v)}
+                        options={[
+                          { value: 'udp+tcp', label: 'UDP + TCP' },
+                          { value: 'udp', label: 'UDP only' },
+                          { value: 'tcp', label: 'TCP only' },
+                        ]} />
+                    </FieldGroup>
+                    <FieldGroup label="Descrição">
+                      <Input value={vip.description} onChange={v => updateVip(i, 'description', v)} placeholder="DNS Público" />
                     </FieldGroup>
                     <FieldGroup label="Modo de Entrega">
                       <Select value={vip.deliveryMode} onChange={v => updateVip(i, 'deliveryMode', v)}
@@ -341,7 +352,7 @@ export default function Wizard() {
               ))}
             </div>
             <div className="flex gap-3 flex-wrap">
-              <button onClick={() => set('serviceVips', [...config.serviceVips, { ipv4: '', ipv6: '', label: '', deliveryMode: 'firewall-delivered' }])}
+              <button onClick={() => set('serviceVips', [...config.serviceVips, { ipv4: '', ipv6: '', port: 53, protocol: 'udp+tcp' as const, description: '', label: '', deliveryMode: 'firewall-delivered' as const }])}
                 className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
                 <Plus size={12} /> Adicionar VIP
               </button>
@@ -827,17 +838,41 @@ export default function Wizard() {
               </div>
             </div>
 
-            {/* Generated Files Preview */}
+            {/* Generated Files Preview — Grouped */}
             <div className="noc-panel">
               <div className="noc-panel-header flex items-center justify-between">
                 <span>Artefatos de Deploy ({generatedFiles.length} arquivos)</span>
                 <button onClick={() => setShowFiles(!showFiles)}
                   className="text-[10px] text-accent hover:underline">{showFiles ? 'Ocultar conteúdo' : 'Mostrar conteúdo'}</button>
               </div>
+              {/* Category summary */}
+              {(() => {
+                const cats = new Map<string, number>();
+                generatedFiles.forEach(f => {
+                  let cat = 'Config';
+                  if (f.path.includes('/unbound/')) cat = 'Unbound configs';
+                  else if (f.path.includes('/nftables')) cat = 'NFTables rules';
+                  else if (f.path.includes('/sysctl')) cat = 'Sysctl tuning';
+                  else if (f.path.includes('/network/') || f.path.includes('interfaces')) cat = 'Network';
+                  else if (f.path.includes('/frr/')) cat = 'FRR routing';
+                  else if (f.path.includes('systemd') || f.path.endsWith('.service')) cat = 'Systemd units';
+                  else if (f.path.endsWith('.sh') || f.path.endsWith('.txt')) cat = 'Scripts / Manifests';
+                  cats.set(cat, (cats.get(cat) || 0) + 1);
+                });
+                return (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {[...cats.entries()].map(([cat, count]) => (
+                      <span key={cat} className="text-xs px-2 py-1 bg-secondary border border-border rounded font-mono">
+                        {cat} ({count})
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
               {showFiles ? (
                 <FilePreviewAccordion files={generatedFiles} />
               ) : (
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1 max-h-[150px] overflow-y-auto">
                   {generatedFiles.map(f => (
                     <span key={f.path} className="text-xs font-mono px-2 py-0.5 bg-secondary text-secondary-foreground rounded border border-border">{f.path}</span>
                   ))}
