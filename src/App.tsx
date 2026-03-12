@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/lib/auth";
+import { NocProvider } from "@/lib/noc-context";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 import Layout from "@/components/Layout";
@@ -55,27 +56,29 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <SessionTimeoutModal />
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/force-change-password" element={<Suspense fallback={<PageLoader />}><ForceChangePasswordPage /></Suspense>} />
-            <Route path="/" element={<ProtectedApp><Dashboard /></ProtectedApp>} />
-            <Route path="/wizard" element={<ProtectedApp><Wizard /></ProtectedApp>} />
-            <Route path="/services" element={<ProtectedApp><Services /></ProtectedApp>} />
-            <Route path="/network" element={<ProtectedApp><NetworkPage /></ProtectedApp>} />
-            <Route path="/dns" element={<ProtectedApp><DnsPage /></ProtectedApp>} />
-            <Route path="/nat" element={<ProtectedApp><NatPage /></ProtectedApp>} />
-            <Route path="/ospf" element={<ProtectedApp><OspfPage /></ProtectedApp>} />
-            <Route path="/metrics" element={<ProtectedApp><MetricsPage /></ProtectedApp>} />
-            <Route path="/events" element={<ProtectedApp><EventsPage /></ProtectedApp>} />
-            <Route path="/logs" element={<ProtectedApp><LogsPage /></ProtectedApp>} />
-            <Route path="/troubleshoot" element={<ProtectedApp><TroubleshootPage /></ProtectedApp>} />
-            <Route path="/files" element={<ProtectedApp><FilesPage /></ProtectedApp>} />
-            <Route path="/history" element={<ProtectedApp><HistoryPage /></ProtectedApp>} />
-            <Route path="/settings" element={<ProtectedApp><SettingsPage /></ProtectedApp>} />
-            <Route path="/users" element={<ProtectedApp><UsersPage /></ProtectedApp>} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <NocProvider>
+            <SessionTimeoutModal />
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/force-change-password" element={<Suspense fallback={<PageLoader />}><ForceChangePasswordPage /></Suspense>} />
+              <Route path="/" element={<ProtectedApp><Dashboard /></ProtectedApp>} />
+              <Route path="/wizard" element={<ProtectedApp><Wizard /></ProtectedApp>} />
+              <Route path="/services" element={<ProtectedApp><Services /></ProtectedApp>} />
+              <Route path="/network" element={<ProtectedApp><NetworkPage /></ProtectedApp>} />
+              <Route path="/dns" element={<ProtectedApp><DnsPage /></ProtectedApp>} />
+              <Route path="/nat" element={<ProtectedApp><NatPage /></ProtectedApp>} />
+              <Route path="/ospf" element={<ProtectedApp><OspfPage /></ProtectedApp>} />
+              <Route path="/metrics" element={<ProtectedApp><MetricsPage /></ProtectedApp>} />
+              <Route path="/events" element={<ProtectedApp><EventsPage /></ProtectedApp>} />
+              <Route path="/logs" element={<ProtectedApp><LogsPage /></ProtectedApp>} />
+              <Route path="/troubleshoot" element={<ProtectedApp><TroubleshootPage /></ProtectedApp>} />
+              <Route path="/files" element={<ProtectedApp><FilesPage /></ProtectedApp>} />
+              <Route path="/history" element={<ProtectedApp><HistoryPage /></ProtectedApp>} />
+              <Route path="/settings" element={<ProtectedApp><SettingsPage /></ProtectedApp>} />
+              <Route path="/users" element={<ProtectedApp><UsersPage /></ProtectedApp>} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </NocProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

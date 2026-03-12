@@ -6,6 +6,7 @@ import {
   HeartPulse, BarChart3, Bell,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
+import { useNoc } from '@/lib/noc-context';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -29,6 +30,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, logout } = useAuth();
+  const { fullscreen } = useNoc();
+
+  // In fullscreen NOC mode on the dashboard, hide sidebar and header
+  const isDashboard = location.pathname === '/';
+  const nocMode = fullscreen && isDashboard;
+
+  if (nocMode) {
+    return (
+      <div className="h-screen overflow-y-auto bg-background p-4 lg:p-6">
+        {children}
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
