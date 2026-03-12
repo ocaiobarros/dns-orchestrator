@@ -1,87 +1,121 @@
 import { motion } from 'framer-motion';
-import { Shield } from 'lucide-react';
+import { Shield, ShieldOff } from 'lucide-react';
 import type { ServiceStatus } from '@/lib/types';
 
 interface NocHealthMatrixProps {
   services: ServiceStatus[];
   dnsHealthy: boolean;
   networkOk: boolean;
+  dnsAvailable?: boolean;
+  privilegeLimited?: boolean;
 }
 
-/** Decorative micro-sparkline for warning/failing items */
-function PulseBar({ failing }: { failing: boolean }) {
-  if (!failing) return null;
-  return (
-    <svg width="32" height="8" viewBox="0 0 32 8" className="opacity-60">
-      <rect width="32" height="8" rx="4" fill="hsl(0, 76%, 50%)" opacity="0.1" />
-      <rect width="16" height="8" rx="4" fill="hsl(0, 76%, 50%)" opacity="0.25">
-        <animate attributeName="x" values="-16;32" dur="1.8s" repeatCount="indefinite" />
-        <animate attributeName="opacity" values="0.4;0.1" dur="1.8s" repeatCount="indefinite" />
-      </rect>
-    </svg>
-  );
+type CheckState = 'ok' | 'warn' | 'inactive' | 'limited' | 'fail';
+
+function dotClass(state: CheckState) {
+  switch (state) {
+    case 'ok': return 'noc-dot-live';
+    case 'warn': return 'noc-dot-warn';
+    case 'inactive': return 'noc-dot-dead';
+    case 'limited': return 'noc-dot-warn';
+    case 'fail': return 'noc-dot-fail';
+  }
 }
 
-function Sparkline({ ok }: { ok: boolean }) {
-  if (!ok) return null;
-  const color = 'hsl(152, 76%, 40%)';
-  return (
-    <svg width="28" height="8" viewBox="0 0 28 8" className="opacity-30">
-      <polyline points="0,6 4,4 8,5 12,2 16,3 20,1 24,3 28,2" fill="none" stroke={color} strokeWidth="1" strokeLinecap="round" />
-    </svg>
-  );
+function stateLabel(state: CheckState): { text: string; className: string } {
+  switch (state) {
+    case 'ok': return { text: 'OK', className: 'text-success/60' };
+    case 'warn': return { text: 'WARN', className: 'text-warning/70' };
+    case 'inactive': return { text: 'INACTIVE', className: 'text-muted-foreground/30' };
+    case 'limited': return { text: 'LIMITED', className: 'text-warning/50' };
+    case 'fail': return { text: 'FAIL', className: 'text-destructive' };
+  }
 }
 
-export default function NocHealthMatrix({ services, dnsHealthy, networkOk }: NocHealthMatrixProps) {
+export default function NocHealthMatrix({ services, dnsHealthy, networkOk, dnsAvailable, privilegeLimited }: NocHealthMatrixProps) {
   const svcByName = (name: string) => services.find(s => s.name.toLowerCase().includes(name));
 
-  const checks = [
-    { label: 'DNS', ok: dnsHealthy },
-    { label: 'NETWORK', ok: networkOk },
-    { label: 'OSPF', ok: svcByName('frr')?.status === 'running' },
-    { label: 'CACHE', ok: svcByName('unbound')?.status === 'running' },
-    { label: 'FIREWALL', ok: svcByName('nftables')?.status === 'running' || svcByName('nft')?.status === 'running' },
-    { label: 'API', ok: true },
-    { label: 'AUTH', ok: true },
+  const frrSvc = svcByName('frr');
+  const unboundSvc = svcByName('unbound');
+  const nftSvc = svcByName('nftables') || svcByName('nft');
+
+  const checks: { label: string; state: CheckState; detail?: string }[] = [
+    {
+      label: 'DNS',
+      state: dnsHealthy ? 'ok' : !dnsAvailable && privilegeLimited ? 'limited' : 'fail',
+      detail: !dnsAvailable && privilegeLimited ? 'Privilege limited' : undefined,
+    },
+    {
+      label: 'NETWORK',
+      state: networkOk ? 'ok' : 'warn',
+    },
+    {
+      label: 'OSPF',
+      state: frrSvc?.status === 'running' ? 'ok' : frrSvc?.status === 'stopped' ? 'inactive' : frrSvc ? 'fail' : 'inactive',
+      detail: frrSvc?.status === 'stopped' ? 'Service stopped' : !frrSvc ? 'Not installed' : undefined,
+    },
+    {
+      label: 'CACHE',
+      state: unboundSvc?.status === 'running' ? 'ok' : unboundSvc?.status === 'stopped' ? 'inactive' : 'fail',
+    },
+    {
+      label: 'FIREWALL',
+      state: nftSvc?.status === 'running' ? 'ok' : nftSvc?.status === 'stopped' ? 'inactive' : nftSvc ? 'fail' : 'inactive',
+      detail: !nftSvc ? 'Not detected' : nftSvc?.status === 'stopped' ? 'Inactive' : undefined,
+    },
+    { label: 'API', state: 'ok' },
+    { label: 'AUTH', state: 'ok' },
   ];
 
-  const allOk = checks.every(c => c.ok);
+  const failCount = checks.filter(c => c.state === 'fail').length;
+  const limitedCount = checks.filter(c => c.state === 'limited').length;
+  const inactiveCount = checks.filter(c => c.state === 'inactive').length;
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: 0.2 }}
+      transition={{ duration: 0.4, delay: 0.15 }}
       className="noc-surface"
     >
       <div className="noc-surface-body">
-        <div className="noc-section-head">
-          <Shield size={12} className={allOk ? 'text-success' : 'text-destructive'} />
-          SUBSYSTEM MATRIX
+        <div className="flex items-center justify-between">
+          <div className="noc-section-head">
+            <Shield size={12} className={failCount > 0 ? 'text-destructive' : 'text-success/70'} />
+            SUBSYSTEM MATRIX
+          </div>
+          <div className="flex items-center gap-2 text-[8px] font-mono text-muted-foreground/25 uppercase tracking-wider">
+            {failCount > 0 && <span className="text-destructive">{failCount} fail</span>}
+            {limitedCount > 0 && <span className="text-warning/50">{limitedCount} limited</span>}
+            {inactiveCount > 0 && <span>{inactiveCount} inactive</span>}
+          </div>
         </div>
         <div className="noc-divider" />
 
         <div className="space-y-0">
-          {checks.map((c, i) => (
-            <motion.div
-              key={c.label}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.3, delay: 0.12 + i * 0.04 }}
-              className="noc-row"
-            >
-              <div className="flex items-center gap-3">
-                <span className={c.ok ? 'noc-dot-live' : 'noc-dot-fail'} />
-                <span className="text-[11px] font-mono font-bold text-foreground/85 tracking-wider">{c.label}</span>
-              </div>
-              <div className="flex items-center gap-3">
-                {c.ok ? <Sparkline ok /> : <PulseBar failing />}
-                <span className={`text-[10px] font-mono font-bold uppercase tracking-wider min-w-[32px] text-right ${c.ok ? 'text-success/70' : 'text-destructive'}`}>
-                  {c.ok ? 'OK' : 'FAIL'}
+          {checks.map((c, i) => {
+            const st = stateLabel(c.state);
+            return (
+              <motion.div
+                key={c.label}
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.25, delay: 0.1 + i * 0.03 }}
+                className="noc-row"
+              >
+                <div className="flex items-center gap-3">
+                  <span className={dotClass(c.state)} />
+                  <span className="text-[11px] font-mono font-bold text-foreground/85 tracking-wider">{c.label}</span>
+                  {c.detail && (
+                    <span className="text-[8px] font-mono text-muted-foreground/25 hidden sm:inline">{c.detail}</span>
+                  )}
+                </div>
+                <span className={`text-[10px] font-mono font-bold uppercase tracking-wider ${st.className}`}>
+                  {st.text}
                 </span>
-              </div>
-            </motion.div>
-          ))}
+              </motion.div>
+            );
+          })}
         </div>
       </div>
     </motion.div>
