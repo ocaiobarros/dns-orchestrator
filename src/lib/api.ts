@@ -373,7 +373,7 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   return {};
 }
 
-function mockDeployState(): DeployState {
+function mockDeployState(): DeployState & Record<string, unknown> {
   return {
     configVersion: 'v3',
     lastApplyAt: '2026-03-10T14:30:00Z',
@@ -383,6 +383,12 @@ function mockDeployState(): DeployState {
     lastDeploymentId: 'apply-001',
     totalDeployments: 3,
     rollbackAvailable: true,
+    // Live polling fields
+    phase: 'idle',
+    currentStep: null,
+    completedSteps: 0,
+    totalSteps: 0,
+    lastMessage: '',
   };
 }
 
