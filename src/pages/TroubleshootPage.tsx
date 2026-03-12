@@ -7,6 +7,13 @@ import type { DiagResult } from '@/lib/types';
 
 // ── Types ──
 
+interface PrivilegeStatus {
+  backend_running_as_user: string;
+  backend_groups: string[];
+  privilege_wrapper_available: boolean;
+  privileged_commands_enabled: boolean;
+}
+
 interface HealthBatchResult {
   commandId: string;
   command_id?: string;
@@ -26,6 +33,8 @@ interface HealthBatchResult {
   privileged?: boolean;
   requires_root?: boolean;
   expected_in_unprivileged_mode?: boolean;
+  executed_privileged?: boolean;
+  requires_privilege?: boolean;
 }
 
 interface HealthBatchResponse {
@@ -37,6 +46,7 @@ interface HealthBatchResponse {
   failed: number;
   permission_limited?: number;
   inactive?: number;
+  privilege_status?: PrivilegeStatus;
   results: HealthBatchResult[];
 }
 
