@@ -73,10 +73,11 @@ export default function UsersPage() {
 
   const createMutation = useMutation({
     mutationFn: (data: { username: string; password: string }) => api.createUser(data.username, data.password, mustChangePassword),
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       if (res.success) {
         toast.success('Usuário criado com sucesso');
-        queryClient.invalidateQueries({ queryKey: ['users'] });
+        await queryClient.invalidateQueries({ queryKey: ['users'] });
+        await queryClient.refetchQueries({ queryKey: ['users'] });
         setCreateOpen(false);
         setNewUsername('');
         setNewPassword('');
