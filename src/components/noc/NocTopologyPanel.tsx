@@ -93,8 +93,9 @@ function TopologyView({ health, vipConfigured, vipAddress }: {
   health: InstanceHealthReport; vipConfigured?: boolean; vipAddress?: string | null;
 }) {
   const instances = health.instances || [];
-  const hasVip = vipConfigured ?? !!health.vip;
-  const vipHealthy = health.vip?.healthy ?? false;
+  // Always show VIP node — dimmed if not configured
+  const vipHealthy = health.vip?.healthy ?? (vipConfigured ?? false);
+  const vipDimmed = !vipConfigured && !health.vip;
 
   const svgW = 680;
   const svgH = instances.length <= 2 ? 180 : Math.min(50 + instances.length * 65, 320);
