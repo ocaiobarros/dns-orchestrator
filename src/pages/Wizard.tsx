@@ -172,7 +172,7 @@ export default function Wizard() {
     const n = config.instances.length + 1;
     const newInst: DnsInstance = {
       name: `unbound${String(n).padStart(2, '0')}`,
-      bindIp: `100.127.255.${100 + n}`,
+      bindIp: '',
       bindIpv6: '',
       controlInterface: `127.0.0.${10 + n}`,
       controlPort: 8953,
