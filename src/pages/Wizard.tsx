@@ -348,6 +348,32 @@ export default function Wizard() {
                         ]} />
                     </FieldGroup>
                   </div>
+                  {/* Health Check Config */}
+                  <div className="border-t border-border pt-3 mt-2">
+                    <Toggle checked={vip.healthCheckEnabled} onChange={v => {
+                      const vips = [...config.serviceVips];
+                      vips[i] = { ...vips[i], healthCheckEnabled: v };
+                      set('serviceVips', vips);
+                    }} label="Health check ativo para este VIP" />
+                    {vip.healthCheckEnabled && (
+                      <div className="grid grid-cols-2 gap-3 mt-2">
+                        <FieldGroup label="Domínio de probe" hint="dig @VIP <domínio>">
+                          <Input value={vip.healthCheckDomain} onChange={v => {
+                            const vips = [...config.serviceVips];
+                            vips[i] = { ...vips[i], healthCheckDomain: v };
+                            set('serviceVips', vips);
+                          }} placeholder="google.com" />
+                        </FieldGroup>
+                        <FieldGroup label="Intervalo (s)">
+                          <Input type="number" value={vip.healthCheckInterval} onChange={v => {
+                            const vips = [...config.serviceVips];
+                            vips[i] = { ...vips[i], healthCheckInterval: parseInt(v) || 30 };
+                            set('serviceVips', vips);
+                          }} placeholder="30" />
+                        </FieldGroup>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
