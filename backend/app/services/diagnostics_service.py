@@ -547,6 +547,7 @@ def run_health_check() -> dict:
     failed = sum(1 for r in results if r["status"] in ("error", "runtime_error", "timeout_error", "dependency_error"))
     permission_limited = sum(1 for r in results if r["status"] == "permission_error")
     inactive = sum(1 for r in results if r["status"] == "inactive")
+    service_not_running = sum(1 for r in results if r["status"] == "service_not_running")
 
     return {
         "success": True,
