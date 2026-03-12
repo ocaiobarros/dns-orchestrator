@@ -119,7 +119,7 @@ def _get_system_info() -> dict:
                 else:
                     config_version = content
                 break
-        except (FileNotFoundError, json.JSONDecodeError):
+        except (FileNotFoundError, PermissionError, OSError, json.JSONDecodeError):
             continue
 
     # Last apply timestamp
