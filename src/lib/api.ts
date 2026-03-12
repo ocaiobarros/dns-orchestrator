@@ -35,9 +35,24 @@ import {
 
 // ---- Configuration ----
 
-// Production: VITE_API_URL must be set. Preview mode uses mocks only when explicitly no URL.
+// Production: mocks are enabled only in development when API URL is not configured.
 const IS_PREVIEW = import.meta.env.MODE === 'development' && !import.meta.env.VITE_API_URL;
-const API_BASE = import.meta.env.VITE_API_URL ?? '';
+const API_BASE = (import.meta.env.VITE_API_URL ?? '').trim();
+const API_BASE_TRIMMED = API_BASE.replace(/\/+$/, '');
+const API_ROOT = API_BASE_TRIMMED
+  ? (API_BASE_TRIMMED.endsWith('/api') ? API_BASE_TRIMMED : `${API_BASE_TRIMMED}/api`)
+  : '';
+
+function normalizeApiPath(path: string): string {
+  const withLeadingSlash = path.startsWith('/') ? path : `/${path}`;
+  if (withLeadingSlash === '/api') return '/';
+  return withLeadingSlash.startsWith('/api/') ? withLeadingSlash.slice(4) : withLeadingSlash;
+}
+
+function buildApiUrl(path: string): string {
+  const normalizedPath = normalizeApiPath(path);
+  return API_ROOT ? `${API_ROOT}${normalizedPath}` : normalizedPath;
+}
 
 async function apiCall<T>(
   method: string,
@@ -48,7 +63,7 @@ async function apiCall<T>(
     return getMockResponse<T>(method, path, body);
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(buildApiUrl(path), {
     method,
     headers: {
       'Content-Type': 'application/json',
