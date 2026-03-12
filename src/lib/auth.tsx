@@ -324,7 +324,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const token = localStorage.getItem(TOKEN_KEY);
-      const res = await fetch(`${API_BASE}/api/auth/force-change-password`, {
+      const res = await fetch(buildAuthUrl('/auth/force-change-password'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
