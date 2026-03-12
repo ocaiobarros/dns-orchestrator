@@ -91,10 +91,11 @@ export default function UsersPage() {
 
   const toggleMutation = useMutation({
     mutationFn: (data: { userId: string; active: boolean }) => api.toggleUser(data.userId, data.active),
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       if (res.success) {
         toast.success('Status do usuário atualizado');
-        queryClient.invalidateQueries({ queryKey: ['users'] });
+        await queryClient.invalidateQueries({ queryKey: ['users'] });
+        await queryClient.refetchQueries({ queryKey: ['users'] });
       } else {
         toast.error(res.error || 'Erro ao atualizar status');
       }
