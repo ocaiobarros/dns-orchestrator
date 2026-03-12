@@ -10,6 +10,7 @@ from app.api.deps import get_current_user
 from app.models.user import User
 from app.services.command_service import run_whitelisted_command, get_available_commands
 from app.services.diagnostics_service import run_health_check
+from app.executors.command_runner import get_privilege_status
 from app.core.logging import log_command_event
 from app.schemas.diagnostics import RunCommandRequest
 
@@ -43,6 +44,15 @@ def health_check(_: User = Depends(get_current_user)):
             "total": 0,
             "passed": 0,
             "failed": 0,
+            "permission_limited": 0,
+            "inactive": 0,
+            "privilege_status": get_privilege_status(),
             "results": [],
             "error": str(e),
         }
+
+
+@router.get("/privilege-status")
+def privilege_status(_: User = Depends(get_current_user)):
+    """Return current backend privilege environment info."""
+    return get_privilege_status()

@@ -7,6 +7,13 @@ import type { DiagResult } from '@/lib/types';
 
 // ── Types ──
 
+interface PrivilegeStatus {
+  backend_running_as_user: string;
+  backend_groups: string[];
+  privilege_wrapper_available: boolean;
+  privileged_commands_enabled: boolean;
+}
+
 interface HealthBatchResult {
   commandId: string;
   command_id?: string;
@@ -26,6 +33,8 @@ interface HealthBatchResult {
   privileged?: boolean;
   requires_root?: boolean;
   expected_in_unprivileged_mode?: boolean;
+  executed_privileged?: boolean;
+  requires_privilege?: boolean;
 }
 
 interface HealthBatchResponse {
@@ -37,6 +46,7 @@ interface HealthBatchResponse {
   failed: number;
   permission_limited?: number;
   inactive?: number;
+  privilege_status?: PrivilegeStatus;
   results: HealthBatchResult[];
 }
 
@@ -310,6 +320,7 @@ export default function TroubleshootPage() {
   const healthCheck = useHealthCheck();
   const [results, setResults] = useState<Record<string, DiagResult>>({});
   const [batchResults, setBatchResults] = useState<HealthBatchResult[]>([]);
+  const [privilegeStatus, setPrivilegeStatus] = useState<PrivilegeStatus | null>(null);
   const [batchSummary, setBatchSummary] = useState<{
     total: number; passed: number; failed: number; permission_limited: number; inactive: number; duration?: string;
   } | null>(null);
@@ -391,6 +402,7 @@ export default function TroubleshootPage() {
         const data = rawData as HealthBatchResponse;
         if (data && data.results && Array.isArray(data.results)) {
           setBatchResults(data.results);
+          if (data.privilege_status) setPrivilegeStatus(data.privilege_status);
           const diagMap: Record<string, DiagResult> = {};
           data.results.forEach((r: HealthBatchResult) => {
             const id = r.commandId || r.command_id || '';
@@ -458,6 +470,36 @@ export default function TroubleshootPage() {
           Health Check Completo
         </button>
       </div>
+
+      {/* Privilege warning banner */}
+      {privilegeStatus && !privilegeStatus.privileged_commands_enabled && batchSummary && batchSummary.permission_limited > 0 && (
+        <div className="noc-panel border-amber-500/30 bg-amber-500/5">
+          <div className="flex items-start gap-2">
+            <ShieldAlert size={16} className="text-amber-500 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-400">Diagnósticos avançados limitados por privilégio</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Backend executando como <code className="text-xs font-mono bg-secondary px-1 rounded">{privilegeStatus.backend_running_as_user}</code>.
+                {' '}{batchSummary.permission_limited} checks requerem sudo controlado.
+                Consulte a documentação de habilitação de privilégios.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Privilege status indicator when enabled */}
+      {privilegeStatus && privilegeStatus.privileged_commands_enabled && (
+        <div className="noc-panel border-green-500/30 bg-green-500/5">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 size={14} className="text-green-500" />
+            <span className="text-xs text-green-400 font-medium">Diagnósticos privilegiados habilitados</span>
+            <span className="text-xs text-muted-foreground font-mono ml-auto">
+              user: {privilegeStatus.backend_running_as_user}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Batch summary */}
       {batchSummary && (

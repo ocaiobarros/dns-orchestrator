@@ -18,6 +18,9 @@ class CommandDefinition:
     allowed_params: list[str] = field(default_factory=list)
     dangerous: bool = False
     timeout: int = 30
+    requires_privilege: bool = False
+    expected_failure_unprivileged: str = ""
+    remediation_hint: str = ""
 
     def build_args(self, params: dict[str, str]) -> list[str]:
         args = list(self.base_args)
@@ -72,46 +75,76 @@ COMMAND_CATALOG: dict[str, CommandDefinition] = {
     "dns-unbound-stats": CommandDefinition(
         id="dns-unbound-stats", name="Unbound stats", description="Estatísticas do Unbound",
         category="dns", executable="unbound-control", base_args=["stats_noreset"],
+        requires_privilege=True,
+        expected_failure_unprivileged="Permission denied for /run/unbound.ctl",
+        remediation_hint="Ajustar permissão do socket ou usar execução via sudo controlado",
     ),
     "dns-unbound-status": CommandDefinition(
         id="dns-unbound-status", name="Unbound status", description="Status detalhado do Unbound",
         category="dns", executable="unbound-control", base_args=["status"],
+        requires_privilege=True,
+        expected_failure_unprivileged="Permission denied for /run/unbound.ctl",
+        remediation_hint="Ajustar permissão do socket ou usar execução via sudo controlado",
     ),
     "dns-cache-dump": CommandDefinition(
         id="dns-cache-dump", name="Cache dump", description="Lista entradas do cache Unbound",
         category="dns", executable="unbound-control", base_args=["dump_cache"],
+        requires_privilege=True,
+        expected_failure_unprivileged="Permission denied for /run/unbound.ctl",
+        remediation_hint="Ajustar permissão do socket ou usar execução via sudo controlado",
     ),
 
     # NFTables
     "nft-list-tables": CommandDefinition(
         id="nft-list-tables", name="Tabelas nftables", description="Lista tabelas nftables",
         category="nftables", executable="nft", base_args=["list", "tables"],
+        requires_privilege=True,
+        expected_failure_unprivileged="Operation not permitted (must be root)",
+        remediation_hint="Executar diagnóstico via sudo restrito para nft",
     ),
     "nft-list-ruleset": CommandDefinition(
         id="nft-list-ruleset", name="Ruleset completo", description="Mostra ruleset completo",
         category="nftables", executable="nft", base_args=["list", "ruleset"],
+        requires_privilege=True,
+        expected_failure_unprivileged="Operation not permitted (must be root)",
+        remediation_hint="Executar diagnóstico via sudo restrito para nft",
     ),
     "nft-list-counters": CommandDefinition(
         id="nft-list-counters", name="Contadores nftables", description="Mostra contadores de tráfego",
         category="nftables", executable="nft", base_args=["list", "counters"],
+        requires_privilege=True,
+        expected_failure_unprivileged="Operation not permitted (must be root)",
+        remediation_hint="Executar diagnóstico via sudo restrito para nft",
     ),
 
     # FRR / OSPF
     "frr-ospf-neighbor": CommandDefinition(
         id="frr-ospf-neighbor", name="OSPF Neighbors", description="Mostra vizinhos OSPF",
         category="ospf", executable="vtysh", base_args=["-c", "show ip ospf neighbor"],
+        requires_privilege=True,
+        expected_failure_unprivileged="Permission denied on /etc/frr/vtysh.conf",
+        remediation_hint="Ajustar grupo frrvty ou usar wrapper privilegiado",
     ),
     "frr-ospf-route": CommandDefinition(
         id="frr-ospf-route", name="OSPF Routes", description="Mostra rotas OSPF",
         category="ospf", executable="vtysh", base_args=["-c", "show ip ospf route"],
+        requires_privilege=True,
+        expected_failure_unprivileged="Permission denied on /etc/frr/vtysh.conf",
+        remediation_hint="Ajustar grupo frrvty ou usar wrapper privilegiado",
     ),
     "frr-running-config": CommandDefinition(
         id="frr-running-config", name="FRR Running Config", description="Configuração ativa do FRR",
         category="ospf", executable="vtysh", base_args=["-c", "show running-config"],
+        requires_privilege=True,
+        expected_failure_unprivileged="Permission denied on /etc/frr/vtysh.conf",
+        remediation_hint="Ajustar grupo frrvty ou usar wrapper privilegiado",
     ),
     "frr-ospf-summary": CommandDefinition(
         id="frr-ospf-summary", name="OSPF Summary", description="Resumo OSPF",
         category="ospf", executable="vtysh", base_args=["-c", "show ip ospf"],
+        requires_privilege=True,
+        expected_failure_unprivileged="Permission denied on /etc/frr/vtysh.conf",
+        remediation_hint="Ajustar grupo frrvty ou usar wrapper privilegiado",
     ),
 
     # System
@@ -132,8 +165,11 @@ COMMAND_CATALOG: dict[str, CommandDefinition] = {
     "journalctl": CommandDefinition(
         id="journalctl", name="Journalctl", description="Logs do systemd",
         category="logs", executable="journalctl",
-        base_args=["--no-pager", "-n"],
+        base_args=["--no-pager", "-n", "100"],
         allowed_params=["lines", "unit"],
         timeout=15,
+        requires_privilege=True,
+        expected_failure_unprivileged="Insufficient permissions for journal access",
+        remediation_hint="Adicionar usuário ao grupo systemd-journal ou usar wrapper controlado",
     ),
 }
