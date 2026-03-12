@@ -573,25 +573,25 @@ export function getIfaceMac(iface: NetworkInterface): string {
   return iface.macAddress || iface.mac || '';
 }
 
-/** Safe date formatting — always converts UTC to America/Sao_Paulo */
+/** Safe date formatting — uses browser's local timezone automatically */
 export function safeDate(dateStr: string | null | undefined, locale = 'pt-BR'): string {
   if (!dateStr) return '—';
   try {
     const d = new Date(String(dateStr));
     if (isNaN(d.getTime())) return '—';
-    return d.toLocaleString(locale, { timeZone: 'America/Sao_Paulo' });
+    return d.toLocaleString(locale);
   } catch {
     return '—';
   }
 }
 
-/** Safe date formatting — short time only */
+/** Safe date formatting — short time only, browser local timezone */
 export function safeDateShort(dateStr: string | null | undefined, locale = 'pt-BR'): string {
   if (!dateStr) return '—';
   try {
     const d = new Date(String(dateStr));
     if (isNaN(d.getTime())) return '—';
-    return d.toLocaleString(locale, { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return d.toLocaleString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   } catch {
     return '—';
   }
