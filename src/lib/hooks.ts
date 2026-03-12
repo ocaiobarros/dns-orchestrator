@@ -37,7 +37,7 @@ export function useSystemInfo() {
   return useQuery({
     queryKey: queryKeys.systemInfo,
     queryFn: async () => { const r = await api.getSystemInfo(); if (!r.success) throw new Error(r.error!); return r.data; },
-    refetchInterval: 30000,
+    refetchInterval: 10000,
   });
 }
 
