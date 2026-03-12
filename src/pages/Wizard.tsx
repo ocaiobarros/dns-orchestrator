@@ -139,6 +139,10 @@ export default function Wizard() {
   const [applyResult, setApplyResult] = useState<ApplyResult | null>(null);
   const [showValidation, setShowValidation] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
+  const [deployProgress, setDeployProgress] = useState<{
+    phase: string; currentStep: string | null; completedSteps: number; totalSteps: number; lastMessage: string;
+  } | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const applyMutation = useApplyConfig();
   const navigate = useNavigate();
 
