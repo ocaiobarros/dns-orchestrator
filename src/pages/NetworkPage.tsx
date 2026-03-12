@@ -21,8 +21,9 @@ export default function NetworkPage() {
   const ifaceList = Array.isArray(interfaces) ? interfaces : [];
   const routeList = Array.isArray(routes) ? routes : [];
   const reachabilityList = Array.isArray(reachability.data) ? reachability.data : [];
+
+  return (
     <div className="space-y-6">
-      <div>
         <h1 className="text-xl font-semibold">Rede</h1>
         <p className="text-sm text-muted-foreground">Interfaces, endereços e rotas</p>
       </div>
