@@ -402,6 +402,7 @@ export default function TroubleshootPage() {
         const data = rawData as HealthBatchResponse;
         if (data && data.results && Array.isArray(data.results)) {
           setBatchResults(data.results);
+          if (data.privilege_status) setPrivilegeStatus(data.privilege_status);
           const diagMap: Record<string, DiagResult> = {};
           data.results.forEach((r: HealthBatchResult) => {
             const id = r.commandId || r.command_id || '';
