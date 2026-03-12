@@ -51,6 +51,12 @@ _DEPENDENCY_PATTERNS = [
     "command not found",
 ]
 
+_SERVICE_NOT_RUNNING_PATTERNS = [
+    "is not running",
+    "not running",
+    "failed to connect to any daemons",
+]
+
 _TIMEOUT_PATTERNS = [
     "timeout",
     "timed out",
