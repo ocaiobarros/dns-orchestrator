@@ -21,23 +21,29 @@ export default function NocSystemHealth({ services, dnsHealthy, networkOk }: Noc
   const allOk = checks.every(c => c.ok);
 
   return (
-    <div className={`noc-card animate-slide-in-up ${allOk ? 'animate-glow-pulse' : ''}`}>
-      <div className="noc-section-title mb-3">
-        <Shield size={12} />
-        System Health
-      </div>
-      <div className="space-y-0.5">
-        {checks.map(c => (
-          <div key={c.label} className="flex items-center justify-between py-1.5">
-            <span className="text-xs font-mono text-muted-foreground">{c.label}</span>
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${c.ok ? 'bg-success' : 'bg-destructive'} ${c.ok ? 'animate-pulse-glow' : ''}`} />
-              <span className={`text-[10px] font-mono font-semibold ${c.ok ? 'text-success' : 'text-destructive'}`}>
-                {c.ok ? 'OK' : 'FAIL'}
+    <div className="noc-card animate-slide-in-up">
+      <div className="noc-card-body">
+        <div className="noc-section-title">
+          <Shield size={12} className={allOk ? 'text-success' : 'text-destructive'} />
+          SYSTEM HEALTH MATRIX
+        </div>
+        <div className="mt-3 space-y-0">
+          {checks.map((c, i) => (
+            <div
+              key={c.label}
+              className="flex items-center justify-between py-3 border-b border-border/30 last:border-0 animate-slide-in-up"
+              style={{ animationDelay: `${i * 60}ms` }}
+            >
+              <div className="flex items-center gap-3">
+                <span className={c.ok ? 'noc-dot-running' : 'noc-dot-error'} />
+                <span className="text-[11px] font-mono font-bold text-foreground tracking-wider">{c.label}</span>
+              </div>
+              <span className={`text-[10px] font-mono font-bold uppercase tracking-wider ${c.ok ? 'text-success' : 'text-destructive'}`}>
+                {c.ok ? 'OPERATIONAL' : 'FAILURE'}
               </span>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { Monitor } from 'lucide-react';
 import type { SystemInfo } from '@/lib/types';
 import { safeDate } from '@/lib/types';
 
@@ -9,36 +10,39 @@ export default function NocSystemInfo({ sysInfo }: NocSystemInfoProps) {
   if (!sysInfo) return null;
 
   const rows: [string, React.ReactNode][] = [
-    ['Hostname', sysInfo.hostname ?? '—'],
+    ['HOSTNAME', sysInfo.hostname ?? '—'],
     ['OS', sysInfo.os ?? '—'],
-    ['Kernel', sysInfo.kernel ?? '—'],
-    ['Unbound', sysInfo.unbound_version ?? sysInfo.unboundVersion ?? '—'],
+    ['KERNEL', sysInfo.kernel ?? '—'],
+    ['UNBOUND', sysInfo.unbound_version ?? sysInfo.unboundVersion ?? '—'],
     ['FRR', sysInfo.frr_version ?? sysInfo.frrVersion ?? '—'],
-    ['nftables', sysInfo.nftables_version ?? sysInfo.nftablesVersion ?? '—'],
-    ['Interface', sysInfo.primary_interface ?? sysInfo.mainInterface ?? '—'],
-    ['VIP Anycast', sysInfo.vip_anycast_available
+    ['NFTABLES', sysInfo.nftables_version ?? sysInfo.nftablesVersion ?? '—'],
+    ['INTERFACE', sysInfo.primary_interface ?? sysInfo.mainInterface ?? '—'],
+    ['VIP ANYCAST', sysInfo.vip_anycast_available
       ? (sysInfo.vip_anycast || '—')
-      : <span className="text-[10px] text-muted-foreground italic">Não configurado</span>],
-    ['Config Version', sysInfo.config_version_available
+      : <span className="text-muted-foreground/50 italic">not configured</span>],
+    ['CONFIG VER', sysInfo.config_version_available
       ? (sysInfo.config_version || '—')
-      : <span className="text-[10px] text-muted-foreground italic">Sem versão aplicada</span>],
-    ['Última aplicação', sysInfo.last_apply_available
+      : <span className="text-muted-foreground/50 italic">no version applied</span>],
+    ['LAST APPLY', sysInfo.last_apply_available
       ? safeDate(sysInfo.last_apply_at ?? sysInfo.lastApply)
-      : <span className="text-[10px] text-muted-foreground italic">Nenhuma aplicação registrada</span>],
+      : <span className="text-muted-foreground/50 italic">no apply recorded</span>],
   ];
 
   return (
     <div className="noc-card animate-slide-in-up">
-      <div className="noc-section-title mb-3">
-        Informações do Sistema
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
-        {rows.map(([label, value], i) => (
-          <div key={label as string} className="flex justify-between py-1.5 border-b border-border/50 last:border-0">
-            <span className="text-xs text-muted-foreground">{label}</span>
-            <span className="text-xs font-mono text-foreground">{value || '—'}</span>
-          </div>
-        ))}
+      <div className="noc-card-body">
+        <div className="noc-section-title">
+          <Monitor size={12} className="text-muted-foreground" />
+          SYSTEM INFORMATION
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 mt-3">
+          {rows.map(([label, value]) => (
+            <div key={label as string} className="noc-sysinfo-row">
+              <span className="noc-sysinfo-label">{label}</span>
+              <span className="noc-sysinfo-value">{value || '—'}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
