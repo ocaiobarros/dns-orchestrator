@@ -3,6 +3,7 @@ import { AlertTriangle, Info, AlertCircle, Search, Clock } from 'lucide-react';
 import { LoadingState } from '@/components/DataStates';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { safeDate } from '@/lib/types';
 
 type SeverityFilter = 'all' | 'info' | 'warning' | 'critical';
 
