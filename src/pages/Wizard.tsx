@@ -1058,6 +1058,34 @@ export default function Wizard() {
         {renderStep()}
       </div>
 
+      {/* Deploy Progress Bar */}
+      {deployProgress && applyMutation.isPending && (
+        <div className="noc-panel border-primary/30">
+          <div className="flex items-center gap-3 mb-2">
+            <Loader2 size={14} className="animate-spin text-primary" />
+            <span className="text-xs font-medium uppercase tracking-wider">
+              {deployProgress.phase === 'dry_run_validating' ? 'Dry-Run em andamento' : 'Deploy em andamento'}
+            </span>
+            <span className="text-xs text-muted-foreground ml-auto font-mono">
+              {deployProgress.completedSteps}/{deployProgress.totalSteps || '?'} etapas
+            </span>
+          </div>
+          <div className="w-full h-2 bg-secondary rounded-full overflow-hidden mb-2">
+            <div
+              className="h-full bg-primary rounded-full transition-all duration-500"
+              style={{ width: deployProgress.totalSteps > 0 ? `${(deployProgress.completedSteps / deployProgress.totalSteps) * 100}%` : '10%' }}
+            />
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
+            <Activity size={10} className="text-primary" />
+            <span>{deployProgress.currentStep || 'Aguardando...'}</span>
+          </div>
+          {deployProgress.lastMessage && (
+            <div className="text-[10px] text-muted-foreground/60 mt-1 font-mono">{deployProgress.lastMessage}</div>
+          )}
+        </div>
+      )}
+
       {/* Navigation Buttons */}
       <div className="flex items-center justify-between">
         <button onClick={() => { setStep(Math.max(0, step - 1)); setShowValidation(false); }}
