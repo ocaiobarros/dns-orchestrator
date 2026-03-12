@@ -1,11 +1,12 @@
-import { Activity, Clock, Globe, Zap, AlertTriangle, Timer, Database, Shield } from 'lucide-react';
+import { Activity, Clock, Globe, Zap, AlertTriangle, Timer, Database, Shield, FileText, RotateCcw } from 'lucide-react';
 import { LoadingState, ErrorState } from '@/components/DataStates';
-import { useSystemInfo, useServices, useInstanceStats, useInstanceHealth } from '@/lib/hooks';
-import { getInstanceQueries, getInstanceCacheHit, getInstanceLatency } from '@/lib/types';
+import { useSystemInfo, useServices, useInstanceStats, useInstanceHealth, useDeployState } from '@/lib/hooks';
+import { getInstanceQueries, getInstanceCacheHit, getInstanceLatency, safeDate } from '@/lib/types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 
 import NocHeroBar from '@/components/noc/NocHeroBar';
 import NocHealthSummary from '@/components/noc/NocHealthSummary';
@@ -24,7 +25,9 @@ export default function Dashboard() {
   const { data: services, isLoading: svcLoading } = useServices();
   const { data: instanceStats } = useInstanceStats();
   const { data: health } = useInstanceHealth();
+  const { data: deployState } = useDeployState();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [reconciling, setReconciling] = useState(false);
 
   const { data: v2Instances } = useQuery({
@@ -306,6 +309,63 @@ export default function Dashboard() {
         <NocResolverPanel services={safeServices} />
         <NocSystemInfoGrid sysInfo={sysInfo} />
       </div>
+
+      {/* ═══ TIER 7: DEPLOYMENT STATE ═══ */}
+      {deployState && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="noc-surface"
+        >
+          <div className="noc-surface-header flex items-center gap-2">
+            <FileText size={12} />
+            <span className="text-[10px] font-mono font-bold uppercase tracking-widest">Deploy State</span>
+          </div>
+          <div className="noc-surface-body">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 text-xs">
+              <div>
+                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Config Version</div>
+                <div className="font-mono font-bold">{deployState.configVersion || '—'}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Last Apply</div>
+                <div className="font-mono">{safeDate(deployState.lastApplyAt)}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Operator</div>
+                <div className="font-mono">{deployState.lastApplyOperator || '—'}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Status</div>
+                <div className={`font-mono font-bold ${
+                  deployState.lastApplyStatus === 'success' ? 'text-success' :
+                  deployState.lastApplyStatus === 'failed' ? 'text-destructive' : ''
+                }`}>{deployState.lastApplyStatus || '—'}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Total Deploys</div>
+                <div className="font-mono font-bold">{deployState.totalDeployments}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Rollback</div>
+                <div className={`font-mono ${deployState.rollbackAvailable ? 'text-accent' : 'text-muted-foreground'}`}>
+                  {deployState.rollbackAvailable ? 'Disponível' : 'Indisponível'}
+                </div>
+              </div>
+              <div className="flex items-end gap-2">
+                <button onClick={() => navigate('/history')}
+                  className="px-2 py-1 text-[10px] bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80 flex items-center gap-1">
+                  <Clock size={10} /> Histórico
+                </button>
+                <button onClick={() => navigate('/wizard')}
+                  className="px-2 py-1 text-[10px] bg-primary text-primary-foreground rounded font-medium hover:bg-primary/90 flex items-center gap-1">
+                  <Zap size={10} /> Deploy
+                </button>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* ═══ TIER 8: COMMAND CONSOLE ═══ */}
       <NocQuickActions />
