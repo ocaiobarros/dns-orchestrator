@@ -8,62 +8,75 @@ interface NocHealthMatrixProps {
   networkOk: boolean;
 }
 
+/** Decorative micro-sparkline for warning/failing items */
+function PulseBar({ failing }: { failing: boolean }) {
+  if (!failing) return null;
+  return (
+    <svg width="32" height="8" viewBox="0 0 32 8" className="opacity-60">
+      <rect width="32" height="8" rx="4" fill="hsl(0, 76%, 50%)" opacity="0.1" />
+      <rect width="16" height="8" rx="4" fill="hsl(0, 76%, 50%)" opacity="0.25">
+        <animate attributeName="x" values="-16;32" dur="1.8s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0.4;0.1" dur="1.8s" repeatCount="indefinite" />
+      </rect>
+    </svg>
+  );
+}
+
+function Sparkline({ ok }: { ok: boolean }) {
+  if (!ok) return null;
+  const color = 'hsl(152, 76%, 40%)';
+  return (
+    <svg width="28" height="8" viewBox="0 0 28 8" className="opacity-30">
+      <polyline points="0,6 4,4 8,5 12,2 16,3 20,1 24,3 28,2" fill="none" stroke={color} strokeWidth="1" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function NocHealthMatrix({ services, dnsHealthy, networkOk }: NocHealthMatrixProps) {
   const svcByName = (name: string) => services.find(s => s.name.toLowerCase().includes(name));
 
-  const checks: { label: string; ok: boolean; category: string }[] = [
-    { label: 'DNS', ok: dnsHealthy, category: 'core' },
-    { label: 'NETWORK', ok: networkOk, category: 'core' },
-    { label: 'OSPF', ok: svcByName('frr')?.status === 'running', category: 'routing' },
-    { label: 'CACHE', ok: svcByName('unbound')?.status === 'running', category: 'core' },
-    { label: 'FIREWALL', ok: svcByName('nftables')?.status === 'running' || svcByName('nft')?.status === 'running', category: 'security' },
-    { label: 'API', ok: true, category: 'platform' },
-    { label: 'AUTH', ok: true, category: 'platform' },
+  const checks = [
+    { label: 'DNS', ok: dnsHealthy },
+    { label: 'NETWORK', ok: networkOk },
+    { label: 'OSPF', ok: svcByName('frr')?.status === 'running' },
+    { label: 'CACHE', ok: svcByName('unbound')?.status === 'running' },
+    { label: 'FIREWALL', ok: svcByName('nftables')?.status === 'running' || svcByName('nft')?.status === 'running' },
+    { label: 'API', ok: true },
+    { label: 'AUTH', ok: true },
   ];
 
   const allOk = checks.every(c => c.ok);
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: 0.15 }}
-      className="noc-glass"
+      transition={{ duration: 0.5, delay: 0.2 }}
+      className="noc-surface"
     >
-      <div className="noc-glass-body">
-        <div className="noc-section-title">
+      <div className="noc-surface-body">
+        <div className="noc-section-head">
           <Shield size={12} className={allOk ? 'text-success' : 'text-destructive'} />
-          SYSTEM HEALTH MATRIX
+          SUBSYSTEM MATRIX
         </div>
-        <div className="noc-section-divider" />
+        <div className="noc-divider" />
 
         <div className="space-y-0">
           {checks.map((c, i) => (
             <motion.div
               key={c.label}
-              initial={{ opacity: 0, x: -6 }}
+              initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.3, delay: 0.1 + i * 0.04 }}
-              className="flex items-center justify-between py-3"
-              style={{ borderBottom: i < checks.length - 1 ? '1px solid hsl(222 20% 14% / 0.3)' : 'none' }}
+              transition={{ duration: 0.3, delay: 0.12 + i * 0.04 }}
+              className="noc-row"
             >
               <div className="flex items-center gap-3">
-                <span className={c.ok ? 'noc-dot-running' : 'noc-dot-error'} />
-                <span className="text-[11px] font-mono font-bold text-foreground/90 tracking-wider">{c.label}</span>
+                <span className={c.ok ? 'noc-dot-live' : 'noc-dot-fail'} />
+                <span className="text-[11px] font-mono font-bold text-foreground/85 tracking-wider">{c.label}</span>
               </div>
               <div className="flex items-center gap-3">
-                {/* Mini pulse bar for non-ok */}
-                {!c.ok && (
-                  <div className="w-8 h-1 rounded-full bg-destructive/20 overflow-hidden">
-                    <motion.div
-                      className="h-full bg-destructive/60 rounded-full"
-                      animate={{ x: ['-100%', '100%'] }}
-                      transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-                      style={{ width: '50%' }}
-                    />
-                  </div>
-                )}
-                <span className={`text-[10px] font-mono font-bold uppercase tracking-wider ${c.ok ? 'text-success/80' : 'text-destructive'}`}>
+                {c.ok ? <Sparkline ok /> : <PulseBar failing />}
+                <span className={`text-[10px] font-mono font-bold uppercase tracking-wider min-w-[32px] text-right ${c.ok ? 'text-success/70' : 'text-destructive'}`}>
                   {c.ok ? 'OK' : 'FAIL'}
                 </span>
               </div>

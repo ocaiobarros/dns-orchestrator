@@ -10,7 +10,7 @@ import { motion } from 'framer-motion';
 import NocHeroBar from '@/components/noc/NocHeroBar';
 import NocMetricStrip from '@/components/noc/NocMetricStrip';
 import NocInstanceTable from '@/components/noc/NocInstanceTable';
-import NocDnsFlowPanel from '@/components/noc/NocDnsFlowPanel';
+import NocTopologyPanel from '@/components/noc/NocTopologyPanel';
 import NocEventsTimeline from '@/components/noc/NocEventsTimeline';
 import NocResolverPanel from '@/components/noc/NocResolverPanel';
 import NocHealthMatrix from '@/components/noc/NocHealthMatrix';
@@ -60,42 +60,38 @@ export default function Dashboard() {
   const safeV2 = Array.isArray(v2Instances) ? v2Instances.filter(Boolean) : [];
 
   const allRunning = safeServices.every(s => s.status === 'running');
-  const dnsMetricsAvailable = sysInfo?.dns_metrics_available ?? false;
-  const dnsMetricsStatus = sysInfo?.dns_metrics_status ?? 'unknown';
-  const dashTotalQueries = sysInfo?.total_queries ?? 0;
-  const dashCacheHit = sysInfo?.cache_hit_ratio ?? 0;
-  const dashLatency = sysInfo?.latency_ms ?? 0;
+  const dnsAvail = sysInfo?.dns_metrics_available ?? false;
+  const dnsStatus = sysInfo?.dns_metrics_status ?? 'unknown';
+  const dashQ = sysInfo?.total_queries ?? 0;
+  const dashCH = sysInfo?.cache_hit_ratio ?? 0;
+  const dashLat = sysInfo?.latency_ms ?? 0;
 
-  const totalQps = dnsMetricsAvailable ? dashTotalQueries : safeStats.reduce((a, b) => a + getInstanceQueries(b), 0);
-  const avgCacheHit = dnsMetricsAvailable ? dashCacheHit.toFixed(1) : (safeStats.length > 0
+  const totalQps = dnsAvail ? dashQ : safeStats.reduce((a, b) => a + getInstanceQueries(b), 0);
+  const avgCacheHit = dnsAvail ? dashCH.toFixed(1) : (safeStats.length > 0
     ? (safeStats.reduce((a, b) => a + getInstanceCacheHit(b), 0) / safeStats.length).toFixed(1) : '0');
-  const avgLatency = dnsMetricsAvailable ? dashLatency.toFixed(1) : (safeStats.length > 0
+  const avgLatency = dnsAvail ? dashLat.toFixed(1) : (safeStats.length > 0
     ? (safeStats.reduce((a, b) => a + getInstanceLatency(b), 0) / safeStats.length).toFixed(1) : '0');
 
-  const healthyCount = safeV2.length > 0
-    ? safeV2.filter(i => i.current_status === 'healthy').length
-    : (health?.healthy ?? 0);
+  const healthyCount = safeV2.length > 0 ? safeV2.filter(i => i.current_status === 'healthy').length : (health?.healthy ?? 0);
   const totalInstances = safeV2.length > 0 ? safeV2.length : (health?.total ?? 0);
   const failedCount = safeV2.filter(i => i.current_status === 'failed' || i.current_status === 'withdrawn').length;
-  const inRotation = safeV2.length > 0
-    ? safeV2.filter(i => i.in_rotation).length
-    : totalInstances;
+  const inRotation = safeV2.length > 0 ? safeV2.filter(i => i.in_rotation).length : totalInstances;
 
   const eventItems = recentEvents?.items ?? (Array.isArray(recentEvents) ? recentEvents : []);
-  const unavailableSub = dnsMetricsStatus === 'privilege_limited' ? 'Privilege limited' : 'Unavailable';
+  const unavailSub = dnsStatus === 'privilege_limited' ? 'Privilege limited' : 'Unavailable';
 
   const metricCards = [
     { label: 'Resolvers', value: `${healthyCount}/${totalInstances}`, sub: failedCount > 0 ? 'DEGRADED' : 'HEALTHY', icon: <Globe size={18} />, accent: 'primary' as const },
     { label: 'DNAT Active', value: `${inRotation}/${totalInstances}`, sub: 'In rotation', icon: <Zap size={18} />, accent: 'accent' as const },
-    { label: 'Total Queries', value: dnsMetricsAvailable ? totalQps.toLocaleString() : '—', sub: dnsMetricsAvailable ? 'Accumulated' : unavailableSub, icon: <Activity size={18} />, accent: 'primary' as const, unavailable: !dnsMetricsAvailable },
-    { label: 'Cache Hit', value: dnsMetricsAvailable ? `${avgCacheHit}%` : '—', sub: dnsMetricsAvailable ? 'Average' : unavailableSub, icon: <Database size={18} />, accent: 'accent' as const, unavailable: !dnsMetricsAvailable },
-    { label: 'Latency', value: dnsMetricsAvailable ? `${avgLatency}ms` : '—', sub: dnsMetricsAvailable ? 'DNS avg' : unavailableSub, icon: <Timer size={18} />, accent: (dnsMetricsAvailable && Number(avgLatency) > 50 ? 'warning' : 'primary') as any, unavailable: !dnsMetricsAvailable },
+    { label: 'Total Queries', value: dnsAvail ? totalQps.toLocaleString() : '—', sub: dnsAvail ? 'Accumulated' : unavailSub, icon: <Activity size={18} />, accent: 'primary' as const, unavailable: !dnsAvail },
+    { label: 'Cache Hit', value: dnsAvail ? `${avgCacheHit}%` : '—', sub: dnsAvail ? 'Average' : unavailSub, icon: <Database size={18} />, accent: 'accent' as const, unavailable: !dnsAvail },
+    { label: 'Latency', value: dnsAvail ? `${avgLatency}ms` : '—', sub: dnsAvail ? 'DNS avg' : unavailSub, icon: <Timer size={18} />, accent: (dnsAvail && Number(avgLatency) > 50 ? 'warning' : 'primary') as any, unavailable: !dnsAvail },
     { label: 'Uptime', value: sysInfo?.uptime ?? '—', sub: 'System', icon: <Clock size={18} />, accent: 'primary' as const },
   ];
 
   return (
     <div className="space-y-4">
-      {/* ─── TIER 1: OPERATIONAL HERO BAR ─── */}
+      {/* ═══ TIER 1: HERO BAR ═══ */}
       <NocHeroBar
         allHealthy={allRunning && failedCount === 0}
         failedCount={failedCount}
@@ -106,65 +102,63 @@ export default function Dashboard() {
       />
 
       {/* Privilege warning */}
-      {!dnsMetricsAvailable && dnsMetricsStatus === 'privilege_limited' && (
+      {!dnsAvail && dnsStatus === 'privilege_limited' && (
         <motion.div
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-[11px] font-mono bg-warning/5 text-warning/80 border border-warning/15"
+          className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-[10px] font-mono bg-warning/4 text-warning/70 border border-warning/10"
         >
-          <AlertTriangle size={13} />
-          DNS metrics limited — Enable privileged execution model for real-time data
+          <AlertTriangle size={12} />
+          DNS metrics limited — Enable privileged execution for real-time telemetry
         </motion.div>
       )}
 
-      {/* ─── TIER 2: PRIMARY KPI STRIP ─── */}
+      {/* ═══ TIER 2: KPI STRIP ═══ */}
       <NocMetricStrip cards={metricCards} loading={isLoading} />
 
-      {/* Reconciliation result */}
+      {/* Reconciliation flash */}
       {reconcileMutation.data && (
         <motion.div
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
-          className="noc-glass"
+          className="noc-surface"
           style={{ borderLeft: '2px solid hsl(var(--primary))' }}
         >
-          <div className="noc-glass-body py-3">
-            <div className="text-[11px] font-mono flex items-center gap-4 flex-wrap">
-              <span className="font-bold text-foreground/90">RECONCILIATION</span>
-              <span className="text-muted-foreground/50">{reconcileMutation.data.instances_checked ?? 0} checked</span>
+          <div className="noc-surface-body py-3">
+            <div className="text-[10px] font-mono flex items-center gap-4 flex-wrap">
+              <span className="font-bold text-foreground/85">RECONCILIATION</span>
+              <span className="text-muted-foreground/40">{reconcileMutation.data.instances_checked ?? 0} checked</span>
               <span className="text-destructive font-bold">{reconcileMutation.data.instances_failed ?? 0} failed</span>
-              <span className="text-muted-foreground/50">{reconcileMutation.data.backends_removed ?? 0} removed</span>
+              <span className="text-muted-foreground/40">{reconcileMutation.data.backends_removed ?? 0} removed</span>
               <span className="text-success font-bold">{reconcileMutation.data.backends_restored ?? 0} restored</span>
             </div>
           </div>
         </motion.div>
       )}
 
-      {/* ─── TIER 3: INSTANCE STATE TABLE ─── */}
+      {/* ═══ TIER 3: TOPOLOGY — CENTERPIECE ═══ */}
+      <NocTopologyPanel health={health} />
+
+      {/* ═══ TIER 4: INSTANCE TABLE ═══ */}
       <NocInstanceTable instances={safeV2} />
 
-      {/* ─── TIER 4: DNS HEALTH + SYSTEM HEALTH MATRIX ─── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2">
-          <NocDnsFlowPanel health={health} />
-        </div>
+      {/* ═══ TIER 5: HEALTH MATRIX + SERVICES ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <NocHealthMatrix
           services={safeServices}
           dnsHealthy={healthyCount === totalInstances && totalInstances > 0}
           networkOk={allRunning}
         />
-      </div>
-
-      {/* ─── TIER 5: EVENTS + SERVICES ─── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <NocEventsTimeline events={eventItems} />
         <NocResolverPanel services={safeServices} />
       </div>
 
-      {/* ─── TIER 6: SYSTEM INFORMATION ─── */}
-      <NocSystemInfoGrid sysInfo={sysInfo} />
+      {/* ═══ TIER 6: EVENTS + SYSTEM INFO ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <NocEventsTimeline events={eventItems} />
+        <NocSystemInfoGrid sysInfo={sysInfo} />
+      </div>
 
-      {/* ─── TIER 7: COMMAND CONSOLE ─── */}
+      {/* ═══ TIER 7: COMMAND CONSOLE ═══ */}
       <NocQuickActions />
     </div>
   );
