@@ -231,13 +231,13 @@ export default function Dashboard() {
         // Resolver nodes
         if (safeV2.length > 0) {
           safeV2.forEach(inst => {
-            const instStat = safeStats.find((s: any) => s.instance_id === inst.instance_id);
+            const instStat = safeStats.find((s: any) => s.instance_id === inst.id);
             const instLat = instStat ? getInstanceLatency(instStat) : (dnsAvail ? Number(avgLatency) : undefined);
             const instQps = instStat ? getInstanceQueries(instStat) : undefined;
             const instCh = instStat ? Math.round(getInstanceCacheHit(instStat)) : (dnsAvail ? Math.round(Number(avgCacheHit)) : undefined);
             mapNodes.push({
-              id: `resolver-${inst.instance_id}`,
-              label: inst.name || `Resolver ${inst.instance_id}`,
+              id: `resolver-${inst.id}`,
+              label: inst.instance_name || `Resolver ${inst.id}`,
               type: 'resolver',
               status: inst.current_status === 'healthy' ? 'ok' : inst.current_status === 'degraded' ? 'degraded' : inst.current_status === 'failed' || inst.current_status === 'withdrawn' ? 'failed' : 'inactive',
               latency: instLat != null ? Math.round(instLat) : undefined,
@@ -245,7 +245,7 @@ export default function Dashboard() {
               cacheHit: instCh,
               bindIp: inst.bind_ip,
             });
-            mapEdges.push({ from: 'vip-anycast', to: `resolver-${inst.instance_id}`, latency: instLat != null ? Math.round(instLat) : undefined, qps: instQps ?? 0 });
+            mapEdges.push({ from: 'vip-anycast', to: `resolver-${inst.id}`, latency: instLat != null ? Math.round(instLat) : undefined, qps: instQps ?? 0 });
           });
         } else if (totalInstances > 0) {
           mapNodes.push({
