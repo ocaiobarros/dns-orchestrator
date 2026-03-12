@@ -311,7 +311,14 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
     return { valid: true, errors: [], id: `cfg-${Date.now()}`, name: 'New Config', payload: body || DEFAULT_CONFIG };
   }
 
-  // Apply
+  // Apply / Deploy
+  if (path.startsWith('/api/deploy/')) {
+    if (path === '/api/deploy/state') return mockDeployState();
+    if (path === '/api/deploy/backups') return mockDeployBackups();
+    if (path === '/api/deploy/rollback' && method === 'POST') return mockRollbackResult();
+    if (path === '/api/deploy/apply' && method === 'POST') return mockApplyResult(body as any);
+    return {};
+  }
   if (path.startsWith('/api/apply/')) {
     if (path.includes('/jobs')) {
       if (path === '/api/apply/jobs') return mockHistory;

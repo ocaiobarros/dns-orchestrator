@@ -353,6 +353,20 @@ Result: ALL CHECKS PASSED (16/16)`,
   },
 };
 
+// ---- Deployment mock extras ----
+const _deployBase = {
+  configVersion: 'v3',
+  environment: 'production',
+  changedFiles: ['/etc/unbound/unbound01.conf', '/etc/unbound/unbound02.conf', '/etc/nftables.conf'],
+  healthResult: [
+    { name: 'unbound01 systemd status', target: 'unbound01', status: 'pass' as const, detail: 'active', durationMs: 50 },
+    { name: 'unbound02 systemd status', target: 'unbound02', status: 'pass' as const, detail: 'active', durationMs: 45 },
+    { name: 'nftables rules loaded', target: 'nftables', status: 'pass' as const, detail: 'table ip nat', durationMs: 30 },
+  ],
+  rollbackAvailable: true,
+  backupId: 'bk-20260310_143000',
+};
+
 // ---- History ----
 
 export const mockHistory: ApplyResult[] = [
@@ -368,13 +382,20 @@ export const mockHistory: ApplyResult[] = [
     configSnapshot: {} as WizardConfig,
     steps: [
       { order: 1, name: 'Validar parâmetros', status: 'success', output: 'OK', durationMs: 120, command: null },
-      { order: 2, name: 'Verificar pacotes', status: 'success', output: 'OK', durationMs: 1200, command: 'dpkg -l' },
-      { order: 3, name: 'Gerar arquivos', status: 'success', output: '11 arquivos', durationMs: 200, command: null },
-      { order: 4, name: 'Gravar em disco', status: 'success', output: 'OK', durationMs: 150, command: null },
-      { order: 5, name: 'Reiniciar serviços', status: 'success', output: 'OK', durationMs: 3500, command: 'systemctl restart' },
-      { order: 6, name: 'Validar', status: 'success', output: 'Todos respondendo', durationMs: 1500, command: 'dig' },
+      { order: 2, name: 'Gerar artefatos', status: 'success', output: '11 arquivos', durationMs: 200, command: null },
+      { order: 3, name: 'Backup configuração', status: 'success', output: 'Backup salvo', durationMs: 150, command: null },
+      { order: 4, name: 'Gravar rede', status: 'success', output: '3 arquivos', durationMs: 80, command: null },
+      { order: 5, name: 'Gravar Unbound', status: 'success', output: '4 arquivos', durationMs: 100, command: null },
+      { order: 6, name: 'Gravar nftables', status: 'success', output: '12 arquivos', durationMs: 50, command: null },
+      { order: 7, name: 'Gravar sysctl/systemd', status: 'success', output: '8 arquivos', durationMs: 40, command: null },
+      { order: 8, name: 'daemon-reload', status: 'success', output: 'OK', durationMs: 300, command: 'systemctl daemon-reload' },
+      { order: 9, name: 'Reiniciar unbound01', status: 'success', output: 'OK', durationMs: 800, command: 'systemctl restart unbound01' },
+      { order: 10, name: 'Reiniciar unbound02', status: 'success', output: 'OK', durationMs: 800, command: 'systemctl restart unbound02' },
+      { order: 11, name: 'Aplicar nftables', status: 'success', output: 'Ruleset loaded', durationMs: 300, command: 'nft -f /etc/nftables.conf' },
+      { order: 12, name: 'Verificação pós-deploy', status: 'success', output: '6/6 checks OK', durationMs: 1500, command: null },
     ],
     filesGenerated: [],
+    ..._deployBase,
   },
   {
     id: 'apply-002',
@@ -389,9 +410,11 @@ export const mockHistory: ApplyResult[] = [
     steps: [
       { order: 1, name: 'Gerar config rede', status: 'success', output: 'OK', durationMs: 100, command: null },
       { order: 2, name: 'Aplicar rede', status: 'success', output: 'OK', durationMs: 800, command: '/etc/network/post-up.sh' },
-      { order: 3, name: 'Validar interfaces', status: 'success', output: 'OK', durationMs: 500, command: 'ip addr show lo0' },
+      { order: 3, name: 'Verificação pós-deploy', status: 'success', output: '3/3 checks OK', durationMs: 500, command: null },
     ],
     filesGenerated: [],
+    ..._deployBase,
+    configVersion: 'v2',
   },
   {
     id: 'apply-003',
@@ -405,10 +428,14 @@ export const mockHistory: ApplyResult[] = [
     configSnapshot: {} as WizardConfig,
     steps: [
       { order: 1, name: 'Validar parâmetros', status: 'success', output: 'OK', durationMs: 120, command: null },
-      { order: 2, name: 'Verificar pacotes', status: 'success', output: 'OK', durationMs: 800, command: null },
-      { order: 3, name: 'Preview arquivos', status: 'success', output: '11 arquivos seriam gerados', durationMs: 200, command: null },
+      { order: 2, name: 'Gerar artefatos', status: 'success', output: '11 arquivos', durationMs: 800, command: null },
+      { order: 3, name: 'Dry-run concluído', status: 'success', output: 'Nenhuma alteração', durationMs: 200, command: null },
     ],
     filesGenerated: [],
+    ..._deployBase,
+    configVersion: 'v1',
+    rollbackAvailable: false,
+    backupId: null,
   },
 ];
 
