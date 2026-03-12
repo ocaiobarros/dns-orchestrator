@@ -1,11 +1,12 @@
-import { Activity, Clock, Globe, Zap, AlertTriangle, Timer, Database, Shield } from 'lucide-react';
+import { Activity, Clock, Globe, Zap, AlertTriangle, Timer, Database, Shield, FileText, RotateCcw } from 'lucide-react';
 import { LoadingState, ErrorState } from '@/components/DataStates';
-import { useSystemInfo, useServices, useInstanceStats, useInstanceHealth } from '@/lib/hooks';
-import { getInstanceQueries, getInstanceCacheHit, getInstanceLatency } from '@/lib/types';
+import { useSystemInfo, useServices, useInstanceStats, useInstanceHealth, useDeployState } from '@/lib/hooks';
+import { getInstanceQueries, getInstanceCacheHit, getInstanceLatency, safeDate } from '@/lib/types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 
 import NocHeroBar from '@/components/noc/NocHeroBar';
 import NocHealthSummary from '@/components/noc/NocHealthSummary';
