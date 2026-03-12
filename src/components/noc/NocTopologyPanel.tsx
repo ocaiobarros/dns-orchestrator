@@ -188,12 +188,14 @@ function LatencyBadge({ cx, cy, ms, dimmed = false }: { cx: number; cy: number; 
 
 /* ── QPS badge ── */
 function QpsBadge({ cx, cy, qps, dimmed = false }: { cx: number; cy: number; qps: number; dimmed?: boolean }) {
-  if (qps <= 0) return null;
+  if (safeNum(qps, 0) <= 0) return null;
+  const scx = safeNum(cx);
+  const scy = safeNum(cy);
   return (
     <g opacity={dimmed ? 0.2 : 0.7}>
-      <rect x={cx - 22} y={cy - 8} width="44" height="16" rx="8" fill={C.bg} stroke={C.dim} strokeWidth="0.4" />
-      <text x={cx} y={cy + 3.5} textAnchor="middle" fill={C.accent} fontSize="7.5" fontWeight="600" fontFamily="var(--font-mono)">
-        {formatQps(qps)} qps
+      <rect x={scx - 22} y={scy - 8} width="44" height="16" rx="8" fill={C.bg} stroke={C.dim} strokeWidth="0.4" />
+      <text x={scx} y={scy + 3.5} textAnchor="middle" fill={C.accent} fontSize="7.5" fontWeight="600" fontFamily="var(--font-mono)">
+        {formatQps(safeNum(qps, 0))} qps
       </text>
     </g>
   );
