@@ -283,11 +283,15 @@ def _get_system_info() -> dict:
     except Exception:
         pass
 
+    # Unbound version: use dpkg (always available, no privilege needed) or unbound-control status
     try:
-        r = _safe_run("unbound", ["-V"], timeout=5)
+        r = _safe_run("dpkg", ["-s", "unbound"], timeout=5)
         if r["exit_code"] == 0:
-            unbound_version = r["stdout"].split("\n")[0].strip()
-        else:
+            for line in r["stdout"].split("\n"):
+                if line.startswith("Version:"):
+                    unbound_version = "Unbound " + line.split(":", 1)[1].strip()
+                    break
+        if not unbound_version:
             r2 = _safe_run("unbound-control", ["status"], timeout=5, use_privilege=True)
             if r2["exit_code"] == 0:
                 for line in r2["stdout"].split("\n"):
