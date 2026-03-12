@@ -211,15 +211,15 @@
       0 16px 64px -16px hsl(var(--noc-depth-0) / 0.7);
   }
 
-  /* Scanlines overlay */
+  /* Scanlines — very subtle, only visible on large screens */
   .noc-hero::after {
     content: '';
-    @apply absolute inset-0 pointer-events-none z-[1];
+    @apply absolute inset-0 pointer-events-none z-[1] hidden lg:block;
     background: repeating-linear-gradient(
       0deg,
-      transparent, transparent 3px,
-      hsl(var(--foreground) / 0.005) 3px,
-      hsl(var(--foreground) / 0.005) 6px
+      transparent, transparent 4px,
+      hsl(var(--foreground) / 0.003) 4px,
+      hsl(var(--foreground) / 0.003) 8px
     );
   }
 
@@ -239,17 +239,8 @@
   }
 
   .noc-dot-live {
-    @apply w-2 h-2 rounded-full bg-success relative flex-shrink-0;
-    box-shadow: 0 0 8px hsl(var(--success) / 0.4);
-  }
-  .noc-dot-live::after {
-    content: '';
-    @apply absolute inset-0 rounded-full bg-success;
-    animation: noc-breathe 2.5s ease-in-out infinite;
-  }
-  @keyframes noc-breathe {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.25; transform: scale(1.6); }
+    @apply w-2 h-2 rounded-full bg-success flex-shrink-0;
+    box-shadow: 0 0 6px hsl(var(--success) / 0.3);
   }
 
   .noc-dot-dead {
@@ -258,12 +249,7 @@
 
   .noc-dot-fail {
     @apply w-2 h-2 rounded-full bg-destructive flex-shrink-0;
-    box-shadow: 0 0 10px hsl(var(--destructive) / 0.5);
-    animation: noc-fail-throb 1.5s ease-in-out infinite;
-  }
-  @keyframes noc-fail-throb {
-    0%, 100% { box-shadow: 0 0 8px hsl(var(--destructive) / 0.4); }
-    50% { box-shadow: 0 0 18px hsl(var(--destructive) / 0.7); }
+    box-shadow: 0 0 8px hsl(var(--destructive) / 0.4);
   }
 
   .noc-dot-warn {

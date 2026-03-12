@@ -1,4 +1,4 @@
-import { Activity, Clock, Globe, Zap, AlertTriangle, Timer, Database } from 'lucide-react';
+import { Activity, Clock, Globe, Zap, AlertTriangle, Timer, Database, Shield } from 'lucide-react';
 import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useSystemInfo, useServices, useInstanceStats, useInstanceHealth } from '@/lib/hooks';
 import { getInstanceQueries, getInstanceCacheHit, getInstanceLatency } from '@/lib/types';
@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 
 import NocHeroBar from '@/components/noc/NocHeroBar';
+import NocHealthSummary from '@/components/noc/NocHealthSummary';
 import NocMetricStrip from '@/components/noc/NocMetricStrip';
 import NocInstanceTable from '@/components/noc/NocInstanceTable';
 import NocTopologyPanel from '@/components/noc/NocTopologyPanel';
@@ -33,7 +34,7 @@ export default function Dashboard() {
 
   const { data: recentEvents } = useQuery({
     queryKey: ['events', 'recent'],
-    queryFn: async () => { const r = await api.getEvents(undefined, 8); if (!r.success) throw new Error(r.error!); return r.data; },
+    queryFn: async () => { const r = await api.getEvents(undefined, 20); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 5000,
   });
 
@@ -78,20 +79,90 @@ export default function Dashboard() {
   const inRotation = safeV2.length > 0 ? safeV2.filter(i => i.in_rotation).length : totalInstances;
 
   const eventItems = recentEvents?.items ?? (Array.isArray(recentEvents) ? recentEvents : []);
-  const unavailSub = dnsStatus === 'privilege_limited' ? 'Privilege limited' : 'Unavailable';
+  const unavailSub = dnsStatus === 'privilege_limited' ? 'Privilege limited' : 'No telemetry';
+
+  // Determine resolver health state
+  const resolverHealthState: 'healthy' | 'degraded' | 'critical' | 'unknown' =
+    totalInstances === 0 ? 'unknown' :
+    failedCount === 0 ? 'healthy' :
+    failedCount >= totalInstances ? 'critical' : 'degraded';
+
+  // VIP state
+  const vipConfigured = sysInfo?.vip_anycast_available ?? false;
+  const vipAddress = sysInfo?.vip_anycast ?? null;
+
+  // Upstream reachability from health data
+  const upstreamOk = health ? health.instances?.some(i => i.healthy) ?? false : null;
 
   const metricCards = [
-    { label: 'Resolvers', value: `${healthyCount}/${totalInstances}`, sub: failedCount > 0 ? 'DEGRADED' : 'HEALTHY', icon: <Globe size={18} />, accent: 'primary' as const },
-    { label: 'DNAT Active', value: `${inRotation}/${totalInstances}`, sub: 'In rotation', icon: <Zap size={18} />, accent: 'accent' as const },
-    { label: 'Total Queries', value: dnsAvail ? totalQps.toLocaleString() : '—', sub: dnsAvail ? 'Accumulated' : unavailSub, icon: <Activity size={18} />, accent: 'primary' as const, unavailable: !dnsAvail },
-    { label: 'Cache Hit', value: dnsAvail ? `${avgCacheHit}%` : '—', sub: dnsAvail ? 'Average' : unavailSub, icon: <Database size={18} />, accent: 'accent' as const, unavailable: !dnsAvail },
-    { label: 'Latency', value: dnsAvail ? `${avgLatency}ms` : '—', sub: dnsAvail ? 'DNS avg' : unavailSub, icon: <Timer size={18} />, accent: (dnsAvail && Number(avgLatency) > 50 ? 'warning' : 'primary') as any, unavailable: !dnsAvail },
-    { label: 'Uptime', value: sysInfo?.uptime ?? '—', sub: 'System', icon: <Clock size={18} />, accent: 'primary' as const },
+    {
+      label: 'Resolvers',
+      value: `${healthyCount}/${totalInstances}`,
+      sub: resolverHealthState === 'unknown' ? 'No instances' : resolverHealthState === 'healthy' ? 'All healthy' : failedCount > 0 ? `${failedCount} failed` : 'Checking',
+      icon: <Globe size={18} />,
+      accent: (resolverHealthState === 'critical' ? 'destructive' : resolverHealthState === 'degraded' ? 'warning' : 'primary') as any,
+      healthState: resolverHealthState,
+    },
+    {
+      label: 'Total Queries',
+      value: dnsAvail ? totalQps.toLocaleString() : '—',
+      sub: dnsAvail ? 'Accumulated' : unavailSub,
+      icon: <Activity size={18} />,
+      accent: 'primary' as const,
+      unavailable: !dnsAvail,
+    },
+    {
+      label: 'Cache Hit',
+      value: dnsAvail ? `${avgCacheHit}%` : '—',
+      sub: dnsAvail ? (Number(avgCacheHit) > 80 ? 'Efficient' : Number(avgCacheHit) > 50 ? 'Moderate' : 'Low') : unavailSub,
+      icon: <Database size={18} />,
+      accent: (dnsAvail && Number(avgCacheHit) < 50 ? 'warning' : 'accent') as any,
+      unavailable: !dnsAvail,
+      healthState: dnsAvail ? (Number(avgCacheHit) > 80 ? 'healthy' : Number(avgCacheHit) > 50 ? 'degraded' : 'critical') : undefined,
+    },
+    {
+      label: 'DNS Latency',
+      value: dnsAvail ? `${avgLatency}ms` : '—',
+      sub: dnsAvail ? (Number(avgLatency) < 30 ? 'Optimal' : Number(avgLatency) < 100 ? 'Acceptable' : 'High') : unavailSub,
+      icon: <Timer size={18} />,
+      accent: (dnsAvail && Number(avgLatency) > 100 ? 'destructive' : dnsAvail && Number(avgLatency) > 50 ? 'warning' : 'primary') as any,
+      unavailable: !dnsAvail,
+      healthState: dnsAvail ? (Number(avgLatency) < 30 ? 'healthy' : Number(avgLatency) < 100 ? 'degraded' : 'critical') : undefined,
+    },
+    {
+      label: 'VIP Status',
+      value: vipConfigured ? (vipAddress || 'Active') : '—',
+      sub: vipConfigured ? 'Anycast active' : 'Not configured',
+      icon: <Zap size={18} />,
+      accent: (vipConfigured ? 'accent' : 'primary') as any,
+      unavailable: !vipConfigured,
+      healthState: vipConfigured ? 'healthy' : undefined,
+    },
+    {
+      label: 'Uptime',
+      value: sysInfo?.uptime ?? '—',
+      sub: 'System',
+      icon: <Clock size={18} />,
+      accent: 'primary' as const,
+    },
   ];
+
+  // Compute health summary counts
+  const activeServicesCount = safeServices.filter(s => s.status === 'running').length;
+  const inactiveServicesCount = safeServices.filter(s => s.status === 'stopped').length;
+  const errorServicesCount = safeServices.filter(s => s.status === 'error').length;
+  const critEvents = eventItems.filter((e: any) => e.severity === 'critical').length;
+  const warnEvents = eventItems.filter((e: any) => e.severity === 'warning').length;
+
+  // Last meaningful event
+  const lastMeaningfulEvent = eventItems.find((e: any) =>
+    e.severity === 'critical' || e.severity === 'warning' ||
+    (e.event_type && !['health_check', 'login_success', 'reconciliation_noop'].includes(e.event_type))
+  );
 
   return (
     <div className="space-y-4">
-      {/* ═══ TIER 1: HERO BAR ═══ */}
+      {/* ═══ TIER 1: HERO BAR — Operational state at a glance ═══ */}
       <NocHeroBar
         allHealthy={allRunning && failedCount === 0}
         failedCount={failedCount}
@@ -99,21 +170,26 @@ export default function Dashboard() {
         healthyCount={healthyCount}
         onReconcile={() => reconcileMutation.mutate()}
         reconciling={reconciling}
+        dnsAvailable={dnsAvail}
+        dnsStatus={dnsStatus}
+        lastEvent={lastMeaningfulEvent}
+        activeIncidents={critEvents}
       />
 
-      {/* Privilege warning */}
-      {!dnsAvail && dnsStatus === 'privilege_limited' && (
-        <motion.div
-          initial={{ opacity: 0, y: -4 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-[10px] font-mono bg-warning/4 text-warning/70 border border-warning/10"
-        >
-          <AlertTriangle size={12} />
-          DNS metrics limited — Enable privileged execution for real-time telemetry
-        </motion.div>
-      )}
+      {/* ═══ TIER 2: HEALTH SUMMARY — Executive glance ═══ */}
+      <NocHealthSummary
+        incidents={critEvents}
+        warnings={warnEvents}
+        activeServices={activeServicesCount}
+        inactiveServices={inactiveServicesCount}
+        errorServices={errorServicesCount}
+        resolverState={resolverHealthState}
+        dnsAvailable={dnsAvail}
+        privilegeLimited={dnsStatus === 'privilege_limited'}
+        lastEvent={lastMeaningfulEvent}
+      />
 
-      {/* ═══ TIER 2: KPI STRIP ═══ */}
+      {/* ═══ TIER 3: KPI STRIP ═══ */}
       <NocMetricStrip cards={metricCards} loading={isLoading} />
 
       {/* Reconciliation flash */}
@@ -136,29 +212,36 @@ export default function Dashboard() {
         </motion.div>
       )}
 
-      {/* ═══ TIER 3: TOPOLOGY — CENTERPIECE ═══ */}
-      <NocTopologyPanel health={health} />
+      {/* ═══ TIER 4: TOPOLOGY — Live operational surface ═══ */}
+      <NocTopologyPanel
+        health={health}
+        vipConfigured={vipConfigured}
+        vipAddress={vipAddress}
+        dnsAvailable={dnsAvail}
+      />
 
-      {/* ═══ TIER 4: INSTANCE TABLE ═══ */}
+      {/* ═══ TIER 5: INSTANCE TABLE ═══ */}
       <NocInstanceTable instances={safeV2} />
 
-      {/* ═══ TIER 5: HEALTH MATRIX + SERVICES ═══ */}
+      {/* ═══ TIER 6: HEALTH MATRIX + SERVICES ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <NocHealthMatrix
           services={safeServices}
           dnsHealthy={healthyCount === totalInstances && totalInstances > 0}
           networkOk={allRunning}
+          dnsAvailable={dnsAvail}
+          privilegeLimited={dnsStatus === 'privilege_limited'}
         />
         <NocResolverPanel services={safeServices} />
       </div>
 
-      {/* ═══ TIER 6: EVENTS + SYSTEM INFO ═══ */}
+      {/* ═══ TIER 7: EVENTS + SYSTEM INFO ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <NocEventsTimeline events={eventItems} />
         <NocSystemInfoGrid sysInfo={sysInfo} />
       </div>
 
-      {/* ═══ TIER 7: COMMAND CONSOLE ═══ */}
+      {/* ═══ TIER 8: COMMAND CONSOLE ═══ */}
       <NocQuickActions />
     </div>
   );

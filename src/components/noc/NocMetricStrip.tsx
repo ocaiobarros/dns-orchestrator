@@ -8,6 +8,7 @@ interface MetricCardData {
   icon: ReactNode;
   accent?: 'primary' | 'accent' | 'warning' | 'destructive';
   unavailable?: boolean;
+  healthState?: string;
 }
 
 interface NocMetricStripProps {
@@ -19,30 +20,24 @@ function MetricSkeleton() {
   return (
     <div className="noc-surface">
       <div className="noc-surface-body">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3">
           <div className="noc-skeleton h-2.5 w-16" />
-          <div className="noc-skeleton h-5 w-5 rounded" />
+          <div className="noc-skeleton h-4 w-4 rounded" />
         </div>
-        <div className="noc-skeleton h-9 w-24 mb-2" />
-        <div className="noc-skeleton h-2 w-14 mt-3" />
+        <div className="noc-skeleton h-8 w-20 mb-2" />
+        <div className="noc-skeleton h-2 w-14 mt-2" />
       </div>
     </div>
   );
 }
 
-function MiniSparkline({ accent }: { accent: string }) {
-  const varMap: Record<string, string> = { primary: '--primary', accent: '--accent', warning: '--warning', destructive: '--destructive' };
-  const color = `hsl(var(${varMap[accent] || '--primary'}) / 0.3)`;
-  // Decorative micro-sparkline
-  const points = '0,8 4,6 8,7 12,3 16,5 20,2 24,4 28,1 32,3 36,2';
-  return (
-    <svg width="36" height="10" viewBox="0 0 36 10" className="noc-sparkline mt-2 opacity-50" style={{ color }}>
-      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+function HealthDot({ state }: { state?: string }) {
+  if (!state) return null;
+  const cls = state === 'healthy' ? 'bg-success' : state === 'degraded' ? 'bg-warning' : state === 'critical' ? 'bg-destructive' : 'bg-muted-foreground/25';
+  return <span className={`w-1.5 h-1.5 rounded-full ${cls}`} />;
 }
 
-function MetricCard({ label, value, sub, icon, accent = 'primary', unavailable }: MetricCardData) {
+function MetricCard({ label, value, sub, icon, accent = 'primary', unavailable, healthState }: MetricCardData) {
   const [displayed, setDisplayed] = useState(value);
   const [flash, setFlash] = useState(false);
   const prevRef = useRef(value);
@@ -52,7 +47,7 @@ function MetricCard({ label, value, sub, icon, accent = 'primary', unavailable }
       prevRef.current = value;
       setFlash(true);
       setDisplayed(value);
-      const t = setTimeout(() => setFlash(false), 500);
+      const t = setTimeout(() => setFlash(false), 400);
       return () => clearTimeout(t);
     }
   }, [value]);
@@ -65,37 +60,34 @@ function MetricCard({ label, value, sub, icon, accent = 'primary', unavailable }
     <div className="noc-surface group">
       {/* Accent top line */}
       <div className="absolute inset-x-0 top-0 h-px z-20"
-        style={{ background: `linear-gradient(90deg, transparent, hsl(var(${cssVar}) / 0.25), transparent)` }}
-      />
-      {/* Hover radial glow */}
-      <div className="noc-hover-glow"
-        style={{ background: `radial-gradient(ellipse at 50% 0%, hsl(var(${cssVar}) / 0.06) 0%, transparent 65%)` }}
+        style={{ background: `linear-gradient(90deg, transparent, hsl(var(${cssVar}) / 0.2), transparent)` }}
       />
 
-      <div className="noc-surface-body">
-        <div className="flex items-center justify-between mb-4">
-          <span className="noc-label">{label}</span>
-          <motion.span
-            className={`${iconColors[accent]} opacity-20 group-hover:opacity-60 transition-opacity duration-500`}
-            animate={{ y: [0, -3, 0] }}
-            transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-          >
+      <div className="noc-surface-body py-4 px-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className="noc-label">{label}</span>
+            <HealthDot state={healthState} />
+          </div>
+          <span className={`${iconColors[accent]} opacity-15 group-hover:opacity-40 transition-opacity duration-500`}>
             {icon}
-          </motion.span>
+          </span>
         </div>
 
-        <div className={`noc-display transition-all duration-300 ${flash ? 'opacity-50' : 'opacity-100'} ${unavailable ? 'text-muted-foreground/20 text-[1.8rem]' : ''}`}>
+        <div className={`text-[1.75rem] font-extrabold font-mono leading-none tracking-tighter transition-opacity duration-300 ${flash ? 'opacity-50' : 'opacity-100'} ${unavailable ? 'text-muted-foreground/20 text-[1.5rem]' : 'text-foreground'}`}>
           {unavailable ? '—' : displayed}
         </div>
 
-        <div className="flex items-center justify-between mt-2">
-          {sub && (
-            <span className={`noc-sublabel ${unavailable ? 'text-muted-foreground/20' : ''}`}>
-              {sub}
-            </span>
-          )}
-          {!unavailable && <MiniSparkline accent={accent} />}
-        </div>
+        {sub && (
+          <span className={`text-[9px] font-mono mt-2 block uppercase tracking-wider ${
+            unavailable ? 'text-muted-foreground/20'
+            : healthState === 'critical' ? 'text-destructive/60'
+            : healthState === 'degraded' ? 'text-warning/60'
+            : 'text-muted-foreground/35'
+          }`}>
+            {sub}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -115,9 +107,9 @@ export default function NocMetricStrip({ cards, loading }: NocMetricStripProps) 
       {cards.map((card, i) => (
         <motion.div
           key={card.label}
-          initial={{ opacity: 0, y: 16 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.08 + i * 0.06, ease: [0.16, 1, 0.3, 1] }}
+          transition={{ duration: 0.4, delay: 0.06 + i * 0.04, ease: [0.16, 1, 0.3, 1] }}
         >
           <MetricCard {...card} />
         </motion.div>

@@ -1,10 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Shield, Clock, ChevronDown, Activity, Maximize2, Minimize2 } from 'lucide-react';
+import { RefreshCw, Shield, Clock, ChevronDown, Maximize2, Minimize2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useNoc } from '@/lib/noc-context';
+import { safeDateShort } from '@/lib/types';
 
-const POLL_INTERVAL = 10; // seconds — matches the main query refetchInterval
+const POLL_INTERVAL = 10;
 
 interface NocHeroBarProps {
   allHealthy: boolean;
@@ -13,34 +14,15 @@ interface NocHeroBarProps {
   healthyCount: number;
   onReconcile: () => void;
   reconciling: boolean;
-}
-
-function RadarSweep({ color }: { color: string }) {
-  return (
-    <div className="absolute right-8 top-1/2 -translate-y-1/2 w-[120px] h-[120px] opacity-[0.07] hidden lg:block">
-      <svg viewBox="0 0 120 120" className="w-full h-full">
-        {[20, 35, 50].map(r => (
-          <circle key={r} cx="60" cy="60" r={r} fill="none" stroke={color} strokeWidth="0.5" opacity="0.5" />
-        ))}
-        <g style={{ transformOrigin: '60px 60px', animation: 'noc-radar 4s linear infinite' }}>
-          <defs>
-            <linearGradient id="sweep-grad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor={color} stopOpacity="0" />
-              <stop offset="100%" stopColor={color} stopOpacity="0.6" />
-            </linearGradient>
-          </defs>
-          <path d={`M60,60 L60,10 A50,50 0 0,1 ${60 + 50 * Math.sin(Math.PI / 6)},${60 - 50 * Math.cos(Math.PI / 6)} Z`}
-                fill="url(#sweep-grad)" />
-        </g>
-        <circle cx="60" cy="60" r="2" fill={color} />
-      </svg>
-    </div>
-  );
+  dnsAvailable?: boolean;
+  dnsStatus?: string;
+  lastEvent?: any;
+  activeIncidents?: number;
 }
 
 export default function NocHeroBar({
   allHealthy, failedCount, totalInstances, healthyCount,
-  onReconcile, reconciling,
+  onReconcile, reconciling, dnsAvailable, dnsStatus, lastEvent, activeIncidents = 0,
 }: NocHeroBarProps) {
   const [now, setNow] = useState(new Date());
   const [showMenu, setShowMenu] = useState(false);
@@ -59,7 +41,6 @@ export default function NocHeroBar({
     return () => clearInterval(t);
   }, []);
 
-  // Reset countdown when reconciliation triggers a refetch
   useEffect(() => {
     if (reconciling) {
       countdownRef.current = POLL_INTERVAL;
@@ -69,13 +50,18 @@ export default function NocHeroBar({
 
   const isCritical = failedCount > 0 && failedCount >= totalInstances;
   const isDegraded = failedCount > 0 && !isCritical;
+  const hasIncidents = activeIncidents > 0;
 
-  const statusText = isCritical ? 'CRITICAL' : isDegraded ? 'DEGRADED' : 'OPERATIONAL';
-  const statusSub = isCritical ? 'All resolvers down' : isDegraded ? `${failedCount} resolver${failedCount > 1 ? 's' : ''} failed` : 'All systems nominal';
-  const heroClass = isCritical ? 'noc-hero-crit' : isDegraded ? 'noc-hero-warn' : 'noc-hero-ok';
-  const accentColor = isCritical ? 'hsl(0, 76%, 50%)' : isDegraded ? 'hsl(38, 95%, 50%)' : 'hsl(152, 76%, 40%)';
-  const dotBg = isCritical ? 'bg-destructive' : isDegraded ? 'bg-warning' : 'bg-success';
-  const pillClass = isCritical
+  const statusText = isCritical ? 'CRITICAL' : isDegraded ? 'DEGRADED' : hasIncidents ? 'INCIDENT' : 'OPERATIONAL';
+  const statusSub = isCritical ? 'All resolvers down'
+    : isDegraded ? `${failedCount} resolver${failedCount > 1 ? 's' : ''} failed`
+    : hasIncidents ? `${activeIncidents} active incident${activeIncidents > 1 ? 's' : ''}`
+    : 'All systems nominal';
+
+  const heroClass = isCritical || hasIncidents ? 'noc-hero-crit' : isDegraded ? 'noc-hero-warn' : 'noc-hero-ok';
+  const accentColor = isCritical || hasIncidents ? 'hsl(0, 76%, 50%)' : isDegraded ? 'hsl(38, 95%, 50%)' : 'hsl(152, 76%, 40%)';
+  const dotBg = isCritical || hasIncidents ? 'bg-destructive' : isDegraded ? 'bg-warning' : 'bg-success';
+  const pillClass = isCritical || hasIncidents
     ? 'bg-destructive/12 text-destructive border-destructive/20'
     : isDegraded
     ? 'bg-warning/12 text-warning border-warning/20'
@@ -87,82 +73,69 @@ export default function NocHeroBar({
     <motion.div
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
       className={`noc-hero ${heroClass} relative`}
     >
       {/* Auto-refresh countdown bar */}
       <div className="absolute bottom-0 left-0 right-0 h-[2px] z-20">
-        <motion.div
-          className="h-full"
+        <div
+          className="h-full transition-[width] duration-1000 ease-linear"
           style={{
-            background: accentColor.replace(')', ' / 0.35)'),
+            background: accentColor.replace(')', ' / 0.3)'),
             width: `${progressPct}%`,
           }}
-          animate={{ width: `${progressPct}%` }}
-          transition={{ duration: 0.8, ease: 'linear' }}
         />
       </div>
 
-      {/* Sweep light */}
-      <div className="absolute inset-0 z-[2] pointer-events-none overflow-hidden">
-        <div className="w-1/4 h-full" style={{
-          background: `linear-gradient(90deg, transparent, ${accentColor.replace(')', ' / 0.03)')}, transparent)`,
-          animation: 'noc-sweep 8s ease-in-out infinite',
-        }} />
-      </div>
-
-      <RadarSweep color={accentColor} />
-
-      <div className="relative z-10 px-6 py-5">
-        <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="relative z-10 px-6 py-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           {/* Left: Status cluster */}
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-4">
             <div className="relative">
               <motion.div
                 className={`noc-pulse ${dotBg}`}
-                animate={{ scale: [1, 1.15, 1] }}
-                transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                animate={isCritical ? { scale: [1, 1.3, 1] } : { scale: [1, 1.1, 1] }}
+                transition={{ duration: isCritical ? 1.5 : 3, repeat: Infinity, ease: 'easeInOut' }}
               />
             </div>
 
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <Activity size={10} className="text-muted-foreground/40" />
-                <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-muted-foreground/40">
-                  DNS CONTROL
-                </span>
-              </div>
-
+            <div className="space-y-1">
               <div className="flex items-center gap-3">
                 <motion.span
                   key={statusText}
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[11px] font-mono font-extrabold tracking-wider border ${pillClass}`}
+                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-mono font-extrabold tracking-wider border ${pillClass}`}
                 >
                   <span className={`w-1.5 h-1.5 rounded-full ${dotBg}`} />
                   {statusText}
                 </motion.span>
-                <span className="text-[11px] text-muted-foreground/35 font-mono hidden sm:inline">
+                <span className="text-[11px] text-muted-foreground/40 font-mono hidden sm:inline">
                   {statusSub}
                 </span>
               </div>
+
+              {/* Last meaningful event */}
+              {lastEvent && (
+                <div className="text-[9px] font-mono text-muted-foreground/25 hidden md:block">
+                  Last: {lastEvent.message?.substring(0, 60)}{lastEvent.message?.length > 60 ? '…' : ''} — {safeDateShort(lastEvent.created_at)}
+                </div>
+              )}
             </div>
           </div>
 
           {/* Right: Metadata + Actions */}
-          <div className="flex items-center gap-4 lg:gap-6">
-            {/* Countdown chip */}
-            <div className="hidden sm:flex items-center gap-1.5 text-[9px] text-muted-foreground/30 font-mono uppercase tracking-wider" title="Next data refresh">
+          <div className="flex items-center gap-3 lg:gap-5">
+            {/* Countdown */}
+            <div className="hidden sm:flex items-center gap-1.5 text-[9px] text-muted-foreground/30 font-mono" title="Next refresh">
               <RefreshCw size={8} className="opacity-50" />
               <span className="tabular-nums text-foreground/40 text-[10px]">{countdown}s</span>
             </div>
 
-            <div className="hidden md:flex items-center gap-5 text-[9px] text-muted-foreground/40 uppercase tracking-wider">
+            <div className="hidden md:flex items-center gap-4 text-[9px] text-muted-foreground/40 uppercase tracking-wider">
               <div className="flex items-center gap-1.5">
                 <Shield size={9} />
                 <span className="font-mono font-bold text-foreground/70 text-[11px]">{healthyCount}/{totalInstances}</span>
-                <span>resolvers</span>
               </div>
               <div className="w-px h-4 bg-border/30" />
               <div className="flex items-center gap-1.5">
@@ -178,7 +151,6 @@ export default function NocHeroBar({
               Reconcile
             </button>
 
-            {/* Fullscreen toggle */}
             <button
               onClick={toggleFullscreen}
               className="p-2 rounded-lg text-muted-foreground/30 hover:text-foreground/60 hover:bg-secondary/30 transition-colors"
