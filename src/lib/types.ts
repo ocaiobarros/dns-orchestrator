@@ -497,7 +497,7 @@ export interface PaginatedResponse<T> {
 // ---- Defaults ----
 
 export const DEFAULT_CONFIG: WizardConfig = {
-  // Step 1 - Host Topology (all empty — operator fills)
+  // Step 1 - Topologia do Host (vazio — operador preenche)
   hostname: '',
   organization: '',
   project: '',
@@ -513,14 +513,14 @@ export const DEFAULT_CONFIG: WizardConfig = {
   vlanTag: '',
   behindFirewall: true,
 
-  // Step 2 - Deployment Mode
-  deploymentMode: 'vip-recursive',
+  // Step 2 - Modelo de Publicação
+  deploymentMode: 'vip-routed-border',
 
-  // Step 3 - Service VIPs (empty — operator defines)
+  // Step 3 - VIPs de Serviço
   serviceVips: [],
   vipIpv6Enabled: false,
 
-  // Step 4 - Resolver Instances (start with 2 blank instances)
+  // Step 4 - Instâncias de Resolução
   instanceCount: 2,
   instances: [
     { name: 'unbound01', bindIp: '', bindIpv6: '', controlInterface: '127.0.0.11', controlPort: 8953, egressIpv4: '', egressIpv6: '' },
@@ -538,20 +538,15 @@ export const DEFAULT_CONFIG: WizardConfig = {
   dnsIdentity: '',
   dnsVersion: '1.0',
 
-  // Step 5 - VIP Delivery Policy
+  // Step 5 - Egress Público
+  egressFixedIdentity: true,
+
+  // Step 6 - Mapeamento VIP → Instância
   distributionPolicy: 'sticky-source',
   stickyTimeout: 1200,
   vipMappings: [],
 
-  // Step 6 - Access Control (safe defaults)
-  accessControlIpv4: [
-    { network: '127.0.0.0/8', action: 'allow', label: 'Loopback' },
-  ],
-  accessControlIpv6: [],
-  openResolverConfirmed: false,
-  enableDnsProtection: true,
-
-  // Step 7 - Routing Mode
+  // Step 7 - Roteamento
   routingMode: 'static',
   routerId: '',
   ospfArea: '0.0.0.0',
@@ -560,13 +555,35 @@ export const DEFAULT_CONFIG: WizardConfig = {
   ospfCost: 10,
   networkType: 'point-to-point',
 
-  // Step 8 - Panel / Security
+  // Step 8 - Segurança
+  accessControlIpv4: [
+    { network: '127.0.0.0/8', action: 'allow', label: 'Loopback' },
+  ],
+  accessControlIpv6: [],
+  openResolverConfirmed: false,
+  enableDnsProtection: true,
+  enableAntiAmplification: true,
+  recursionAllowed: true,
   authType: 'local',
   adminUser: 'admin',
   adminPassword: '',
   panelBind: '127.0.0.1',
   panelPort: 8443,
   allowedIps: [],
+
+  // Step 9 - Observabilidade
+  observability: {
+    metricsPerVip: true,
+    metricsPerInstance: true,
+    metricsPerEgress: true,
+    nftablesCounters: true,
+    systemdStatus: true,
+    healthChecks: true,
+    latencyTracking: true,
+    cacheHitTracking: true,
+    recursionTimeTracking: true,
+    operationalEvents: true,
+  },
 
   // Bootstrap DNS
   bootstrapDns: '8.8.8.8',
