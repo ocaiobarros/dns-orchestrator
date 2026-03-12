@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import NocNetworkNode from './NocNetworkNode';
 import NocNetworkLink from './NocNetworkLink';
+import { safeNum } from '@/lib/svg-utils';
 
 export interface MapNode {
   id: string;
@@ -31,7 +32,6 @@ interface Props {
 export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' }: Props) {
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
 
-  // Layout positions based on node types
   const positions = useMemo(() => {
     const vips = nodes.filter(n => n.type === 'vip');
     const resolvers = nodes.filter(n => n.type === 'resolver');
@@ -39,19 +39,16 @@ export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' 
 
     const pos: Record<string, { x: number; y: number }> = {};
 
-    // VIP at top center
     vips.forEach((n, i) => {
       pos[n.id] = { x: 500, y: 60 + i * 80 };
     });
 
-    // Resolvers in middle row, spread horizontally
-    const rSpacing = 900 / (resolvers.length + 1);
+    const rSpacing = 900 / (Math.max(resolvers.length, 1) + 1);
     resolvers.forEach((n, i) => {
       pos[n.id] = { x: rSpacing * (i + 1) + 50, y: 220 };
     });
 
-    // Upstreams at bottom, spread horizontally
-    const uSpacing = 900 / (upstreams.length + 1);
+    const uSpacing = 900 / (Math.max(upstreams.length, 1) + 1);
     upstreams.forEach((n, i) => {
       pos[n.id] = { x: uSpacing * (i + 1) + 50, y: 400 };
     });
@@ -59,9 +56,8 @@ export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' 
     return pos;
   }, [nodes]);
 
-  // Max QPS for normalizing line widths
   const maxQps = useMemo(() => {
-    const vals = edges.map(e => e.qps ?? 0);
+    const vals = edges.map(e => safeNum(e.qps, 0));
     return Math.max(...vals, 1);
   }, [edges]);
 
@@ -96,7 +92,6 @@ export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' 
         {/* Main SVG canvas */}
         <svg viewBox="0 0 1000 480" className="w-full h-full" style={{ minHeight: 480 }}>
           <defs>
-            {/* Glow filters */}
             <filter id="map-glow-green">
               <feGaussianBlur stdDeviation="4" result="blur" />
               <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
@@ -107,8 +102,6 @@ export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' 
             <filter id="map-glow-red">
               <feDropShadow dx="0" dy="0" stdDeviation="8" floodColor="hsl(0, 76%, 50%)" floodOpacity="0.5" />
             </filter>
-
-            {/* Flow particle gradient */}
             <linearGradient id="flow-particle" x1="0" x2="1" y1="0" y2="0">
               <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0" />
               <stop offset="50%" stopColor="hsl(var(--primary))" stopOpacity="0.8" />
@@ -128,12 +121,12 @@ export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' 
             return (
               <NocNetworkLink
                 key={`${edge.from}-${edge.to}`}
-                x1={fromPos.x}
-                y1={fromPos.y}
-                x2={toPos.x}
-                y2={toPos.y}
+                x1={safeNum(fromPos.x)}
+                y1={safeNum(fromPos.y)}
+                x2={safeNum(toPos.x)}
+                y2={safeNum(toPos.y)}
                 latency={edge.latency}
-                qps={edge.qps ?? 0}
+                qps={safeNum(edge.qps, 0)}
                 maxQps={maxQps}
                 fromStatus={fromNode?.status ?? 'unknown'}
                 toStatus={toNode?.status ?? 'unknown'}
@@ -151,8 +144,8 @@ export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' 
               <NocNetworkNode
                 key={node.id}
                 node={node}
-                x={pos.x}
-                y={pos.y}
+                x={safeNum(pos.x)}
+                y={safeNum(pos.y)}
                 isHovered={hoveredNode === node.id}
                 onHover={() => setHoveredNode(node.id)}
                 onLeave={() => setHoveredNode(null)}
