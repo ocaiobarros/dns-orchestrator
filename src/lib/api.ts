@@ -77,14 +77,28 @@ async function apiCall<T>(
     return getMockResponse<T>(method, path, body);
   }
 
-  const res = await fetch(buildApiUrl(path), {
+  const requestInit: RequestInit = {
     method,
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${localStorage.getItem('dns-control-token') || ''}`,
     },
     body: body ? JSON.stringify(body) : undefined,
-  });
+  };
+
+  let res = await fetch(buildApiUrl(path), requestInit);
+
+  // Compatibility fallback for legacy backends exposing /deploy/* without /api prefix.
+  if (!res.ok && res.status === 404) {
+    const normalizedPath = normalizeApiPath(path);
+    if (normalizedPath.startsWith('/api/deploy/')) {
+      const legacyPath = normalizedPath.replace(/^\/api/, '');
+      const legacyRes = await fetch(buildLegacyApiUrl(legacyPath), requestInit);
+      if (legacyRes.ok || legacyRes.status !== 404) {
+        res = legacyRes;
+      }
+    }
+  }
 
   if (!res.ok) {
     const errorText = await res.text();

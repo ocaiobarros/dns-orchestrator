@@ -183,6 +183,11 @@ echo "[CHECK] Health endpoint:"
 curl -fsS "http://$BACKEND_HOST:$BACKEND_PORT/api/health" 2>/dev/null && echo "" || echo "[AVISO] /api/health não respondeu."
 
 echo ""
+echo "[CHECK] Deploy API endpoints:"
+curl -fsS "http://$BACKEND_HOST:$BACKEND_PORT/api/deploy/state" 2>/dev/null | head -c 240 && echo "" || echo "[ERRO] /api/deploy/state não respondeu (rota ausente ou backend desatualizado)."
+curl -fsS "http://$BACKEND_HOST:$BACKEND_PORT/api/deploy/history" 2>/dev/null | head -c 240 && echo "" || echo "[ERRO] /api/deploy/history não respondeu (rota ausente ou backend desatualizado)."
+
+echo ""
 echo "[CHECK] Prometheus metrics:"
 curl -fsS "http://$BACKEND_HOST:$BACKEND_PORT/metrics" 2>/dev/null | head -5 || echo "[AVISO] /metrics não respondeu."
 
