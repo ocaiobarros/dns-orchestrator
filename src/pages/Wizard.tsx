@@ -154,9 +154,9 @@ export default function Wizard() {
     set('instances', instances);
   };
 
-  const updateVip = (idx: number, field: keyof ServiceVip, val: string) => {
+  const updateVip = (idx: number, field: keyof ServiceVip, val: string | number) => {
     const vips = [...config.serviceVips];
-    vips[idx] = { ...vips[idx], [field]: val };
+    vips[idx] = { ...vips[idx], [field]: field === 'port' ? (parseInt(String(val)) || 53) : val };
     set('serviceVips', vips);
   };
 
