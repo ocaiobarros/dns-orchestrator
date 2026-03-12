@@ -373,6 +373,7 @@ export default function TroubleshootPage() {
       ok: src.filter(r => r.status === 'ok').length,
       permission_error: src.filter(r => r.status === 'permission_error').length,
       inactive: src.filter(r => r.status === 'inactive').length,
+      service_not_running: src.filter(r => r.status === 'service_not_running').length,
       failures: src.filter(r => ['error', 'runtime_error', 'timeout_error', 'dependency_error'].includes(r.status)).length,
     };
   }, [batchResults, hideExpectedPerms]);
