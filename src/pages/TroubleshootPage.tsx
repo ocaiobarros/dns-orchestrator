@@ -50,7 +50,7 @@ interface HealthBatchResponse {
   results: HealthBatchResult[];
 }
 
-type StatusFilter = 'all' | 'ok' | 'permission_error' | 'inactive' | 'failures';
+type StatusFilter = 'all' | 'ok' | 'permission_error' | 'inactive' | 'service_not_running' | 'failures';
 
 // ── Status helpers ──
 
@@ -64,6 +64,11 @@ const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; badg
     icon: <MinusCircle size={14} className="text-muted-foreground" />,
     label: 'Inativo',
     badgeClass: 'bg-secondary text-muted-foreground border-border',
+  },
+  service_not_running: {
+    icon: <MinusCircle size={14} className="text-amber-400" />,
+    label: 'Não executando',
+    badgeClass: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
   },
   permission_error: {
     icon: <ShieldAlert size={14} className="text-amber-500" />,
@@ -116,7 +121,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 // ── Summary Panel ──
 
 function BatchSummaryPanel({ summary, onRerun, isPending }: {
-  summary: { total: number; passed: number; failed: number; permission_limited: number; inactive: number; duration?: string };
+  summary: { total: number; passed: number; failed: number; permission_limited: number; inactive: number; service_not_running?: number; duration?: string };
   onRerun: () => void;
   isPending: boolean;
 }) {
@@ -141,6 +146,9 @@ function BatchSummaryPanel({ summary, onRerun, isPending }: {
         )}
         {summary.inactive > 0 && (
           <SummaryChip label="Inativos" value={summary.inactive} className="bg-secondary text-muted-foreground border-border" />
+        )}
+        {(summary.service_not_running ?? 0) > 0 && (
+          <SummaryChip label="Não executando" value={summary.service_not_running!} className="bg-amber-500/10 text-amber-400 border-amber-500/20" />
         )}
         {summary.failed > 0 && (
           <SummaryChip label="Erros reais" value={summary.failed} className="bg-destructive/15 text-destructive border-destructive/30" />
@@ -175,6 +183,7 @@ function FilterBar({ active, onChange, counts }: {
     { key: 'ok', label: 'OK' },
     { key: 'permission_error', label: 'Sem permissão' },
     { key: 'inactive', label: 'Inativos' },
+    { key: 'service_not_running', label: 'Não executando' },
     { key: 'failures', label: 'Erros reais' },
   ];
 
@@ -277,7 +286,7 @@ function CategoryGroup({ category, results, individualResults, onRun, isRunning 
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const okCount = results.filter(r => r.status === 'ok').length;
-  const failCount = results.filter(r => !['ok', 'inactive', 'permission_error'].includes(r.status)).length;
+  const failCount = results.filter(r => !['ok', 'inactive', 'permission_error', 'service_not_running'].includes(r.status)).length;
   const permCount = results.filter(r => r.status === 'permission_error').length;
 
   return (
@@ -322,7 +331,7 @@ export default function TroubleshootPage() {
   const [batchResults, setBatchResults] = useState<HealthBatchResult[]>([]);
   const [privilegeStatus, setPrivilegeStatus] = useState<PrivilegeStatus | null>(null);
   const [batchSummary, setBatchSummary] = useState<{
-    total: number; passed: number; failed: number; permission_limited: number; inactive: number; duration?: string;
+    total: number; passed: number; failed: number; permission_limited: number; inactive: number; service_not_running?: number; duration?: string;
   } | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [hideExpectedPerms, setHideExpectedPerms] = useState(false);
@@ -338,6 +347,7 @@ export default function TroubleshootPage() {
     if (statusFilter === 'ok') items = items.filter(r => r.status === 'ok');
     else if (statusFilter === 'permission_error') items = items.filter(r => r.status === 'permission_error');
     else if (statusFilter === 'inactive') items = items.filter(r => r.status === 'inactive');
+    else if (statusFilter === 'service_not_running') items = items.filter(r => r.status === 'service_not_running');
     else if (statusFilter === 'failures') items = items.filter(r => ['error', 'runtime_error', 'timeout_error', 'dependency_error'].includes(r.status));
     if (categoryFilter !== 'all') items = items.filter(r => r.category === categoryFilter);
     return items;
@@ -366,6 +376,7 @@ export default function TroubleshootPage() {
       ok: src.filter(r => r.status === 'ok').length,
       permission_error: src.filter(r => r.status === 'permission_error').length,
       inactive: src.filter(r => r.status === 'inactive').length,
+      service_not_running: src.filter(r => r.status === 'service_not_running').length,
       failures: src.filter(r => ['error', 'runtime_error', 'timeout_error', 'dependency_error'].includes(r.status)).length,
     };
   }, [batchResults, hideExpectedPerms]);
@@ -419,6 +430,7 @@ export default function TroubleshootPage() {
 
           const permLimited = data.permission_limited ?? data.results.filter(r => r.status === 'permission_error').length;
           const inactiveCount = data.inactive ?? data.results.filter(r => r.status === 'inactive').length;
+          const svcNotRunning = (data as any).service_not_running ?? data.results.filter(r => r.status === 'service_not_running').length;
           const passedCount = data.passed ?? data.results.filter(r => r.status === 'ok').length;
           const failedCount = data.failed ?? data.results.filter(r => ['error', 'runtime_error', 'timeout_error', 'dependency_error'].includes(r.status)).length;
 
@@ -434,6 +446,7 @@ export default function TroubleshootPage() {
             failed: failedCount,
             permission_limited: permLimited,
             inactive: inactiveCount,
+            service_not_running: svcNotRunning,
             duration,
           });
         } else if (Array.isArray(rawData)) {

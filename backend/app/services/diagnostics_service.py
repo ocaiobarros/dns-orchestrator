@@ -51,6 +51,12 @@ _DEPENDENCY_PATTERNS = [
     "command not found",
 ]
 
+_SERVICE_NOT_RUNNING_PATTERNS = [
+    "is not running",
+    "not running",
+    "failed to connect to any daemons",
+]
+
 _TIMEOUT_PATTERNS = [
     "timeout",
     "timed out",
@@ -103,6 +109,30 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
             "remediation": "Validar se este serviço deve estar ativo neste host",
             "privileged": False,
             "requires_root": False,
+            "expected_in_unprivileged_mode": False,
+        }
+
+    # Service not running (e.g. "ospfd is not running") — distinct from permission
+    # Check this BEFORE permission to avoid misclassifying "failed to connect to any daemons"
+    # when the real issue is a daemon not running (e.g. ospfd) rather than a permission problem
+    is_service_not_running = False
+    if executable == "vtysh":
+        # For vtysh: "is not running" means a specific FRR daemon isn't enabled
+        if "is not running" in combined_lower:
+            is_service_not_running = True
+    if is_service_not_running:
+        # Extract which daemon is not running from stderr
+        daemon_name = ""
+        for line in (stderr or "").split("\n"):
+            if "is not running" in line.lower():
+                daemon_name = line.strip().split(" ")[0] if line.strip() else ""
+                break
+        return {
+            "status": "service_not_running",
+            "summary": f"Daemon {daemon_name} não está em execução" if daemon_name else "Serviço dependente não está ativo",
+            "remediation": "Verificar se este daemon deve estar habilitado neste host. Se sim, habilitar no FRR daemons config.",
+            "privileged": privileged,
+            "requires_root": requires_root,
             "expected_in_unprivileged_mode": False,
         }
 
@@ -220,9 +250,15 @@ def get_dashboard_summary() -> dict:
         "frr_version": sys_info.get("frr_version", ""),
         "nftables_version": sys_info.get("nftables_version", ""),
         "primary_interface": sys_info.get("primary_interface", ""),
-        "vip_anycast": sys_info.get("vip_anycast", "not configured"),
+        "vip_anycast": sys_info.get("vip_anycast", ""),
+        "vip_anycast_available": sys_info.get("vip_anycast_available", False),
+        "vip_anycast_status": sys_info.get("vip_anycast_status", "unknown"),
         "config_version": sys_info.get("config_version", ""),
+        "config_version_available": sys_info.get("config_version_available", False),
+        "config_version_status": sys_info.get("config_version_status", "unknown"),
         "last_apply_at": sys_info.get("last_apply_at") or "",
+        "last_apply_available": sys_info.get("last_apply_available", False),
+        "last_apply_status": sys_info.get("last_apply_status", "unknown"),
     }
 
 
@@ -253,11 +289,15 @@ def _get_system_info() -> dict:
     except Exception:
         pass
 
+    # Unbound version: use dpkg (always available, no privilege needed) or unbound-control status
     try:
-        r = _safe_run("unbound", ["-V"], timeout=5)
+        r = _safe_run("dpkg", ["-s", "unbound"], timeout=5)
         if r["exit_code"] == 0:
-            unbound_version = r["stdout"].split("\n")[0].strip()
-        else:
+            for line in r["stdout"].split("\n"):
+                if line.startswith("Version:"):
+                    unbound_version = "Unbound " + line.split(":", 1)[1].strip()
+                    break
+        if not unbound_version:
             r2 = _safe_run("unbound-control", ["status"], timeout=5, use_privilege=True)
             if r2["exit_code"] == 0:
                 for line in r2["stdout"].split("\n"):
@@ -293,15 +333,23 @@ def _get_system_info() -> dict:
     except Exception:
         pass
 
+    # VIP Anycast: check loopback and dummy interfaces for non-standard IPs
+    vip_anycast_available = False
     try:
-        r = _safe_run("ip", ["-j", "addr", "show", "lo"], timeout=5)
+        r = _safe_run("ip", ["-j", "addr", "show"], timeout=5)
         if r["exit_code"] == 0 and r["stdout"].strip():
-            lo_data = json.loads(r["stdout"])
-            for iface in lo_data:
-                for addr in iface.get("addr_info", []):
-                    if addr.get("family") == "inet" and addr.get("local") != "127.0.0.1":
-                        vip_anycast = addr["local"]
-                        break
+            all_ifaces = json.loads(r["stdout"])
+            vip_candidates = []
+            for iface in all_ifaces:
+                ifname = iface.get("ifname", "")
+                # Check loopback, dummy, and lo0-style interfaces
+                if ifname in ("lo", "lo0") or ifname.startswith("dummy") or ifname.startswith("lo"):
+                    for addr in iface.get("addr_info", []):
+                        if addr.get("family") == "inet" and addr.get("local") != "127.0.0.1":
+                            vip_candidates.append(addr["local"])
+            if vip_candidates:
+                vip_anycast = ", ".join(vip_candidates)
+                vip_anycast_available = True
     except Exception:
         pass
 
@@ -330,6 +378,10 @@ def _get_system_info() -> dict:
     except Exception:
         pass
 
+    # Determine config version availability
+    config_version_available = bool(config_version and config_version != "0.0.0")
+    last_apply_available = last_apply_at is not None
+
     return {
         "hostname": hostname,
         "os": os_name,
@@ -338,9 +390,15 @@ def _get_system_info() -> dict:
         "frr_version": frr_version,
         "nftables_version": nftables_version,
         "primary_interface": primary_interface,
-        "vip_anycast": vip_anycast,
-        "config_version": config_version,
+        "vip_anycast": vip_anycast if vip_anycast else "",
+        "vip_anycast_available": vip_anycast_available,
+        "vip_anycast_status": "configured" if vip_anycast_available else "not_configured",
+        "config_version": config_version if config_version_available else "",
+        "config_version_available": config_version_available,
+        "config_version_status": "available" if config_version_available else "not_configured",
         "last_apply_at": last_apply_at,
+        "last_apply_available": last_apply_available,
+        "last_apply_status": "available" if last_apply_available else "no_history",
     }
 
 
@@ -517,6 +575,7 @@ def run_health_check() -> dict:
     failed = sum(1 for r in results if r["status"] in ("error", "runtime_error", "timeout_error", "dependency_error"))
     permission_limited = sum(1 for r in results if r["status"] == "permission_error")
     inactive = sum(1 for r in results if r["status"] == "inactive")
+    service_not_running = sum(1 for r in results if r["status"] == "service_not_running")
 
     return {
         "success": True,
@@ -527,6 +586,7 @@ def run_health_check() -> dict:
         "failed": failed,
         "permission_limited": permission_limited,
         "inactive": inactive,
+        "service_not_running": service_not_running,
         "privilege_status": priv_status,
         "results": results,
     }

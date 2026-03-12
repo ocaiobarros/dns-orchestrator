@@ -122,7 +122,7 @@ def run_command(
     If use_privilege=True and command is in sudo allowlist, execute via sudo -n.
     """
     if executable not in ALLOWED_EXECUTABLES:
-        logger.warning(f"Blocked execution of non-whitelisted command: {executable}")
+        logger.debug(f"Skipped non-whitelisted command: {executable}")
         return {
             "exit_code": -1,
             "stdout": "",
