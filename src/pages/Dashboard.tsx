@@ -310,6 +310,63 @@ export default function Dashboard() {
         <NocSystemInfoGrid sysInfo={sysInfo} />
       </div>
 
+      {/* ═══ TIER 7: DEPLOYMENT STATE ═══ */}
+      {deployState && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="noc-surface"
+        >
+          <div className="noc-surface-header flex items-center gap-2">
+            <FileText size={12} />
+            <span className="text-[10px] font-mono font-bold uppercase tracking-widest">Deploy State</span>
+          </div>
+          <div className="noc-surface-body">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 text-xs">
+              <div>
+                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Config Version</div>
+                <div className="font-mono font-bold">{deployState.configVersion || '—'}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Last Apply</div>
+                <div className="font-mono">{safeDate(deployState.lastApplyAt)}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Operator</div>
+                <div className="font-mono">{deployState.lastApplyOperator || '—'}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Status</div>
+                <div className={`font-mono font-bold ${
+                  deployState.lastApplyStatus === 'success' ? 'text-success' :
+                  deployState.lastApplyStatus === 'failed' ? 'text-destructive' : ''
+                }`}>{deployState.lastApplyStatus || '—'}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Total Deploys</div>
+                <div className="font-mono font-bold">{deployState.totalDeployments}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Rollback</div>
+                <div className={`font-mono ${deployState.rollbackAvailable ? 'text-accent' : 'text-muted-foreground'}`}>
+                  {deployState.rollbackAvailable ? 'Disponível' : 'Indisponível'}
+                </div>
+              </div>
+              <div className="flex items-end gap-2">
+                <button onClick={() => navigate('/history')}
+                  className="px-2 py-1 text-[10px] bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80 flex items-center gap-1">
+                  <Clock size={10} /> Histórico
+                </button>
+                <button onClick={() => navigate('/wizard')}
+                  className="px-2 py-1 text-[10px] bg-primary text-primary-foreground rounded font-medium hover:bg-primary/90 flex items-center gap-1">
+                  <Zap size={10} /> Deploy
+                </button>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* ═══ TIER 8: COMMAND CONSOLE ═══ */}
       <NocQuickActions />
     </div>

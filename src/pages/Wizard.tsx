@@ -676,17 +676,59 @@ export default function Wizard() {
       // ═══ STEP 10: Revisão & Deploy ═══
       case 9:
         if (applyResult) {
+          const isSuccess = applyResult.status === 'success' || applyResult.status === 'dry-run';
           return (
             <div className="space-y-4">
               <div className="flex items-center gap-2 mb-2">
-                {applyResult.status === 'success' || applyResult.status === 'dry-run' ? (
+                {isSuccess ? (
                   <><Check size={20} className="text-success" /><span className="font-medium text-success">{applyResult.dryRun ? 'Dry-run concluído' : 'Deploy concluído com sucesso'}</span></>
                 ) : (
                   <><AlertCircle size={20} className="text-destructive" /><span className="font-medium text-destructive">Falha no deploy</span></>
                 )}
-                <span className="text-xs text-muted-foreground ml-auto font-mono">{applyResult.duration}ms</span>
+                <span className="text-xs text-muted-foreground ml-auto font-mono">{applyResult.duration}ms · {applyResult.configVersion}</span>
               </div>
-              <ApplyStepsViewer steps={applyResult.steps} />
+
+              {/* Step-by-step execution */}
+              <div className="noc-panel">
+                <div className="noc-panel-header">Pipeline de Execução ({applyResult.steps.length} etapas)</div>
+                <ApplyStepsViewer steps={applyResult.steps} />
+              </div>
+
+              {/* Post-deploy health checks */}
+              {applyResult.healthResult && applyResult.healthResult.length > 0 && (
+                <div className="noc-panel">
+                  <div className="noc-panel-header flex items-center gap-2">
+                    <Activity size={12} />
+                    Verificação Pós-Deploy ({applyResult.healthResult.filter(h => h.status === 'pass').length}/{applyResult.healthResult.length})
+                  </div>
+                  <div className="space-y-1">
+                    {applyResult.healthResult.map((check, i) => (
+                      <div key={i} className={`flex items-center gap-3 p-2 rounded text-xs ${
+                        check.status === 'fail' ? 'bg-destructive/5' : check.status === 'skip' ? 'bg-secondary/50' : ''
+                      }`}>
+                        {check.status === 'pass' ? <Check size={12} className="text-success" /> :
+                         check.status === 'fail' ? <X size={12} className="text-destructive" /> :
+                         <SkipForward size={12} className="text-muted-foreground" />}
+                        <span className="font-medium flex-1">{check.name}</span>
+                        <span className="font-mono text-muted-foreground">{check.target}</span>
+                        <span className="font-mono text-muted-foreground">{check.durationMs}ms</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Rollback info */}
+              {applyResult.rollbackAvailable && applyResult.backupId && (
+                <div className="noc-panel border-accent/20">
+                  <div className="flex items-center gap-2 text-xs">
+                    <Shield size={12} className="text-accent" />
+                    <span className="text-accent font-medium">Rollback disponível</span>
+                    <span className="text-muted-foreground font-mono ml-auto">{applyResult.backupId}</span>
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-2 mt-4">
                 <button onClick={() => { setApplyResult(null); setStep(0); }}
                   className="px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">Novo Wizard</button>

@@ -188,6 +188,7 @@ export function useApplyConfig() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.services });
       qc.invalidateQueries({ queryKey: ['history'] });
+      qc.invalidateQueries({ queryKey: ['deploy-state'] });
     },
   });
 }
@@ -195,6 +196,39 @@ export function useApplyConfig() {
 export function usePreviewFiles() {
   return useMutation({
     mutationFn: async (config: WizardConfig) => { const r = await api.previewFilesFromConfig(config); if (!r.success) throw new Error(r.error!); return r.data; },
+  });
+}
+
+// ---- Deploy State ----
+export function useDeployState() {
+  return useQuery({
+    queryKey: ['deploy-state'],
+    queryFn: async () => { const r = await api.getDeployState(); if (!r.success) throw new Error(r.error!); return r.data; },
+    refetchInterval: 30000,
+  });
+}
+
+export function useDeployBackups() {
+  return useQuery({
+    queryKey: ['deploy-backups'],
+    queryFn: async () => { const r = await api.getDeployBackups(); if (!r.success) throw new Error(r.error!); return r.data; },
+  });
+}
+
+export function useRollback() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ backupId, reason }: { backupId: string; reason: string }) => {
+      const r = await api.rollback(backupId, reason);
+      if (!r.success) throw new Error(r.error!);
+      return r.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['history'] });
+      qc.invalidateQueries({ queryKey: ['deploy-state'] });
+      qc.invalidateQueries({ queryKey: ['deploy-backups'] });
+      qc.invalidateQueries({ queryKey: queryKeys.services });
+    },
   });
 }
 
