@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import type { MapNode } from './NocNetworkMap';
-import { safeNum, safeR } from '@/lib/svg-utils';
+import { safeNum, safeR, safeSW, safeOpacity } from '@/lib/svg-utils';
 
 interface Props {
   node: MapNode;
@@ -56,16 +56,16 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
     >
       {/* Outer pulse ring */}
       <motion.circle
-        cx={sx}
-        cy={sy}
-        r={radius + 8}
+        cx={safeNum(sx)}
+        cy={safeNum(sy)}
+        r={safeR(radius + 8, 36)}
         fill="none"
         stroke={color}
-        strokeWidth={1}
-        strokeOpacity={0.15}
+        strokeWidth={safeSW(1, 1)}
+        strokeOpacity={safeOpacity(0.15, 0.15)}
         animate={{
-          r: [radius + 8, radius + 18, radius + 8],
-          strokeOpacity: [0.15, 0.05, 0.15],
+          r: [safeR(radius + 8, 36), safeR(radius + 18, 46), safeR(radius + 8, 36)],
+          strokeOpacity: [safeOpacity(0.15, 0.15), safeOpacity(0.05, 0.05), safeOpacity(0.15, 0.15)],
         }}
         transition={{ duration: pulseDuration, repeat: Infinity, ease: 'easeInOut' }}
       />
@@ -73,16 +73,16 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
       {/* Glow ring */}
       {isAlertState && (
         <motion.circle
-          cx={sx}
-          cy={sy}
-          r={radius + 4}
+          cx={safeNum(sx)}
+          cy={safeNum(sy)}
+          r={safeR(radius + 4, 32)}
           fill="none"
           stroke={color}
-          strokeWidth={2}
-          strokeOpacity={0.3}
+          strokeWidth={safeSW(2, 2)}
+          strokeOpacity={safeOpacity(0.3, 0.3)}
           animate={{
-            strokeOpacity: [0.3, 0.6, 0.3],
-            r: [radius + 4, radius + 12, radius + 4],
+            strokeOpacity: [safeOpacity(0.3, 0.3), safeOpacity(0.6, 0.6), safeOpacity(0.3, 0.3)],
+            r: [safeR(radius + 4, 32), safeR(radius + 12, 40), safeR(radius + 4, 32)],
           }}
           transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
         />
@@ -90,13 +90,13 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
 
       {/* Main node circle */}
       <motion.circle
-        cx={sx}
-        cy={sy}
-        r={radius}
+        cx={safeNum(sx)}
+        cy={safeNum(sy)}
+        r={safeR(radius, 28)}
         fill={`${color}15`}
         stroke={color}
-        strokeWidth={isHovered ? 2.5 : 1.5}
-        animate={isHovered ? { r: radius + 3 } : { r: radius }}
+        strokeWidth={safeSW(isHovered ? 2.5 : 1.5, 1.5)}
+        animate={isHovered ? { r: safeR(radius + 3, 31) } : { r: safeR(radius, 28) }}
         transition={{ duration: 0.2 }}
         style={{
           filter: isAlertState
@@ -107,17 +107,17 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
 
       {/* Inner glow */}
       <circle
-        cx={sx}
-        cy={sy}
+        cx={safeNum(sx)}
+        cy={safeNum(sy)}
         r={safeR(radius * 0.6, 10)}
         fill={`${color}08`}
       />
 
       {/* Status dot */}
       <motion.circle
-        cx={sx}
-        cy={sy - radius + 6}
-        r={3}
+        cx={safeNum(sx)}
+        cy={safeNum(sy - radius + 6)}
+        r={safeR(3, 3)}
         fill={color}
         animate={isAlertState ? { scale: [1, 1.4, 1] } : {}}
         transition={{ duration: 1, repeat: Infinity }}

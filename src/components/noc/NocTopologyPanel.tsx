@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import { Globe, Server, Wifi, Zap, Activity, AlertTriangle } from 'lucide-react';
 import { useState, forwardRef } from 'react';
 import type { InstanceHealthReport } from '@/lib/types';
-import { safeNum, safeR } from '@/lib/svg-utils';
+import { safeNum, safeR, safeSW, safeOpacity, safeDim } from '@/lib/svg-utils';
 
 interface NocTopologyPanelProps {
   health: InstanceHealthReport | null | undefined;
@@ -62,14 +62,17 @@ function formatQps(qps: number) {
 
 /* ── Animated flow particles ── */
 function FlowParticles({ pathId, color, count = 2, duration = 3 }: { pathId: string; color: string; count?: number; duration?: number }) {
+  const safeCount = Math.max(1, Math.floor(safeNum(count, 2)));
+  const safeDuration = Math.max(0.4, safeNum(duration, 3));
+
   return (
     <>
-      {Array.from({ length: count }).map((_, i) => (
-        <circle key={i} r="2" fill={color} opacity="0">
-          <animateMotion dur={`${duration}s`} repeatCount="indefinite" begin={`${(i * duration) / count}s`}>
+      {Array.from({ length: safeCount }).map((_, i) => (
+        <circle key={i} r={safeR(2, 2)} fill={color} opacity={safeOpacity(0)}>
+          <animateMotion dur={`${safeDuration}s`} repeatCount="indefinite" begin={`${(i * safeDuration) / safeCount}s`}>
             <mpath href={`#${pathId}`} />
           </animateMotion>
-          <animate attributeName="opacity" values="0;0.7;0.7;0" dur={`${duration}s`} repeatCount="indefinite" begin={`${(i * duration) / count}s`} />
+          <animate attributeName="opacity" values="0;0.7;0.7;0" dur={`${safeDuration}s`} repeatCount="indefinite" begin={`${(i * safeDuration) / safeCount}s`} />
         </circle>
       ))}
     </>
@@ -98,12 +101,12 @@ function MapNode({ cx, cy, label, sublabel, healthy, icon: Icon, size = 'md', di
       {/* Outer radar ring — healthy nodes */}
       {healthy && !dimmed && (
         <>
-          <circle cx={scx} cy={scy} r={r + 12} fill="none" stroke={color} strokeWidth="0.3" opacity="0.06">
-            <animate attributeName="r" values={`${r + 10};${r + 16};${r + 10}`} dur="6s" repeatCount="indefinite" />
+          <circle cx={safeNum(scx)} cy={safeNum(scy)} r={safeR(r + 12, 36)} fill="none" stroke={color} strokeWidth={safeSW(0.3, 0.3)} opacity={safeOpacity(0.06, 0.06)}>
+            <animate attributeName="r" values={`${safeR(r + 10, 34)};${safeR(r + 16, 40)};${safeR(r + 10, 34)}`} dur="6s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="0.06;0.02;0.06" dur="6s" repeatCount="indefinite" />
           </circle>
-          <circle cx={scx} cy={scy} r={r + 6} fill="none" stroke={color} strokeWidth="0.5" opacity="0.08">
-            <animate attributeName="r" values={`${r + 5};${r + 9};${r + 5}`} dur="4s" repeatCount="indefinite" />
+          <circle cx={safeNum(scx)} cy={safeNum(scy)} r={safeR(r + 6, 30)} fill="none" stroke={color} strokeWidth={safeSW(0.5, 0.5)} opacity={safeOpacity(0.08, 0.08)}>
+            <animate attributeName="r" values={`${safeR(r + 5, 29)};${safeR(r + 9, 33)};${safeR(r + 5, 29)}`} dur="4s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="0.08;0.03;0.08" dur="4s" repeatCount="indefinite" />
           </circle>
         </>
@@ -111,20 +114,20 @@ function MapNode({ cx, cy, label, sublabel, healthy, icon: Icon, size = 'md', di
 
       {/* Failing node alert pulse */}
       {!healthy && !dimmed && (
-        <circle cx={scx} cy={scy} r={r + 4} fill="none" stroke={C.fail} strokeWidth="1" opacity="0">
+        <circle cx={safeNum(scx)} cy={safeNum(scy)} r={safeR(r + 4, 28)} fill="none" stroke={C.fail} strokeWidth={safeSW(1, 1)} opacity={safeOpacity(0)}>
           <animate attributeName="opacity" values="0;0.3;0" dur="2s" repeatCount="indefinite" />
-          <animate attributeName="r" values={`${r + 2};${r + 10};${r + 2}`} dur="2s" repeatCount="indefinite" />
+          <animate attributeName="r" values={`${safeR(r + 2, 26)};${safeR(r + 10, 34)};${safeR(r + 2, 26)}`} dur="2s" repeatCount="indefinite" />
         </circle>
       )}
 
       {/* Node background — glass effect */}
-      <circle cx={scx} cy={scy} r={r} fill={C.surface} stroke={color} strokeWidth={dimmed ? '0.6' : '1.5'} opacity={dimmed ? 0.4 : 1} />
-      <circle cx={scx} cy={scy} r={safeR(r - 1, 20)} fill={`${color.replace(')', ' / 0.06)')}`} opacity={dimmed ? 0.2 : 0.8} />
+      <circle cx={safeNum(scx)} cy={safeNum(scy)} r={safeR(r, 24)} fill={C.surface} stroke={color} strokeWidth={safeSW(dimmed ? 0.6 : 1.5, 1)} opacity={safeOpacity(dimmed ? 0.4 : 1, 1)} />
+      <circle cx={safeNum(scx)} cy={safeNum(scy)} r={safeR(r - 1, 20)} fill={`${color.replace(')', ' / 0.06)')}`} opacity={safeOpacity(dimmed ? 0.2 : 0.8, 0.8)} />
 
       {/* Status dot */}
-      <circle cx={scx + r - 5} cy={scy - r + 5} r="3.5" fill={color} opacity={dimmed ? 0.3 : 0.9} />
+      <circle cx={safeNum(scx + r - 5)} cy={safeNum(scy - r + 5)} r={safeR(3.5, 3.5)} fill={color} opacity={safeOpacity(dimmed ? 0.3 : 0.9, 0.9)} />
       {healthy && !dimmed && (
-        <circle cx={scx + r - 5} cy={scy - r + 5} r="3.5" fill={color} opacity="0">
+        <circle cx={safeNum(scx + r - 5)} cy={safeNum(scy - r + 5)} r={safeR(3.5, 3.5)} fill={color} opacity={safeOpacity(0)}>
           <animate attributeName="opacity" values="0;0.4;0" dur="2.5s" repeatCount="indefinite" />
           <animate attributeName="r" values="3.5;6;3.5" dur="2.5s" repeatCount="indefinite" />
         </circle>
@@ -252,9 +255,9 @@ function TopologyView({ health, vipConfigured, vipAddress, totalQueries, cacheHi
   const resolverSpacing = instances.length <= 1 ? 0 : (svgH - 130) / Math.max(instances.length - 1, 1);
 
   const anyHealthy = instances.some(i => i.healthy);
-  const qps = totalQueries ?? 0;
-  const sw = qpsStrokeWidth(qps);
-  const pCount = qpsParticleCount(qps);
+  const qps = safeNum(totalQueries, 0);
+  const sw = safeSW(qpsStrokeWidth(qps), 1);
+  const pCount = Math.max(1, Math.floor(safeNum(qpsParticleCount(qps), 1)));
 
   const upstreamIp = instances.find(i => i.healthy)?.resolved_ip || '—';
   const upstreamLatency = instances.length > 0
@@ -330,14 +333,14 @@ function TopologyView({ health, vipConfigured, vipAddress, totalQueries, cacheHi
       </defs>
 
       {/* Background layers */}
-      <rect width={svgW} height={svgH} fill="transparent" />
-      <rect width={svgW} height={svgH} fill="url(#noc-grid)" opacity="0.25" />
-      <ellipse cx={svgW / 2} cy={svgH / 2} rx={svgW * 0.4} ry={svgH * 0.4} fill="url(#radar-fade)" />
+      <rect width={safeDim(svgW, 0)} height={safeDim(svgH, 0)} fill="transparent" />
+      <rect width={safeDim(svgW, 0)} height={safeDim(svgH, 0)} fill="url(#noc-grid)" opacity={safeOpacity(0.25, 0.25)} />
+      <ellipse cx={safeNum(svgW / 2)} cy={safeNum(svgH / 2)} rx={safeDim(svgW * 0.4, 0)} ry={safeDim(svgH * 0.4, 0)} fill="url(#radar-fade)" />
 
       {/* Concentric radar rings */}
       {[0.15, 0.25, 0.38].map((r, i) => (
-        <ellipse key={i} cx={svgW / 2} cy={svgH / 2} rx={svgW * r} ry={svgH * r}
-          fill="none" stroke={C.accent} strokeWidth="0.2" opacity="0.04" strokeDasharray="4 6" />
+        <ellipse key={i} cx={safeNum(svgW / 2)} cy={safeNum(svgH / 2)} rx={safeDim(svgW * r, 0)} ry={safeDim(svgH * r, 0)}
+          fill="none" stroke={C.accent} strokeWidth={safeSW(0.2, 0.2)} opacity={safeOpacity(0.04, 0.04)} strokeDasharray="4 6" />
       ))}
 
       {/* ── Connection Paths ── */}
