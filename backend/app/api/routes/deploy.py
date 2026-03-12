@@ -13,7 +13,7 @@ from app.api.deps import get_current_user
 from app.models.user import User
 from app.models.apply_job import ApplyJob
 from app.models.config_profile import ConfigProfile
-from app.services.deploy_service import execute_deploy, execute_rollback, get_deploy_state, list_backups
+from app.services.deploy_service import execute_deploy, execute_rollback, get_deploy_state, get_live_deploy_state, list_backups
 
 router = APIRouter()
 
@@ -116,8 +116,8 @@ def deploy_rollback(body: RollbackRequest, db: Session = Depends(get_db), user: 
 
 @router.get("/state")
 def deploy_state(_: User = Depends(get_current_user)):
-    """Get current deployment state (version, last apply, drift)."""
-    return get_deploy_state()
+    """Get current deployment state including live pipeline progress."""
+    return get_live_deploy_state()
 
 
 @router.get("/backups")

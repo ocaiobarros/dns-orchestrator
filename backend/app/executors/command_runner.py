@@ -20,6 +20,7 @@ ALLOWED_EXECUTABLES = frozenset({
     "journalctl", "uptime", "free", "df", "cat",
     "ping", "traceroute", "ifreload", "ifquery",
     "dpkg", "apt",
+    "chmod", "sysctl", "echo",
 })
 
 # Strict allowlist: only these exact (executable, args_prefix) combos may use sudo

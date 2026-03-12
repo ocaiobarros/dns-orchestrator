@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   DEFAULT_CONFIG,
@@ -14,6 +14,7 @@ import {
 import { validateConfig, getStepErrors, isConfigValid, getValidationSummary } from '@/lib/validation';
 import { generateAllFiles } from '@/lib/config-generator';
 import { useApplyConfig } from '@/lib/hooks';
+import { api } from '@/lib/api';
 import ApplyStepsViewer from '@/components/ApplyStepsViewer';
 import TopologySummary from '@/components/TopologySummary';
 import FilePreviewAccordion from '@/components/FilePreviewAccordion';
@@ -138,6 +139,10 @@ export default function Wizard() {
   const [applyResult, setApplyResult] = useState<ApplyResult | null>(null);
   const [showValidation, setShowValidation] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
+  const [deployProgress, setDeployProgress] = useState<{
+    phase: string; currentStep: string | null; completedSteps: number; totalSteps: number; lastMessage: string;
+  } | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const applyMutation = useApplyConfig();
   const navigate = useNavigate();
 
@@ -176,12 +181,53 @@ export default function Wizard() {
     return validationErrors.find(e => e.field === field && e.severity === 'error')?.message;
   };
 
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
+  }, []);
+
+  const startPolling = () => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    pollingRef.current = setInterval(async () => {
+      try {
+        const r = await api.getDeployState();
+        if (r.success && r.data) {
+          const d = r.data as any;
+          setDeployProgress({
+            phase: d.phase || 'idle',
+            currentStep: d.currentStep || null,
+            completedSteps: d.completedSteps || 0,
+            totalSteps: d.totalSteps || 0,
+            lastMessage: d.lastMessage || '',
+          });
+          // Stop polling when done
+          if (['idle', 'success', 'failed', 'rollback_success', 'rollback_failed'].includes(d.phase)) {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+            pollingRef.current = null;
+          }
+        }
+      } catch { /* ignore */ }
+    }, 1000);
+  };
+
   const handleApply = (dryRun: boolean) => {
     setShowValidation(true);
     if (!isConfigValid(validationErrors) && !dryRun) return;
+    setDeployProgress({ phase: dryRun ? 'dry_run_validating' : 'applying', currentStep: 'Iniciando...', completedSteps: 0, totalSteps: 0, lastMessage: '' });
+    startPolling();
     applyMutation.mutate(
       { config, scope: 'full', dryRun, comment: '' },
-      { onSuccess: (result) => setApplyResult(result) }
+      {
+        onSuccess: (result) => {
+          setApplyResult(result);
+          setDeployProgress(null);
+          if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+        },
+        onError: () => {
+          setDeployProgress(null);
+          if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+        },
+      }
     );
   };
 
@@ -1011,6 +1057,34 @@ export default function Wizard() {
         </div>
         {renderStep()}
       </div>
+
+      {/* Deploy Progress Bar */}
+      {deployProgress && applyMutation.isPending && (
+        <div className="noc-panel border-primary/30">
+          <div className="flex items-center gap-3 mb-2">
+            <Loader2 size={14} className="animate-spin text-primary" />
+            <span className="text-xs font-medium uppercase tracking-wider">
+              {deployProgress.phase === 'dry_run_validating' ? 'Dry-Run em andamento' : 'Deploy em andamento'}
+            </span>
+            <span className="text-xs text-muted-foreground ml-auto font-mono">
+              {deployProgress.completedSteps}/{deployProgress.totalSteps || '?'} etapas
+            </span>
+          </div>
+          <div className="w-full h-2 bg-secondary rounded-full overflow-hidden mb-2">
+            <div
+              className="h-full bg-primary rounded-full transition-all duration-500"
+              style={{ width: deployProgress.totalSteps > 0 ? `${(deployProgress.completedSteps / deployProgress.totalSteps) * 100}%` : '10%' }}
+            />
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
+            <Activity size={10} className="text-primary" />
+            <span>{deployProgress.currentStep || 'Aguardando...'}</span>
+          </div>
+          {deployProgress.lastMessage && (
+            <div className="text-[10px] text-muted-foreground/60 mt-1 font-mono">{deployProgress.lastMessage}</div>
+          )}
+        </div>
+      )}
 
       {/* Navigation Buttons */}
       <div className="flex items-center justify-between">

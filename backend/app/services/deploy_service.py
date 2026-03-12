@@ -1,11 +1,12 @@
 """
 DNS Control — Deploy Service
-Full production deployment lifecycle: validate → generate → backup → write → reload → verify.
+Full production deployment lifecycle: validate → generate → stage → validate-staged → backup → apply → reload → verify.
 """
 
 import json
 import os
 import shutil
+import tempfile
 import time
 import uuid
 import logging
@@ -19,13 +20,33 @@ from app.executors.command_runner import run_command
 logger = logging.getLogger("dns-control.deploy")
 
 BACKUP_ROOT = getattr(settings, "BACKUP_DIR", "/var/lib/dns-control/backups")
+STAGING_ROOT = os.path.join(getattr(settings, "DATA_DIR", "/var/lib/dns-control"), "staging")
 DEPLOY_STATE_FILE = os.path.join(
     getattr(settings, "DATA_DIR", "/var/lib/dns-control"), "deploy-state.json"
 )
 
+# ═══ In-memory deploy state for polling ═══
+_live_state: dict = {
+    "phase": "idle",
+    "currentStep": None,
+    "totalSteps": 0,
+    "completedSteps": 0,
+    "lastMessage": "",
+    "startedAt": None,
+    "updatedAt": None,
+    "deployId": None,
+    "errors": [],
+    "warnings": [],
+}
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _update_live_state(**kwargs):
+    global _live_state
+    _live_state = {**_live_state, **kwargs, "updatedAt": _now_iso()}
 
 
 def _step(order: int, name: str, command: str | None = None) -> dict:
@@ -46,6 +67,7 @@ def _step(order: int, name: str, command: str | None = None) -> dict:
 def _run_step(step: dict, fn) -> dict:
     """Execute fn and populate step timing/status."""
     step["startedAt"] = _now_iso()
+    _update_live_state(currentStep=step["name"], lastMessage=f"Executando: {step['name']}")
     t0 = time.monotonic()
     try:
         result = fn()
@@ -69,18 +91,35 @@ def _run_step(step: dict, fn) -> dict:
         return step
 
 
+def get_live_deploy_state() -> dict:
+    """Return current in-memory deploy state for polling."""
+    disk_state = get_deploy_state()
+    return {
+        **_live_state,
+        "diskState": disk_state,
+    }
+
+
 def execute_deploy(
     payload: dict[str, Any],
     scope: str = "full",
     dry_run: bool = False,
     operator: str = "system",
 ) -> dict:
-    """Full deployment pipeline with step-by-step execution."""
+    """Full deployment pipeline with staging directory validation."""
     deploy_id = str(uuid.uuid4())[:12]
     steps: list[dict] = []
     all_ok = True
     backup_id = None
     changed_files: list[str] = []
+    staging_dir = None
+
+    phase = "dry_run_validating" if dry_run else "applying"
+    _update_live_state(
+        phase=phase, deployId=deploy_id, startedAt=_now_iso(),
+        completedSteps=0, totalSteps=0, errors=[], warnings=[],
+        currentStep="Iniciando pipeline", lastMessage="Pipeline iniciado"
+    )
 
     # ═══ Step 1: Validate ═══
     s1 = _step(1, "Validar modelo de configuração")
@@ -88,10 +127,15 @@ def execute_deploy(
         v = validate_config(payload)
         if not v["valid"]:
             return {"status": "failed", "output": f"Erros: {v['errors']}", "stderr": json.dumps(v["errors"])}
-        return {"status": "success", "output": f"Validação OK — {len(v.get('warnings', []))} avisos"}
+        warnings = v.get("warnings", [])
+        if warnings:
+            _update_live_state(warnings=warnings)
+        return {"status": "success", "output": f"Validação OK — {len(warnings)} avisos"}
     _run_step(s1, validate)
     steps.append(s1)
+    _update_live_state(completedSteps=1)
     if s1["status"] == "failed":
+        _update_live_state(phase="failed", lastMessage="Validação falhou")
         return _build_result(deploy_id, steps, False, dry_run, scope, operator, [], [], backup_id)
 
     # ═══ Step 2: Generate files ═══
@@ -103,22 +147,132 @@ def execute_deploy(
         return {"status": "success", "output": f"{len(files)} arquivos gerados"}
     _run_step(s2, generate)
     steps.append(s2)
+    _update_live_state(completedSteps=2)
     if s2["status"] == "failed":
+        _update_live_state(phase="failed", lastMessage="Geração de arquivos falhou")
         return _build_result(deploy_id, steps, False, dry_run, scope, operator, [], [], backup_id)
 
+    # ═══ Step 3: Write to staging directory ═══
+    s3_stage = _step(3, "Gravar em diretório de staging")
+    def write_staging():
+        nonlocal staging_dir
+        staging_dir = os.path.join(STAGING_ROOT, f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{deploy_id}")
+        os.makedirs(staging_dir, exist_ok=True)
+        for f in files:
+            staged_path = os.path.join(staging_dir, f["path"].lstrip("/"))
+            os.makedirs(os.path.dirname(staged_path), exist_ok=True)
+            with open(staged_path, "w") as fp:
+                fp.write(f["content"])
+        return {"status": "success", "output": f"{len(files)} arquivos gravados em staging: {staging_dir}"}
+    _run_step(s3_stage, write_staging)
+    steps.append(s3_stage)
+    _update_live_state(completedSteps=3)
+
+    # ═══ Step 4: Validate staged files ═══
+    s4_validate = _step(4, "Validar arquivos em staging")
+    validation_errors = []
+    def validate_staged():
+        nonlocal validation_errors
+        results = []
+        if not staging_dir:
+            return {"status": "failed", "output": "Staging directory missing"}
+
+        # Validate unbound configs
+        for f in files:
+            if "/unbound/" in f["path"] and f["path"].endswith(".conf") and "block" not in f["path"]:
+                staged_path = os.path.join(staging_dir, f["path"].lstrip("/"))
+                if os.path.exists(staged_path):
+                    r = run_command("unbound-checkconf", [staged_path], timeout=10)
+                    if r["exit_code"] != 0:
+                        validation_errors.append(f"unbound-checkconf {f['path']}: {r['stderr'][:200]}")
+                        results.append(f"FAIL: {f['path']}")
+                    else:
+                        results.append(f"OK: {f['path']}")
+
+        # Validate nftables config
+        for f in files:
+            if f["path"] == "/etc/nftables.conf" or (f["path"].endswith(".nft") and "nftables" in f["path"]):
+                staged_path = os.path.join(staging_dir, f["path"].lstrip("/"))
+                if os.path.exists(staged_path) and f["path"] == "/etc/nftables.conf":
+                    r = run_command("nft", ["-c", "-f", staged_path], timeout=10, use_privilege=True)
+                    if r["exit_code"] != 0:
+                        validation_errors.append(f"nft -c -f {f['path']}: {r['stderr'][:200]}")
+                        results.append(f"FAIL: {f['path']}")
+                    else:
+                        results.append(f"OK: nftables syntax valid")
+
+        # IP collision detection
+        ip_map: dict[str, list[str]] = {}
+        instances = payload.get("instances", [])
+        vips = payload.get("serviceVips", [])
+        for inst in instances:
+            for field in ("bindIp", "egressIpv4", "controlInterface"):
+                ip = inst.get(field, "")
+                if ip:
+                    ip_map.setdefault(ip, []).append(f"{inst.get('name', '?')}/{field}")
+        for vip in vips:
+            ip = vip.get("ipv4", "")
+            if ip:
+                ip_map.setdefault(ip, []).append(f"VIP/{ip}")
+        host_ip = payload.get("ipv4Address", "").split("/")[0]
+        if host_ip:
+            ip_map.setdefault(host_ip, []).append("host/ipv4Address")
+
+        for ip, users in ip_map.items():
+            if len(users) > 1:
+                validation_errors.append(f"IP collision: {ip} used by {', '.join(users)}")
+
+        if validation_errors:
+            _update_live_state(errors=validation_errors)
+            return {"status": "failed", "output": f"{len(validation_errors)} erros de validação", "stderr": "\n".join(validation_errors)}
+        return {"status": "success", "output": f"Validação staging OK: {len(results)} verificações"}
+    _run_step(s4_validate, validate_staged)
+    steps.append(s4_validate)
+    _update_live_state(completedSteps=4)
+
     if dry_run:
-        s_dry = _step(3, "Dry-run concluído")
-        s_dry["status"] = "success"
-        s_dry["output"] = "Nenhuma alteração aplicada (modo dry-run)"
+        # Generate commands that would run
+        restart_cmds = _get_restart_commands(scope, payload)
+        commands_plan = [
+            "systemctl daemon-reload",
+            "sysctl --system",
+        ] + [" ".join(cmd_args) for _, cmd_args, _ in restart_cmds]
+
+        s_dry = _step(5, "Dry-run concluído")
+        s_dry["status"] = "success" if not validation_errors else "failed"
+        s_dry["output"] = (
+            "Nenhuma alteração aplicada (modo dry-run)" if not validation_errors
+            else f"Dry-run falhou com {len(validation_errors)} erros"
+        )
         s_dry["startedAt"] = _now_iso()
         s_dry["finishedAt"] = _now_iso()
         steps.append(s_dry)
         health_checks = _generate_health_checks(payload, dry_run=True)
-        return _build_result(deploy_id, steps, True, True, scope, operator, files, health_checks, None)
 
-    # ═══ Step 3: Backup ═══
-    s3 = _step(3, "Backup configuração atual", None)
-    s3["rollbackHint"] = "Restaurar backup anterior"
+        # Cleanup staging
+        if staging_dir and os.path.isdir(staging_dir):
+            try:
+                shutil.rmtree(staging_dir)
+            except Exception:
+                pass
+
+        result = _build_result(deploy_id, steps, not bool(validation_errors), True, scope, operator, files, health_checks, None)
+        result["commandsPlan"] = commands_plan
+        result["validationErrors"] = validation_errors
+        result["warnings"] = _live_state.get("warnings", [])
+        _update_live_state(phase="idle", lastMessage="Dry-run concluído")
+        return result
+
+    if s4_validate["status"] == "failed":
+        _update_live_state(phase="failed", lastMessage="Validação de staging falhou")
+        return _build_result(deploy_id, steps, False, dry_run, scope, operator, files, [], backup_id)
+
+    # ═══ Step 5: Backup ═══
+    total_apply_steps = 12  # estimate
+    _update_live_state(totalSteps=total_apply_steps)
+
+    s5 = _step(5, "Backup configuração atual", None)
+    s5["rollbackHint"] = "Restaurar backup anterior"
     def backup():
         nonlocal backup_id
         backup_id = datetime.now().strftime("%Y%m%d_%H%M%S") + f"_{deploy_id}"
@@ -131,7 +285,6 @@ def execute_deploy(
                 dst = os.path.join(backup_dir, src.lstrip("/").replace("/", "__"))
                 shutil.copy2(src, dst)
                 backed += 1
-        # Save manifest
         with open(os.path.join(backup_dir, "manifest.json"), "w") as mf:
             json.dump({
                 "deploy_id": deploy_id,
@@ -141,67 +294,36 @@ def execute_deploy(
                 "file_paths": [f["path"] for f in files],
             }, mf, indent=2)
         return {"status": "success", "output": f"Backup salvo: {backup_dir} ({backed} arquivos)"}
-    _run_step(s3, backup)
-    steps.append(s3)
-
-    # ═══ Step 4: Write network configs ═══
-    s4 = _step(4, "Gravar configuração de rede")
-    def write_network():
-        written = 0
-        for f in files:
-            if _scope_matches(f["path"], "network") and _scope_matches(f["path"], scope):
-                _write_file(f)
-                changed_files.append(f["path"])
-                written += 1
-        return {"status": "success", "output": f"{written} arquivos de rede gravados"}
-    _run_step(s4, write_network)
-    steps.append(s4)
-    if s4["status"] == "failed":
-        all_ok = False
-
-    # ═══ Step 5: Write unbound configs ═══
-    s5 = _step(5, "Gravar configuração Unbound")
-    def write_unbound():
-        written = 0
-        for f in files:
-            if _scope_matches(f["path"], "dns") and _scope_matches(f["path"], scope):
-                _write_file(f)
-                changed_files.append(f["path"])
-                written += 1
-        return {"status": "success", "output": f"{written} arquivos Unbound gravados"}
-    _run_step(s5, write_unbound)
+    _run_step(s5, backup)
     steps.append(s5)
-    if s5["status"] == "failed":
-        all_ok = False
+    _update_live_state(completedSteps=5)
 
-    # ═══ Step 6: Write nftables configs ═══
-    s6 = _step(6, "Gravar configuração nftables")
-    def write_nftables():
+    # ═══ Step 6: Apply files from staging to final paths ═══
+    s6 = _step(6, "Aplicar arquivos (staging → produção)")
+    def apply_from_staging():
         written = 0
         for f in files:
-            if _scope_matches(f["path"], "nftables") and _scope_matches(f["path"], scope):
+            if _scope_matches(f["path"], scope):
                 _write_file(f)
                 changed_files.append(f["path"])
                 written += 1
-        return {"status": "success", "output": f"{written} arquivos nftables gravados"}
-    _run_step(s6, write_nftables)
+        return {"status": "success", "output": f"{written} arquivos aplicados"}
+    _run_step(s6, apply_from_staging)
     steps.append(s6)
+    _update_live_state(completedSteps=6)
     if s6["status"] == "failed":
         all_ok = False
 
-    # ═══ Step 7: Write sysctl + FRR + systemd ═══
-    s7 = _step(7, "Gravar sysctl, FRR e systemd units")
-    def write_rest():
-        written = 0
+    # ═══ Step 7: chmod scripts ═══
+    s7_chmod = _step(7, "Ajustar permissões de scripts")
+    def chmod_scripts():
         for f in files:
-            p = f["path"]
-            if p not in changed_files and _scope_matches(p, scope):
-                _write_file(f)
-                changed_files.append(p)
-                written += 1
-        return {"status": "success", "output": f"{written} arquivos adicionais gravados"}
-    _run_step(s7, write_rest)
-    steps.append(s7)
+            if f["path"].endswith(".sh"):
+                run_command("chmod", ["+x", f["path"]], timeout=5)
+        return {"status": "success", "output": "Permissões ajustadas"}
+    _run_step(s7_chmod, chmod_scripts)
+    steps.append(s7_chmod)
+    _update_live_state(completedSteps=7)
 
     # ═══ Step 8: daemon-reload ═══
     s8 = _step(8, "Recarregar daemons (systemctl daemon-reload)", "systemctl daemon-reload")
@@ -215,12 +337,26 @@ def execute_deploy(
         }
     _run_step(s8, daemon_reload)
     steps.append(s8)
+    _update_live_state(completedSteps=8)
     if s8["status"] == "failed":
         all_ok = False
 
-    # ═══ Step 9: Restart/reload services ═══
+    # ═══ Step 9: sysctl --system ═══
+    s9_sysctl = _step(9, "Aplicar parâmetros sysctl", "sysctl --system")
+    def apply_sysctl():
+        r = run_command("sysctl", ["--system"], timeout=15)
+        return {
+            "status": "success" if r["exit_code"] == 0 else "failed",
+            "output": r["stdout"][:500] or "sysctl aplicado",
+            "stderr": r["stderr"][:500],
+        }
+    _run_step(s9_sysctl, apply_sysctl)
+    steps.append(s9_sysctl)
+    _update_live_state(completedSteps=9)
+
+    # ═══ Step 10+: Restart/reload services ═══
     restart_cmds = _get_restart_commands(scope, payload)
-    order = 9
+    order = 10
     for cmd_name, cmd_args, hint in restart_cmds:
         s = _step(order, cmd_name, " ".join(cmd_args))
         s["rollbackHint"] = hint
@@ -233,15 +369,16 @@ def execute_deploy(
             }
         _run_step(s, restart)
         steps.append(s)
+        _update_live_state(completedSteps=order)
         if s["status"] == "failed":
             all_ok = False
-            # Stop pipeline on critical failure
             break
         order += 1
 
-    # ═══ Step N: Post-deploy health checks ═══
+    # ═══ Post-deploy health checks ═══
     health_checks = []
     if all_ok:
+        _update_live_state(phase="verifying", currentStep="Verificação pós-deploy")
         s_health = _step(order, "Verificação pós-deploy")
         def verify():
             nonlocal health_checks
@@ -254,11 +391,23 @@ def execute_deploy(
             return {"status": "success", "output": f"{passed}/{total} checks OK"}
         _run_step(s_health, verify)
         steps.append(s_health)
-        if s_health["status"] == "failed":
-            all_ok = False
+
+    # Cleanup staging
+    if staging_dir and os.path.isdir(staging_dir):
+        try:
+            shutil.rmtree(staging_dir)
+        except Exception:
+            pass
 
     # Save deploy state
+    final_status = "success" if all_ok else "failed"
     _save_deploy_state(deploy_id, operator, all_ok, backup_id)
+    _update_live_state(
+        phase=final_status,
+        lastMessage=f"Deploy {'concluído com sucesso' if all_ok else 'falhou'}",
+        completedSteps=len(steps),
+        totalSteps=len(steps),
+    )
 
     return _build_result(deploy_id, steps, all_ok, dry_run, scope, operator, files, health_checks, backup_id)
 
@@ -269,14 +418,16 @@ def execute_rollback(backup_id: str, operator: str = "system") -> dict:
     restored_files: list[str] = []
     services_to_restart: set[str] = set()
 
+    _update_live_state(phase="rollback_in_progress", startedAt=_now_iso(), currentStep="Rollback", lastMessage="Iniciando rollback")
+
     backup_dir = os.path.join(BACKUP_ROOT, backup_id)
     if not os.path.isdir(backup_dir):
+        _update_live_state(phase="rollback_failed", lastMessage="Backup não encontrado")
         return {"success": False, "error": f"Backup não encontrado: {backup_id}",
                 "restoredFiles": [], "restartedServices": [], "steps": [], "duration": 0}
 
     t0 = time.monotonic()
 
-    # Read manifest
     manifest_path = os.path.join(backup_dir, "manifest.json")
     manifest = {}
     if os.path.exists(manifest_path):
@@ -295,7 +446,6 @@ def execute_rollback(backup_id: str, operator: str = "system") -> dict:
             os.makedirs(ddir, exist_ok=True)
             shutil.copy2(src, original_path)
             restored_files.append(original_path)
-            # Determine services to restart
             if "/unbound/" in original_path:
                 name = os.path.basename(original_path).replace(".conf", "")
                 services_to_restart.add(name)
@@ -315,8 +465,16 @@ def execute_rollback(backup_id: str, operator: str = "system") -> dict:
     _run_step(s2, reload_d)
     steps.append(s2)
 
-    # Step 3: Restart affected services
-    order = 3
+    # Step 3: sysctl --system
+    s3 = _step(3, "sysctl --system", "sysctl --system")
+    def sysctl_reload():
+        r = run_command("sysctl", ["--system"], timeout=15)
+        return {"status": "success" if r["exit_code"] == 0 else "failed", "output": r["stdout"][:500]}
+    _run_step(s3, sysctl_reload)
+    steps.append(s3)
+
+    # Step 4+: Restart affected services
+    order = 4
     for svc in sorted(services_to_restart):
         s = _step(order, f"Reiniciar {svc}", f"systemctl restart {svc}")
         def restart_svc(name=svc):
@@ -326,7 +484,6 @@ def execute_rollback(backup_id: str, operator: str = "system") -> dict:
         steps.append(s)
         order += 1
 
-    # Apply nftables if it was restored
     if "nftables" in services_to_restart:
         s = _step(order, "Recarregar nftables", "nft -f /etc/nftables.conf")
         def reload_nft():
@@ -337,6 +494,9 @@ def execute_rollback(backup_id: str, operator: str = "system") -> dict:
 
     duration = int((time.monotonic() - t0) * 1000)
     all_ok = all(s["status"] == "success" for s in steps)
+
+    final_phase = "rollback_success" if all_ok else "rollback_failed"
+    _update_live_state(phase=final_phase, lastMessage=f"Rollback {'concluído' if all_ok else 'falhou'}")
 
     return {
         "success": all_ok,
@@ -437,8 +597,9 @@ def _get_restart_commands(scope: str, payload: dict) -> list[tuple[str, list[str
         routing = payload.get("routingMode", "static")
         if routing != "static":
             cmds.append(("Reiniciar FRR", ["systemctl", "restart", "frr"], "systemctl restart frr (from backup)"))
+    # Network restart is safe-gated: mark as manual-required
     if scope in ("full", "network"):
-        cmds.append(("Recarregar rede", ["ifreload", "-a"], "ifreload -a (from backup)"))
+        cmds.append(("Rede: escrita OK (restart manual)", ["echo", "network-manual-required"], "Rede requer restart manual"))
     return cmds
 
 
@@ -448,7 +609,6 @@ def _run_health_checks(payload: dict) -> list[dict]:
     instances = payload.get("instances", [])
     vips = payload.get("serviceVips", [])
 
-    # Check each instance health
     for inst in instances:
         name = inst.get("name", "unbound")
         bind_ip = inst.get("bindIp", "")
@@ -475,6 +635,19 @@ def _run_health_checks(payload: dict) -> list[dict]:
                 "target": bind_ip,
                 "status": "pass" if r["exit_code"] == 0 else "fail",
                 "detail": r["stdout"].strip()[:200] or "No response",
+                "durationMs": int((time.monotonic() - t0) * 1000),
+            })
+
+        # Port binding check
+        if bind_ip:
+            t0 = time.monotonic()
+            r = run_command("ss", ["-lntup"], timeout=5)
+            port_bound = bind_ip in r["stdout"] and ":53" in r["stdout"]
+            checks.append({
+                "name": f"{name} port 53 bound ({bind_ip})",
+                "target": f"{bind_ip}:53",
+                "status": "pass" if port_bound else "fail",
+                "detail": "Port 53 bound" if port_bound else "Port 53 NOT bound",
                 "durationMs": int((time.monotonic() - t0) * 1000),
             })
 
@@ -505,7 +678,18 @@ def _run_health_checks(payload: dict) -> list[dict]:
         "durationMs": int((time.monotonic() - t0) * 1000),
     })
 
-    # Check VIP reachability using configured health check domains
+    # Check nftables counters
+    t0 = time.monotonic()
+    r = run_command("nft", ["list", "counters"], timeout=5, use_privilege=True)
+    checks.append({
+        "name": "nftables counters",
+        "target": "nftables",
+        "status": "pass" if r["exit_code"] == 0 else "fail",
+        "detail": r["stdout"].strip()[:200] or "No counters",
+        "durationMs": int((time.monotonic() - t0) * 1000),
+    })
+
+    # Check VIP reachability
     for vip in vips:
         vip_ip = vip.get("ipv4", "")
         if vip_ip:
@@ -553,7 +737,11 @@ def _generate_health_checks(payload: dict, dry_run: bool = False) -> list[dict]:
     for inst in instances:
         name = inst.get("name", "unbound")
         checks.append({"name": f"{name} systemd status", "target": name, "status": "skip", "detail": "Dry-run — não executado", "durationMs": 0})
+        if inst.get("bindIp"):
+            checks.append({"name": f"{name} DNS probe ({inst['bindIp']})", "target": inst["bindIp"], "status": "skip", "detail": "Dry-run", "durationMs": 0})
+            checks.append({"name": f"{name} port 53 bound ({inst['bindIp']})", "target": f"{inst['bindIp']}:53", "status": "skip", "detail": "Dry-run", "durationMs": 0})
     checks.append({"name": "nftables rules loaded", "target": "nftables", "status": "skip", "detail": "Dry-run", "durationMs": 0})
+    checks.append({"name": "nftables counters", "target": "nftables", "status": "skip", "detail": "Dry-run", "durationMs": 0})
     return checks
 
 
@@ -571,12 +759,12 @@ def _save_deploy_state(deploy_id: str, operator: str, success: bool, backup_id: 
             "lastDeploymentId": deploy_id,
             "totalDeployments": total,
             "rollbackAvailable": backup_id is not None,
+            "lastBackupPath": os.path.join(BACKUP_ROOT, backup_id) if backup_id else None,
         }
         os.makedirs(os.path.dirname(DEPLOY_STATE_FILE), exist_ok=True)
         with open(DEPLOY_STATE_FILE, "w") as f:
             json.dump(state, f, indent=2)
 
-        # Also persist deployment record in /var/lib/dns-control/deployments/
         deploy_dir = os.path.join(
             getattr(settings, "DATA_DIR", "/var/lib/dns-control"), "deployments", deploy_id
         )
