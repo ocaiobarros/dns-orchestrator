@@ -169,7 +169,7 @@ export const api = {
       comment: request.comment,
     }),
   dryRunConfig: (request: ApplyRequest) =>
-    apiCall<ApplyResult>('POST', '/deploy/apply', {
+    apiCall<ApplyResult>('POST', '/deploy/dry-run', {
       config: request.config,
       scope: request.scope || 'full',
       dry_run: true,
