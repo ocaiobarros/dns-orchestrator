@@ -61,11 +61,11 @@ export default function Dashboard() {
   const allRunning = safeServices.every(s => s.status === 'running');
 
   // Prefer dashboard summary metrics (real unbound-control data) over instance stats aggregation
-  const dnsMetricsAvailable = sysInfo?.dns_metrics_available ?? sysInfo?.dnsMetricsAvailable ?? false;
-  const dnsMetricsStatus = sysInfo?.dns_metrics_status ?? sysInfo?.dnsMetricsStatus ?? 'unknown';
-  const dashTotalQueries = sysInfo?.total_queries ?? sysInfo?.totalQueries ?? 0;
-  const dashCacheHit = sysInfo?.cache_hit_ratio ?? sysInfo?.cacheHitRatio ?? 0;
-  const dashLatency = sysInfo?.latency_ms ?? sysInfo?.latencyMs ?? 0;
+  const dnsMetricsAvailable = sysInfo?.dns_metrics_available ?? false;
+  const dnsMetricsStatus = sysInfo?.dns_metrics_status ?? 'unknown';
+  const dashTotalQueries = sysInfo?.total_queries ?? 0;
+  const dashCacheHit = sysInfo?.cache_hit_ratio ?? 0;
+  const dashLatency = sysInfo?.latency_ms ?? 0;
 
   // Fallback to instance stats if dashboard metrics not available
   const totalQps = dnsMetricsAvailable ? dashTotalQueries : safeStats.reduce((a, b) => a + getInstanceQueries(b), 0);

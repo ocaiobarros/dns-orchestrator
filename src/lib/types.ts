@@ -128,6 +128,10 @@ export interface SystemInfo {
   nat_active_connections?: number;
   unbound_instances?: number;
   alerts?: any[];
+  // DNS metrics from privileged unbound-control
+  dns_metrics_available?: boolean;
+  dns_metrics_status?: string;
+  latency_ms?: number;
 }
 
 // ---- Network ----
