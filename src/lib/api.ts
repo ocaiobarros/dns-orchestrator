@@ -42,21 +42,15 @@ import {
 
 // Production: mocks are enabled only in development when API URL is not configured.
 const IS_PREVIEW = import.meta.env.MODE === 'development' && !import.meta.env.VITE_API_URL;
-const API_BASE = (import.meta.env.VITE_API_URL ?? '').trim();
-const API_BASE_TRIMMED = API_BASE.replace(/\/+$/, '');
-const API_ROOT = API_BASE_TRIMMED
-  ? (API_BASE_TRIMMED.endsWith('/api') ? API_BASE_TRIMMED : `${API_BASE_TRIMMED}/api`)
-  : '';
+const API_BASE = (import.meta.env.VITE_API_URL ?? '').trim().replace(/\/+$/, '');
 
 function normalizeApiPath(path: string): string {
-  const withLeadingSlash = path.startsWith('/') ? path : `/${path}`;
-  if (withLeadingSlash === '/api') return '/';
-  return withLeadingSlash.startsWith('/api/') ? withLeadingSlash.slice(4) : withLeadingSlash;
+  return path.startsWith('/') ? path : `/${path}`;
 }
 
 function buildApiUrl(path: string): string {
   const normalizedPath = normalizeApiPath(path);
-  return API_ROOT ? `${API_ROOT}${normalizedPath}` : normalizedPath;
+  return API_BASE ? `${API_BASE}${normalizedPath}` : normalizedPath;
 }
 
 async function apiCall<T>(
