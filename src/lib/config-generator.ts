@@ -22,8 +22,7 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
         .join('\n')
     : '';
 
-  return `
-server:
+  return `server:
     verbosity: ${config.enableDetailedLogs ? 2 : 1}
     statistics-interval: 20
     extended-statistics: yes
@@ -45,6 +44,7 @@ ${config.enableIpv6 && inst.egressIpv6 ? `    outgoing-interface: ${inst.egressI
     rrset-cache-slabs: ${config.threads}
 
     cache-max-ttl: ${config.maxTtl}
+    cache-min-ttl: ${config.minTtl}
     infra-host-ttl: 60
     infra-lame-ttl: 120
 
@@ -64,14 +64,15 @@ ${aclIpv6Lines}
     directory: "/etc/unbound"
     logfile: ""
     use-syslog: no
-    pidfile: "/var/run/unbound.pid"
+    pidfile: "/var/run/${inst.name}.pid"
     root-hints: "${config.rootHintsPath}"
 
-    identity: "${config.dnsIdentity}"
+    identity: "${config.dnsIdentity || config.hostname}"
     version: "${config.dnsVersion}"
     hide-identity: yes
     hide-version: yes
     harden-glue: yes
+    harden-dnssec-stripped: yes
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
     module-config: "iterator"
@@ -114,7 +115,7 @@ export function generateSystemdUnit(_config: WizardConfig, instanceIndex: number
   if (!inst) return '# Error: Instance not found';
 
   return `[Unit]
-Description=Unbound DNS server
+Description=Unbound DNS server — ${inst.name}
 Documentation=man:unbound(8)
 After=network.target
 Before=nss-lookup.target
@@ -141,152 +142,182 @@ export function generatePostUpScript(config: WizardConfig): string {
   const lines: string[] = [
     '#!/bin/sh',
     '# DNS Control — Network post-up script',
-    '# Generated configuration — do not edit manually',
+    `# Generated for: ${config.hostname || 'dns-control'}`,
+    `# Instances: ${config.instances.map(i => i.name).join(', ')}`,
     '',
   ];
 
   // Egress IPs (public) on loopback
-  config.instances.forEach(inst => {
-    lines.push(`     /usr/sbin/ip -4 addr add ${inst.egressIpv4}/32 dev lo`);
-  });
+  if (config.instances.some(i => i.egressIpv4)) {
+    lines.push('# === Egress IPs (public outgoing-interface) on loopback ===');
+    config.instances.forEach(inst => {
+      if (inst.egressIpv4) {
+        lines.push(`/usr/sbin/ip -4 addr add ${inst.egressIpv4}/32 dev lo`);
+      }
+    });
+    lines.push('');
+  }
 
   // Default route
-  lines.push(`     /usr/sbin/ip -4 route add default via ${config.ipv4Gateway}`);
-  lines.push('');
+  if (config.ipv4Gateway) {
+    lines.push('# === Default route ===');
+    lines.push(`/usr/sbin/ip -4 route add default via ${config.ipv4Gateway}`);
+    lines.push('');
+  }
 
   // IPv6
   if (config.enableIpv6 && config.ipv6Address) {
-    lines.push(`     /usr/sbin/ip -6 addr add ${config.ipv6Address} dev ${config.mainInterface}`);
+    lines.push('# === IPv6 configuration ===');
+    lines.push(`/usr/sbin/ip -6 addr add ${config.ipv6Address} dev ${config.mainInterface}`);
     if (config.ipv6Gateway) {
-      lines.push(`     /usr/sbin/ip -6 route add default via ${config.ipv6Gateway}`);
+      lines.push(`/usr/sbin/ip -6 route add default via ${config.ipv6Gateway}`);
     }
     lines.push('');
 
     // IPv6 egress IPs
-    config.instances.forEach(inst => {
-      if (inst.egressIpv6) {
-        lines.push(`     /usr/sbin/ip addr add ${inst.egressIpv6}/128 dev lo`);
-      }
-    });
-    lines.push('');
+    const ipv6Egress = config.instances.filter(i => i.egressIpv6);
+    if (ipv6Egress.length > 0) {
+      lines.push('# === IPv6 egress IPs on loopback ===');
+      ipv6Egress.forEach(inst => {
+        lines.push(`/usr/sbin/ip addr add ${inst.egressIpv6}/128 dev lo`);
+      });
+      lines.push('');
+    }
   }
 
   // Listener IPs on loopback
-  config.instances.forEach(inst => {
-    lines.push(`     /usr/sbin/ip addr add ${inst.bindIp}/32 dev lo`);
-  });
-  lines.push('');
-
-  // IPv6 listener IPs
-  if (config.enableIpv6) {
+  if (config.instances.some(i => i.bindIp)) {
+    lines.push('# === Listener IPs (internal) on loopback ===');
     config.instances.forEach(inst => {
-      if (inst.bindIpv6) {
-        lines.push(`     /usr/sbin/ip addr add ${inst.bindIpv6}/128 dev lo`);
+      if (inst.bindIp) {
+        lines.push(`/usr/sbin/ip addr add ${inst.bindIp}/32 dev lo`);
       }
     });
     lines.push('');
   }
 
-  // VIP anycast IPs on loopback (commented by default — uncomment when ready)
-  lines.push('     # Anycast publico, descomentar ao final da implantação');
-  config.serviceVips.forEach(vip => {
-    lines.push(`     #/usr/sbin/ip addr add ${vip.ipv4}/32 dev lo`);
-    if (config.enableIpv6 && vip.ipv6) {
-      lines.push(`     #/usr/sbin/ip addr add ${vip.ipv6}/128 dev lo`);
+  // IPv6 listener IPs
+  if (config.enableIpv6) {
+    const ipv6Listeners = config.instances.filter(i => i.bindIpv6);
+    if (ipv6Listeners.length > 0) {
+      lines.push('# === IPv6 listener IPs on loopback ===');
+      ipv6Listeners.forEach(inst => {
+        lines.push(`/usr/sbin/ip addr add ${inst.bindIpv6}/128 dev lo`);
+      });
+      lines.push('');
     }
-  });
-  lines.push('');
-  lines.push('exit 0');
+  }
 
+  // VIP anycast IPs on loopback
+  if (config.serviceVips.length > 0) {
+    const needsLocalVip = ['pseudo-anycast-local', 'vip-local-dummy', 'anycast-frr-ospf'].includes(config.deploymentMode);
+    lines.push('# === VIPs de serviço (Anycast) ===');
+    if (!needsLocalVip) {
+      lines.push('# VIPs ficam no equipamento de borda — descomentar apenas se necessário');
+    }
+    config.serviceVips.forEach(vip => {
+      const prefix = needsLocalVip ? '' : '#';
+      lines.push(`${prefix}/usr/sbin/ip addr add ${vip.ipv4}/32 dev lo`);
+      if (config.enableIpv6 && vip.ipv6) {
+        lines.push(`${prefix}/usr/sbin/ip addr add ${vip.ipv6}/128 dev lo`);
+      }
+    });
+    lines.push('');
+  }
+
+  lines.push('exit 0');
   return lines.join('\n');
 }
 
 // ═══ NETWORK INTERFACES ═══
 
 export function generateNetworkInterfacesConf(config: WizardConfig): string {
-  return `
+  const vlanSuffix = config.vlanTag ? `.${config.vlanTag}` : '';
+  const iface = `${config.mainInterface}${vlanSuffix}`;
+  
+  return `# DNS Control — Network interfaces
+# Generated for: ${config.hostname || 'dns-control'}
+
 source /etc/network/interfaces.d/*
 
 auto lo
 iface lo inet loopback
 
-allow-hotplug ${config.mainInterface}
-iface ${config.mainInterface} inet static
+${config.vlanTag ? `auto ${config.mainInterface}\niface ${config.mainInterface} inet manual\n\nauto ${iface}\niface ${iface} inet static` : `allow-hotplug ${iface}\niface ${iface} inet static`}
     address ${config.ipv4Address}
+    gateway ${config.ipv4Gateway}
     dns-nameservers ${config.bootstrapDns}
 
 post-up /etc/network/post-up.sh
 `;
 }
 
-// ═══ NFTABLES — STICKY SOURCE + NTH BALANCING ═══
+// ═══ NFTABLES — MODULAR GENERATION ═══
 
 export function generateNftablesConf(config: WizardConfig): string {
-  const lines: string[] = [
-    '#!/usr/sbin/nft -f',
-    '# DNS Control — nftables configuration',
-    '# Generated configuration — do not edit manually',
-    '',
-    'flush ruleset',
-    'include "/etc/nftables.d/*.nft"',
-    '',
-  ];
-  return lines.join('\n');
+  return `#!/usr/sbin/nft -f
+# DNS Control — nftables master configuration
+# Generated for: ${config.hostname || 'dns-control'}
+# Instances: ${config.instances.length} · VIPs: ${config.serviceVips.length}
+# Distribution: ${config.distributionPolicy}
+
+flush ruleset
+include "/etc/nftables.d/*.nft"
+`;
 }
 
 export function generateNftablesModular(config: WizardConfig): { path: string; content: string }[] {
   const files: { path: string; content: string }[] = [];
 
   // Main config
-  files.push({
-    path: '/etc/nftables.conf',
-    content: generateNftablesConf(config),
-  });
+  files.push({ path: '/etc/nftables.conf', content: generateNftablesConf(config) });
 
   // Tables
-  files.push({
-    path: '/etc/nftables.d/0002-table-ipv4-nat.nft',
-    content: 'create table ip nat',
-  });
+  files.push({ path: '/etc/nftables.d/0002-table-ipv4-nat.nft', content: 'create table ip nat' });
   if (config.enableIpv6) {
-    files.push({
-      path: '/etc/nftables.d/0003-table-ipv6-nat.nft',
-      content: 'create table ip6 nat',
-    });
+    files.push({ path: '/etc/nftables.d/0003-table-ipv6-nat.nft', content: 'create table ip6 nat' });
   }
 
   // PREROUTING chains
   files.push({
     path: '/etc/nftables.d/0051-hook-ipv4-prerouting.nft',
-    content: `    create chain ip nat PREROUTING {
-        type nat hook prerouting priority dstnat;
-        policy accept;
-    }`,
+    content: `create chain ip nat PREROUTING {\n    type nat hook prerouting priority dstnat;\n    policy accept;\n}`,
   });
   if (config.enableIpv6) {
     files.push({
       path: '/etc/nftables.d/0052-hook-ipv6-prerouting.nft',
-      content: `    create chain ip6 nat PREROUTING {
-        type nat hook prerouting priority dstnat;
-        policy accept;
-    }`,
+      content: `create chain ip6 nat PREROUTING {\n    type nat hook prerouting priority dstnat;\n    policy accept;\n}`,
+    });
+  }
+
+  // Rate limiting chains (if enabled)
+  if (config.enableDnsProtection) {
+    files.push({
+      path: '/etc/nftables.d/0060-table-filter.nft',
+      content: `create table ip filter`,
+    });
+    files.push({
+      path: '/etc/nftables.d/0061-hook-input.nft',
+      content: `create chain ip filter INPUT {\n    type filter hook input priority 0;\n    policy accept;\n}\nadd rule ip filter INPUT udp dport 53 limit rate over 100/second burst 50 packets drop\nadd rule ip filter INPUT tcp dport 53 limit rate over 50/second burst 25 packets drop`,
     });
   }
 
   // VIP definitions
-  const vipIpv4s = config.serviceVips.map(v => v.ipv4).join(',\n    ');
-  files.push({
-    path: '/etc/nftables.d/5100-nat-define-anyaddr-ipv4.nft',
-    content: `define DNS_ANYCAST_IPV4 = {\n    ${vipIpv4s}\n}`,
-  });
+  if (config.serviceVips.length > 0) {
+    const vipIpv4s = config.serviceVips.map(v => v.ipv4).filter(Boolean).join(',\n    ');
+    files.push({
+      path: '/etc/nftables.d/5100-nat-define-anyaddr-ipv4.nft',
+      content: `define DNS_ANYCAST_IPV4 = {\n    ${vipIpv4s}\n}`,
+    });
 
-  if (config.enableIpv6) {
-    const vipIpv6s = config.serviceVips.filter(v => v.ipv6).map(v => v.ipv6).join(',\n    ');
-    if (vipIpv6s) {
-      files.push({
-        path: '/etc/nftables.d/5200-nat-define-anyaddr-ipv6.nft',
-        content: `define DNS_ANYCAST_IPV6 = {\n    ${vipIpv6s}\n}`,
-      });
+    if (config.enableIpv6) {
+      const vipIpv6s = config.serviceVips.filter(v => v.ipv6).map(v => v.ipv6).join(',\n    ');
+      if (vipIpv6s) {
+        files.push({
+          path: '/etc/nftables.d/5200-nat-define-anyaddr-ipv6.nft',
+          content: `define DNS_ANYCAST_IPV6 = {\n    ${vipIpv6s}\n}`,
+        });
+      }
     }
   }
 
@@ -306,7 +337,8 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     });
   }
 
-  // Per-instance memory sets and chains (sticky source)
+  // Per-instance chains + sticky sets
+  const stickyTimeoutMin = Math.max(1, Math.floor(config.stickyTimeout / 60));
   let ruleid = 6001;
   config.instances.forEach(inst => {
     for (const proto of ['tcp', 'udp']) {
@@ -315,7 +347,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
 
       files.push({
         path: `/etc/nftables.d/${ruleid}-nat-addrlist-${subusers}.nft`,
-        content: `add set ip nat ${subusers} { type ipv4_addr; counter; size 8192; flags dynamic, timeout; timeout ${Math.floor(config.stickyTimeout / 60)}m; }`,
+        content: `add set ip nat ${subusers} { type ipv4_addr; counter; size 8192; flags dynamic, timeout; timeout ${stickyTimeoutMin}m; }`,
       });
       files.push({
         path: `/etc/nftables.d/${ruleid}-nat-chain-${subchain}.nft`,
@@ -344,7 +376,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     }
   });
 
-  // Memorized source rules (check if client is already assigned)
+  // Memorized source rules
   ruleid = 7001;
   config.instances.forEach(inst => {
     for (const proto of ['tcp', 'udp']) {
@@ -369,7 +401,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
       const subchain = `ipv4_dns_${proto}_${inst.name}`;
 
       files.push({
-        path: `/etc/nftables.d/${ruleid}-nat-rule-memorized-${subchain}.nft`,
+        path: `/etc/nftables.d/${ruleid}-nat-rule-nth-${subchain}.nft`,
         content: `add rule ip nat ${topchain} numgen inc mod ${randNum} 0 counter jump ${subchain}`,
       });
       ruleid++;
@@ -377,7 +409,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     });
   }
 
-  // Repeat for IPv6 if enabled
+  // IPv6 rules
   if (config.enableIpv6) {
     for (const proto of ['tcp', 'udp']) {
       files.push({
@@ -396,15 +428,8 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
       for (const proto of ['tcp', 'udp']) {
         const subchain = `ipv6_dns_${proto}_${inst.name}`;
         const subusers = `ipv6_users_${inst.name}`;
-
-        files.push({
-          path: `/etc/nftables.d/${ruleid}-nat-addrlist-${subusers}.nft`,
-          content: `add set ip6 nat ${subusers} { type ipv6_addr; counter; size 8192; flags dynamic, timeout; timeout ${Math.floor(config.stickyTimeout / 60)}m; }`,
-        });
-        files.push({
-          path: `/etc/nftables.d/${ruleid}-nat-chain-${subchain}.nft`,
-          content: `add chain ip6 nat ${subchain}`,
-        });
+        files.push({ path: `/etc/nftables.d/${ruleid}-nat-addrlist-${subusers}.nft`, content: `add set ip6 nat ${subusers} { type ipv6_addr; counter; size 8192; flags dynamic, timeout; timeout ${stickyTimeoutMin}m; }` });
+        files.push({ path: `/etc/nftables.d/${ruleid}-nat-chain-${subchain}.nft`, content: `add chain ip6 nat ${subchain}` });
         ruleid++;
       }
     });
@@ -415,7 +440,6 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
       for (const proto of ['tcp', 'udp']) {
         const subchain = `ipv6_dns_${proto}_${inst.name}`;
         const subusers = `ipv6_users_${inst.name}`;
-
         files.push({
           path: `/etc/nftables.d/${ruleid}-nat-rule-action-${subchain}.nft`,
           content: [
@@ -435,11 +459,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
         const topchain = `ipv6_${proto}_dns`;
         const subchain = `ipv6_dns_${proto}_${inst.name}`;
         const subusers = `ipv6_users_${inst.name}`;
-
-        files.push({
-          path: `/etc/nftables.d/${ruleid}-nat-rule-memorized-${subchain}.nft`,
-          content: `add rule ip6 nat ${topchain} ip6 saddr @${subusers} counter jump ${subchain}`,
-        });
+        files.push({ path: `/etc/nftables.d/${ruleid}-nat-rule-memorized-${subchain}.nft`, content: `add rule ip6 nat ${topchain} ip6 saddr @${subusers} counter jump ${subchain}` });
         ruleid++;
       }
     });
@@ -451,11 +471,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
       ipv6Instances.forEach(inst => {
         const topchain = `ipv6_${proto}_dns`;
         const subchain = `ipv6_dns_${proto}_${inst.name}`;
-
-        files.push({
-          path: `/etc/nftables.d/${ruleid}-nat-rule-memorized-${subchain}.nft`,
-          content: `add rule ip6 nat ${topchain} numgen inc mod ${randNum} 0 counter jump ${subchain}`,
-        });
+        files.push({ path: `/etc/nftables.d/${ruleid}-nat-rule-nth-${subchain}.nft`, content: `add rule ip6 nat ${topchain} numgen inc mod ${randNum} 0 counter jump ${subchain}` });
         ruleid++;
         randNum--;
       });
@@ -465,20 +481,150 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
   return files;
 }
 
-// ═══ SYSCTL ═══
+// ═══ SYSCTL — COMPLETE PRODUCTION TUNING ═══
 
-export function generateSysctlFiles(): { path: string; content: string }[] {
-  return [
-    { path: '/etc/sysctl.d/051-net-core.conf', content: `net.core.rmem_default=31457280\nnet.core.wmem_default=31457280\nnet.core.rmem_max=134217728\nnet.core.wmem_max=134217728\nnet.core.netdev_max_backlog=250000\nnet.core.optmem_max=33554432\nnet.core.default_qdisc=fq\nnet.core.somaxconn=4096` },
-    { path: '/etc/sysctl.d/052-net-tcp-ipv4.conf', content: `net.ipv4.tcp_sack = 1\nnet.ipv4.tcp_timestamps = 1\nnet.ipv4.tcp_low_latency = 1\nnet.ipv4.tcp_max_syn_backlog = 8192\nnet.ipv4.tcp_rmem = 4096 87380 67108864\nnet.ipv4.tcp_wmem = 4096 65536 67108864\nnet.ipv4.tcp_congestion_control=htcp\nnet.ipv4.tcp_mtu_probing=1` },
-    { path: '/etc/sysctl.d/065-default-foward-ipv4.conf', content: `net.ipv4.conf.default.forwarding=1` },
-    { path: '/etc/sysctl.d/066-default-foward-ipv6.conf', content: `net.ipv6.conf.default.forwarding=1` },
-    { path: '/etc/sysctl.d/067-all-foward-ipv4.conf', content: `net.ipv4.conf.all.forwarding=1` },
-    { path: '/etc/sysctl.d/068-all-foward-ipv6.conf', content: `net.ipv6.conf.all.forwarding=1` },
-    { path: '/etc/sysctl.d/069-ipv4-forward.conf', content: `net.ipv4.ip_forward=1` },
-    { path: '/etc/sysctl.d/073-swappiness.conf', content: `vm.swappiness=1` },
-    { path: '/etc/sysctl.d/090-netfilter-max.conf', content: `net.nf_conntrack_max=8000000` },
-  ];
+export function generateSysctlFiles(config: WizardConfig): { path: string; content: string }[] {
+  const files: { path: string; content: string }[] = [];
+
+  // Net core
+  files.push({ path: '/etc/sysctl.d/051-net-core.conf', content: [
+    'net.core.rmem_default=31457280', 'net.core.wmem_default=31457280',
+    'net.core.rmem_max=134217728', 'net.core.wmem_max=134217728',
+    'net.core.netdev_max_backlog=250000', 'net.core.optmem_max=33554432',
+    'net.core.default_qdisc=fq', 'net.core.somaxconn=4096',
+  ].join('\n') });
+
+  // TCP IPv4
+  files.push({ path: '/etc/sysctl.d/052-net-tcp-ipv4.conf', content: [
+    'net.ipv4.tcp_sack = 1', 'net.ipv4.tcp_timestamps = 1',
+    'net.ipv4.tcp_low_latency = 1', 'net.ipv4.tcp_max_syn_backlog = 8192',
+    'net.ipv4.tcp_rmem = 4096 87380 67108864', 'net.ipv4.tcp_wmem = 4096 65536 67108864',
+    'net.ipv4.tcp_mem = 6672016 6682016 7185248',
+    'net.ipv4.tcp_congestion_control=htcp', 'net.ipv4.tcp_mtu_probing=1',
+    'net.ipv4.tcp_moderate_rcvbuf = 1', 'net.ipv4.tcp_no_metrics_save = 1',
+  ].join('\n') });
+
+  // Port range
+  files.push({ path: '/etc/sysctl.d/056-port-range-ipv4.conf', content: 'net.ipv4.ip_local_port_range=1024 65535' });
+
+  // Default TTL
+  files.push({ path: '/etc/sysctl.d/062-default-ttl-ipv4.conf', content: 'net.ipv4.ip_default_ttl=128' });
+
+  // IPv4 neighbor / frag
+  files.push({ path: '/etc/sysctl.d/063-neigh-ipv4.conf', content: [
+    'net.ipv4.neigh.default.gc_interval = 30', 'net.ipv4.neigh.default.gc_stale_time = 60',
+    'net.ipv4.neigh.default.gc_thresh1 = 4096', 'net.ipv4.neigh.default.gc_thresh2 = 8192',
+    'net.ipv4.neigh.default.gc_thresh3 = 12288',
+    'net.ipv4.ipfrag_high_thresh=4194304', 'net.ipv4.ipfrag_low_thresh=3145728',
+    'net.ipv4.ipfrag_max_dist=64', 'net.ipv4.ipfrag_time=30',
+  ].join('\n') });
+
+  // IPv6 neighbor / frag
+  if (config.enableIpv6) {
+    files.push({ path: '/etc/sysctl.d/064-neigh-ipv6.conf', content: [
+      'net.ipv6.neigh.default.gc_interval = 30', 'net.ipv6.neigh.default.gc_stale_time = 60',
+      'net.ipv6.neigh.default.gc_thresh1 = 4096', 'net.ipv6.neigh.default.gc_thresh2 = 8192',
+      'net.ipv6.neigh.default.gc_thresh3 = 12288',
+      'net.ipv6.ip6frag_high_thresh=4194304', 'net.ipv6.ip6frag_low_thresh=3145728',
+      'net.ipv6.ip6frag_time=60',
+    ].join('\n') });
+  }
+
+  // Forwarding
+  files.push({ path: '/etc/sysctl.d/065-default-foward-ipv4.conf', content: 'net.ipv4.conf.default.forwarding=1' });
+  if (config.enableIpv6) {
+    files.push({ path: '/etc/sysctl.d/066-default-foward-ipv6.conf', content: 'net.ipv6.conf.default.forwarding=1' });
+  }
+  files.push({ path: '/etc/sysctl.d/067-all-foward-ipv4.conf', content: 'net.ipv4.conf.all.forwarding=1' });
+  if (config.enableIpv6) {
+    files.push({ path: '/etc/sysctl.d/068-all-foward-ipv6.conf', content: 'net.ipv6.conf.all.forwarding=1' });
+  }
+  files.push({ path: '/etc/sysctl.d/069-ipv4-forward.conf', content: 'net.ipv4.ip_forward=1' });
+
+  // Filesystem
+  files.push({ path: '/etc/sysctl.d/072-fs-options.conf', content: [
+    'fs.file-max = 3263776', 'fs.aio-max-nr=3263776', 'fs.mount-max=1048576',
+    'fs.mqueue.msg_max=128', 'fs.mqueue.msgsize_max=131072',
+    'fs.mqueue.queues_max=4096', 'fs.pipe-max-size=8388608',
+  ].join('\n') });
+
+  // Memory
+  files.push({ path: '/etc/sysctl.d/073-swappiness.conf', content: 'vm.swappiness=1' });
+  files.push({ path: '/etc/sysctl.d/074-vfs-cache-pressure.conf', content: 'vm.vfs_cache_pressure=50' });
+  files.push({ path: '/etc/sysctl.d/087-kernel-free-min-kb.conf', content: 'vm.min_free_kbytes = 32768' });
+
+  // Kernel
+  files.push({ path: '/etc/sysctl.d/081-kernel-panic.conf', content: 'kernel.panic=3' });
+  files.push({ path: '/etc/sysctl.d/082-kernel-threads.conf', content: 'kernel.threads-max=1031306' });
+  files.push({ path: '/etc/sysctl.d/083-kernel-pid.conf', content: 'kernel.pid_max=262144' });
+  files.push({ path: '/etc/sysctl.d/084-kernel-msgmax.conf', content: 'kernel.msgmax=327680' });
+  files.push({ path: '/etc/sysctl.d/085-kernel-msgmnb.conf', content: 'kernel.msgmnb=655360' });
+  files.push({ path: '/etc/sysctl.d/086-kernel-msgmni.conf', content: 'kernel.msgmni=32768' });
+
+  // Conntrack (nf_conntrack)
+  files.push({ path: '/etc/sysctl.d/090-netfilter-max.conf', content: 'net.nf_conntrack_max=8000000' });
+  files.push({ path: '/etc/sysctl.d/091-netfilter-generic.conf', content: [
+    'net.netfilter.nf_conntrack_buckets=262144',
+    'net.netfilter.nf_conntrack_checksum=1',
+    'net.netfilter.nf_conntrack_events = 1',
+    'net.netfilter.nf_conntrack_expect_max = 1024',
+    'net.netfilter.nf_conntrack_timestamp = 0',
+  ].join('\n') });
+  files.push({ path: '/etc/sysctl.d/092-netfilter-helper.conf', content: 'net.netfilter.nf_conntrack_helper=1' });
+  files.push({ path: '/etc/sysctl.d/093-netfilter-icmp.conf', content: [
+    'net.netfilter.nf_conntrack_icmp_timeout=30',
+    'net.netfilter.nf_conntrack_icmpv6_timeout=30',
+  ].join('\n') });
+  files.push({ path: '/etc/sysctl.d/094-netfilter-tcp.conf', content: [
+    'net.netfilter.nf_conntrack_tcp_be_liberal=0',
+    'net.netfilter.nf_conntrack_tcp_loose=1',
+    'net.netfilter.nf_conntrack_tcp_max_retrans=3',
+    'net.netfilter.nf_conntrack_tcp_timeout_close=10',
+    'net.netfilter.nf_conntrack_tcp_timeout_close_wait=10',
+    'net.netfilter.nf_conntrack_tcp_timeout_established=600',
+    'net.netfilter.nf_conntrack_tcp_timeout_fin_wait=10',
+    'net.netfilter.nf_conntrack_tcp_timeout_last_ack=10',
+    'net.netfilter.nf_conntrack_tcp_timeout_max_retrans=60',
+    'net.netfilter.nf_conntrack_tcp_timeout_syn_recv=5',
+    'net.netfilter.nf_conntrack_tcp_timeout_syn_sent=5',
+    'net.netfilter.nf_conntrack_tcp_timeout_time_wait=30',
+    'net.netfilter.nf_conntrack_tcp_timeout_unacknowledged=300',
+  ].join('\n') });
+  files.push({ path: '/etc/sysctl.d/095-netfilter-udp.conf', content: [
+    'net.netfilter.nf_conntrack_udp_timeout=30',
+    'net.netfilter.nf_conntrack_udp_timeout_stream=180',
+  ].join('\n') });
+  files.push({ path: '/etc/sysctl.d/096-netfilter-sctp.conf', content: [
+    'net.netfilter.nf_conntrack_sctp_timeout_closed=10',
+    'net.netfilter.nf_conntrack_sctp_timeout_cookie_echoed=3',
+    'net.netfilter.nf_conntrack_sctp_timeout_cookie_wait=3',
+    'net.netfilter.nf_conntrack_sctp_timeout_established=432000',
+    'net.netfilter.nf_conntrack_sctp_timeout_heartbeat_acked=210',
+    'net.netfilter.nf_conntrack_sctp_timeout_heartbeat_sent=30',
+    'net.netfilter.nf_conntrack_sctp_timeout_shutdown_ack_sent=3',
+    'net.netfilter.nf_conntrack_sctp_timeout_shutdown_recd=0',
+    'net.netfilter.nf_conntrack_sctp_timeout_shutdown_sent=0',
+  ].join('\n') });
+  files.push({ path: '/etc/sysctl.d/097-netfilter-dccp.conf', content: [
+    'net.netfilter.nf_conntrack_dccp_loose=1',
+    'net.netfilter.nf_conntrack_dccp_timeout_closereq=64',
+    'net.netfilter.nf_conntrack_dccp_timeout_closing=64',
+    'net.netfilter.nf_conntrack_dccp_timeout_open=43200',
+    'net.netfilter.nf_conntrack_dccp_timeout_partopen=480',
+    'net.netfilter.nf_conntrack_dccp_timeout_request=240',
+    'net.netfilter.nf_conntrack_dccp_timeout_respond=480',
+    'net.netfilter.nf_conntrack_dccp_timeout_timewait=240',
+  ].join('\n') });
+
+  if (config.enableIpv6) {
+    files.push({ path: '/etc/sysctl.d/099-netfilter-ipv6.conf', content: [
+      'net.netfilter.nf_conntrack_frag6_high_thresh=4194304',
+      'net.netfilter.nf_conntrack_frag6_low_thresh=3145728',
+      'net.netfilter.nf_conntrack_frag6_timeout=60',
+    ].join('\n') });
+  }
+
+  return files;
 }
 
 // ═══ FRR / OSPF ═══
@@ -492,8 +638,11 @@ interface ${iface}
  ip ospf network ${config.networkType}
 ${iface === config.mainInterface ? ` ip ospf cost ${config.ospfCost}` : ''}`).join('\n');
 
+  // Announce VIPs via connected redistribution
+  const vipNetworks = config.serviceVips.map(v => `  network ${v.ipv4}/32 area ${config.ospfArea}`).join('\n');
+
   return `! DNS Control — FRR configuration
-! Generated configuration — do not edit manually
+! Generated for: ${config.hostname || 'dns-control'}
 !
 frr version 10.2
 frr defaults traditional
@@ -505,6 +654,7 @@ router ospf
  ospf router-id ${config.routerId}
 ${config.redistributeConnected ? ' redistribute connected' : ''}
  passive-interface lo
+${vipNetworks}
 ${interfaceBlocks}
 !
 line vty
@@ -539,6 +689,39 @@ WantedBy=multi-user.target
 `;
 }
 
+// ═══ DEPLOYMENT MANIFEST ═══
+
+export function generateDeploymentManifest(config: WizardConfig, files: { path: string }[]): string {
+  const now = new Date().toISOString();
+  return `# DNS Control — Deployment Manifest
+# Generated: ${now}
+# Hostname: ${config.hostname || '(not set)'}
+# Organization: ${config.organization || '(not set)'}
+# Deployment Mode: ${config.deploymentMode}
+# Distribution Policy: ${config.distributionPolicy}
+# Routing: ${config.routingMode}
+# IPv6: ${config.enableIpv6 ? 'enabled' : 'disabled'}
+#
+# Architecture:
+#   VIPs: ${config.serviceVips.map(v => v.ipv4).join(', ') || '(none)'}
+#   Instances: ${config.instances.map(i => `${i.name}@${i.bindIp}`).join(', ') || '(none)'}
+#   Egress: ${config.instances.map(i => `${i.name}→${i.egressIpv4}`).join(', ') || '(none)'}
+#
+# Files (${files.length}):
+${files.map(f => `#   ${f.path}`).join('\n')}
+#
+# Services to restart:
+${config.instances.map(i => `#   systemctl restart ${i.name}`).join('\n')}
+#   systemctl restart nftables
+${config.routingMode === 'frr-ospf' ? '#   systemctl restart frr' : ''}
+#   systemctl daemon-reload
+#
+# Post-deploy checks:
+${config.serviceVips.map(v => `#   dig @${v.ipv4} google.com +short`).join('\n')}
+${config.instances.map(i => `#   unbound-control -c /etc/unbound/${i.name}.conf -s ${i.controlInterface}@${i.controlPort} status`).join('\n')}
+`;
+}
+
 // ═══ GENERATE ALL FILES ═══
 
 export function generateAllFiles(config: WizardConfig): { path: string; content: string }[] {
@@ -564,8 +747,8 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
   // nftables (modular)
   files.push(...generateNftablesModular(config));
 
-  // Sysctl
-  files.push(...generateSysctlFiles());
+  // Sysctl (complete)
+  files.push(...generateSysctlFiles(config));
 
   // FRR
   if (config.routingMode === 'frr-ospf') {
@@ -582,6 +765,9 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
 
   // DNS Control service
   files.push({ path: '/etc/systemd/system/dns-control.service', content: generateDnsControlService(config) });
+
+  // Deployment manifest
+  files.push({ path: '/var/lib/dns-control/manifest.txt', content: generateDeploymentManifest(config, files) });
 
   return files;
 }
