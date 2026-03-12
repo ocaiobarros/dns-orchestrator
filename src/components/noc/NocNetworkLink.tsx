@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { safeNum, safeR, safeSW } from '@/lib/svg-utils';
 
 interface Props {
   x1: number;
@@ -15,7 +16,7 @@ interface Props {
 }
 
 function latencyColor(latency?: number): string {
-  if (latency == null) return 'hsl(var(--muted-foreground))';
+  if (latency == null || !Number.isFinite(latency)) return 'hsl(var(--muted-foreground))';
   if (latency < 30) return 'hsl(152, 76%, 45%)';
   if (latency < 100) return 'hsl(38, 95%, 50%)';
   return 'hsl(0, 76%, 50%)';
@@ -24,48 +25,39 @@ function latencyColor(latency?: number): string {
 export default function NocNetworkLink({
   x1, y1, x2, y2, latency, qps, maxQps, fromStatus, toStatus, highlighted, index,
 }: Props) {
+  const sx1 = safeNum(x1), sy1 = safeNum(y1), sx2 = safeNum(x2), sy2 = safeNum(y2);
+  const sQps = safeNum(qps, 0);
+  const sMaxQps = Math.max(safeNum(maxQps, 1), 1);
+
   const isFailed = fromStatus === 'failed' || toStatus === 'failed';
   const isDegraded = fromStatus === 'degraded' || toStatus === 'degraded';
   const color = isFailed ? 'hsl(0, 76%, 50%)' : latencyColor(latency);
 
   // Normalize stroke width: 2–10px
-  const strokeW = Math.max(2, Math.min(10, 2 + (qps / maxQps) * 8));
+  const strokeW = safeSW(2 + (sQps / sMaxQps) * 8, 2);
 
   // Curve control point
-  const mx = (x1 + x2) / 2;
-  const my = (y1 + y2) / 2;
-  // Add slight curve
+  const mx = (sx1 + sx2) / 2;
+  const my = (sy1 + sy2) / 2;
   const offsetX = (index % 2 === 0 ? 1 : -1) * 30;
   const cx = mx + offsetX;
   const cy = my;
 
-  const pathD = `M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`;
+  const pathD = `M ${sx1} ${sy1} Q ${cx} ${cy} ${sx2} ${sy2}`;
 
-  // Number of flow particles based on QPS
-  const particleCount = isFailed ? 0 : Math.max(1, Math.min(5, Math.ceil((qps / maxQps) * 5)));
+  const particleCount = isFailed ? 0 : Math.max(1, Math.min(5, Math.ceil((sQps / sMaxQps) * 5)));
   const particleSpeed = isDegraded ? 6 : 3;
 
-  // Badge position
   const bx = mx + offsetX * 0.5;
   const by = my - 12;
 
   return (
     <g>
       {/* Shadow path */}
-      <path
-        d={pathD}
-        fill="none"
-        stroke={color}
-        strokeWidth={strokeW + 4}
-        strokeOpacity={0.06}
-        strokeLinecap="round"
-      />
+      <path d={pathD} fill="none" stroke={color} strokeWidth={strokeW + 4} strokeOpacity={0.06} strokeLinecap="round" />
 
       {/* Main path */}
-      <path
-        d={pathD}
-        fill="none"
-        stroke={color}
+      <path d={pathD} fill="none" stroke={color}
         strokeWidth={highlighted ? strokeW + 1 : strokeW}
         strokeOpacity={isFailed ? 0.25 : highlighted ? 0.6 : 0.35}
         strokeLinecap="round"
@@ -73,14 +65,10 @@ export default function NocNetworkLink({
       />
 
       {/* Glow overlay */}
-      <path
-        d={pathD}
-        fill="none"
-        stroke={color}
-        strokeWidth={strokeW * 0.5}
+      <path d={pathD} fill="none" stroke={color}
+        strokeWidth={safeSW(strokeW * 0.5, 1)}
         strokeOpacity={highlighted ? 0.3 : 0.12}
-        strokeLinecap="round"
-        style={{ filter: 'blur(3px)' }}
+        strokeLinecap="round" style={{ filter: 'blur(3px)' }}
       />
 
       {/* Animated flow particles */}
@@ -89,65 +77,34 @@ export default function NocNetworkLink({
         return (
           <motion.circle
             key={pi}
-            r={isDegraded ? 2 : 2.5}
+            r={safeR(isDegraded ? 2 : 2.5, 2)}
             fill={color}
             fillOpacity={0.9}
             style={{ filter: `drop-shadow(0 0 4px ${color})` }}
           >
-            <animateMotion
-              dur={`${particleSpeed}s`}
-              repeatCount="indefinite"
-              begin={`${delay}s`}
-              path={pathD}
-            />
+            <animateMotion dur={`${particleSpeed}s`} repeatCount="indefinite" begin={`${delay}s`} path={pathD} />
           </motion.circle>
         );
       })}
 
       {/* Latency badge */}
-      {latency != null && (
+      {latency != null && Number.isFinite(latency) && (
         <g>
-          <rect
-            x={bx - 20}
-            y={by - 8}
-            width={40}
-            height={16}
-            rx={4}
-            fill="hsl(var(--card))"
-            fillOpacity={0.9}
-            stroke={color}
-            strokeWidth={0.5}
-            strokeOpacity={0.3}
-          />
-          <text
-            x={bx}
-            y={by + 1}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fill={color}
-            fontSize="8"
-            fontWeight="700"
-            fontFamily="'JetBrains Mono', monospace"
-          >
+          <rect x={bx - 20} y={by - 8} width={40} height={16} rx={4}
+            fill="hsl(var(--card))" fillOpacity={0.9} stroke={color} strokeWidth={0.5} strokeOpacity={0.3} />
+          <text x={bx} y={by + 1} textAnchor="middle" dominantBaseline="middle"
+            fill={color} fontSize="8" fontWeight="700" fontFamily="'JetBrains Mono', monospace">
             {latency}ms
           </text>
         </g>
       )}
 
       {/* QPS badge */}
-      {qps > 0 && (
+      {sQps > 0 && (
         <g>
-          <text
-            x={bx}
-            y={by + 18}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fill="hsl(var(--foreground))"
-            fillOpacity={0.3}
-            fontSize="7"
-            fontFamily="'JetBrains Mono', monospace"
-          >
-            {qps >= 1000 ? `${(qps / 1000).toFixed(0)}k` : qps} qps
+          <text x={bx} y={by + 18} textAnchor="middle" dominantBaseline="middle"
+            fill="hsl(var(--foreground))" fillOpacity={0.3} fontSize="7" fontFamily="'JetBrains Mono', monospace">
+            {sQps >= 1000 ? `${(sQps / 1000).toFixed(0)}k` : sQps} qps
           </text>
         </g>
       )}

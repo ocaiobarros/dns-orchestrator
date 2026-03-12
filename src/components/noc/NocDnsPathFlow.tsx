@@ -5,6 +5,7 @@
 // ============================================================
 
 import { motion } from 'framer-motion';
+import { safeNum, safeR, safeSW } from '@/lib/svg-utils';
 
 interface PathNode {
   id: string;
@@ -46,7 +47,7 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 function formatQps(n?: number): string {
-  if (n == null) return '—';
+  if (n == null || !Number.isFinite(n)) return '—';
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
   return String(n);
@@ -66,7 +67,7 @@ export default function NocDnsPathFlow({ nodes, edges }: Props) {
     layers.unshift([{ id: 'clients', label: 'Clientes DNS', type: 'client', status: 'ok' }]);
   }
 
-  const maxQps = Math.max(...edges.map(e => e.qps), 1);
+  const maxQps = Math.max(...edges.map(e => safeNum(e.qps, 0)), 1);
 
   return (
     <div className="noc-surface">
@@ -76,9 +77,7 @@ export default function NocDnsPathFlow({ nodes, edges }: Props) {
       </div>
       <div className="noc-surface-body">
         <div className="relative">
-          {/* SVG flow visualization */}
           <svg className="w-full" viewBox="0 0 900 320" preserveAspectRatio="xMidYMid meet">
-            {/* Background grid */}
             <defs>
               <pattern id="pathGrid" width="30" height="30" patternUnits="userSpaceOnUse">
                 <path d="M 30 0 L 0 0 0 30" fill="none" stroke="hsl(var(--border))" strokeWidth="0.3" opacity="0.3" />
@@ -105,18 +104,20 @@ export default function NocDnsPathFlow({ nodes, edges }: Props) {
 
               const fromLayerIdx = layers.findIndex(l => l.some(n => n.id === fromNode.id));
               const toLayerIdx = layers.findIndex(l => l.some(n => n.id === toNode.id));
+              if (fromLayerIdx < 0 || toLayerIdx < 0) return null;
+
               const fromPosInLayer = layers[fromLayerIdx]?.indexOf(fromNode) ?? 0;
               const toPosInLayer = layers[toLayerIdx]?.indexOf(toNode) ?? 0;
-              const fromLayerCount = layers[fromLayerIdx]?.length ?? 1;
-              const toLayerCount = layers[toLayerIdx]?.length ?? 1;
+              const fromLayerCount = Math.max(layers[fromLayerIdx]?.length ?? 1, 1);
+              const toLayerCount = Math.max(layers[toLayerIdx]?.length ?? 1, 1);
 
-              const x1 = 100 + fromLayerIdx * 200;
-              const y1 = 60 + (fromPosInLayer + 0.5) * (200 / fromLayerCount);
-              const x2 = 100 + toLayerIdx * 200;
-              const y2 = 60 + (toPosInLayer + 0.5) * (200 / toLayerCount);
+              const x1 = safeNum(100 + fromLayerIdx * 200);
+              const y1 = safeNum(60 + (fromPosInLayer + 0.5) * (200 / fromLayerCount));
+              const x2 = safeNum(100 + toLayerIdx * 200);
+              const y2 = safeNum(60 + (toPosInLayer + 0.5) * (200 / toLayerCount));
 
-              const thickness = Math.max(1.5, (edge.qps / maxQps) * 6);
-              const hasFailures = (edge.failures ?? 0) > 0;
+              const thickness = safeSW(Math.max(1.5, (safeNum(edge.qps, 0) / maxQps) * 6), 1.5);
+              const hasFailures = safeNum(edge.failures, 0) > 0;
 
               return (
                 <g key={i}>
@@ -130,7 +131,7 @@ export default function NocDnsPathFlow({ nodes, edges }: Props) {
                   />
                   {/* Animated flow particle */}
                   <motion.circle
-                    r={3}
+                    r={safeR(3, 3)}
                     fill={hasFailures ? 'hsl(var(--destructive))' : 'hsl(var(--primary))'}
                     filter="url(#pathGlow)"
                     initial={{ cx: x1 + 40, cy: y1 }}
@@ -139,15 +140,15 @@ export default function NocDnsPathFlow({ nodes, edges }: Props) {
                   />
                   {/* Edge label */}
                   <text
-                    x={(x1 + 40 + x2 - 40) / 2}
-                    y={(y1 + y2) / 2 - 8}
+                    x={safeNum((x1 + 40 + x2 - 40) / 2)}
+                    y={safeNum((y1 + y2) / 2 - 8)}
                     textAnchor="middle"
                     className="fill-muted-foreground"
                     fontSize="9"
                     fontFamily="monospace"
                   >
                     {formatQps(edge.qps)} QPS
-                    {edge.latencyMs != null ? ` · ${edge.latencyMs}ms` : ''}
+                    {edge.latencyMs != null && Number.isFinite(edge.latencyMs) ? ` · ${edge.latencyMs}ms` : ''}
                   </text>
                 </g>
               );
@@ -156,9 +157,8 @@ export default function NocDnsPathFlow({ nodes, edges }: Props) {
             {/* Draw nodes */}
             {layers.map((layer, li) => (
               <g key={li}>
-                {/* Layer label */}
                 <text
-                  x={100 + li * 200}
+                  x={safeNum(100 + li * 200)}
                   y={40}
                   textAnchor="middle"
                   className="fill-muted-foreground"
@@ -171,13 +171,12 @@ export default function NocDnsPathFlow({ nodes, edges }: Props) {
                 </text>
 
                 {layer.map((node, ni) => {
-                  const x = 100 + li * 200;
-                  const y = 60 + (ni + 0.5) * (200 / layer.length);
-                  const color = STATUS_COLORS[node.status];
+                  const x = safeNum(100 + li * 200);
+                  const y = safeNum(60 + (ni + 0.5) * (200 / Math.max(layer.length, 1)));
+                  const color = STATUS_COLORS[node.status] || STATUS_COLORS.unknown;
 
                   return (
                     <g key={node.id}>
-                      {/* Node background */}
                       <rect
                         x={x - 38} y={y - 28}
                         width={76} height={56}
@@ -187,28 +186,24 @@ export default function NocDnsPathFlow({ nodes, edges }: Props) {
                         strokeWidth={node.status === 'failed' ? 2 : 1}
                         opacity={0.95}
                       />
-                      {/* Status indicator */}
-                      <circle cx={x - 28} cy={y - 18} r={3} fill={color}>
+                      <circle cx={x - 28} cy={y - 18} r={safeR(3, 3)} fill={color}>
                         {node.status === 'ok' && (
                           <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite" />
                         )}
                       </circle>
-                      {/* Node label */}
                       <text x={x} y={y - 12} textAnchor="middle" className="fill-foreground" fontSize="10" fontFamily="monospace" fontWeight="600">
                         {node.label.length > 12 ? node.label.slice(0, 11) + '…' : node.label}
                       </text>
-                      {/* IP */}
                       {node.ip && (
                         <text x={x} y={y + 2} textAnchor="middle" className="fill-muted-foreground" fontSize="8" fontFamily="monospace">
                           {node.ip}
                         </text>
                       )}
-                      {/* Metrics line */}
                       <text x={x} y={y + 16} textAnchor="middle" className="fill-muted-foreground" fontSize="8" fontFamily="monospace">
                         {[
-                          node.latencyMs != null ? `${node.latencyMs}ms` : null,
-                          node.cacheHit != null ? `${node.cacheHit}%` : null,
-                          node.qps != null ? `${formatQps(node.qps)}q` : null,
+                          node.latencyMs != null && Number.isFinite(node.latencyMs) ? `${node.latencyMs}ms` : null,
+                          node.cacheHit != null && Number.isFinite(node.cacheHit) ? `${node.cacheHit}%` : null,
+                          node.qps != null && Number.isFinite(node.qps) ? `${formatQps(node.qps)}q` : null,
                         ].filter(Boolean).join(' · ') || (node.extra || '')}
                       </text>
                     </g>

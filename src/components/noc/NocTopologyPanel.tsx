@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion';
 import { Globe, Server, Wifi, Zap, Activity, AlertTriangle } from 'lucide-react';
-import { useState } from 'react';
+import { useState, forwardRef } from 'react';
 import type { InstanceHealthReport } from '@/lib/types';
+import { safeNum, safeR } from '@/lib/svg-utils';
 
 interface NocTopologyPanelProps {
   health: InstanceHealthReport | null | undefined;
@@ -83,8 +84,10 @@ function MapNode({ cx, cy, label, sublabel, healthy, icon: Icon, size = 'md', di
   onHover?: (entering: boolean) => void;
 }) {
   const color = dimmed ? C.dim : statusColor(healthy);
-  const r = size === 'lg' ? 32 : 24;
+  const r = safeR(size === 'lg' ? 32 : 24, 24);
   const iconSize = size === 'lg' ? 18 : 14;
+  const scx = safeNum(cx, 100);
+  const scy = safeNum(cy, 100);
 
   return (
     <g
@@ -95,11 +98,11 @@ function MapNode({ cx, cy, label, sublabel, healthy, icon: Icon, size = 'md', di
       {/* Outer radar ring — healthy nodes */}
       {healthy && !dimmed && (
         <>
-          <circle cx={cx} cy={cy} r={r + 12} fill="none" stroke={color} strokeWidth="0.3" opacity="0.06">
+          <circle cx={scx} cy={scy} r={r + 12} fill="none" stroke={color} strokeWidth="0.3" opacity="0.06">
             <animate attributeName="r" values={`${r + 10};${r + 16};${r + 10}`} dur="6s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="0.06;0.02;0.06" dur="6s" repeatCount="indefinite" />
           </circle>
-          <circle cx={cx} cy={cy} r={r + 6} fill="none" stroke={color} strokeWidth="0.5" opacity="0.08">
+          <circle cx={scx} cy={scy} r={r + 6} fill="none" stroke={color} strokeWidth="0.5" opacity="0.08">
             <animate attributeName="r" values={`${r + 5};${r + 9};${r + 5}`} dur="4s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="0.08;0.03;0.08" dur="4s" repeatCount="indefinite" />
           </circle>
@@ -108,38 +111,38 @@ function MapNode({ cx, cy, label, sublabel, healthy, icon: Icon, size = 'md', di
 
       {/* Failing node alert pulse */}
       {!healthy && !dimmed && (
-        <circle cx={cx} cy={cy} r={r + 4} fill="none" stroke={C.fail} strokeWidth="1" opacity="0">
+        <circle cx={scx} cy={scy} r={r + 4} fill="none" stroke={C.fail} strokeWidth="1" opacity="0">
           <animate attributeName="opacity" values="0;0.3;0" dur="2s" repeatCount="indefinite" />
           <animate attributeName="r" values={`${r + 2};${r + 10};${r + 2}`} dur="2s" repeatCount="indefinite" />
         </circle>
       )}
 
       {/* Node background — glass effect */}
-      <circle cx={cx} cy={cy} r={r} fill={C.surface} stroke={color} strokeWidth={dimmed ? '0.6' : '1.5'} opacity={dimmed ? 0.4 : 1} />
-      <circle cx={cx} cy={cy} r={r - 1} fill={`${color.replace(')', ' / 0.06)')}`} opacity={dimmed ? 0.2 : 0.8} />
+      <circle cx={scx} cy={scy} r={r} fill={C.surface} stroke={color} strokeWidth={dimmed ? '0.6' : '1.5'} opacity={dimmed ? 0.4 : 1} />
+      <circle cx={scx} cy={scy} r={safeR(r - 1, 20)} fill={`${color.replace(')', ' / 0.06)')}`} opacity={dimmed ? 0.2 : 0.8} />
 
       {/* Status dot */}
-      <circle cx={cx + r - 5} cy={cy - r + 5} r="3.5" fill={color} opacity={dimmed ? 0.3 : 0.9} />
+      <circle cx={scx + r - 5} cy={scy - r + 5} r="3.5" fill={color} opacity={dimmed ? 0.3 : 0.9} />
       {healthy && !dimmed && (
-        <circle cx={cx + r - 5} cy={cy - r + 5} r="3.5" fill={color} opacity="0">
+        <circle cx={scx + r - 5} cy={scy - r + 5} r="3.5" fill={color} opacity="0">
           <animate attributeName="opacity" values="0;0.4;0" dur="2.5s" repeatCount="indefinite" />
           <animate attributeName="r" values="3.5;6;3.5" dur="2.5s" repeatCount="indefinite" />
         </circle>
       )}
 
       {/* Icon */}
-      <foreignObject x={cx - iconSize / 2} y={cy - iconSize / 2} width={iconSize} height={iconSize}>
+      <foreignObject x={scx - iconSize / 2} y={scy - iconSize / 2} width={iconSize} height={iconSize}>
         <div className="flex items-center justify-center w-full h-full">
           <Icon size={iconSize} style={{ color, opacity: dimmed ? 0.4 : 1 }} />
         </div>
       </foreignObject>
 
       {/* Label */}
-      <text x={cx} y={cy + r + 14} textAnchor="middle" fill={C.text} fontSize="9" fontWeight="700" fontFamily="var(--font-mono)" opacity={dimmed ? 0.3 : 0.85} letterSpacing="0.5">
+      <text x={scx} y={scy + r + 14} textAnchor="middle" fill={C.text} fontSize="9" fontWeight="700" fontFamily="var(--font-mono)" opacity={dimmed ? 0.3 : 0.85} letterSpacing="0.5">
         {label}
       </text>
       {sublabel && (
-        <text x={cx} y={cy + r + 25} textAnchor="middle" fill={C.textMuted} fontSize="7.5" fontFamily="var(--font-mono)" opacity={dimmed ? 0.2 : 0.45}>
+        <text x={scx} y={scy + r + 25} textAnchor="middle" fill={C.textMuted} fontSize="7.5" fontFamily="var(--font-mono)" opacity={dimmed ? 0.2 : 0.45}>
           {sublabel}
         </text>
       )}
@@ -148,17 +151,17 @@ function MapNode({ cx, cy, label, sublabel, healthy, icon: Icon, size = 'md', di
       {metrics && (
         <g>
           {metrics.line1 && (
-            <text x={cx} y={cy + r + (sublabel ? 37 : 27)} textAnchor="middle" fill={color} fontSize="8.5" fontWeight="700" fontFamily="var(--font-mono)" opacity={dimmed ? 0.25 : 0.8}>
+            <text x={scx} y={scy + r + (sublabel ? 37 : 27)} textAnchor="middle" fill={color} fontSize="8.5" fontWeight="700" fontFamily="var(--font-mono)" opacity={dimmed ? 0.25 : 0.8}>
               {metrics.line1}
             </text>
           )}
           {metrics.line2 && (
-            <text x={cx} y={cy + r + (sublabel ? 48 : 38)} textAnchor="middle" fill={C.textMuted} fontSize="7" fontFamily="var(--font-mono)" opacity={dimmed ? 0.2 : 0.5}>
+            <text x={scx} y={scy + r + (sublabel ? 48 : 38)} textAnchor="middle" fill={C.textMuted} fontSize="7" fontFamily="var(--font-mono)" opacity={dimmed ? 0.2 : 0.5}>
               {metrics.line2}
             </text>
           )}
           {metrics.line3 && (
-            <text x={cx} y={cy + r + (sublabel ? 58 : 48)} textAnchor="middle" fill={C.textDim} fontSize="7" fontFamily="var(--font-mono)" opacity={dimmed ? 0.15 : 0.4}>
+            <text x={scx} y={scy + r + (sublabel ? 58 : 48)} textAnchor="middle" fill={C.textDim} fontSize="7" fontFamily="var(--font-mono)" opacity={dimmed ? 0.15 : 0.4}>
               {metrics.line3}
             </text>
           )}
@@ -170,12 +173,14 @@ function MapNode({ cx, cy, label, sublabel, healthy, icon: Icon, size = 'md', di
 
 /* ── Latency badge ── */
 function LatencyBadge({ cx, cy, ms, dimmed = false }: { cx: number; cy: number; ms: number; dimmed?: boolean }) {
-  const color = dimmed ? C.dim : latencyColor(ms);
+  const color = dimmed ? C.dim : latencyColor(safeNum(ms, 0));
+  const scx = safeNum(cx);
+  const scy = safeNum(cy);
   return (
     <g opacity={dimmed ? 0.3 : 1}>
-      <rect x={cx - 20} y={cy - 9} width="40" height="18" rx="9" fill={C.bg} stroke={color} strokeWidth="0.6" />
-      <text x={cx} y={cy + 4} textAnchor="middle" fill={color} fontSize="8" fontWeight="700" fontFamily="var(--font-mono)">
-        {ms}ms
+      <rect x={scx - 20} y={scy - 9} width="40" height="18" rx="9" fill={C.bg} stroke={color} strokeWidth="0.6" />
+      <text x={scx} y={scy + 4} textAnchor="middle" fill={color} fontSize="8" fontWeight="700" fontFamily="var(--font-mono)">
+        {safeNum(ms, 0)}ms
       </text>
     </g>
   );
@@ -183,39 +188,45 @@ function LatencyBadge({ cx, cy, ms, dimmed = false }: { cx: number; cy: number; 
 
 /* ── QPS badge ── */
 function QpsBadge({ cx, cy, qps, dimmed = false }: { cx: number; cy: number; qps: number; dimmed?: boolean }) {
-  if (qps <= 0) return null;
+  if (safeNum(qps, 0) <= 0) return null;
+  const scx = safeNum(cx);
+  const scy = safeNum(cy);
   return (
     <g opacity={dimmed ? 0.2 : 0.7}>
-      <rect x={cx - 22} y={cy - 8} width="44" height="16" rx="8" fill={C.bg} stroke={C.dim} strokeWidth="0.4" />
-      <text x={cx} y={cy + 3.5} textAnchor="middle" fill={C.accent} fontSize="7.5" fontWeight="600" fontFamily="var(--font-mono)">
-        {formatQps(qps)} qps
+      <rect x={scx - 22} y={scy - 8} width="44" height="16" rx="8" fill={C.bg} stroke={C.dim} strokeWidth="0.4" />
+      <text x={scx} y={scy + 3.5} textAnchor="middle" fill={C.accent} fontSize="7.5" fontWeight="600" fontFamily="var(--font-mono)">
+        {formatQps(safeNum(qps, 0))} qps
       </text>
     </g>
   );
 }
 
 /* ── Tooltip overlay ── */
-function NodeTooltip({ cx, cy, data }: { cx: number; cy: number; data: { title: string; lines: string[] } }) {
-  const w = 140;
-  const lineH = 13;
-  const h = 22 + data.lines.length * lineH;
-  const tx = cx - w / 2;
-  const ty = cy - h - 45;
+const NodeTooltip = forwardRef<SVGGElement, { cx: number; cy: number; data: { title: string; lines: string[] } }>(
+  function NodeTooltipInner({ cx, cy, data }, ref) {
+    const w = 140;
+    const lineH = 13;
+    const h = 22 + data.lines.length * lineH;
+    const scx = safeNum(cx);
+    const scy = safeNum(cy);
+    const tx = scx - w / 2;
+    const ty = scy - h - 45;
 
-  return (
-    <g>
-      <rect x={tx} y={ty} width={w} height={h} rx="6" fill="hsl(225, 25%, 10%)" stroke={C.accent} strokeWidth="0.6" opacity="0.95" />
-      <text x={cx} y={ty + 14} textAnchor="middle" fill={C.accent} fontSize="8" fontWeight="700" fontFamily="var(--font-mono)">
-        {data.title}
-      </text>
-      {data.lines.map((line, i) => (
-        <text key={i} x={tx + 8} y={ty + 27 + i * lineH} fill={C.textMuted} fontSize="7" fontFamily="var(--font-mono)">
-          {line}
+    return (
+      <g ref={ref}>
+        <rect x={tx} y={ty} width={w} height={h} rx="6" fill="hsl(225, 25%, 10%)" stroke={C.accent} strokeWidth="0.6" opacity="0.95" />
+        <text x={scx} y={ty + 14} textAnchor="middle" fill={C.accent} fontSize="8" fontWeight="700" fontFamily="var(--font-mono)">
+          {data.title}
         </text>
-      ))}
-    </g>
-  );
-}
+        {data.lines.map((line, i) => (
+          <text key={i} x={tx + 8} y={ty + 27 + i * lineH} fill={C.textMuted} fontSize="7" fontFamily="var(--font-mono)">
+            {line}
+          </text>
+        ))}
+      </g>
+    );
+  }
+);
 
 /* ── Full topology visualization ── */
 function TopologyView({ health, vipConfigured, vipAddress, totalQueries, cacheHitRatio, avgLatency, dnsMetricsAvailable }: {

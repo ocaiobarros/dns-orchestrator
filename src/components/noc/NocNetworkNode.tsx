@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import type { MapNode } from './NocNetworkMap';
+import { safeNum, safeR } from '@/lib/svg-utils';
 
 interface Props {
   node: MapNode;
@@ -39,11 +40,12 @@ function formatQps(qps?: number): string {
 
 export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave }: Props) {
   const color = STATUS_COLORS[node.status] ?? STATUS_COLORS.unknown;
-  const radius = TYPE_RADIUS[node.type] ?? 28;
+  const radius = safeR(TYPE_RADIUS[node.type], 28);
   const icon = TYPE_ICONS[node.type] ?? '●';
+  const sx = safeNum(x, 100);
+  const sy = safeNum(y, 100);
 
   const isAlertState = node.status === 'failed' || node.status === 'degraded';
-  const pulseScale = isAlertState ? [1, 1.6, 1] : [1, 1.3, 1];
   const pulseDuration = isAlertState ? 1.5 : 3;
 
   return (
@@ -54,8 +56,8 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
     >
       {/* Outer pulse ring */}
       <motion.circle
-        cx={x}
-        cy={y}
+        cx={sx}
+        cy={sy}
         r={radius + 8}
         fill="none"
         stroke={color}
@@ -71,8 +73,8 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
       {/* Glow ring */}
       {isAlertState && (
         <motion.circle
-          cx={x}
-          cy={y}
+          cx={sx}
+          cy={sy}
           r={radius + 4}
           fill="none"
           stroke={color}
@@ -88,8 +90,8 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
 
       {/* Main node circle */}
       <motion.circle
-        cx={x}
-        cy={y}
+        cx={sx}
+        cy={sy}
         r={radius}
         fill={`${color}15`}
         stroke={color}
@@ -105,16 +107,16 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
 
       {/* Inner glow */}
       <circle
-        cx={x}
-        cy={y}
-        r={radius * 0.6}
+        cx={sx}
+        cy={sy}
+        r={safeR(radius * 0.6, 10)}
         fill={`${color}08`}
       />
 
       {/* Status dot */}
       <motion.circle
-        cx={x}
-        cy={y - radius + 6}
+        cx={sx}
+        cy={sy - radius + 6}
         r={3}
         fill={color}
         animate={isAlertState ? { scale: [1, 1.4, 1] } : {}}
@@ -123,8 +125,8 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
 
       {/* Type icon */}
       <text
-        x={x}
-        y={y - 2}
+        x={sx}
+        y={sy - 2}
         textAnchor="middle"
         dominantBaseline="middle"
         fill={color}
@@ -137,8 +139,8 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
 
       {/* Label */}
       <text
-        x={x}
-        y={y + radius + 16}
+        x={sx}
+        y={sy + radius + 16}
         textAnchor="middle"
         dominantBaseline="middle"
         fill="hsl(var(--foreground))"
@@ -151,10 +153,10 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
       </text>
 
       {/* Metrics below label */}
-      {node.qps != null && (
+      {node.qps != null && Number.isFinite(node.qps) && (
         <text
-          x={x}
-          y={y + radius + 30}
+          x={sx}
+          y={sy + radius + 30}
           textAnchor="middle"
           dominantBaseline="middle"
           fill="hsl(var(--primary))"
@@ -166,10 +168,10 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
         </text>
       )}
 
-      {node.latency != null && (
+      {node.latency != null && Number.isFinite(node.latency) && (
         <text
-          x={x}
-          y={y + radius + 42}
+          x={sx}
+          y={sy + radius + 42}
           textAnchor="middle"
           dominantBaseline="middle"
           fill={node.latency < 30 ? 'hsl(152, 76%, 50%)' : node.latency < 100 ? 'hsl(38, 95%, 55%)' : 'hsl(0, 76%, 55%)'}
@@ -181,10 +183,10 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
         </text>
       )}
 
-      {node.cacheHit != null && (
+      {node.cacheHit != null && Number.isFinite(node.cacheHit) && (
         <text
-          x={x}
-          y={y + radius + 54}
+          x={sx}
+          y={sy + radius + 54}
           textAnchor="middle"
           dominantBaseline="middle"
           fill="hsl(var(--foreground))"
@@ -198,7 +200,7 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
 
       {/* Tooltip on hover */}
       {isHovered && (
-        <foreignObject x={x + radius + 14} y={y - 50} width={180} height={130}>
+        <foreignObject x={sx + radius + 14} y={sy - 50} width={180} height={130}>
           <div className="bg-card/95 backdrop-blur-md border border-border/40 rounded-lg px-3 py-2.5 shadow-xl">
             <div className="text-[10px] font-mono font-bold text-foreground/90 mb-1.5">{node.label}</div>
             <div className="space-y-1 text-[9px] font-mono text-muted-foreground/60">
@@ -215,19 +217,19 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
               {node.latency != null && (
                 <div className="flex justify-between">
                   <span>Latency</span>
-                  <span className="text-foreground/70">{node.latency}ms</span>
+                  <span className="text-foreground/70">{safeNum(node.latency, 0)}ms</span>
                 </div>
               )}
               {node.qps != null && (
                 <div className="flex justify-between">
                   <span>QPS</span>
-                  <span className="text-foreground/70">{node.qps.toLocaleString()}</span>
+                  <span className="text-foreground/70">{safeNum(node.qps, 0).toLocaleString()}</span>
                 </div>
               )}
               {node.cacheHit != null && (
                 <div className="flex justify-between">
                   <span>Cache Hit</span>
-                  <span className="text-foreground/70">{node.cacheHit}%</span>
+                  <span className="text-foreground/70">{safeNum(node.cacheHit, 0)}%</span>
                 </div>
               )}
               {node.extra && (

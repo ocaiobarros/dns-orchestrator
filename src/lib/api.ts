@@ -169,7 +169,7 @@ export const api = {
       comment: request.comment,
     }),
   dryRunConfig: (request: ApplyRequest) =>
-    apiCall<ApplyResult>('POST', '/deploy/apply', {
+    apiCall<ApplyResult>('POST', '/deploy/dry-run', {
       config: request.config,
       scope: request.scope || 'full',
       dry_run: true,
@@ -187,9 +187,9 @@ export const api = {
 
   // History
   getHistory: (page: number = 1) =>
-    apiCall<PaginatedResponse<ApplyResult>>('GET', `/history?page=${page}`),
+    apiCall<PaginatedResponse<ApplyResult>>('GET', `/deploy/history?page=${page}`),
   getHistoryEntry: (id: string) =>
-    apiCall<ApplyResult>('GET', `/apply/jobs/${id}`),
+    apiCall<ApplyResult>('GET', `/deploy/history/${id}`),
 
   // Files
   getGeneratedFiles: () => apiCall<GeneratedFile[]>('GET', '/files/generated'),
@@ -317,6 +317,11 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
     if (path === '/api/deploy/backups') return mockDeployBackups();
     if (path === '/api/deploy/rollback' && method === 'POST') return mockRollbackResult();
     if (path === '/api/deploy/apply' && method === 'POST') return mockApplyResult(body as any);
+    if (path === '/api/deploy/dry-run' && method === 'POST') return mockApplyResult({ ...(body as any), dry_run: true });
+    if (path.startsWith('/api/deploy/history')) {
+      if (path === '/api/deploy/history') return { items: mockHistory, total: mockHistory.length, page: 1, pageSize: 20, hasMore: false };
+      return mockHistory[0]; // detail view
+    }
     return {};
   }
   if (path.startsWith('/api/apply/')) {
