@@ -13,21 +13,32 @@ export default function DnsPage() {
   const { data: instanceStats } = useInstanceStats();
 
   const chartData = useMemo(() => {
-    if (!allMetrics || !Array.isArray(allMetrics)) return [];
+    if (!Array.isArray(allMetrics)) return [];
+
+    const asNumber = (value: unknown): number => {
+      if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+      if (typeof value === 'string') {
+        const parsed = Number(value.replace(',', '.'));
+        return Number.isFinite(parsed) ? parsed : 0;
+      }
+      return 0;
+    };
+
     const byTs = new Map<string, { ts: string; qps: number; hits: number; misses: number; latency: number; servfail: number; nxdomain: number; count: number }>();
     allMetrics.forEach(m => {
       if (!m?.timestamp) return;
       const key = m.timestamp.slice(0, 16);
       const existing = byTs.get(key) || { ts: key, qps: 0, hits: 0, misses: 0, latency: 0, servfail: 0, nxdomain: 0, count: 0 };
-      existing.qps += m.qps ?? 0;
-      existing.hits += m.cacheHits ?? 0;
-      existing.misses += m.cacheMisses ?? 0;
-      existing.latency += m.avgLatencyMs ?? 0;
-      existing.servfail += m.servfail ?? 0;
-      existing.nxdomain += m.nxdomain ?? 0;
+      existing.qps += asNumber(m.qps);
+      existing.hits += asNumber(m.cacheHits);
+      existing.misses += asNumber(m.cacheMisses);
+      existing.latency += asNumber(m.avgLatencyMs);
+      existing.servfail += asNumber(m.servfail);
+      existing.nxdomain += asNumber(m.nxdomain);
       existing.count += 1;
       byTs.set(key, existing);
     });
+
     return Array.from(byTs.values()).map(d => ({
       ...d,
       latency: d.count > 0 ? +(d.latency / d.count).toFixed(1) : 0,
