@@ -34,7 +34,13 @@ export interface ServiceVip {
   description: string;
   label: string;
   deliveryMode: VipDeliveryMode;
+  healthCheckEnabled: boolean;
+  healthCheckDomain: string;
+  healthCheckInterval: number;
 }
+
+export type EgressMode = 'fixed-per-instance' | 'shared-pool' | 'randomized';
+
 
 // ---- DNS Instance (expanded) ----
 
