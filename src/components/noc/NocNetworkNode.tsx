@@ -58,11 +58,10 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
       <motion.circle
         cx={safeNum(sx)}
         cy={safeNum(sy)}
-        r={safeR(radius + 8, 36)}
         fill="none"
         stroke={color}
         strokeWidth={safeSW(1, 1)}
-        strokeOpacity={safeOpacity(0.15, 0.15)}
+        initial={{ r: safeR(radius + 8, 36), strokeOpacity: safeOpacity(0.15, 0.15) }}
         animate={{
           r: [safeR(radius + 8, 36), safeR(radius + 18, 46), safeR(radius + 8, 36)],
           strokeOpacity: [safeOpacity(0.15, 0.15), safeOpacity(0.05, 0.05), safeOpacity(0.15, 0.15)],
