@@ -156,26 +156,69 @@ def execute_deploy(
 
     # ═══ Step 3: Write to staging directory ═══
     s3_stage = _step(3, "Gravar em diretório de staging")
+    nft_validation_staged_path: str | None = None
+
     def write_staging():
-        nonlocal staging_dir
+        nonlocal staging_dir, nft_validation_staged_path
         staging_dir = os.path.join(STAGING_ROOT, f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{deploy_id}")
         os.makedirs(staging_dir, exist_ok=True)
+
         for f in files:
             staged_path = os.path.join(staging_dir, f["path"].lstrip("/"))
             os.makedirs(os.path.dirname(staged_path), exist_ok=True)
             with open(staged_path, "w") as fp:
                 fp.write(f["content"])
-        return {"status": "success", "output": f"{len(files)} arquivos gravados em staging: {staging_dir}"}
+
+        # Generate safe nftables artifact for syntax validation (no flush ruleset)
+        try:
+            normalized_payload = normalize_payload(payload)
+            validation_files = generate_nftables_config(normalized_payload, validation_mode=True)
+            if validation_files:
+                rel_path = validation_files[0]["path"].lstrip("/")
+                nft_validation_staged_path = os.path.join(staging_dir, rel_path)
+                os.makedirs(os.path.dirname(nft_validation_staged_path), exist_ok=True)
+                with open(nft_validation_staged_path, "w") as vf:
+                    vf.write(validation_files[0]["content"])
+        except Exception as exc:
+            logger.warning(f"Failed to generate nftables validation artifact: {exc}")
+
+        extra = " + nftables.validate.conf" if nft_validation_staged_path else ""
+        return {"status": "success", "output": f"{len(files)} arquivos gravados em staging{extra}: {staging_dir}"}
+
     _run_step(s3_stage, write_staging)
     steps.append(s3_stage)
     _update_live_state(completedSteps=3)
 
     # ═══ Step 4: Validate staged files ═══
     s4_validate = _step(4, "Validar arquivos em staging")
-    validation_errors = []
+    validation_errors: list[dict[str, Any]] = []
+    validation_results: dict[str, list[dict[str, Any]]] = {
+        "unbound": [],
+        "nftables": [],
+        "network": [],
+        "ipCollision": [],
+    }
+
+    def _add_validation_result(
+        bucket: str,
+        status: str,
+        file_path: str | None,
+        command: str | None,
+        stderr: str = "",
+        remediation: str = "",
+        details: str = "",
+    ):
+        validation_results.setdefault(bucket, []).append({
+            "status": status,
+            "file": file_path,
+            "command": command,
+            "stderr": stderr,
+            "remediation": remediation,
+            "details": details,
+        })
+
     def validate_staged():
         nonlocal validation_errors
-        results = []
         if not staging_dir:
             return {"status": "failed", "output": "Staging directory missing"}
 
@@ -184,75 +227,135 @@ def execute_deploy(
             if "/unbound/" in f["path"] and f["path"].endswith(".conf") and "block" not in f["path"]:
                 staged_path = os.path.join(staging_dir, f["path"].lstrip("/"))
                 if os.path.exists(staged_path):
+                    cmd = f"unbound-checkconf {staged_path}"
                     r = run_command("unbound-checkconf", [staged_path], timeout=10)
                     if r["exit_code"] != 0:
-                        validation_errors.append({
+                        err = {
                             "category": "unbound-validation",
-                            "command": f"unbound-checkconf {f['path']}",
+                            "command": cmd,
                             "file": f["path"],
-                            "stderr": r["stderr"][:500],
-                            "remediation": "Verifique a sintaxe do arquivo Unbound. Use 'unbound-checkconf' localmente para depurar."
-                        })
-                        results.append(f"FAIL: {f['path']}")
+                            "stderr": (r.get("stderr") or r.get("stdout") or "Falha de validação do Unbound").strip(),
+                            "remediation": "Verifique a sintaxe do arquivo Unbound e os blocos include/remote-control.",
+                        }
+                        validation_errors.append(err)
+                        _add_validation_result("unbound", "fail", f["path"], cmd, err["stderr"], err["remediation"])
                     else:
-                        results.append(f"OK: {f['path']}")
+                        _add_validation_result("unbound", "pass", f["path"], cmd, "")
 
-        # Validate nftables config (generate validation-safe version without flush ruleset)
-        for f in files:
-            if f["path"] == "/etc/nftables.conf" or (f["path"].endswith(".nft") and "nftables" in f["path"]):
-                if f["path"] == "/etc/nftables.conf" and staging_dir:
-                    # Generate validation-safe config without "flush ruleset"
-                    from app.generators.nftables_generator import generate_nftables_config
-                    val_files = generate_nftables_config(payload, validation_mode=True)
-                    if val_files:
-                        val_path = os.path.join(staging_dir, "etc", "nftables.validate.conf")
-                        os.makedirs(os.path.dirname(val_path), exist_ok=True)
-                        with open(val_path, "w") as vf:
-                            vf.write(val_files[0]["content"])
-                        r = run_command("nft", ["-c", "-f", val_path], timeout=10, use_privilege=True)
-                        if r["exit_code"] != 0:
-                            validation_errors.append({
-                                "category": "nftables-validation",
-                                "command": f"nft -c -f {f['path']}",
-                                "file": f["path"],
-                                "stderr": r["stderr"][:500],
-                                "remediation": "Verifique a sintaxe do nftables gerado. Erros comuns: regras conflitantes, interfaces inexistentes."
-                            })
-                            results.append(f"FAIL: {f['path']}")
-                        else:
-                            results.append(f"OK: nftables syntax valid")
+        # Validate nftables safe config (without flush ruleset)
+        if nft_validation_staged_path and os.path.exists(nft_validation_staged_path):
+            nft_cmd = f"nft -c -f {nft_validation_staged_path}"
+            nft_result = run_command("nft", ["-c", "-f", nft_validation_staged_path], timeout=10, use_privilege=True)
+            if nft_result["exit_code"] != 0:
+                nft_stderr = (nft_result.get("stderr") or nft_result.get("stdout") or "Falha de validação nftables").strip()
+                err = {
+                    "category": "nftables-validation",
+                    "command": nft_cmd,
+                    "file": "/etc/nftables.validate.conf",
+                    "stderr": nft_stderr,
+                    "remediation": "Revise regras DNAT, sets e sintaxe nftables. O arquivo de validação não executa flush ruleset.",
+                }
+                validation_errors.append(err)
+                _add_validation_result("nftables", "fail", err["file"], nft_cmd, nft_stderr, err["remediation"])
+            else:
+                _add_validation_result("nftables", "pass", "/etc/nftables.validate.conf", nft_cmd)
+        else:
+            err = {
+                "category": "nftables-validation",
+                "command": None,
+                "file": "/etc/nftables.validate.conf",
+                "stderr": "Arquivo de validação nftables não foi gerado no staging.",
+                "remediation": "Regenere os artefatos de staging e confirme a criação de /etc/nftables.validate.conf.",
+            }
+            validation_errors.append(err)
+            _add_validation_result("nftables", "fail", err["file"], None, err["stderr"], err["remediation"])
+
+        # Validate network files (static consistency)
+        network_candidates = [
+            "/etc/network/interfaces",
+            "/etc/network/post-up.sh",
+        ]
+        found_network_artifact = False
+        for network_path in network_candidates:
+            staged_network_path = os.path.join(staging_dir, network_path.lstrip("/"))
+            if not os.path.exists(staged_network_path):
+                continue
+            found_network_artifact = True
+            with open(staged_network_path, "r") as nf:
+                content = nf.read()
+
+            if network_path.endswith("interfaces"):
+                ok = "iface" in content and "address" in content and "gateway" in content
+                cmd = f"static-check {staged_network_path}"
+                if not ok:
+                    err = {
+                        "category": "network-validation",
+                        "command": cmd,
+                        "file": network_path,
+                        "stderr": "Arquivo de interfaces sem blocos obrigatórios (iface/address/gateway).",
+                        "remediation": "Revise /etc/network/interfaces gerado e confirme interface principal, endereço e gateway.",
+                    }
+                    validation_errors.append(err)
+                    _add_validation_result("network", "fail", network_path, cmd, err["stderr"], err["remediation"])
+                else:
+                    _add_validation_result("network", "pass", network_path, cmd)
+            else:
+                ok = content.startswith("#!/") and "ip " in content
+                cmd = f"static-check {staged_network_path}"
+                if not ok:
+                    err = {
+                        "category": "network-validation",
+                        "command": cmd,
+                        "file": network_path,
+                        "stderr": "Script post-up inválido (faltando shebang ou comandos de rede).",
+                        "remediation": "Revise /etc/network/post-up.sh e garanta comandos ip válidos.",
+                    }
+                    validation_errors.append(err)
+                    _add_validation_result("network", "fail", network_path, cmd, err["stderr"], err["remediation"])
+                else:
+                    _add_validation_result("network", "pass", network_path, cmd)
+
+        if not found_network_artifact:
+            _add_validation_result(
+                "network",
+                "pass",
+                None,
+                None,
+                "",
+                "",
+                "Nenhum artefato de rede foi gerado para este escopo/modo de deploy.",
+            )
 
         # IP collision detection
-        ip_map: dict[str, list[str]] = {}
-        instances = payload.get("instances", [])
-        vips = payload.get("serviceVips", [])
-        for inst in instances:
-            for field in ("bindIp", "egressIpv4", "controlInterface"):
-                ip = inst.get(field, "")
-                if ip:
-                    ip_map.setdefault(ip, []).append(f"{inst.get('name', '?')}/{field}")
-        for vip in vips:
-            ip = vip.get("ipv4", "")
-            if ip:
-                ip_map.setdefault(ip, []).append(f"VIP/{ip}")
-        host_ip = payload.get("ipv4Address", "").split("/")[0]
-        if host_ip:
-            ip_map.setdefault(host_ip, []).append("host/ipv4Address")
-
-        for ip, users in ip_map.items():
-            if len(users) > 1:
-                validation_errors.append({
+        ip_collisions = _detect_ip_collisions(payload)
+        if ip_collisions:
+            for collision in ip_collisions:
+                err = {
                     "category": "ip-collision",
-                    "command": None,
+                    "command": "ip-collision-check",
                     "file": None,
-                    "stderr": f"IP {ip} usado por {', '.join(users)}",
-                    "remediation": "Cada camada (VIP, Listener, Egress, Host) deve usar IPs distintos."
-                })
+                    "stderr": collision,
+                    "remediation": "Garanta separação entre camadas VIP, listener, egress e host. bindIp/controlInterface iguais só são aceitos na mesma instância.",
+                }
+                validation_errors.append(err)
+                _add_validation_result("ipCollision", "fail", None, "ip-collision-check", collision, err["remediation"])
+        else:
+            _add_validation_result("ipCollision", "pass", None, "ip-collision-check", "")
 
         if validation_errors:
             _update_live_state(errors=validation_errors)
-            return {"status": "failed", "output": f"{len(validation_errors)} erros de validação", "stderr": "\n".join(validation_errors)}
-        return {"status": "success", "output": f"Validação staging OK: {len(results)} verificações"}
+            stderr_dump = "\n\n".join(
+                f"[{err.get('category', 'validation')}] {err.get('stderr', '')}" for err in validation_errors
+            )
+            return {
+                "status": "failed",
+                "output": f"{len(validation_errors)} erros de validação",
+                "stderr": stderr_dump,
+            }
+
+        total_checks = sum(len(items) for items in validation_results.values())
+        return {"status": "success", "output": f"Validação staging OK: {total_checks} verificações"}
+
     _run_step(s4_validate, validate_staged)
     steps.append(s4_validate)
     _update_live_state(completedSteps=4)
@@ -283,16 +386,39 @@ def execute_deploy(
             except Exception:
                 pass
 
-        result = _build_result(deploy_id, steps, not bool(validation_errors), True, scope, operator, files, health_checks, None)
+        result = _build_result(
+            deploy_id,
+            steps,
+            not bool(validation_errors),
+            True,
+            scope,
+            operator,
+            files,
+            health_checks,
+            None,
+            validation_errors,
+            validation_results,
+        )
         result["commandsPlan"] = commands_plan
-        result["validationErrors"] = validation_errors
         result["warnings"] = _live_state.get("warnings", [])
         _update_live_state(phase="idle", lastMessage="Dry-run concluído")
         return result
 
     if s4_validate["status"] == "failed":
         _update_live_state(phase="failed", lastMessage="Validação de staging falhou")
-        return _build_result(deploy_id, steps, False, dry_run, scope, operator, files, [], backup_id)
+        return _build_result(
+            deploy_id,
+            steps,
+            False,
+            dry_run,
+            scope,
+            operator,
+            files,
+            [],
+            backup_id,
+            validation_errors,
+            validation_results,
+        )
 
     # ═══ Step 5: Backup ═══
     total_apply_steps = 12  # estimate
