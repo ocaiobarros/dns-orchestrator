@@ -69,6 +69,10 @@ def generate_nftables_config(payload: dict[str, Any], validation_mode: bool = Fa
     instances = payload.get("instances", []) if isinstance(payload.get("instances", []), list) else []
     security = payload.get("security", {}) if isinstance(payload.get("security", {}), dict) else {}
 
+    # Detect border-routed egress mode
+    egress_delivery = str(payload.get("egressDeliveryMode") or payload.get("_wizardConfig", {}).get("egressDeliveryMode") or "host-owned")
+    is_border_routed = egress_delivery == "border-routed"
+
     # Panel / management ports from wizard config
     wizard_cfg = payload.get("_wizardConfig", {}) or {}
     panel_port = int(wizard_cfg.get("panelPort") or payload.get("panelPort") or 8443)
