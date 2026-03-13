@@ -90,11 +90,11 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
       <motion.circle
         cx={safeNum(sx)}
         cy={safeNum(sy)}
-        r={safeR(radius, 28)}
         fill={`${color}15`}
         stroke={color}
         strokeWidth={safeSW(isHovered ? 2.5 : 1.5, 1.5)}
-        animate={isHovered ? { r: safeR(radius + 3, 31) } : { r: safeR(radius, 28) }}
+        initial={{ r: safeR(radius, 28) }}
+        animate={{ r: isHovered ? safeR(radius + 3, 31) : safeR(radius, 28) }}
         transition={{ duration: 0.2 }}
         style={{
           filter: isAlertState
