@@ -547,7 +547,7 @@ def execute_deploy(
         s = _step(order, cmd_name, " ".join(cmd_args))
         s["rollbackHint"] = hint
         def restart(args=cmd_args):
-            use_privilege = args[0] in {"nft", "systemctl", "ifreload"}
+            use_privilege = args[0] in {"nft", "systemctl", "ifreload", "/etc/network/post-up.d/dns-control"}
             r = run_command(args[0], args[1:], timeout=30, use_privilege=use_privilege)
 
             stderr = r["stderr"][:1200]
@@ -906,7 +906,7 @@ def _get_restart_commands(scope: str, payload: dict) -> list[tuple[str, list[str
     if scope in ("full", "network"):
         cmds.append((
             "Materializar IPs de rede (post-up)",
-            ["bash", "/etc/network/post-up.d/dns-control"],
+            ["/etc/network/post-up.d/dns-control"],
             "Desfazer IPs adicionados ao loopback",
         ))
     return cmds

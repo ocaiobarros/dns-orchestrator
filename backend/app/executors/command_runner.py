@@ -23,6 +23,7 @@ ALLOWED_EXECUTABLES = frozenset({
     "dpkg", "apt",
     "chmod", "sysctl", "echo",
     "install", "mkdir",
+    "/etc/network/post-up.d/dns-control",
 })
 
 # Strict allowlist: only these exact (executable, args_prefix) combos may use sudo
@@ -46,6 +47,7 @@ _SUDO_ALLOWED_COMMANDS: list[tuple[str, list[str]]] = [
     ("systemctl", ["status"]),
     ("sysctl", ["--load"]),   # targeted sysctl load
     ("ifreload", ["-a"]),     # network reload
+    ("/etc/network/post-up.d/dns-control", []),  # materialize listener/egress IPs
 ]
 
 # Cache for sudo availability check
