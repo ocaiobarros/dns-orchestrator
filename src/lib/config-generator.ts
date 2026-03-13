@@ -705,20 +705,47 @@ WantedBy=multi-user.target
 
 export function generateDeploymentManifest(config: WizardConfig, files: { path: string }[]): string {
   const now = new Date().toISOString();
-  return `# DNS Control — Deployment Manifest
+  const isBorderRouted = config.egressDeliveryMode === 'border-routed';
+  
+  let manifest = `# DNS Control — Deployment Manifest
 # Generated: ${now}
 # Hostname: ${config.hostname || '(not set)'}
 # Organization: ${config.organization || '(not set)'}
 # Deployment Mode: ${config.deploymentMode}
 # Distribution Policy: ${config.distributionPolicy}
 # Routing: ${config.routingMode}
+# Egress Delivery: ${config.egressDeliveryMode || 'host-owned'}
 # IPv6: ${config.enableIpv6 ? 'enabled' : 'disabled'}
 #
 # Architecture:
 #   VIPs: ${config.serviceVips.map(v => v.ipv4).join(', ') || '(none)'}
 #   Instances: ${config.instances.map(i => `${i.name}@${i.bindIp}`).join(', ') || '(none)'}
 #   Egress: ${config.instances.map(i => `${i.name}→${i.egressIpv4}`).join(', ') || '(none)'}
-#
+#`;
+
+  if (isBorderRouted) {
+    manifest += `
+# ┌─────────────────────────────────────────────────────────────┐
+# │  BORDER-ROUTED MODE                                        │
+# │                                                             │
+# │  Listener delivery: nftables DNAT (VIP → backend)          │
+# │  Egress identity:   Unbound outgoing-interface (logical)   │
+# │  Return path:       Border static route → DNS host         │
+# │  Host local public IP required: NO                         │
+# │                                                             │
+# │  IMPORTANT: Border-routed mode requires upstream static    │
+# │  routing for each public egress IP toward the DNS host.    │
+# │  The public egress IPs are NOT configured on host          │
+# │  interfaces. The resolver uses them logically via           │
+# │  outgoing-interface, and the upstream router/firewall       │
+# │  must route return traffic back to this server.            │
+# │                                                             │
+# │  No masquerade or generic SNAT is generated.               │
+# └─────────────────────────────────────────────────────────────┘
+#`;
+  }
+
+  manifest += `
 # Files (${files.length}):
 ${files.map(f => `#   ${f.path}`).join('\n')}
 #
@@ -732,6 +759,8 @@ ${config.routingMode === 'frr-ospf' ? '#   systemctl restart frr' : ''}
 ${config.serviceVips.map(v => `#   dig @${v.ipv4} google.com +short`).join('\n')}
 ${config.instances.map(i => `#   unbound-control -c /etc/unbound/${i.name}.conf -s ${i.controlInterface}@${i.controlPort} status`).join('\n')}
 `;
+
+  return manifest;
 }
 
 // ═══ GENERATE ALL FILES ═══
