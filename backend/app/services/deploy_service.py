@@ -937,12 +937,29 @@ def _save_deploy_state(deploy_id: str, operator: str, success: bool, backup_id: 
 
 
 def _build_result(
-    deploy_id: str, steps: list[dict], success: bool, dry_run: bool,
-    scope: str, operator: str, files: list, health_checks: list, backup_id: str | None,
+    deploy_id: str,
+    steps: list[dict],
+    success: bool,
+    dry_run: bool,
+    scope: str,
+    operator: str,
+    files: list,
+    health_checks: list,
+    backup_id: str | None,
+    validation_errors: list[dict[str, Any]] | None = None,
+    validation_results: dict[str, list[dict[str, Any]]] | None = None,
 ) -> dict:
     total_duration = sum(s.get("durationMs", 0) for s in steps)
     status = "dry-run" if dry_run else ("success" if success else "failed")
     state = get_deploy_state()
+    validation_errors = validation_errors or []
+    validation_results = validation_results or {
+        "unbound": [],
+        "nftables": [],
+        "network": [],
+        "ipCollision": [],
+    }
+
     return {
         "id": deploy_id,
         "timestamp": _now_iso(),
@@ -960,4 +977,6 @@ def _build_result(
         "rollbackAvailable": backup_id is not None,
         "backupId": backup_id,
         "success": success,
+        "validationErrors": validation_errors,
+        "validationResults": validation_results,
     }
