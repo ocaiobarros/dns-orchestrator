@@ -147,14 +147,26 @@ export function generatePostUpScript(config: WizardConfig): string {
     '',
   ];
 
-  // Egress IPs (public) on loopback
+  // Egress IPs (public) on loopback — only in host-owned mode
+  const isBorderRouted = config.egressDeliveryMode === 'border-routed';
   if (config.instances.some(i => i.egressIpv4)) {
-    lines.push('# === Egress IPs (public outgoing-interface) on loopback ===');
-    config.instances.forEach(inst => {
-      if (inst.egressIpv4) {
-        lines.push(`/usr/sbin/ip -4 addr add ${inst.egressIpv4}/32 dev lo`);
-      }
-    });
+    if (isBorderRouted) {
+      lines.push('# === Egress IPs (border-routed: NOT added to host interfaces) ===');
+      lines.push('# In border-routed mode, egress IPs are logical identities in Unbound outgoing-interface.');
+      lines.push('# Upstream routing must return traffic for these IPs to this host.');
+      config.instances.forEach(inst => {
+        if (inst.egressIpv4) {
+          lines.push(`# outgoing-interface: ${inst.egressIpv4} (${inst.name}) — routed at border`);
+        }
+      });
+    } else {
+      lines.push('# === Egress IPs (host-owned: added to loopback) ===');
+      config.instances.forEach(inst => {
+        if (inst.egressIpv4) {
+          lines.push(`/usr/sbin/ip -4 addr add ${inst.egressIpv4}/32 dev lo`);
+        }
+      });
+    }
     lines.push('');
   }
 
