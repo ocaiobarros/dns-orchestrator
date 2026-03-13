@@ -77,7 +77,8 @@ export default function NocNetworkLink({
         return (
           <motion.circle
             key={pi}
-            r={safeR(isDegraded ? 2 : 2.5, 2)}
+            initial={{ r: safeR(isDegraded ? 2 : 2.5, 2) }}
+            animate={{ r: safeR(isDegraded ? 2 : 2.5, 2) }}
             fill={color}
             fillOpacity={0.9}
             style={{ filter: `drop-shadow(0 0 4px ${color})` }}

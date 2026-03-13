@@ -58,11 +58,10 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
       <motion.circle
         cx={safeNum(sx)}
         cy={safeNum(sy)}
-        r={safeR(radius + 8, 36)}
         fill="none"
         stroke={color}
         strokeWidth={safeSW(1, 1)}
-        strokeOpacity={safeOpacity(0.15, 0.15)}
+        initial={{ r: safeR(radius + 8, 36), strokeOpacity: safeOpacity(0.15, 0.15) }}
         animate={{
           r: [safeR(radius + 8, 36), safeR(radius + 18, 46), safeR(radius + 8, 36)],
           strokeOpacity: [safeOpacity(0.15, 0.15), safeOpacity(0.05, 0.05), safeOpacity(0.15, 0.15)],
@@ -75,11 +74,10 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
         <motion.circle
           cx={safeNum(sx)}
           cy={safeNum(sy)}
-          r={safeR(radius + 4, 32)}
           fill="none"
           stroke={color}
           strokeWidth={safeSW(2, 2)}
-          strokeOpacity={safeOpacity(0.3, 0.3)}
+          initial={{ r: safeR(radius + 4, 32), strokeOpacity: safeOpacity(0.3, 0.3) }}
           animate={{
             strokeOpacity: [safeOpacity(0.3, 0.3), safeOpacity(0.6, 0.6), safeOpacity(0.3, 0.3)],
             r: [safeR(radius + 4, 32), safeR(radius + 12, 40), safeR(radius + 4, 32)],
@@ -92,11 +90,11 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
       <motion.circle
         cx={safeNum(sx)}
         cy={safeNum(sy)}
-        r={safeR(radius, 28)}
         fill={`${color}15`}
         stroke={color}
         strokeWidth={safeSW(isHovered ? 2.5 : 1.5, 1.5)}
-        animate={isHovered ? { r: safeR(radius + 3, 31) } : { r: safeR(radius, 28) }}
+        initial={{ r: safeR(radius, 28) }}
+        animate={{ r: isHovered ? safeR(radius + 3, 31) : safeR(radius, 28) }}
         transition={{ duration: 0.2 }}
         style={{
           filter: isAlertState
@@ -117,9 +115,9 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
       <motion.circle
         cx={safeNum(sx)}
         cy={safeNum(sy - radius + 6)}
-        r={safeR(3, 3)}
         fill={color}
-        animate={isAlertState ? { scale: [1, 1.4, 1] } : {}}
+        initial={{ r: safeR(3, 3) }}
+        animate={isAlertState ? { r: safeR(3, 3), scale: [1, 1.4, 1] } : { r: safeR(3, 3) }}
         transition={{ duration: 1, repeat: Infinity }}
       />
 
