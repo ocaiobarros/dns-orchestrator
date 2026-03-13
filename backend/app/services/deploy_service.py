@@ -641,7 +641,7 @@ def execute_rollback(backup_id: str, operator: str = "system") -> dict:
     if "nftables" in services_to_restart:
         s = _step(order, "Recarregar nftables", "nft -f /etc/nftables.conf")
         def reload_nft():
-            r = run_command("nft", ["-f", "/etc/nftables.conf"], timeout=15)
+            r = run_command("nft", ["-f", "/etc/nftables.conf"], timeout=15, use_privilege=True)
             return {"status": "success" if r["exit_code"] == 0 else "failed", "output": r["stdout"][:500]}
         _run_step(s, reload_nft)
         steps.append(s)
