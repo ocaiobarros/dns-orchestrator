@@ -123,7 +123,7 @@ export default function HistoryPage() {
                   </div>
 
                   {/* Health checks */}
-                  {h.healthResult && h.healthResult.length > 0 && (
+                  {(detail?.healthResult || h.healthResult) && (detail?.healthResult || h.healthResult)!.length > 0 && (
                     <div>
                       <span className="text-xs text-muted-foreground uppercase tracking-wider">Verificação Pós-Deploy</span>
                       <div className="mt-1 space-y-1">
