@@ -2,7 +2,7 @@ import { useState } from 'react';
 import StatusBadge from '@/components/StatusBadge';
 import ApplyStepsViewer from '@/components/ApplyStepsViewer';
 import { LoadingState, ErrorState, EmptyState } from '@/components/DataStates';
-import { useHistory, useDeployBackups, useRollback } from '@/lib/hooks';
+import { useHistory, useDeployBackups, useRollback, useHistoryDetail } from '@/lib/hooks';
 import { safeDate } from '@/lib/types';
 import { RotateCcw, ChevronDown, ChevronUp, Check, X, SkipForward, Clock, FileText, Shield } from 'lucide-react';
 
