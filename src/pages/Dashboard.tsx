@@ -270,6 +270,7 @@ export default function Dashboard() {
           status: upstreamOk === true ? 'ok' : upstreamOk === false ? 'failed' : 'unknown',
           latency: dnsAvail ? Math.max(Math.round(Number(avgLatency)) - 2, 1) : undefined,
           extra: upstreamOk === true ? 'Reachable' : upstreamOk === false ? 'Unreachable' : 'Unknown',
+          bindIp: '8.8.8.8',
         });
         const resolverIds = mapNodes.filter(n => n.type === 'resolver').map(n => n.id);
         resolverIds.forEach(rid => {
