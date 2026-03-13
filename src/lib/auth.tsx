@@ -68,6 +68,17 @@ const MOCK_USER: AuthUser = {
 
 const DEFAULT_SESSION_TIMEOUT_MINUTES = 30;
 const DEFAULT_SESSION_WARNING_SECONDS = 120;
+const AUTH_REQUEST_TIMEOUT_MS = 8000;
+
+async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = AUTH_REQUEST_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -135,14 +146,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           };
           setSessionInfo(si);
           startSessionTimers(si.expiresAt, si.sessionWarningSeconds);
+        } else {
+          setUser(null);
+          setSessionInfo(null);
         }
         return;
       }
 
       const token = localStorage.getItem(TOKEN_KEY);
-      if (!token) return;
+      if (!token) {
+        setUser(null);
+        setSessionInfo(null);
+        return;
+      }
 
-      const res = await fetch(buildAuthUrl('/auth/me'), {
+      const res = await fetchWithTimeout(buildAuthUrl('/auth/me'), {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -164,22 +182,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSessionInfo(si);
         startSessionTimers(si.expiresAt, si.sessionWarningSeconds);
       } else if (res.status === 401) {
-        // Avoid tearing down a valid in-memory session due transient auth/me noise.
-        if (!user) {
-          setUser(null);
-          setSessionInfo(null);
-        }
+        // Keep current in-memory session on transient auth/me 401 noise.
+        setUser(prev => prev ?? null);
       } else {
         localStorage.removeItem(TOKEN_KEY);
         setUser(null);
         setSessionInfo(null);
       }
     } catch {
+      // Network timeout or transient API failure should never lock UI in loading state.
       setUser(prev => prev ?? null);
     } finally {
       setLoading(false);
     }
-  }, [startSessionTimers, user]);
+  }, [startSessionTimers]);
 
   useEffect(() => {
     checkSession();
