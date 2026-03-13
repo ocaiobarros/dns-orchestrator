@@ -4,6 +4,7 @@ Full deployment lifecycle: dry-run, apply, rollback, state, backups, history.
 """
 
 import json
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -43,38 +44,42 @@ def _resolve_payload(body: DeployRequest, db: Session) -> dict:
     raise HTTPException(status_code=400, detail="config ou profile_id necessário")
 
 
-def _parse_dt(value) -> "datetime | None":
-    """Convert ISO string or datetime to datetime object for SQLite."""
+def _parse_dt(value):
+    """Convert ISO string or datetime to Python datetime for SQLite."""
     if value is None:
         return None
     if isinstance(value, datetime):
         return value
-    from datetime import datetime as dt_cls
     try:
-        return dt_cls.fromisoformat(str(value))
+        return datetime.fromisoformat(str(value))
     except (ValueError, TypeError):
         return None
 
 
-def _persist_job(db: Session, result: dict, body: DeployRequest, user: User):
-    """Persist deploy/dry-run job to DB."""
-    from datetime import datetime, timezone
-    raw_start = result["steps"][0]["startedAt"] if result.get("steps") else None
-    raw_finish = result["steps"][-1]["finishedAt"] if result.get("steps") else None
-    job = ApplyJob(
-        id=result["id"],
-        profile_id=body.profile_id,
-        job_type=body.scope if not result.get("dryRun") else "dry-run",
-        status=result["status"],
-        started_at=_parse_dt(raw_start),
-        finished_at=_parse_dt(raw_finish),
-        stdout_log=json.dumps(result["steps"]),
-        stderr_log=json.dumps(result.get("healthResult", [])),
-        exit_code=0 if result.get("success") else 1,
-        created_by=user.username,
-    )
-    db.add(job)
-    db.commit()
+def _persist_job(db: Session, result: dict, body: DeployRequest, user: User) -> dict | None:
+    """Persist deploy/dry-run job to DB. Returns error dict on failure, None on success."""
+    try:
+        now = datetime.now(timezone.utc)
+        raw_start = result["steps"][0]["startedAt"] if result.get("steps") else None
+        raw_finish = result["steps"][-1]["finishedAt"] if result.get("steps") else None
+        job = ApplyJob(
+            id=result["id"],
+            profile_id=body.profile_id,
+            job_type=body.scope if not result.get("dryRun") else "dry-run",
+            status=result["status"],
+            started_at=_parse_dt(raw_start) or now,
+            finished_at=_parse_dt(raw_finish) or now,
+            stdout_log=json.dumps(result["steps"]),
+            stderr_log=json.dumps(result.get("healthResult", [])),
+            exit_code=0 if result.get("success") else 1,
+            created_by=user.username,
+        )
+        db.add(job)
+        db.commit()
+        return None
+    except Exception as exc:
+        db.rollback()
+        return {"failed_step": "persist_job", "error": str(exc)}
 
 
 @router.post("/dry-run")
@@ -87,7 +92,9 @@ def deploy_dry_run(body: DeployRequest, db: Session = Depends(get_db), user: Use
         dry_run=True,
         operator=user.username,
     )
-    _persist_job(db, result, body, user)
+    persist_err = _persist_job(db, result, body, user)
+    if persist_err:
+        result["persist_warning"] = persist_err
     return result
 
 
@@ -101,7 +108,9 @@ def deploy_apply(body: DeployRequest, db: Session = Depends(get_db), user: User 
         dry_run=body.dry_run,
         operator=user.username,
     )
-    _persist_job(db, result, body, user)
+    persist_err = _persist_job(db, result, body, user)
+    if persist_err:
+        result["persist_warning"] = persist_err
     return result
 
 
@@ -112,19 +121,22 @@ def deploy_rollback(body: RollbackRequest, db: Session = Depends(get_db), user: 
     if not result["success"] and "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
 
-    from datetime import datetime, timezone
-    job = ApplyJob(
-        job_type="rollback",
-        status="success" if result["success"] else "failed",
-        started_at=datetime.now(timezone.utc),
-        finished_at=datetime.now(timezone.utc),
-        stdout_log=json.dumps(result["steps"]),
-        stderr_log=body.reason,
-        exit_code=0 if result["success"] else 1,
-        created_by=user.username,
-    )
-    db.add(job)
-    db.commit()
+    try:
+        now = datetime.now(timezone.utc)
+        job = ApplyJob(
+            job_type="rollback",
+            status="success" if result["success"] else "failed",
+            started_at=now,
+            finished_at=now,
+            stdout_log=json.dumps(result["steps"]),
+            stderr_log=body.reason,
+            exit_code=0 if result["success"] else 1,
+            created_by=user.username,
+        )
+        db.add(job)
+        db.commit()
+    except Exception:
+        db.rollback()
 
     return result
 
