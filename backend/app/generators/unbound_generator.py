@@ -18,6 +18,7 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     files = []
     instances = payload.get("instances", [])
     security = payload.get("security", {})
+    egress_delivery_mode = payload.get("egressDeliveryMode", "host-owned")
 
     for inst in instances:
         name = inst.get("name", "unbound")
