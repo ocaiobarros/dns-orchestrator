@@ -122,7 +122,8 @@ export default function TopologySummary({ config, compact = false, showFlowArrow
         <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider font-medium">
           <ExternalLink size={12} /> Camada 3 — Egress Público
           <span className="text-muted-foreground/50 normal-case">
-            ({config.egressMode === 'fixed-per-instance' ? 'fixo por instância' :
+            ({config.egressDeliveryMode === 'border-routed' ? 'border-routed · lógico' :
+              config.egressMode === 'fixed-per-instance' ? 'fixo por instância · host-owned' :
               config.egressMode === 'shared-pool' ? 'pool compartilhado' :
               config.egressMode === 'randomized' ? 'randomizado' : 'identidade de saída'})
           </span>
