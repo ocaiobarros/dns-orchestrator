@@ -516,6 +516,7 @@ def execute_deploy(
         def restart(args=cmd_args):
             use_privilege = args[0] == "nft"
             r = run_command(args[0], args[1:], timeout=30, use_privilege=use_privilege)
+            return {
                 "status": "success" if r["exit_code"] == 0 else "failed",
                 "output": r["stdout"][:500],
                 "stderr": r["stderr"][:500],
