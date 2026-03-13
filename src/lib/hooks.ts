@@ -240,6 +240,14 @@ export function useHistory(page: number = 1) {
   });
 }
 
+export function useHistoryDetail(id: string | null) {
+  return useQuery({
+    queryKey: ['deploy', 'history', id],
+    queryFn: async () => { const r = await api.getHistoryEntry(id!); if (!r.success) throw new Error(r.error!); return r.data; },
+    enabled: !!id,
+  });
+}
+
 // ---- Profiles ----
 export function useProfiles() {
   return useQuery({

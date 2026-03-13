@@ -184,22 +184,41 @@ def execute_deploy(
                 if os.path.exists(staged_path):
                     r = run_command("unbound-checkconf", [staged_path], timeout=10)
                     if r["exit_code"] != 0:
-                        validation_errors.append(f"unbound-checkconf {f['path']}: {r['stderr'][:200]}")
+                        validation_errors.append({
+                            "category": "unbound-validation",
+                            "command": f"unbound-checkconf {f['path']}",
+                            "file": f["path"],
+                            "stderr": r["stderr"][:500],
+                            "remediation": "Verifique a sintaxe do arquivo Unbound. Use 'unbound-checkconf' localmente para depurar."
+                        })
                         results.append(f"FAIL: {f['path']}")
                     else:
                         results.append(f"OK: {f['path']}")
 
-        # Validate nftables config
+        # Validate nftables config (generate validation-safe version without flush ruleset)
         for f in files:
             if f["path"] == "/etc/nftables.conf" or (f["path"].endswith(".nft") and "nftables" in f["path"]):
-                staged_path = os.path.join(staging_dir, f["path"].lstrip("/"))
-                if os.path.exists(staged_path) and f["path"] == "/etc/nftables.conf":
-                    r = run_command("nft", ["-c", "-f", staged_path], timeout=10, use_privilege=True)
-                    if r["exit_code"] != 0:
-                        validation_errors.append(f"nft -c -f {f['path']}: {r['stderr'][:200]}")
-                        results.append(f"FAIL: {f['path']}")
-                    else:
-                        results.append(f"OK: nftables syntax valid")
+                if f["path"] == "/etc/nftables.conf" and staging_dir:
+                    # Generate validation-safe config without "flush ruleset"
+                    from app.generators.nftables_generator import generate_nftables_config
+                    val_files = generate_nftables_config(payload, validation_mode=True)
+                    if val_files:
+                        val_path = os.path.join(staging_dir, "etc", "nftables.validate.conf")
+                        os.makedirs(os.path.dirname(val_path), exist_ok=True)
+                        with open(val_path, "w") as vf:
+                            vf.write(val_files[0]["content"])
+                        r = run_command("nft", ["-c", "-f", val_path], timeout=10, use_privilege=True)
+                        if r["exit_code"] != 0:
+                            validation_errors.append({
+                                "category": "nftables-validation",
+                                "command": f"nft -c -f {f['path']}",
+                                "file": f["path"],
+                                "stderr": r["stderr"][:500],
+                                "remediation": "Verifique a sintaxe do nftables gerado. Erros comuns: regras conflitantes, interfaces inexistentes."
+                            })
+                            results.append(f"FAIL: {f['path']}")
+                        else:
+                            results.append(f"OK: nftables syntax valid")
 
         # IP collision detection
         ip_map: dict[str, list[str]] = {}
@@ -220,7 +239,13 @@ def execute_deploy(
 
         for ip, users in ip_map.items():
             if len(users) > 1:
-                validation_errors.append(f"IP collision: {ip} used by {', '.join(users)}")
+                validation_errors.append({
+                    "category": "ip-collision",
+                    "command": None,
+                    "file": None,
+                    "stderr": f"IP {ip} usado por {', '.join(users)}",
+                    "remediation": "Cada camada (VIP, Listener, Egress, Host) deve usar IPs distintos."
+                })
 
         if validation_errors:
             _update_live_state(errors=validation_errors)

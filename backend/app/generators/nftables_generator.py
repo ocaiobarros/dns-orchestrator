@@ -6,17 +6,19 @@ Generates /etc/nftables.conf with DNAT rules, rate limiting, and counters.
 from typing import Any
 
 
-def generate_nftables_config(payload: dict[str, Any]) -> list[dict]:
+def generate_nftables_config(payload: dict[str, Any], validation_mode: bool = False) -> list[dict]:
     nat = payload.get("nat", {})
     vip = payload.get("loopback", {}).get("vip", "")
     instances = payload.get("instances", [])
     security = payload.get("security", {})
 
-    config = """#!/usr/sbin/nft -f
+    flush_line = "# flush ruleset  (removed for validation)" if validation_mode else "flush ruleset"
+
+    config = f"""#!/usr/sbin/nft -f
 # DNS Control — nftables configuration
 # Generated configuration — do not edit manually
 
-flush ruleset
+{flush_line}
 
 """
 

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import StatusBadge from '@/components/StatusBadge';
 import ApplyStepsViewer from '@/components/ApplyStepsViewer';
 import { LoadingState, ErrorState, EmptyState } from '@/components/DataStates';
-import { useHistory, useDeployBackups, useRollback } from '@/lib/hooks';
+import { useHistory, useDeployBackups, useRollback, useHistoryDetail } from '@/lib/hooks';
 import { safeDate } from '@/lib/types';
 import { RotateCcw, ChevronDown, ChevronUp, Check, X, SkipForward, Clock, FileText, Shield } from 'lucide-react';
 
@@ -11,6 +11,7 @@ export default function HistoryPage() {
   const { data: backups } = useDeployBackups();
   const rollbackMutation = useRollback();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { data: detail, isLoading: detailLoading } = useHistoryDetail(expandedId);
   const [showBackups, setShowBackups] = useState(false);
 
   if (isLoading) return <LoadingState />;
@@ -113,12 +114,16 @@ export default function HistoryPage() {
                   <div>
                     <span className="text-xs text-muted-foreground uppercase tracking-wider">Pipeline de Execução</span>
                     <div className="mt-1">
-                      <ApplyStepsViewer steps={h.steps} showCommands />
+                      {detailLoading ? (
+                        <p className="text-xs text-muted-foreground">Carregando...</p>
+                      ) : (
+                        <ApplyStepsViewer steps={detail?.steps || h.steps} showCommands />
+                      )}
                     </div>
                   </div>
 
                   {/* Health checks */}
-                  {h.healthResult && h.healthResult.length > 0 && (
+                  {(detail?.healthResult || h.healthResult) && (detail?.healthResult || h.healthResult)!.length > 0 && (
                     <div>
                       <span className="text-xs text-muted-foreground uppercase tracking-wider">Verificação Pós-Deploy</span>
                       <div className="mt-1 space-y-1">

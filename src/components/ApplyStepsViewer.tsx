@@ -15,10 +15,13 @@ const statusIcons = {
 };
 
 export default function ApplyStepsViewer({ steps, showCommands = true }: Props) {
+  if (!steps || steps.length === 0) {
+    return <p className="text-xs text-muted-foreground italic">Nenhum passo registrado</p>;
+  }
   return (
     <div className="space-y-1">
-      {steps.map(step => (
-        <div key={step.order} className={`flex items-start gap-3 p-2 rounded text-sm ${
+      {steps.map((step, idx) => (
+        <div key={step.order ?? idx} className={`flex items-start gap-3 p-2 rounded text-sm ${
           step.status === 'failed' ? 'bg-destructive/5' : ''
         }`}>
           <div className="mt-0.5 shrink-0">{statusIcons[step.status]}</div>

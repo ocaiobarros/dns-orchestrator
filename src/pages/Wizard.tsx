@@ -808,6 +808,39 @@ export default function Wizard() {
                 <ApplyStepsViewer steps={applyResult.steps} />
               </div>
 
+              {/* Structured validation errors from staging */}
+              {(applyResult as any).validationErrors && (applyResult as any).validationErrors.length > 0 && (
+                <div className="noc-panel border-destructive/30">
+                  <div className="noc-panel-header flex items-center gap-2 text-destructive">
+                    <AlertCircle size={12} />
+                    Erros de Validação em Staging ({(applyResult as any).validationErrors.length})
+                  </div>
+                  <div className="space-y-2">
+                    {(applyResult as any).validationErrors.map((ve: any, i: number) => (
+                      <div key={i} className="p-2 rounded bg-destructive/5 border border-destructive/10 text-xs space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="px-1.5 py-0.5 rounded bg-destructive/15 text-destructive font-medium uppercase text-[10px]">
+                            {typeof ve === 'string' ? 'validation' : ve.category || 'validation'}
+                          </span>
+                          {typeof ve !== 'string' && ve.file && (
+                            <span className="font-mono text-muted-foreground">{ve.file}</span>
+                          )}
+                        </div>
+                        {typeof ve !== 'string' && ve.command && (
+                          <code className="block font-mono text-muted-foreground opacity-70">$ {ve.command}</code>
+                        )}
+                        <pre className="font-mono text-destructive whitespace-pre-wrap break-all">
+                          {typeof ve === 'string' ? ve : ve.stderr}
+                        </pre>
+                        {typeof ve !== 'string' && ve.remediation && (
+                          <p className="text-muted-foreground italic">💡 {ve.remediation}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Post-deploy health checks */}
               {applyResult.healthResult && applyResult.healthResult.length > 0 && (
                 <div className="noc-panel">
