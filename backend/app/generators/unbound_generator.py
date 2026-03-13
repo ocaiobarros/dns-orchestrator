@@ -6,6 +6,14 @@ Generates per-instance unbound.conf files.
 from typing import Any
 
 
+def _safe_int(value: Any, default: int) -> int:
+    try:
+        parsed = int(value)
+        return parsed if parsed > 0 else default
+    except Exception:
+        return default
+
+
 def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     files = []
     instances = payload.get("instances", [])
@@ -14,8 +22,10 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     for inst in instances:
         name = inst.get("name", "unbound")
         bind_ip = inst.get("bindIp", "127.0.0.1")
-        port = inst.get("port", 53)
+        port = _safe_int(inst.get("port", 53), 53)
         exit_ip = inst.get("exitIp", "")
+        control_interface = inst.get("controlInterface", "127.0.0.1")
+        control_port = _safe_int(inst.get("controlPort", 8953), 8953)
         access_cidrs = security.get("allowedCidrs", ["0.0.0.0/0"])
 
         config = f"""# DNS Control — Unbound instance: {name}
@@ -77,14 +87,14 @@ server:
     auto-trust-anchor-file: "/var/lib/unbound/root.key"
 """
 
-        config += """
+        config += f"""
     # Root hints
     root-hints: "/usr/share/dns/root.hints"
 
 remote-control:
     control-enable: yes
-    control-interface: 127.0.0.1
-    control-port: 8953
+    control-interface: {control_interface}
+    control-port: {control_port}
     control-use-cert: no
 """
 
