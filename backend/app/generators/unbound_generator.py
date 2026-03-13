@@ -18,6 +18,7 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     files = []
     instances = payload.get("instances", [])
     security = payload.get("security", {})
+    egress_delivery_mode = payload.get("egressDeliveryMode", "host-owned")
 
     for inst in instances:
         name = inst.get("name", "unbound")
@@ -78,8 +79,11 @@ server:
     use-syslog: yes
 """
 
-        if exit_ip:
+        if exit_ip and egress_delivery_mode == "host-owned":
             config += f"\n    outgoing-interface: {exit_ip}\n"
+        elif exit_ip and egress_delivery_mode == "border-routed":
+            config += f"\n    # outgoing-interface: {exit_ip}  # SUPPRESSED — border-routed mode\n"
+            config += "    # Egress identity enforced at border device (SNAT/policy/static return path)\n"
 
         if security.get("enableDnssec", True):
             config += """

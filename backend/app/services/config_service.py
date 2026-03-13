@@ -26,6 +26,21 @@ def validate_config(payload: dict[str, Any]) -> dict:
     if not instances:
         errors.append({"field": "instances", "message": "Pelo menos uma instância Unbound é necessária"})
 
+    # ═══ Egress delivery mode validation ═══
+    egress_mode = normalized.get("egressDeliveryMode", "host-owned")
+    for inst in instances:
+        exit_ip = inst.get("exitIp", "")
+        name = inst.get("name", "unbound")
+        if egress_mode == "host-owned" and exit_ip:
+            errors.append({
+                "field": f"instances.{name}.exitIp",
+                "message": f"host-owned: IP de egress {exit_ip} DEVE existir localmente no host para outgoing-interface funcionar",
+                "severity": "warning",
+            })
+        if egress_mode == "border-routed" and exit_ip:
+            # INFO: expected — outgoing-interface will be suppressed
+            pass
+
     return {"valid": len(errors) == 0, "errors": errors, "normalized": normalized}
 
 

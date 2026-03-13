@@ -615,17 +615,18 @@ export default function Wizard() {
                   label="Host-Owned (IP Local)" desc="O IP público de egress é configurado localmente no host (loopback). O host é dono do IP." />
                 <ModeCard selected={config.egressDeliveryMode === 'border-routed'}
                   onClick={() => set('egressDeliveryMode', 'border-routed')}
-                  label="Border-Routed (Lógico)" desc="O IP público de egress NÃO é configurado no host. O resolver usa como outgoing-interface lógico e o roteamento upstream retorna o tráfego." />
+                  label="Border-Routed (Lógico)" desc="O IP público de egress NÃO é configurado no host. Unbound NÃO emite outgoing-interface. A identidade de saída é imposta pelo dispositivo de borda (SNAT/roteamento estático)." />
               </div>
               {config.egressDeliveryMode === 'border-routed' && (
                 <div className="flex gap-2 p-3 rounded bg-accent/10 border border-accent/20 text-xs text-accent">
                   <Info size={14} className="shrink-0 mt-0.5" />
                   <div>
-                    <strong>Border-Routed:</strong> O IP público de egress não é configurado localmente no host.
-                    O resolver usa o IP logicamente como <code className="font-mono bg-accent/20 px-1 rounded">outgoing-interface</code>, e o roteamento
-                    upstream (firewall/router de borda) deve retornar o tráfego para este servidor.
+                    <strong>Border-Routed:</strong> O IP público de egress <strong>não é configurado localmente</strong> no host
+                    e <strong>não será emitido</strong> como <code className="font-mono bg-accent/20 px-1 rounded">outgoing-interface</code> no Unbound.
                     <br />
-                    <span className="text-accent/70 mt-1 block">→ nftables NÃO gerará masquerade ou SNAT genérico para preservar a identidade de egress.</span>
+                    <span className="text-accent/70 mt-1 block">→ O Unbound usará o IP padrão do host para queries recursivas.</span>
+                    <span className="text-accent/70 block">→ A identidade pública é imposta pelo dispositivo de borda (SNAT/policy routing/rota estática de retorno).</span>
+                    <span className="text-accent/70 block">→ nftables NÃO gerará masquerade genérico.</span>
                   </div>
                 </div>
               )}
@@ -1099,11 +1100,12 @@ export default function Wizard() {
                   ['Entrega VIP', 'nftables DNAT (prerouting)'],
                   ['Listener Bind', 'Host-local loopback/dummy'],
                   ['Listener local no host', '✅ Obrigatório'],
-                  ['Identidade Egress', 'Unbound outgoing-interface'],
+                  ['outgoing-interface emitido', config.egressDeliveryMode === 'border-routed' ? '❌ Suprimido' : '✅ Emitido no Unbound'],
+                  ['IP Egress local obrigatório', config.egressDeliveryMode === 'border-routed' ? '❌ Não (lógico)' : '✅ Sim (deve existir no host)'],
                   ['Caminho de Retorno', config.egressDeliveryMode === 'border-routed' ? 'Rota estática na borda' : 'Masquerade/SNAT local'],
-                  ['IP Público local no host', config.egressDeliveryMode === 'border-routed' ? '❌ Não necessário' : '✅ Configurado em loopback'],
+                  ['IP Público local no host', config.egressDeliveryMode === 'border-routed' ? '❌ Não configurado' : '✅ Configurado em loopback'],
                   ['Masquerade/SNAT', config.egressDeliveryMode === 'border-routed' ? '❌ Não gerado' : '✅ Gerado em postrouting'],
-                  ['Responsável retorno', config.egressDeliveryMode === 'border-routed' ? 'Firewall/Router de borda' : 'Host local (NAT)'],
+                  ['NAT de borda obrigatório', config.egressDeliveryMode === 'border-routed' ? '✅ Sim (SNAT/policy)' : '❌ Não necessário'],
                   ['Post-up listener IPs', '✅ ip addr add no loopback'],
                   ['Post-up egress IPs', config.egressDeliveryMode === 'border-routed' ? '❌ Comentado (lógico)' : '✅ ip addr add no loopback'],
                   ['Deploy check egress', config.egressDeliveryMode === 'border-routed' ? 'IP não presente (esperado)' : 'IP presente no host'],

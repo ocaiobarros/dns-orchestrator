@@ -31,8 +31,15 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
     interface: ${inst.bindIp}
 ${config.enableIpv6 && inst.bindIpv6 ? `    interface: ${inst.bindIpv6}` : ''}
 
-    outgoing-interface: ${inst.egressIpv4}
-${config.enableIpv6 && inst.egressIpv6 ? `    outgoing-interface: ${inst.egressIpv6}` : ''}
+${config.egressDeliveryMode === 'border-routed'
+    ? `    # outgoing-interface: ${inst.egressIpv4}  # SUPPRESSED — border-routed mode
+    # Egress identity enforced at border device (SNAT/policy/static return path)`
+    : `    outgoing-interface: ${inst.egressIpv4}`}
+${config.enableIpv6 && inst.egressIpv6
+    ? (config.egressDeliveryMode === 'border-routed'
+        ? `    # outgoing-interface: ${inst.egressIpv6}  # SUPPRESSED — border-routed`
+        : `    outgoing-interface: ${inst.egressIpv6}`)
+    : ''}
 
     outgoing-range: 512
     num-queries-per-thread: 3200
