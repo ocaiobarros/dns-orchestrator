@@ -1,6 +1,7 @@
 """
 DNS Control — Apply Service
 Orchestrates the full apply workflow: validate, generate, backup, write, restart.
+Uses privileged execution (sudo) for production file writes and service management.
 """
 
 import os
@@ -49,28 +50,72 @@ def execute_apply(payload: dict[str, Any], scope: str = "full", dry_run: bool = 
             shutil.copy2(src, dst)
     steps.append({"order": 3, "name": "Backup configuração atual", "status": "success", "output": f"Backup salvo em {backup_dir}", "duration_ms": 100, "command": None})
 
-    # Step 4: Write files
+    # Step 4: Write files via privileged install
+    order = 4
+    write_errors = []
     for f in files:
         if _scope_matches(f["path"], scope):
+            # Ensure target directory exists via sudo mkdir -p
             dir_path = os.path.dirname(f["path"])
-            os.makedirs(dir_path, exist_ok=True)
-            with open(f["path"], "w") as fp:
-                fp.write(f["content"])
-            os.chmod(f["path"], int(f.get("permissions", "0644"), 8))
-    steps.append({"order": 4, "name": "Gravar arquivos em disco", "status": "success", "output": "Arquivos gravados", "duration_ms": 80, "command": None})
+            run_command("mkdir", ["-p", dir_path], timeout=10, use_privilege=True)
 
-    # Step 5: Restart services based on scope
+            # Write content to staging temp file first
+            staging_tmp = os.path.join(settings.STAGING_DIR, "_tmp_install")
+            os.makedirs(staging_tmp, exist_ok=True)
+            tmp_file = os.path.join(staging_tmp, os.path.basename(f["path"]))
+            with open(tmp_file, "w") as fp:
+                fp.write(f["content"])
+
+            # Use sudo install to copy to production path with correct permissions
+            perms = f.get("permissions", "0644")
+            result = run_command(
+                "install", ["-m", perms, tmp_file, f["path"]],
+                timeout=10, use_privilege=True,
+            )
+            if result["exit_code"] != 0:
+                write_errors.append(f"{f['path']}: {result['stderr'][:200]}")
+
+    if write_errors:
+        steps.append({
+            "order": order, "name": "Gravar arquivos em disco", "status": "failed",
+            "output": f"Erros: {'; '.join(write_errors)}", "duration_ms": 80, "command": "sudo install",
+        })
+        success = False
+    else:
+        steps.append({
+            "order": order, "name": "Gravar arquivos em disco", "status": "success",
+            "output": "Arquivos gravados via install privilegiado", "duration_ms": 80, "command": "sudo install",
+        })
+    order += 1
+
+    # Step 5: Apply sysctl (targeted, only dns-control files)
+    sysctl_files = [f["path"] for f in files if "sysctl" in f["path"] and _scope_matches(f["path"], scope)]
+    if sysctl_files:
+        for sf in sysctl_files:
+            result = run_command("sysctl", ["--load", sf], timeout=15, use_privilege=True)
+            status_val = "success" if result["exit_code"] == 0 else "failed"
+            if result["exit_code"] != 0:
+                success = False
+            steps.append({
+                "order": order, "name": f"Aplicar sysctl {os.path.basename(sf)}", "status": status_val,
+                "output": result["stdout"][:500] or result["stderr"][:500],
+                "duration_ms": result["duration_ms"], "command": f"sudo sysctl --load {sf}",
+            })
+            stdout_parts.append(result["stdout"])
+            stderr_parts.append(result["stderr"])
+            order += 1
+
+    # Step 6: Restart services based on scope (all via privileged execution)
     restart_cmds = _get_restart_commands(scope, payload)
-    order = 5
     for cmd_name, cmd_args in restart_cmds:
-        result = run_command(cmd_args[0], cmd_args[1:], timeout=30)
+        result = run_command(cmd_args[0], cmd_args[1:], timeout=30, use_privilege=True)
         status_val = "success" if result["exit_code"] == 0 else "failed"
         if result["exit_code"] != 0:
             success = False
         steps.append({
             "order": order, "name": cmd_name, "status": status_val,
             "output": result["stdout"][:500], "duration_ms": result["duration_ms"],
-            "command": " ".join(cmd_args),
+            "command": f"sudo {' '.join(cmd_args)}",
         })
         stdout_parts.append(result["stdout"])
         stderr_parts.append(result["stderr"])
@@ -100,6 +145,8 @@ def _scope_matches(path: str, scope: str) -> bool:
 
 def _get_restart_commands(scope: str, payload: dict) -> list[tuple[str, list[str]]]:
     cmds = []
+    # daemon-reload first (covers new systemd units)
+    cmds.append(("Recarregar systemd", ["systemctl", "daemon-reload"]))
     if scope in ("full", "nftables"):
         cmds.append(("Aplicar nftables", ["nft", "-f", "/etc/nftables.conf"]))
     if scope in ("full", "dns"):

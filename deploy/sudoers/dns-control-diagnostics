@@ -1,11 +1,10 @@
-# DNS Control — Diagnostics sudoers policy
+# DNS Control — Sudoers policy (diagnostics + deploy)
 # Install: sudo cp this-file /etc/sudoers.d/dns-control-diagnostics
 # Validate: sudo visudo -cf /etc/sudoers.d/dns-control-diagnostics
 #
-# This grants the dns-control service user NOPASSWD access to
-# a strict set of diagnostic and deploy-validation commands.
-# Validation/apply for nftables is included to support privileged
-# staging syntax checks and atomic ruleset loading.
+# Grants the dns-control service user NOPASSWD access to:
+# 1. Diagnostic commands (read-only)
+# 2. Deploy commands (file install, service restart, sysctl)
 
 # Change "dns-control" below to match the actual service user
 Defaults:dns-control !requiretty
@@ -20,4 +19,16 @@ dns-control ALL=(root) NOPASSWD: \
     /usr/sbin/nft -c -f *, \
     /usr/sbin/nft -f *, \
     /usr/bin/vtysh -c *, \
-    /usr/bin/journalctl --no-pager *
+    /usr/bin/journalctl --no-pager *, \
+    /usr/bin/install -m * -o * -g * *, \
+    /usr/bin/install -m *, \
+    /usr/bin/mkdir -p *, \
+    /usr/bin/systemctl daemon-reload, \
+    /usr/bin/systemctl restart unbound*, \
+    /usr/bin/systemctl restart frr, \
+    /usr/bin/systemctl restart nftables, \
+    /usr/bin/systemctl status unbound*, \
+    /usr/bin/systemctl status frr, \
+    /usr/bin/systemctl status nftables, \
+    /usr/sbin/sysctl --load *, \
+    /usr/sbin/ifreload -a
