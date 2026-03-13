@@ -1214,6 +1214,59 @@ export default function Wizard() {
                 )}
               </div>
             </div>
+
+            {/* Submit State & Error Panel */}
+            {(submitState !== 'idle' || submitError) && (
+              <div className={`noc-panel ${submitError ? 'border-destructive/30' : 'border-primary/30'}`}>
+                <div className="noc-panel-header flex items-center gap-2">
+                  {submitError ? <AlertCircle size={12} className="text-destructive" /> : <Activity size={12} className="text-primary" />}
+                  Estado da Submissão
+                </div>
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center gap-3">
+                    {['validating', 'dispatching', 'polling', 'done'].map(phase => (
+                      <span key={phase} className={`px-2 py-0.5 rounded font-mono ${
+                        submitState === phase ? 'bg-primary text-primary-foreground' :
+                        submitState === 'error' ? 'bg-destructive/10 text-destructive' :
+                        'bg-secondary text-muted-foreground'
+                      }`}>{phase}</span>
+                    ))}
+                  </div>
+                  {submitError && (
+                    <div className="p-2 bg-destructive/10 border border-destructive/20 rounded text-destructive font-mono text-xs">
+                      {submitError}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Debug Actions */}
+            <div className="noc-panel border-border/50">
+              <div className="noc-panel-header flex items-center gap-2 text-muted-foreground">
+                <Settings size={12} /> Diagnóstico de Deploy
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={handleCopyPayload}
+                  className="px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
+                  📋 Copiar Payload JSON
+                </button>
+                <button onClick={handleTestConnectivity}
+                  className="px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
+                  🔗 Testar Conectividade API
+                </button>
+                <button onClick={handleForceDryRun}
+                  className="px-3 py-1.5 text-xs bg-accent/20 text-accent rounded border border-accent/30 hover:bg-accent/30">
+                  ⚡ Enviar Dry-Run Direto
+                </button>
+              </div>
+              <div className="mt-2 text-[10px] text-muted-foreground/60 font-mono">
+                Validação: {isConfigValid(validationErrors) ? '✅ OK' : `❌ ${validationErrors.filter(e => e.severity === 'error').length} erro(s)`}
+                {' · '}Arquivos: {generatedFiles.length}
+                {' · '}Mutation pending: {applyMutation.isPending ? 'sim' : 'não'}
+                {' · '}Submit state: {submitState}
+              </div>
+            </div>
           </div>
         );
     }
