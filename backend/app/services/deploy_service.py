@@ -514,8 +514,8 @@ def execute_deploy(
         s = _step(order, cmd_name, " ".join(cmd_args))
         s["rollbackHint"] = hint
         def restart(args=cmd_args):
-            r = run_command(args[0], args[1:], timeout=30)
-            return {
+            use_privilege = args[0] == "nft"
+            r = run_command(args[0], args[1:], timeout=30, use_privilege=use_privilege)
                 "status": "success" if r["exit_code"] == 0 else "failed",
                 "output": r["stdout"][:500],
                 "stderr": r["stderr"][:500],
