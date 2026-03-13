@@ -41,6 +41,8 @@ export interface ServiceVip {
 
 export type EgressMode = 'fixed-per-instance' | 'shared-pool' | 'randomized';
 
+export type EgressDeliveryMode = 'host-owned' | 'border-routed';
+
 
 // ---- DNS Instance (expanded) ----
 
