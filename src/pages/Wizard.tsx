@@ -1354,14 +1354,14 @@ export default function Wizard() {
         <div className="flex gap-2">
           {step === LAST_STEP && !applyResult && (
             <>
-              <button onClick={() => handleApply(true)} disabled={applyMutation.isPending}
+              <button onClick={() => handleApply(true)} disabled={submitState === 'dispatching'}
                 className="flex items-center gap-1 px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80 disabled:opacity-60">
                 <Eye size={16} /> Dry Run
               </button>
-              <button onClick={() => handleApply(false)} disabled={applyMutation.isPending || !isConfigValid(validationErrors)}
+              <button onClick={() => handleApply(false)} disabled={submitState === 'dispatching' || !isConfigValid(validationErrors)}
                 className="flex items-center gap-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded font-medium hover:bg-primary/90 disabled:opacity-60">
-                {applyMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
-                {applyMutation.isPending ? 'Aplicando...' : 'Aplicar Deploy'}
+                {submitState === 'dispatching' ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                {submitState === 'dispatching' ? 'Aplicando...' : 'Aplicar Deploy'}
               </button>
             </>
           )}
