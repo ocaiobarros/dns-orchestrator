@@ -120,19 +120,22 @@ def deploy_rollback(body: RollbackRequest, db: Session = Depends(get_db), user: 
     if not result["success"] and "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
 
-    from datetime import datetime, timezone
-    job = ApplyJob(
-        job_type="rollback",
-        status="success" if result["success"] else "failed",
-        started_at=datetime.now(timezone.utc),
-        finished_at=datetime.now(timezone.utc),
-        stdout_log=json.dumps(result["steps"]),
-        stderr_log=body.reason,
-        exit_code=0 if result["success"] else 1,
-        created_by=user.username,
-    )
-    db.add(job)
-    db.commit()
+    try:
+        now = datetime.now(timezone.utc)
+        job = ApplyJob(
+            job_type="rollback",
+            status="success" if result["success"] else "failed",
+            started_at=now,
+            finished_at=now,
+            stdout_log=json.dumps(result["steps"]),
+            stderr_log=body.reason,
+            exit_code=0 if result["success"] else 1,
+            created_by=user.username,
+        )
+        db.add(job)
+        db.commit()
+    except Exception:
+        db.rollback()
 
     return result
 
