@@ -1072,6 +1072,23 @@ def _run_health_checks(payload: dict) -> list[dict]:
                 "durationMs": int((time.monotonic() - t0) * 1000),
             })
 
+    # ═══ Host-owned egress IP materialization check ═══
+    if egress_delivery == "host-owned":
+        for inst in instances:
+            egress_ip = str(inst.get("exitIp", "") or inst.get("egressIpv4", "")).strip()
+            name = inst.get("name", "unbound")
+            if egress_ip:
+                t0 = time.monotonic()
+                r = run_command("ip", ["-4", "addr", "show", "dev", "lo"], timeout=5)
+                ip_present = egress_ip in (r.get("stdout") or "")
+                checks.append({
+                    "name": f"{name} egress IP on loopback ({egress_ip})",
+                    "target": egress_ip,
+                    "status": "pass" if ip_present else "fail",
+                    "detail": f"Egress IP {egress_ip} {'presente' if ip_present else 'AUSENTE — outgoing-interface falhará'} no loopback",
+                    "durationMs": int((time.monotonic() - t0) * 1000),
+                })
+
     # ═══ Legacy default unbound detection ═══
     t0 = time.monotonic()
     r = run_command("systemctl", ["is-active", "unbound"], timeout=5)
