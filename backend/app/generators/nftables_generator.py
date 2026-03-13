@@ -133,7 +133,7 @@ def generate_nftables_config(payload: dict[str, Any], validation_mode: bool = Fa
         f"        # Management: SSH, HTTP (nginx), API ({api_port}), Panel ({panel_port})",
         f"        tcp dport {{ {mgmt_port_set} }} accept",
         "",
-    ]
+    ])
 
     if tcp_ports:
         tcp_port_set = ", ".join(str(p) for p in tcp_ports)
