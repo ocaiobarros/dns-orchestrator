@@ -220,7 +220,7 @@ export default function Dashboard() {
         </motion.div>
       )}
 
-      {/* ═══ TIER 4: DNS NETWORK MAP — Full-width centerpiece ═══ */}
+      {/* ═══ TIER 4: DNS GEO MAP — Real world map centerpiece ═══ */}
       {(() => {
         const mapNodes: MapNode[] = [];
         const mapEdges: MapEdge[] = [];
