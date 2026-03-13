@@ -363,9 +363,10 @@ def execute_deploy(
     if dry_run:
         # Generate commands that would run
         restart_cmds = _get_restart_commands(scope, payload)
+        sysctl_plan = [f"sysctl --load {path}" for path in _get_scoped_sysctl_files(files, scope)]
         commands_plan = [
             "systemctl daemon-reload",
-            "sysctl --system",
+            *sysctl_plan,
         ] + [" ".join(cmd_args) for _, cmd_args, _ in restart_cmds]
 
         s_dry = _step(5, "Dry-run concluído")
