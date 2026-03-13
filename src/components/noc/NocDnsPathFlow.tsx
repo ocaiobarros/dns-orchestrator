@@ -131,10 +131,9 @@ export default function NocDnsPathFlow({ nodes, edges }: Props) {
                   />
                   {/* Animated flow particle */}
                   <motion.circle
-                    r={safeR(3, 3)}
                     fill={hasFailures ? 'hsl(var(--destructive))' : 'hsl(var(--primary))'}
                     filter="url(#pathGlow)"
-                    initial={{ cx: x1 + 40, cy: y1 }}
+                    initial={{ r: safeR(3, 3), cx: x1 + 40, cy: y1 }}
                     animate={{ cx: x2 - 40, cy: y2 }}
                     transition={{ duration: 2, repeat: Infinity, ease: 'linear', delay: i * 0.3 }}
                   />
