@@ -173,7 +173,7 @@ export default function NocHeroBar({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -6, scale: 0.95 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute right-0 top-full mt-2 z-50 min-w-[160px] rounded-lg border border-border/40 bg-card overflow-hidden"
+                    className="absolute right-0 top-full mt-2 z-[9999] min-w-[160px] rounded-lg border border-border/40 bg-card shadow-xl overflow-hidden"
                   >
                     {[
                       { label: 'Diagnostics', path: '/troubleshoot' },

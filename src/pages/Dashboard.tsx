@@ -440,10 +440,21 @@ export default function Dashboard() {
 
       {/* ═══ TIER 8: DNS REPLAY SIMULATION ═══ */}
       <NocDeploySimulation
-        listeners={safeV2.map(inst => ({
-          name: inst.instance_name || `resolver-${inst.id}`,
-          ip: inst.bind_ip || '127.0.0.1',
-        }))}
+        listeners={
+          safeV2.length > 0
+            ? safeV2.map(inst => ({
+                name: inst.instance_name || `resolver-${inst.id}`,
+                ip: inst.bind_ip || '127.0.0.1',
+              }))
+            : health?.instances?.length
+              ? health.instances.map(inst => ({
+                  name: inst.instance || 'resolver',
+                  ip: inst.bind_ip || '127.0.0.1',
+                }))
+              : totalInstances > 0
+                ? [{ name: 'resolver-local', ip: '127.0.0.1' }]
+                : []
+        }
       />
 
       {/* ═══ TIER 9: COMMAND CONSOLE ═══ */}
