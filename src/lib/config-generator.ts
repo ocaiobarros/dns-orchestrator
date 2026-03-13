@@ -140,15 +140,41 @@ WantedBy=multi-user.target
 
 export function generatePostUpScript(config: WizardConfig): string {
   const lines: string[] = [
-    '#!/bin/sh',
+    '#!/bin/bash',
     '# DNS Control — Network post-up script',
     `# Generated for: ${config.hostname || 'dns-control'}`,
     `# Instances: ${config.instances.map(i => i.name).join(', ')}`,
     '',
+    'set -e',
+    '',
   ];
 
-  // Egress IPs (public) on loopback — only in host-owned mode
   const isBorderRouted = config.egressDeliveryMode === 'border-routed';
+
+  // Listener IPs FIRST — MUST exist locally for Unbound bind + health checks
+  if (config.instances.some(i => i.bindIp)) {
+    lines.push('# === Listener IPs (MUST exist locally for Unbound interface: binding) ===');
+    config.instances.forEach(inst => {
+      if (inst.bindIp) {
+        lines.push(`ip -4 addr replace ${inst.bindIp}/32 dev lo 2>/dev/null || true`);
+      }
+    });
+    lines.push('');
+  }
+
+  // IPv6 listener IPs
+  if (config.enableIpv6) {
+    const ipv6Listeners = config.instances.filter(i => i.bindIpv6);
+    if (ipv6Listeners.length > 0) {
+      lines.push('# === Listener IPv6 IPs ===');
+      ipv6Listeners.forEach(inst => {
+        lines.push(`ip -6 addr replace ${inst.bindIpv6}/128 dev lo 2>/dev/null || true`);
+      });
+      lines.push('');
+    }
+  }
+
+  // Egress IPs — conditional on delivery mode
   if (config.instances.some(i => i.egressIpv4)) {
     if (isBorderRouted) {
       lines.push('# === Egress IPs (border-routed: NOT added to host interfaces) ===');
@@ -163,58 +189,20 @@ export function generatePostUpScript(config: WizardConfig): string {
       lines.push('# === Egress IPs (host-owned: added to loopback) ===');
       config.instances.forEach(inst => {
         if (inst.egressIpv4) {
-          lines.push(`/usr/sbin/ip -4 addr add ${inst.egressIpv4}/32 dev lo`);
+          lines.push(`ip -4 addr replace ${inst.egressIpv4}/32 dev lo 2>/dev/null || true`);
         }
       });
     }
     lines.push('');
   }
 
-  // Default route
-  if (config.ipv4Gateway) {
-    lines.push('# === Default route ===');
-    lines.push(`/usr/sbin/ip -4 route add default via ${config.ipv4Gateway}`);
-    lines.push('');
-  }
-
-  // IPv6
-  if (config.enableIpv6 && config.ipv6Address) {
-    lines.push('# === IPv6 configuration ===');
-    lines.push(`/usr/sbin/ip -6 addr add ${config.ipv6Address} dev ${config.mainInterface}`);
-    if (config.ipv6Gateway) {
-      lines.push(`/usr/sbin/ip -6 route add default via ${config.ipv6Gateway}`);
-    }
-    lines.push('');
-
-    // IPv6 egress IPs
+  // IPv6 egress IPs (only host-owned)
+  if (config.enableIpv6 && !isBorderRouted) {
     const ipv6Egress = config.instances.filter(i => i.egressIpv6);
     if (ipv6Egress.length > 0) {
       lines.push('# === IPv6 egress IPs on loopback ===');
       ipv6Egress.forEach(inst => {
-        lines.push(`/usr/sbin/ip addr add ${inst.egressIpv6}/128 dev lo`);
-      });
-      lines.push('');
-    }
-  }
-
-  // Listener IPs on loopback
-  if (config.instances.some(i => i.bindIp)) {
-    lines.push('# === Listener IPs (internal) on loopback ===');
-    config.instances.forEach(inst => {
-      if (inst.bindIp) {
-        lines.push(`/usr/sbin/ip addr add ${inst.bindIp}/32 dev lo`);
-      }
-    });
-    lines.push('');
-  }
-
-  // IPv6 listener IPs
-  if (config.enableIpv6) {
-    const ipv6Listeners = config.instances.filter(i => i.bindIpv6);
-    if (ipv6Listeners.length > 0) {
-      lines.push('# === IPv6 listener IPs on loopback ===');
-      ipv6Listeners.forEach(inst => {
-        lines.push(`/usr/sbin/ip addr add ${inst.bindIpv6}/128 dev lo`);
+        lines.push(`ip -6 addr replace ${inst.egressIpv6}/128 dev lo 2>/dev/null || true`);
       });
       lines.push('');
     }
@@ -229,15 +217,17 @@ export function generatePostUpScript(config: WizardConfig): string {
     }
     config.serviceVips.forEach(vip => {
       const prefix = needsLocalVip ? '' : '#';
-      lines.push(`${prefix}/usr/sbin/ip addr add ${vip.ipv4}/32 dev lo`);
+      lines.push(`${prefix}ip -4 addr replace ${vip.ipv4}/32 dev lo 2>/dev/null || true`);
       if (config.enableIpv6 && vip.ipv6) {
-        lines.push(`${prefix}/usr/sbin/ip addr add ${vip.ipv6}/128 dev lo`);
+        lines.push(`${prefix}ip -6 addr replace ${vip.ipv6}/128 dev lo 2>/dev/null || true`);
       }
     });
     lines.push('');
   }
 
-  lines.push('exit 0');
+  lines.push('# Verify addresses');
+  lines.push('echo "DNS Control: Network addresses applied"');
+  lines.push('ip addr show lo');
   return lines.join('\n');
 }
 
