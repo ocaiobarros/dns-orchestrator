@@ -21,7 +21,7 @@ export default function ApplyStepsViewer({ steps, showCommands = true }: Props) 
   return (
     <div className="space-y-1">
       {steps.map((step, idx) => (
-        <div key={step.order} className={`flex items-start gap-3 p-2 rounded text-sm ${
+        <div key={step.order ?? idx} className={`flex items-start gap-3 p-2 rounded text-sm ${
           step.status === 'failed' ? 'bg-destructive/5' : ''
         }`}>
           <div className="mt-0.5 shrink-0">{statusIcons[step.status]}</div>
