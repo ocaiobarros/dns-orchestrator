@@ -891,6 +891,14 @@ def _scope_matches(path: str, scope: str) -> bool:
 
 def _get_restart_commands(scope: str, payload: dict) -> list[tuple[str, list[str], str]]:
     cmds = []
+    # Network post-up MUST run FIRST to materialize listener + egress IPs on loopback
+    # before Unbound tries to bind on them (outgoing-interface requires local IP)
+    if scope in ("full", "network"):
+        cmds.append((
+            "Materializar IPs de rede (post-up)",
+            ["/etc/network/post-up.d/dns-control"],
+            "Desfazer IPs adicionados ao loopback",
+        ))
     if scope in ("full", "nftables"):
         cmds.append(("Aplicar nftables", ["nft", "-f", "/etc/nftables.conf"], "nft -f <backup>/nftables.conf"))
     if scope in ("full", "dns"):
@@ -902,13 +910,6 @@ def _get_restart_commands(scope: str, payload: dict) -> list[tuple[str, list[str
         routing = payload.get("routingMode", "static")
         if routing != "static":
             cmds.append(("Reiniciar FRR", ["systemctl", "restart", "frr"], "systemctl restart frr (from backup)"))
-    # Network: execute post-up script to materialize listener/egress IPs on loopback
-    if scope in ("full", "network"):
-        cmds.append((
-            "Materializar IPs de rede (post-up)",
-            ["/etc/network/post-up.d/dns-control"],
-            "Desfazer IPs adicionados ao loopback",
-        ))
     return cmds
 
 
@@ -1070,6 +1071,23 @@ def _run_health_checks(payload: dict) -> list[dict]:
                 "detail": f"Listener IP {bind_ip} {'presente' if ip_present else 'AUSENTE'} no loopback",
                 "durationMs": int((time.monotonic() - t0) * 1000),
             })
+
+    # ═══ Host-owned egress IP materialization check ═══
+    if egress_delivery == "host-owned":
+        for inst in instances:
+            egress_ip = str(inst.get("exitIp", "") or inst.get("egressIpv4", "")).strip()
+            name = inst.get("name", "unbound")
+            if egress_ip:
+                t0 = time.monotonic()
+                r = run_command("ip", ["-4", "addr", "show", "dev", "lo"], timeout=5)
+                ip_present = egress_ip in (r.get("stdout") or "")
+                checks.append({
+                    "name": f"{name} egress IP on loopback ({egress_ip})",
+                    "target": egress_ip,
+                    "status": "pass" if ip_present else "fail",
+                    "detail": f"Egress IP {egress_ip} {'presente' if ip_present else 'AUSENTE — outgoing-interface falhará'} no loopback",
+                    "durationMs": int((time.monotonic() - t0) * 1000),
+                })
 
     # ═══ Legacy default unbound detection ═══
     t0 = time.monotonic()
