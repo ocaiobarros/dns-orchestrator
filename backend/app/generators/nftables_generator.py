@@ -117,7 +117,6 @@ def generate_nftables_config(payload: dict[str, Any], validation_mode: bool = Fa
         flush_line,
         "",
         "table inet filter {",
-        "table inet filter {",
         "    chain input {",
         "        type filter hook input priority 0; policy drop;",
         "",

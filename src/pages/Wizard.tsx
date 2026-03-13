@@ -995,30 +995,33 @@ export default function Wizard() {
             </div>
 
             {/* Compatibility Matrix (border-routed) */}
-            {config.egressDeliveryMode === 'border-routed' && (
-              <div className="noc-panel border-accent/20">
-                <div className="noc-panel-header flex items-center gap-2 text-accent">
-                  <Info size={12} /> Matriz de Compatibilidade — Border-Routed
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-                  {[
-                    ['Entrega Listener', 'nftables DNAT'],
-                    ['Identidade Egress', 'Unbound outgoing-interface'],
-                    ['Caminho de Retorno', 'Rota estática na borda'],
-                    ['IP Público Local', 'Não necessário'],
-                    ['Masquerade/SNAT', 'Não gerado'],
-                    ['Post-up egress', 'Comentado (lógico)'],
-                    ['Responsável retorno', 'Firewall/Router de borda'],
-                    ['Deploy check', 'IP não presente no host (esperado)'],
-                  ].map(([k, v]) => (
-                    <div key={k} className="py-1">
-                      <div className="text-muted-foreground uppercase tracking-wider text-[10px]">{k}</div>
-                      <div className="font-mono font-medium">{v}</div>
-                    </div>
-                  ))}
-                </div>
+            {/* Compatibility Matrix — always shown, adapts to mode */}
+            <div className="noc-panel border-accent/20">
+              <div className="noc-panel-header flex items-center gap-2 text-accent">
+                <Info size={12} /> Matriz de Compatibilidade — {config.egressDeliveryMode === 'border-routed' ? 'Border-Routed' : 'Host-Owned'}
               </div>
-            )}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                {[
+                  ['Entrega VIP', 'nftables DNAT (prerouting)'],
+                  ['Listener Bind', 'Host-local loopback/dummy'],
+                  ['Listener local no host', '✅ Obrigatório'],
+                  ['Identidade Egress', 'Unbound outgoing-interface'],
+                  ['Caminho de Retorno', config.egressDeliveryMode === 'border-routed' ? 'Rota estática na borda' : 'Masquerade/SNAT local'],
+                  ['IP Público local no host', config.egressDeliveryMode === 'border-routed' ? '❌ Não necessário' : '✅ Configurado em loopback'],
+                  ['Masquerade/SNAT', config.egressDeliveryMode === 'border-routed' ? '❌ Não gerado' : '✅ Gerado em postrouting'],
+                  ['Responsável retorno', config.egressDeliveryMode === 'border-routed' ? 'Firewall/Router de borda' : 'Host local (NAT)'],
+                  ['Post-up listener IPs', '✅ ip addr add no loopback'],
+                  ['Post-up egress IPs', config.egressDeliveryMode === 'border-routed' ? '❌ Comentado (lógico)' : '✅ ip addr add no loopback'],
+                  ['Deploy check egress', config.egressDeliveryMode === 'border-routed' ? 'IP não presente (esperado)' : 'IP presente no host'],
+                  ['Deploy check listener', 'dig @listenerIP deve responder'],
+                ].map(([k, v]) => (
+                  <div key={k} className="py-1">
+                    <div className="text-muted-foreground uppercase tracking-wider text-[10px]">{k}</div>
+                    <div className="font-mono font-medium">{v}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             {/* Deployment Summary */}
             <div className="noc-panel">

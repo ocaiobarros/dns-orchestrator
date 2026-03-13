@@ -187,8 +187,15 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
 
   // Border-routed INFO: egress IP not on host is expected
   if (isBorderRouted && egressIps.length > 0) {
-    e('egressDeliveryMode', 4, 'Modo border-routed: IP público de egress não estará presente nas interfaces do host — esperado neste modo.', 'warning');
+    e('egressDeliveryMode', 4, 'Modo border-routed: IP público de egress não estará presente nas interfaces do host — esperado neste modo. Roteamento estático na borda é obrigatório.', 'warning');
   }
+
+  // Listener IPs MUST be materialized locally — always required
+  config.instances.forEach((inst, i) => {
+    if (inst.bindIp && !inst.bindIp.startsWith('127.')) {
+      e(`instances[${i}].bindIp`, 3, `Listener ${inst.bindIp} (${inst.name}) será configurado no loopback do host — obrigatório para binding e health checks diretos.`, 'warning');
+    }
+  });
 
   // ═══ Step 5 — Mapeamento VIP → Instância ═══
   if (config.distributionPolicy === 'fixed-mapping') {
