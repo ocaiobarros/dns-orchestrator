@@ -91,7 +91,9 @@ def deploy_dry_run(body: DeployRequest, db: Session = Depends(get_db), user: Use
         dry_run=True,
         operator=user.username,
     )
-    _persist_job(db, result, body, user)
+    persist_err = _persist_job(db, result, body, user)
+    if persist_err:
+        result["persist_warning"] = persist_err
     return result
 
 
@@ -105,7 +107,9 @@ def deploy_apply(body: DeployRequest, db: Session = Depends(get_db), user: User 
         dry_run=body.dry_run,
         operator=user.username,
     )
-    _persist_job(db, result, body, user)
+    persist_err = _persist_job(db, result, body, user)
+    if persist_err:
+        result["persist_warning"] = persist_err
     return result
 
 
