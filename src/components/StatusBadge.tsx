@@ -26,7 +26,7 @@ const dotColors: Record<string, string> = {
   'dry-run': 'bg-accent',
 };
 
-export default function StatusBadge({ status }: { status: BadgeStatus }) {
+export default function StatusBadge({ status }: { status: string }) {
   return (
     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-mono border ${styles[status] || styles.unknown}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${dotColors[status] || 'bg-muted-foreground'}`} />

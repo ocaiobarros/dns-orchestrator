@@ -74,7 +74,7 @@ function MetricCard({ label, value, sub, icon, accent = 'primary', unavailable, 
           </span>
         </div>
 
-        <div className={`text-[1.75rem] font-extrabold font-mono leading-none tracking-tighter transition-opacity duration-300 ${flash ? 'opacity-50' : 'opacity-100'} ${unavailable ? 'text-muted-foreground/20 text-[1.5rem]' : 'text-foreground'}`}>
+        <div className={`font-extrabold font-mono leading-tight tracking-tighter transition-opacity duration-300 overflow-hidden text-ellipsis ${flash ? 'opacity-50' : 'opacity-100'} ${unavailable ? 'text-muted-foreground/20 text-base' : 'text-foreground'} ${String(displayed).length > 16 ? 'text-sm' : String(displayed).length > 10 ? 'text-lg' : 'text-[1.75rem]'}`}>
           {unavailable ? '—' : displayed}
         </div>
 
