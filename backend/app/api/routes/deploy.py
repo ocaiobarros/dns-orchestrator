@@ -4,6 +4,7 @@ Full deployment lifecycle: dry-run, apply, rollback, state, backups, history.
 """
 
 import json
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
