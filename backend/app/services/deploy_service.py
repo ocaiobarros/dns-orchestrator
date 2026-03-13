@@ -15,6 +15,8 @@ from typing import Any
 
 from app.core.config import settings
 from app.services.config_service import validate_config, generate_preview
+from app.services.payload_normalizer import normalize_payload
+from app.generators.nftables_generator import generate_nftables_config
 from app.executors.command_runner import run_command
 
 logger = logging.getLogger("dns-control.deploy")
