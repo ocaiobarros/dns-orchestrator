@@ -43,38 +43,42 @@ def _resolve_payload(body: DeployRequest, db: Session) -> dict:
     raise HTTPException(status_code=400, detail="config ou profile_id necessário")
 
 
-def _parse_dt(value) -> "datetime | None":
-    """Convert ISO string or datetime to datetime object for SQLite."""
+def _parse_dt(value):
+    """Convert ISO string or datetime to Python datetime for SQLite."""
     if value is None:
         return None
     if isinstance(value, datetime):
         return value
-    from datetime import datetime as dt_cls
     try:
-        return dt_cls.fromisoformat(str(value))
+        return datetime.fromisoformat(str(value))
     except (ValueError, TypeError):
         return None
 
 
-def _persist_job(db: Session, result: dict, body: DeployRequest, user: User):
-    """Persist deploy/dry-run job to DB."""
-    from datetime import datetime, timezone
-    raw_start = result["steps"][0]["startedAt"] if result.get("steps") else None
-    raw_finish = result["steps"][-1]["finishedAt"] if result.get("steps") else None
-    job = ApplyJob(
-        id=result["id"],
-        profile_id=body.profile_id,
-        job_type=body.scope if not result.get("dryRun") else "dry-run",
-        status=result["status"],
-        started_at=_parse_dt(raw_start),
-        finished_at=_parse_dt(raw_finish),
-        stdout_log=json.dumps(result["steps"]),
-        stderr_log=json.dumps(result.get("healthResult", [])),
-        exit_code=0 if result.get("success") else 1,
-        created_by=user.username,
-    )
-    db.add(job)
-    db.commit()
+def _persist_job(db: Session, result: dict, body: DeployRequest, user: User) -> dict | None:
+    """Persist deploy/dry-run job to DB. Returns error dict on failure, None on success."""
+    try:
+        now = datetime.now(timezone.utc)
+        raw_start = result["steps"][0]["startedAt"] if result.get("steps") else None
+        raw_finish = result["steps"][-1]["finishedAt"] if result.get("steps") else None
+        job = ApplyJob(
+            id=result["id"],
+            profile_id=body.profile_id,
+            job_type=body.scope if not result.get("dryRun") else "dry-run",
+            status=result["status"],
+            started_at=_parse_dt(raw_start) or now,
+            finished_at=_parse_dt(raw_finish) or now,
+            stdout_log=json.dumps(result["steps"]),
+            stderr_log=json.dumps(result.get("healthResult", [])),
+            exit_code=0 if result.get("success") else 1,
+            created_by=user.username,
+        )
+        db.add(job)
+        db.commit()
+        return None
+    except Exception as exc:
+        db.rollback()
+        return {"failed_step": "persist_job", "error": str(exc)}
 
 
 @router.post("/dry-run")
