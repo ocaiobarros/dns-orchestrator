@@ -549,10 +549,36 @@ def execute_deploy(
         def restart(args=cmd_args):
             use_privilege = args[0] in {"nft", "systemctl", "ifreload"}
             r = run_command(args[0], args[1:], timeout=30, use_privilege=use_privilege)
+
+            stderr = r["stderr"][:1200]
+            if r["exit_code"] != 0 and len(args) >= 3 and args[0] == "systemctl" and args[1] == "restart":
+                service_name = args[2]
+                status_result = run_command(
+                    "systemctl",
+                    ["status", service_name, "--no-pager"],
+                    timeout=20,
+                    use_privilege=True,
+                )
+                journal_result = run_command(
+                    "journalctl",
+                    ["--no-pager", "-n", "40", "-u", service_name],
+                    timeout=20,
+                    use_privilege=True,
+                )
+                status_output = (status_result.get("stdout") or status_result.get("stderr") or "").strip()
+                journal_output = (journal_result.get("stdout") or journal_result.get("stderr") or "").strip()
+                diagnostics = []
+                if status_output:
+                    diagnostics.append(f"systemctl status {service_name}:\n{status_output[:1500]}")
+                if journal_output:
+                    diagnostics.append(f"journalctl -u {service_name} (últimas 40 linhas):\n{journal_output[:2000]}")
+                if diagnostics:
+                    stderr = (stderr + "\n\n" + "\n\n".join(diagnostics)).strip()
+
             return {
                 "status": "success" if r["exit_code"] == 0 else "failed",
                 "output": r["stdout"][:500],
-                "stderr": r["stderr"][:500],
+                "stderr": stderr,
             }
         _run_step(s, restart)
         steps.append(s)
