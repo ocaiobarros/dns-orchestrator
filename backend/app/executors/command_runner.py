@@ -23,6 +23,7 @@ ALLOWED_EXECUTABLES = frozenset({
     "dpkg", "apt",
     "chmod", "sysctl", "echo",
     "install", "mkdir",
+    "/etc/network/post-up.d/dns-control",
 })
 
 # Strict allowlist: only these exact (executable, args_prefix) combos may use sudo
