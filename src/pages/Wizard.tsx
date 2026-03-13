@@ -1316,7 +1316,7 @@ export default function Wizard() {
       </div>
 
       {/* Deploy Progress Bar */}
-      {deployProgress && applyMutation.isPending && (
+      {deployProgress && submitState === 'dispatching' && (
         <div className="noc-panel border-primary/30">
           <div className="flex items-center gap-3 mb-2">
             <Loader2 size={14} className="animate-spin text-primary" />
