@@ -69,6 +69,11 @@ def generate_nftables_config(payload: dict[str, Any], validation_mode: bool = Fa
     instances = payload.get("instances", []) if isinstance(payload.get("instances", []), list) else []
     security = payload.get("security", {}) if isinstance(payload.get("security", {}), dict) else {}
 
+    # Panel / management ports from wizard config
+    wizard_cfg = payload.get("_wizardConfig", {}) or {}
+    panel_port = int(wizard_cfg.get("panelPort") or payload.get("panelPort") or 8443)
+    api_port = 8000  # backend API port (always needed for nginx proxy)
+
     service_vips = _collect_service_vips(payload, nat)
     backend_ips = _collect_backends(instances)
     egress_ips = _collect_egress_ips(instances)
@@ -84,6 +89,10 @@ def generate_nftables_config(payload: dict[str, Any], validation_mode: bool = Fa
     tcp_ports = sorted({int(vip["port"]) for vip in service_vips if _proto_enabled(vip["protocol"], "tcp")})
     udp_ports = udp_ports or [53]
     tcp_ports = tcp_ports or [53]
+
+    # Management TCP ports: SSH + HTTP (nginx) + API + panel
+    mgmt_ports = sorted({22, 80, api_port, panel_port})
+    mgmt_port_set = ", ".join(str(p) for p in mgmt_ports)
 
     lines: list[str] = [
         "#!/usr/sbin/nft -f",
@@ -107,9 +116,8 @@ def generate_nftables_config(payload: dict[str, Any], validation_mode: bool = Fa
         "        ip protocol icmp accept",
         "        ip6 nexthdr icmpv6 accept",
         "",
-        "        # SSH + API",
-        "        tcp dport 22 accept",
-        "        tcp dport 8000 accept",
+        f"        # Management: SSH, HTTP (nginx), API ({api_port}), Panel ({panel_port})",
+        f"        tcp dport {{ {mgmt_port_set} }} accept",
         "",
     ]
 
