@@ -24,7 +24,7 @@ import {
   Plus, Trash2, Info, ExternalLink, Activity, Lock, BarChart3, Download,
   X, SkipForward,
 } from 'lucide-react';
-import type { ApplyResult } from '@/lib/types';
+import type { ApplyResult, ApplyRequest } from '@/lib/types';
 
 const STEPS = [
   'Topologia do Host',
