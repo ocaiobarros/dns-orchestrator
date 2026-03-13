@@ -14,6 +14,7 @@ import logging
 logger = logging.getLogger("dns-control.executor")
 
 # Whitelist of allowed executables
+# Whitelist of allowed executables
 ALLOWED_EXECUTABLES = frozenset({
     "systemctl", "ss", "ip", "nft", "vtysh", "dig",
     "unbound-control", "unbound-checkconf",
@@ -21,10 +22,12 @@ ALLOWED_EXECUTABLES = frozenset({
     "ping", "traceroute", "ifreload", "ifquery",
     "dpkg", "apt",
     "chmod", "sysctl", "echo",
+    "install", "mkdir",
 })
 
 # Strict allowlist: only these exact (executable, args_prefix) combos may use sudo
 _SUDO_ALLOWED_COMMANDS: list[tuple[str, list[str]]] = [
+    # Diagnostics
     ("unbound-control", ["stats_noreset"]),
     ("unbound-control", ["status"]),
     ("unbound-control", ["dump_cache"]),
@@ -35,6 +38,14 @@ _SUDO_ALLOWED_COMMANDS: list[tuple[str, list[str]]] = [
     ("nft", ["-f"]),          # apply ruleset
     ("vtysh", ["-c"]),  # read-only vtysh commands
     ("journalctl", ["--no-pager"]),
+    # Deploy operations
+    ("install", ["-m"]),      # file install with permissions
+    ("mkdir", ["-p"]),        # create directories
+    ("systemctl", ["daemon-reload"]),
+    ("systemctl", ["restart"]),
+    ("systemctl", ["status"]),
+    ("sysctl", ["--load"]),   # targeted sysctl load
+    ("ifreload", ["-a"]),     # network reload
 ]
 
 # Cache for sudo availability check
