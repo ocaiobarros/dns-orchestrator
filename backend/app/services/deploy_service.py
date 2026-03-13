@@ -184,7 +184,13 @@ def execute_deploy(
                 if os.path.exists(staged_path):
                     r = run_command("unbound-checkconf", [staged_path], timeout=10)
                     if r["exit_code"] != 0:
-                        validation_errors.append(f"unbound-checkconf {f['path']}: {r['stderr'][:200]}")
+                        validation_errors.append({
+                            "category": "unbound-validation",
+                            "command": f"unbound-checkconf {f['path']}",
+                            "file": f["path"],
+                            "stderr": r["stderr"][:500],
+                            "remediation": "Verifique a sintaxe do arquivo Unbound. Use 'unbound-checkconf' localmente para depurar."
+                        })
                         results.append(f"FAIL: {f['path']}")
                     else:
                         results.append(f"OK: {f['path']}")
