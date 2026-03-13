@@ -902,9 +902,13 @@ def _get_restart_commands(scope: str, payload: dict) -> list[tuple[str, list[str
         routing = payload.get("routingMode", "static")
         if routing != "static":
             cmds.append(("Reiniciar FRR", ["systemctl", "restart", "frr"], "systemctl restart frr (from backup)"))
-    # Network restart is safe-gated: mark as manual-required
+    # Network: execute post-up script to materialize listener/egress IPs on loopback
     if scope in ("full", "network"):
-        cmds.append(("Rede: escrita OK (restart manual)", ["echo", "network-manual-required"], "Rede requer restart manual"))
+        cmds.append((
+            "Materializar IPs de rede (post-up)",
+            ["bash", "/etc/network/post-up.d/dns-control"],
+            "Desfazer IPs adicionados ao loopback",
+        ))
     return cmds
 
 
