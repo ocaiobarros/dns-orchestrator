@@ -547,7 +547,7 @@ def execute_deploy(
         s = _step(order, cmd_name, " ".join(cmd_args))
         s["rollbackHint"] = hint
         def restart(args=cmd_args):
-            use_privilege = args[0] in {"nft", "systemctl", "ifreload"}
+            use_privilege = args[0] in {"nft", "systemctl", "ifreload", "/etc/network/post-up.d/dns-control"}
             r = run_command(args[0], args[1:], timeout=30, use_privilege=use_privilege)
 
             stderr = r["stderr"][:1200]
