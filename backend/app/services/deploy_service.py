@@ -1036,6 +1036,55 @@ def _run_health_checks(payload: dict) -> list[dict]:
             "durationMs": int((time.monotonic() - t0) * 1000),
         })
 
+    # ═══ Border-routed mode: verify no masquerade in active ruleset ═══
+    egress_delivery = str(
+        payload.get("egressDeliveryMode")
+        or payload.get("_wizardConfig", {}).get("egressDeliveryMode", "")
+        or "host-owned"
+    )
+    if egress_delivery == "border-routed":
+        t0 = time.monotonic()
+        r = run_command("nft", ["list", "ruleset"], timeout=10, use_privilege=True)
+        has_masq = "masquerade" in (r.get("stdout") or "")
+        checks.append({
+            "name": "Border-routed: no masquerade in ruleset",
+            "target": "nftables",
+            "status": "fail" if has_masq else "pass",
+            "detail": "ERRO: masquerade genérico encontrado — conflita com identidade de egress por instância" if has_masq
+                      else "OK — sem masquerade genérico no ruleset",
+            "durationMs": int((time.monotonic() - t0) * 1000),
+        })
+
+    # ═══ Listener IP materialization check ═══
+    for inst in instances:
+        bind_ip = inst.get("bindIp", "")
+        name = inst.get("name", "unbound")
+        if bind_ip and bind_ip not in ("127.0.0.1", "0.0.0.0"):
+            t0 = time.monotonic()
+            r = run_command("ip", ["-4", "addr", "show", "dev", "lo"], timeout=5)
+            ip_present = bind_ip in (r.get("stdout") or "")
+            checks.append({
+                "name": f"{name} listener IP on host ({bind_ip})",
+                "target": bind_ip,
+                "status": "pass" if ip_present else "fail",
+                "detail": f"Listener IP {bind_ip} {'presente' if ip_present else 'AUSENTE'} no loopback",
+                "durationMs": int((time.monotonic() - t0) * 1000),
+            })
+
+    # ═══ Legacy default unbound detection ═══
+    t0 = time.monotonic()
+    r = run_command("systemctl", ["is-active", "unbound"], timeout=5)
+    legacy_active = r["exit_code"] == 0 and "active" in (r.get("stdout") or "")
+    if legacy_active:
+        checks.append({
+            "name": "Legacy unbound.service detection",
+            "target": "unbound",
+            "status": "fail",
+            "detail": "AVISO: unbound.service padrão está ativo e pode interferir. "
+                      "Recomendação: systemctl disable --now unbound && systemctl mask unbound",
+            "durationMs": int((time.monotonic() - t0) * 1000),
+        })
+
     return checks
 
 
