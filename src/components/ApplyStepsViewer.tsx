@@ -31,6 +31,9 @@ export default function ApplyStepsViewer({ steps, showCommands = true }: Props) 
               <span className="text-xs text-muted-foreground font-mono shrink-0">{step.durationMs}ms</span>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">{step.output}</p>
+            {step.status === 'failed' && step.stderr && (
+              <pre className="mt-1 text-xs font-mono whitespace-pre-wrap break-all text-destructive/90">{step.stderr}</pre>
+            )}
             {showCommands && step.command && (
               <code className="text-xs text-muted-foreground font-mono block mt-1 opacity-60">$ {step.command}</code>
             )}

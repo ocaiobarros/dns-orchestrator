@@ -163,16 +163,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
         setSessionInfo(si);
         startSessionTimers(si.expiresAt, si.sessionWarningSeconds);
+      } else if (res.status === 401) {
+        // Avoid tearing down a valid in-memory session due transient auth/me noise.
+        if (!user) {
+          setUser(null);
+          setSessionInfo(null);
+        }
       } else {
         localStorage.removeItem(TOKEN_KEY);
         setUser(null);
+        setSessionInfo(null);
       }
     } catch {
-      setUser(null);
+      setUser(prev => prev ?? null);
     } finally {
       setLoading(false);
     }
-  }, [startSessionTimers]);
+  }, [startSessionTimers, user]);
 
   useEffect(() => {
     checkSession();
