@@ -818,17 +818,35 @@ def _detect_ip_collisions(payload: dict[str, Any]) -> list[str]:
 
 # ═══ Internal helpers ═══
 
-def _write_file(f: dict):
-    path = f["path"]
-    ddir = os.path.dirname(path)
-    os.makedirs(ddir, exist_ok=True)
-    with open(path, "w") as fp:
-        fp.write(f["content"])
-    perms = f.get("permissions", "0644")
-    try:
-        os.chmod(path, int(perms, 8))
-    except (ValueError, OSError):
-        pass
+def _install_file_from_staging(staging_dir: str, target_path: str, permissions: str = "0644") -> dict[str, Any]:
+    staged_path = os.path.join(staging_dir, target_path.lstrip("/"))
+    if not os.path.exists(staged_path):
+        return {
+            "exit_code": -1,
+            "stdout": "",
+            "stderr": f"Arquivo de staging ausente: {staged_path}",
+            "duration_ms": 0,
+        }
+
+    target_dir = os.path.dirname(target_path)
+    mkdir_result = run_command("mkdir", ["-p", target_dir], timeout=10, use_privilege=True)
+    if mkdir_result["exit_code"] != 0:
+        return mkdir_result
+
+    return run_command(
+        "install",
+        ["-m", permissions, staged_path, target_path],
+        timeout=15,
+        use_privilege=True,
+    )
+
+
+def _get_scoped_sysctl_files(files: list[dict[str, Any]], scope: str) -> list[str]:
+    return [
+        f["path"]
+        for f in files
+        if "sysctl" in f["path"] and _scope_matches(f["path"], scope)
+    ]
 
 
 def _scope_matches(path: str, scope: str) -> bool:
