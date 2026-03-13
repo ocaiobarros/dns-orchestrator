@@ -615,7 +615,7 @@ export default function Wizard() {
                   label="Host-Owned (IP Local)" desc="O IP público de egress é configurado localmente no host (loopback). O host é dono do IP." />
                 <ModeCard selected={config.egressDeliveryMode === 'border-routed'}
                   onClick={() => set('egressDeliveryMode', 'border-routed')}
-                  label="Border-Routed (Lógico)" desc="O IP público de egress NÃO é configurado no host. O resolver usa como outgoing-interface lógico e o roteamento upstream retorna o tráfego." />
+                  label="Border-Routed (Lógico)" desc="O IP público de egress NÃO é configurado no host. Unbound NÃO emite outgoing-interface. A identidade de saída é imposta pelo dispositivo de borda (SNAT/roteamento estático)." />
               </div>
               {config.egressDeliveryMode === 'border-routed' && (
                 <div className="flex gap-2 p-3 rounded bg-accent/10 border border-accent/20 text-xs text-accent">
