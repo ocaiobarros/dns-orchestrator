@@ -363,9 +363,10 @@ def execute_deploy(
     if dry_run:
         # Generate commands that would run
         restart_cmds = _get_restart_commands(scope, payload)
+        sysctl_plan = [f"sysctl --load {path}" for path in _get_scoped_sysctl_files(files, scope)]
         commands_plan = [
             "systemctl daemon-reload",
-            "sysctl --system",
+            *sysctl_plan,
         ] + [" ".join(cmd_args) for _, cmd_args, _ in restart_cmds]
 
         s_dry = _step(5, "Dry-run concluído")
@@ -454,12 +455,35 @@ def execute_deploy(
     # ═══ Step 6: Apply files from staging to final paths ═══
     s6 = _step(6, "Aplicar arquivos (staging → produção)")
     def apply_from_staging():
+        if not staging_dir:
+            return {"status": "failed", "output": "Diretório de staging não encontrado"}
+
         written = 0
+        apply_errors: list[str] = []
         for f in files:
-            if _scope_matches(f["path"], scope):
-                _write_file(f)
-                changed_files.append(f["path"])
-                written += 1
+            target_path = f["path"]
+            if not _scope_matches(target_path, scope):
+                continue
+
+            result = _install_file_from_staging(
+                staging_dir=staging_dir,
+                target_path=target_path,
+                permissions=f.get("permissions", "0644"),
+            )
+            if result["exit_code"] != 0:
+                apply_errors.append(f"{target_path}: {result['stderr'][:200]}")
+                continue
+
+            changed_files.append(target_path)
+            written += 1
+
+        if apply_errors:
+            return {
+                "status": "failed",
+                "output": f"Falha em {len(apply_errors)} arquivo(s)",
+                "stderr": "; ".join(apply_errors),
+            }
+
         return {"status": "success", "output": f"{written} arquivos aplicados"}
     _run_step(s6, apply_from_staging)
     steps.append(s6)
@@ -470,10 +494,7 @@ def execute_deploy(
     # ═══ Step 7: chmod scripts ═══
     s7_chmod = _step(7, "Ajustar permissões de scripts")
     def chmod_scripts():
-        for f in files:
-            if f["path"].endswith(".sh"):
-                run_command("chmod", ["+x", f["path"]], timeout=5)
-        return {"status": "success", "output": "Permissões ajustadas"}
+        return {"status": "success", "output": "Permissões já aplicadas durante install"}
     _run_step(s7_chmod, chmod_scripts)
     steps.append(s7_chmod)
     _update_live_state(completedSteps=7)
@@ -482,7 +503,7 @@ def execute_deploy(
     s8 = _step(8, "Recarregar daemons (systemctl daemon-reload)", "systemctl daemon-reload")
     s8["rollbackHint"] = "Não requer rollback"
     def daemon_reload():
-        r = run_command("systemctl", ["daemon-reload"], timeout=15)
+        r = run_command("systemctl", ["daemon-reload"], timeout=15, use_privilege=True)
         return {
             "status": "success" if r["exit_code"] == 0 else "failed",
             "output": r["stdout"][:500] or "daemon-reload executado",
@@ -494,15 +515,27 @@ def execute_deploy(
     if s8["status"] == "failed":
         all_ok = False
 
-    # ═══ Step 9: sysctl --system ═══
-    s9_sysctl = _step(9, "Aplicar parâmetros sysctl", "sysctl --system")
+    # ═══ Step 9: targeted sysctl reload ═══
+    s9_sysctl = _step(9, "Aplicar parâmetros sysctl", "sysctl --load <arquivo>")
     def apply_sysctl():
-        r = run_command("sysctl", ["--system"], timeout=15)
-        return {
-            "status": "success" if r["exit_code"] == 0 else "failed",
-            "output": r["stdout"][:500] or "sysctl aplicado",
-            "stderr": r["stderr"][:500],
-        }
+        sysctl_files = _get_scoped_sysctl_files(files, scope)
+        if not sysctl_files:
+            return {"status": "success", "output": "Nenhum arquivo sysctl no escopo"}
+
+        errors: list[str] = []
+        for sysctl_path in sysctl_files:
+            r = run_command("sysctl", ["--load", sysctl_path], timeout=15, use_privilege=True)
+            if r["exit_code"] != 0:
+                errors.append(f"{sysctl_path}: {(r['stderr'] or r['stdout'])[:200]}")
+
+        if errors:
+            return {
+                "status": "failed",
+                "output": f"Falha ao aplicar {len(errors)} arquivo(s) sysctl",
+                "stderr": "; ".join(errors),
+            }
+
+        return {"status": "success", "output": f"{len(sysctl_files)} arquivo(s) sysctl aplicados"}
     _run_step(s9_sysctl, apply_sysctl)
     steps.append(s9_sysctl)
     _update_live_state(completedSteps=9)
@@ -514,7 +547,7 @@ def execute_deploy(
         s = _step(order, cmd_name, " ".join(cmd_args))
         s["rollbackHint"] = hint
         def restart(args=cmd_args):
-            use_privilege = args[0] == "nft"
+            use_privilege = args[0] in {"nft", "systemctl", "ifreload"}
             r = run_command(args[0], args[1:], timeout=30, use_privilege=use_privilege)
             return {
                 "status": "success" if r["exit_code"] == 0 else "failed",
@@ -785,17 +818,35 @@ def _detect_ip_collisions(payload: dict[str, Any]) -> list[str]:
 
 # ═══ Internal helpers ═══
 
-def _write_file(f: dict):
-    path = f["path"]
-    ddir = os.path.dirname(path)
-    os.makedirs(ddir, exist_ok=True)
-    with open(path, "w") as fp:
-        fp.write(f["content"])
-    perms = f.get("permissions", "0644")
-    try:
-        os.chmod(path, int(perms, 8))
-    except (ValueError, OSError):
-        pass
+def _install_file_from_staging(staging_dir: str, target_path: str, permissions: str = "0644") -> dict[str, Any]:
+    staged_path = os.path.join(staging_dir, target_path.lstrip("/"))
+    if not os.path.exists(staged_path):
+        return {
+            "exit_code": -1,
+            "stdout": "",
+            "stderr": f"Arquivo de staging ausente: {staged_path}",
+            "duration_ms": 0,
+        }
+
+    target_dir = os.path.dirname(target_path)
+    mkdir_result = run_command("mkdir", ["-p", target_dir], timeout=10, use_privilege=True)
+    if mkdir_result["exit_code"] != 0:
+        return mkdir_result
+
+    return run_command(
+        "install",
+        ["-m", permissions, staged_path, target_path],
+        timeout=15,
+        use_privilege=True,
+    )
+
+
+def _get_scoped_sysctl_files(files: list[dict[str, Any]], scope: str) -> list[str]:
+    return [
+        f["path"]
+        for f in files
+        if "sysctl" in f["path"] and _scope_matches(f["path"], scope)
+    ]
 
 
 def _scope_matches(path: str, scope: str) -> bool:
