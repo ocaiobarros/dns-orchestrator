@@ -24,7 +24,7 @@ import {
   Plus, Trash2, Info, ExternalLink, Activity, Lock, BarChart3, Download,
   X, SkipForward,
 } from 'lucide-react';
-import type { ApplyResult } from '@/lib/types';
+import type { ApplyResult, ApplyRequest } from '@/lib/types';
 
 const STEPS = [
   'Topologia do Host',
@@ -210,25 +210,119 @@ export default function Wizard() {
     }, 1000);
   };
 
-  const handleApply = (dryRun: boolean) => {
+  const [submitState, setSubmitState] = useState<'idle' | 'validating' | 'dispatching' | 'polling' | 'done' | 'error'>('idle');
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const handleApply = async (dryRun: boolean) => {
+    const mode = dryRun ? 'dry-run' : 'apply';
+    console.info(`[DNS Control] Deploy submit: mode=${mode}`, {
+      configHostname: config.hostname,
+      instances: config.instances.length,
+      vips: config.serviceVips.length,
+      deploymentMode: config.deploymentMode,
+    });
+
     setShowValidation(true);
-    if (!isConfigValid(validationErrors) && !dryRun) return;
-    setDeployProgress({ phase: dryRun ? 'dry_run_validating' : 'applying', currentStep: 'Iniciando...', completedSteps: 0, totalSteps: 0, lastMessage: '' });
+    setSubmitError(null);
+    setSubmitState('validating');
+
+    if (!isConfigValid(validationErrors) && !dryRun) {
+      const blocking = validationErrors.filter(e => e.severity === 'error');
+      const msg = `Deploy bloqueado: ${blocking.length} erro(s) de validação. Primeiro: [${STEPS[blocking[0]?.step]}] ${blocking[0]?.message}`;
+      console.error(`[DNS Control] ${msg}`);
+      setSubmitError(msg);
+      setSubmitState('error');
+      return;
+    }
+
+    setSubmitState('dispatching');
+    console.info(`[DNS Control] Dispatching ${mode} request to backend...`);
+
+    setDeployProgress({
+      phase: dryRun ? 'dry_run_validating' : 'applying',
+      currentStep: 'Iniciando...',
+      completedSteps: 0, totalSteps: 0, lastMessage: '',
+    });
     startPolling();
-    applyMutation.mutate(
-      { config, scope: 'full', dryRun, comment: '' },
-      {
-        onSuccess: (result) => {
-          setApplyResult(result);
-          setDeployProgress(null);
-          if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
-        },
-        onError: () => {
-          setDeployProgress(null);
-          if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
-        },
+
+    try {
+      // Use dedicated endpoint for dry-run vs apply
+      const apiCall = dryRun ? api.dryRunConfig : api.applyConfig;
+      const request: ApplyRequest = { config, scope: 'full', dryRun, comment: '' };
+      console.info(`[DNS Control] Calling ${dryRun ? 'POST /api/deploy/dry-run' : 'POST /api/deploy/apply'}`, { payloadKeys: Object.keys(config) });
+
+      const result = await apiCall(request);
+
+      if (!result.success) {
+        const errMsg = result.error || 'Erro desconhecido na API';
+        console.error(`[DNS Control] API error:`, errMsg);
+        setSubmitError(`Erro da API: ${errMsg}`);
+        setSubmitState('error');
+        setDeployProgress(null);
+        if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+        return;
       }
-    );
+
+      console.info(`[DNS Control] ${mode} success:`, { id: result.data?.id, status: result.data?.status });
+      setApplyResult(result.data);
+      setSubmitState('done');
+      setDeployProgress(null);
+      if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+    } catch (err: any) {
+      const errMsg = err?.message || String(err);
+      console.error(`[DNS Control] ${mode} exception:`, errMsg);
+      setSubmitError(`Exceção: ${errMsg}`);
+      setSubmitState('error');
+      setDeployProgress(null);
+      if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+    }
+  };
+
+  const handleTestConnectivity = async () => {
+    try {
+      console.info('[DNS Control] Testing API connectivity...');
+      const r = await api.getDeployState();
+      if (r.success) {
+        setSubmitError(null);
+        alert('✅ API acessível — GET /api/deploy/state respondeu com sucesso.');
+        console.info('[DNS Control] API connectivity OK', r.data);
+      } else {
+        setSubmitError(`API inacessível: ${r.error}`);
+        console.error('[DNS Control] API connectivity failed:', r.error);
+      }
+    } catch (err: any) {
+      setSubmitError(`API inacessível: ${err.message}`);
+      console.error('[DNS Control] API connectivity exception:', err);
+    }
+  };
+
+  const handleCopyPayload = () => {
+    const payload = { config, scope: 'full', dry_run: false, comment: '' };
+    navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+    alert('Payload JSON copiado para clipboard.');
+    console.info('[DNS Control] Payload copied to clipboard');
+  };
+
+  const handleForceDryRun = async () => {
+    console.info('[DNS Control] Force dry-run bypass...');
+    setSubmitError(null);
+    setSubmitState('dispatching');
+    try {
+      const r = await api.dryRunConfig({ config, scope: 'full', dryRun: true, comment: '' });
+      if (r.success) {
+        console.info('[DNS Control] Force dry-run success:', r.data);
+        setApplyResult(r.data);
+        setSubmitState('done');
+      } else {
+        setSubmitError(`Dry-run falhou: ${r.error}`);
+        setSubmitState('error');
+        console.error('[DNS Control] Force dry-run failed:', r.error);
+      }
+    } catch (err: any) {
+      setSubmitError(`Dry-run exceção: ${err.message}`);
+      setSubmitState('error');
+      console.error('[DNS Control] Force dry-run exception:', err);
+    }
   };
 
   const handleNext = () => {
@@ -1120,6 +1214,59 @@ export default function Wizard() {
                 )}
               </div>
             </div>
+
+            {/* Submit State & Error Panel */}
+            {(submitState !== 'idle' || submitError) && (
+              <div className={`noc-panel ${submitError ? 'border-destructive/30' : 'border-primary/30'}`}>
+                <div className="noc-panel-header flex items-center gap-2">
+                  {submitError ? <AlertCircle size={12} className="text-destructive" /> : <Activity size={12} className="text-primary" />}
+                  Estado da Submissão
+                </div>
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center gap-3">
+                    {['validating', 'dispatching', 'polling', 'done'].map(phase => (
+                      <span key={phase} className={`px-2 py-0.5 rounded font-mono ${
+                        submitState === phase ? 'bg-primary text-primary-foreground' :
+                        submitState === 'error' ? 'bg-destructive/10 text-destructive' :
+                        'bg-secondary text-muted-foreground'
+                      }`}>{phase}</span>
+                    ))}
+                  </div>
+                  {submitError && (
+                    <div className="p-2 bg-destructive/10 border border-destructive/20 rounded text-destructive font-mono text-xs">
+                      {submitError}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Debug Actions */}
+            <div className="noc-panel border-border/50">
+              <div className="noc-panel-header flex items-center gap-2 text-muted-foreground">
+                <Settings size={12} /> Diagnóstico de Deploy
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={handleCopyPayload}
+                  className="px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
+                  📋 Copiar Payload JSON
+                </button>
+                <button onClick={handleTestConnectivity}
+                  className="px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
+                  🔗 Testar Conectividade API
+                </button>
+                <button onClick={handleForceDryRun}
+                  className="px-3 py-1.5 text-xs bg-accent/20 text-accent rounded border border-accent/30 hover:bg-accent/30">
+                  ⚡ Enviar Dry-Run Direto
+                </button>
+              </div>
+              <div className="mt-2 text-[10px] text-muted-foreground/60 font-mono">
+                Validação: {isConfigValid(validationErrors) ? '✅ OK' : `❌ ${validationErrors.filter(e => e.severity === 'error').length} erro(s)`}
+                {' · '}Arquivos: {generatedFiles.length}
+                {' · '}Mutation pending: {applyMutation.isPending ? 'sim' : 'não'}
+                {' · '}Submit state: {submitState}
+              </div>
+            </div>
           </div>
         );
     }
@@ -1169,7 +1316,7 @@ export default function Wizard() {
       </div>
 
       {/* Deploy Progress Bar */}
-      {deployProgress && applyMutation.isPending && (
+      {deployProgress && submitState === 'dispatching' && (
         <div className="noc-panel border-primary/30">
           <div className="flex items-center gap-3 mb-2">
             <Loader2 size={14} className="animate-spin text-primary" />
@@ -1207,14 +1354,14 @@ export default function Wizard() {
         <div className="flex gap-2">
           {step === LAST_STEP && !applyResult && (
             <>
-              <button onClick={() => handleApply(true)} disabled={applyMutation.isPending}
+              <button onClick={() => handleApply(true)} disabled={submitState === 'dispatching'}
                 className="flex items-center gap-1 px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80 disabled:opacity-60">
                 <Eye size={16} /> Dry Run
               </button>
-              <button onClick={() => handleApply(false)} disabled={applyMutation.isPending || !isConfigValid(validationErrors)}
+              <button onClick={() => handleApply(false)} disabled={submitState === 'dispatching' || !isConfigValid(validationErrors)}
                 className="flex items-center gap-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded font-medium hover:bg-primary/90 disabled:opacity-60">
-                {applyMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
-                {applyMutation.isPending ? 'Aplicando...' : 'Aplicar Deploy'}
+                {submitState === 'dispatching' ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                {submitState === 'dispatching' ? 'Aplicando...' : 'Aplicar Deploy'}
               </button>
             </>
           )}
