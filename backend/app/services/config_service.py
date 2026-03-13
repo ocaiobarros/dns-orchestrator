@@ -9,43 +9,48 @@ from app.generators.nftables_generator import generate_nftables_config
 from app.generators.frr_generator import generate_frr_config
 from app.generators.network_generator import generate_network_config
 from app.generators.systemd_generator import generate_systemd_units
+from app.services.payload_normalizer import normalize_payload
 
 
 def validate_config(payload: dict[str, Any]) -> dict:
+    """Validate config payload. Accepts both WizardConfig and internal formats."""
+    normalized = normalize_payload(payload)
     errors = []
-    env = payload.get("environment", {})
+    env = normalized.get("environment", {})
     if not env.get("environmentId"):
         errors.append({"field": "environment.environmentId", "message": "ID do ambiente é obrigatório"})
     if not env.get("networkCidr"):
         errors.append({"field": "environment.networkCidr", "message": "CIDR de rede é obrigatório"})
 
-    instances = payload.get("instances", [])
+    instances = normalized.get("instances", [])
     if not instances:
         errors.append({"field": "instances", "message": "Pelo menos uma instância Unbound é necessária"})
 
-    return {"valid": len(errors) == 0, "errors": errors}
+    return {"valid": len(errors) == 0, "errors": errors, "normalized": normalized}
 
 
 def generate_preview(payload: dict[str, Any]) -> list[dict]:
+    """Generate file previews. Accepts both WizardConfig and internal formats."""
+    normalized = normalize_payload(payload)
     files = []
     try:
-        files.extend(generate_unbound_configs(payload))
+        files.extend(generate_unbound_configs(normalized))
     except Exception:
         pass
     try:
-        files.extend(generate_nftables_config(payload))
+        files.extend(generate_nftables_config(normalized))
     except Exception:
         pass
     try:
-        files.extend(generate_frr_config(payload))
+        files.extend(generate_frr_config(normalized))
     except Exception:
         pass
     try:
-        files.extend(generate_network_config(payload))
+        files.extend(generate_network_config(normalized))
     except Exception:
         pass
     try:
-        files.extend(generate_systemd_units(payload))
+        files.extend(generate_systemd_units(normalized))
     except Exception:
         pass
     return files
