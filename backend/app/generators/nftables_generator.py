@@ -237,7 +237,15 @@ def generate_nftables_config(payload: dict[str, Any], validation_mode: bool = Fa
             "",
             "    chain postrouting {",
             "        type nat hook postrouting priority 100; policy accept;",
-            "        ip saddr @dns_backends oifname != \"lo\" counter masquerade",
+        ])
+
+        if is_border_routed:
+            lines.append("        # Border-routed mode: NO masquerade — egress identity preserved via Unbound outgoing-interface")
+            lines.append("        # Upstream routing must return traffic for egress IPs to this host")
+        else:
+            lines.append("        ip saddr @dns_backends oifname != \"lo\" counter masquerade")
+
+        lines.extend([
             "    }",
             "",
         ])
