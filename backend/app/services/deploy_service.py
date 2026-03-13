@@ -891,6 +891,14 @@ def _scope_matches(path: str, scope: str) -> bool:
 
 def _get_restart_commands(scope: str, payload: dict) -> list[tuple[str, list[str], str]]:
     cmds = []
+    # Network post-up MUST run FIRST to materialize listener + egress IPs on loopback
+    # before Unbound tries to bind on them (outgoing-interface requires local IP)
+    if scope in ("full", "network"):
+        cmds.append((
+            "Materializar IPs de rede (post-up)",
+            ["/etc/network/post-up.d/dns-control"],
+            "Desfazer IPs adicionados ao loopback",
+        ))
     if scope in ("full", "nftables"):
         cmds.append(("Aplicar nftables", ["nft", "-f", "/etc/nftables.conf"], "nft -f <backup>/nftables.conf"))
     if scope in ("full", "dns"):
@@ -902,13 +910,6 @@ def _get_restart_commands(scope: str, payload: dict) -> list[tuple[str, list[str
         routing = payload.get("routingMode", "static")
         if routing != "static":
             cmds.append(("Reiniciar FRR", ["systemctl", "restart", "frr"], "systemctl restart frr (from backup)"))
-    # Network: execute post-up script to materialize listener/egress IPs on loopback
-    if scope in ("full", "network"):
-        cmds.append((
-            "Materializar IPs de rede (post-up)",
-            ["/etc/network/post-up.d/dns-control"],
-            "Desfazer IPs adicionados ao loopback",
-        ))
     return cmds
 
 
