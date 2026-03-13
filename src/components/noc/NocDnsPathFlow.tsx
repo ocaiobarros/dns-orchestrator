@@ -1,11 +1,12 @@
 // ============================================================
-// DNS Control — DNS Path Flow Visualization
-// 4-layer symmetric flow: CLIENT → VIP → RESOLVER → UPSTREAM
-// NOC-grade SVG with animated Bezier traffic lines
+// DNS Control — DNS Path Flow Visualization (v3)
+// Pure HTML/CSS React implementation with CSS animations
+// 4-layer horizontal flow: CLIENT → VIP → RESOLVER → UPSTREAM
 // ============================================================
 
-import { useEffect, useRef, useState } from 'react';
-import { safeNum, safeR } from '@/lib/svg-utils';
+import { useEffect, useRef, useMemo } from 'react';
+import { Globe, Server, Shield, Wifi } from 'lucide-react';
+import { safeNum } from '@/lib/svg-utils';
 
 interface PathNode {
   id: string;
@@ -32,15 +33,28 @@ interface Props {
   edges: PathEdge[];
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  ok: '#10b981',
-  degraded: '#f59e0b',
-  failed: '#ef4444',
-  unknown: '#4b5563',
+const LAYER_TYPES: Array<PathNode['type']> = ['client', 'vip', 'resolver', 'upstream'];
+
+const LAYER_CONFIG: Record<string, { label: string; icon: typeof Globe; gradient: string; glow: string; border: string }> = {
+  client:   { label: 'CLIENTES',        icon: Globe,  gradient: 'from-blue-500/20 to-blue-600/5',   glow: 'shadow-blue-500/20',   border: 'border-blue-500/30' },
+  vip:      { label: 'VIP DE SERVIÇO',  icon: Shield, gradient: 'from-emerald-500/20 to-emerald-600/5', glow: 'shadow-emerald-500/20', border: 'border-emerald-500/30' },
+  resolver: { label: 'RESOLVERS',       icon: Server, gradient: 'from-violet-500/20 to-violet-600/5',  glow: 'shadow-violet-500/20',  border: 'border-violet-500/30' },
+  upstream: { label: 'UPSTREAM',        icon: Wifi,   gradient: 'from-amber-500/20 to-amber-600/5',   glow: 'shadow-amber-500/20',   border: 'border-amber-500/30' },
 };
 
-const LAYER_LABELS = ['CLIENTES', 'VIP DE SERVIÇO', 'RESOLVERS', 'UPSTREAM'];
-const LAYER_TYPES: Array<PathNode['type']> = ['client', 'vip', 'resolver', 'upstream'];
+const STATUS_DOT: Record<string, string> = {
+  ok: 'bg-emerald-400',
+  degraded: 'bg-amber-400',
+  failed: 'bg-red-400',
+  unknown: 'bg-gray-500',
+};
+
+const STATUS_RING: Record<string, string> = {
+  ok: 'ring-emerald-400/30',
+  degraded: 'ring-amber-400/30',
+  failed: 'ring-red-400/30',
+  unknown: 'ring-gray-500/30',
+};
 
 function fmtQps(n?: number): string {
   if (n == null || !Number.isFinite(n)) return '0';
@@ -49,341 +63,258 @@ function fmtQps(n?: number): string {
   return String(Math.round(n));
 }
 
-function latColor(ms?: number): string {
-  if (ms == null) return '#6b7280';
-  if (ms < 30) return '#10b981';
-  if (ms < 100) return '#f59e0b';
-  return '#ef4444';
+function latBadgeColor(ms?: number): string {
+  if (ms == null) return 'text-muted-foreground';
+  if (ms < 30) return 'text-emerald-400';
+  if (ms < 100) return 'text-amber-400';
+  return 'text-red-400';
 }
 
-// ── Animated particle along a bezier path ──
-function AnimatedParticle({
-  pathD,
-  color,
-  duration,
-  delay,
-  r = 3,
-}: {
-  pathD: string;
-  color: string;
-  duration: number;
-  delay: number;
-  r?: number;
-}) {
-  const ref = useRef<SVGCircleElement>(null);
+// ── Animated connection between two layers ──
+function FlowConnector({ edge, maxQps }: { edge: PathEdge; maxQps: number }) {
+  const hasFail = safeNum(edge.failures, 0) > 0;
+  const intensity = Math.max(0.15, safeNum(edge.qps, 0) / maxQps);
+  const speed = Math.max(1, 5 - intensity * 3);
 
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
+  const lineColor = hasFail
+    ? 'from-red-500 to-red-400'
+    : edge.latencyMs != null && edge.latencyMs > 100
+      ? 'from-red-500/60 to-amber-500/60'
+      : edge.latencyMs != null && edge.latencyMs > 30
+        ? 'from-amber-500/60 to-amber-400/60'
+        : 'from-emerald-500/40 to-cyan-400/40';
 
-    let raf: number;
-    let start: number | null = null;
-    const totalLen = (() => {
-      try {
-        const tmp = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        tmp.setAttribute('d', pathD);
-        return tmp.getTotalLength();
-      } catch { return 0; }
-    })();
-    if (totalLen === 0) return;
+  const particleColor = hasFail ? 'bg-red-400' : 'bg-cyan-400';
 
-    const tmpPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    tmpPath.setAttribute('d', pathD);
+  return (
+    <div className="flex items-center gap-0 flex-1 min-w-[60px] max-w-[200px] mx-1">
+      <div className="relative w-full h-12 flex items-center">
+        {/* Main line */}
+        <div className={`absolute inset-x-0 top-1/2 -translate-y-px h-[2px] bg-gradient-to-r ${lineColor} rounded-full`} />
+        
+        {/* Glow line */}
+        <div
+          className={`absolute inset-x-0 top-1/2 -translate-y-px h-[6px] bg-gradient-to-r ${lineColor} rounded-full blur-sm`}
+          style={{ opacity: intensity * 0.4 }}
+        />
 
-    const animate = (ts: number) => {
-      if (start === null) start = ts;
-      const elapsed = ((ts - start) / 1000 - delay) % duration;
-      const t = elapsed < 0 ? 0 : elapsed / duration;
-      const pt = tmpPath.getPointAtLength(t * totalLen);
-      el.setAttribute('cx', String(pt.x));
-      el.setAttribute('cy', String(pt.y));
-      const opacity = t < 0.05 ? t / 0.05 : t > 0.9 ? (1 - t) / 0.1 : 1;
-      el.setAttribute('opacity', String(Math.max(0, Math.min(1, opacity))));
-      raf = requestAnimationFrame(animate);
-    };
-    raf = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(raf);
-  }, [pathD, duration, delay]);
+        {/* Animated particles */}
+        {[0, 1, 2].map(i => (
+          <div
+            key={i}
+            className={`absolute top-1/2 -translate-y-1/2 w-2 h-2 ${particleColor} rounded-full`}
+            style={{
+              animation: `flowParticle ${speed}s linear ${i * (speed / 3)}s infinite`,
+              opacity: 0,
+              filter: 'blur(0.5px)',
+              boxShadow: hasFail ? '0 0 6px rgba(239,68,68,0.6)' : '0 0 8px rgba(34,211,238,0.5)',
+            }}
+          />
+        ))}
 
-  return <circle ref={ref} r={safeR(r, r)} fill={color} opacity="0" />;
+        {/* QPS badge centered */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="px-2.5 py-0.5 rounded-full bg-background/90 backdrop-blur-sm border border-border/50 shadow-lg">
+            <span className="text-[10px] font-mono font-bold text-foreground/80">
+              {fmtQps(edge.qps)} <span className="text-muted-foreground/60">q/s</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Single node card ──
+function NodeCard({ node }: { node: PathNode }) {
+  const cfg = LAYER_CONFIG[node.type];
+  const Icon = cfg.icon;
+  const dotClass = STATUS_DOT[node.status] || STATUS_DOT.unknown;
+  const ringClass = STATUS_RING[node.status] || STATUS_RING.unknown;
+
+  const metrics = useMemo(() => {
+    const parts: string[] = [];
+    if (node.qps != null && Number.isFinite(node.qps)) parts.push(`${fmtQps(node.qps)} q/s`);
+    if (node.latencyMs != null && Number.isFinite(node.latencyMs)) parts.push(`${node.latencyMs}ms`);
+    if (node.cacheHit != null && Number.isFinite(node.cacheHit)) parts.push(`${Math.round(node.cacheHit)}% cache`);
+    return parts;
+  }, [node.qps, node.latencyMs, node.cacheHit]);
+
+  return (
+    <div
+      className={`
+        relative group rounded-xl border ${cfg.border}
+        bg-gradient-to-b ${cfg.gradient}
+        backdrop-blur-sm p-3 min-w-[150px] max-w-[200px]
+        transition-all duration-300
+        hover:scale-[1.03] hover:shadow-lg ${cfg.glow}
+      `}
+    >
+      {/* Top accent line */}
+      <div
+        className="absolute top-0 left-3 right-3 h-px rounded-full"
+        style={{
+          background: `linear-gradient(90deg, transparent, hsl(var(--${
+            node.type === 'client' ? 'accent' :
+            node.type === 'vip' ? 'primary' :
+            node.type === 'resolver' ? 'chart-4' : 'warning'
+          })), transparent)`,
+          opacity: 0.6,
+        }}
+      />
+
+      {/* Header row */}
+      <div className="flex items-center gap-2 mb-2">
+        <div className={`relative flex-shrink-0 w-3 h-3 ${dotClass} rounded-full ring-4 ${ringClass}`}>
+          {node.status === 'ok' && (
+            <div className={`absolute inset-0 ${dotClass} rounded-full animate-ping`} style={{ animationDuration: '2s' }} />
+          )}
+        </div>
+        <Icon size={14} className="text-muted-foreground/60 flex-shrink-0" />
+        <span className="text-xs font-mono font-bold text-foreground truncate">
+          {node.label}
+        </span>
+      </div>
+
+      {/* IP */}
+      {node.ip && (
+        <div className="text-[10px] font-mono text-muted-foreground/70 truncate mb-1.5 pl-5">
+          {node.ip}
+        </div>
+      )}
+
+      {/* Metrics row */}
+      {metrics.length > 0 && (
+        <div className="flex flex-wrap gap-x-2 gap-y-0.5 pl-5">
+          {metrics.map((m, i) => (
+            <span
+              key={i}
+              className={`text-[9px] font-mono ${
+                m.includes('ms') ? latBadgeColor(node.latencyMs) : 'text-muted-foreground/60'
+              }`}
+            >
+              {m}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Extra info */}
+      {!metrics.length && node.extra && (
+        <div className="text-[9px] font-mono text-muted-foreground/50 pl-5 truncate">{node.extra}</div>
+      )}
+    </div>
+  );
 }
 
 // ── Main component ──
-const W = 1100;
-const H = 320;
-const NODE_W = 180;
-const NODE_H = 80;
-const PAD_X = 80;
-const HEADER_Y = 30;
-const CONTENT_Y = 60;
-
 export default function NocDnsPathFlow({ nodes, edges }: Props) {
   const layers: PathNode[][] = LAYER_TYPES.map(t => nodes.filter(n => n.type === t));
 
-  // Ensure synthetic client node
+  // Synthetic defaults
   if (layers[0].length === 0) {
     layers[0] = [{ id: 'clients', label: 'Clientes DNS', type: 'client', status: 'ok' }];
   }
-  // Ensure synthetic upstream
   if (layers[3].length === 0) {
     layers[3] = [{ id: 'upstream', label: 'Upstream DNS', type: 'upstream', status: 'unknown' }];
   }
 
-  const activeLayers = layers.map((l, i) => l.length > 0 ? i : -1).filter(i => i >= 0);
-  const numActive = activeLayers.length;
-
-  const lx = (li: number) => {
-    const pos = activeLayers.indexOf(li);
-    if (pos < 0) return PAD_X;
-    const usable = W - PAD_X * 2;
-    return PAD_X + (pos / Math.max(numActive - 1, 1)) * usable;
-  };
-
-  const ny = (ni: number, count: number) => {
-    const gap = 14;
-    const totalH = count * NODE_H + (count - 1) * gap;
-    const startY = CONTENT_Y + (H - CONTENT_Y - totalH) / 2;
-    return startY + ni * (NODE_H + gap) + NODE_H / 2;
-  };
-
   const maxQps = Math.max(...edges.map(e => safeNum(e.qps, 0)), 1);
 
-  // Build indexed lookup
-  const allNodes = layers.flat();
-  const nodeMap = new Map(allNodes.map(n => [n.id, n]));
+  // Build edge lookup by source layer index
+  const edgesByFromLayer = useMemo(() => {
+    const map = new Map<number, PathEdge[]>();
+    const allNodes = layers.flat();
+    const nodeMap = new Map(allNodes.map(n => [n.id, n]));
+
+    edges.forEach(edge => {
+      const fromNode = nodeMap.get(edge.from);
+      if (!fromNode) return;
+      const li = LAYER_TYPES.indexOf(fromNode.type);
+      if (li < 0) return;
+      const arr = map.get(li) || [];
+      arr.push(edge);
+      map.set(li, arr);
+    });
+    return map;
+  }, [nodes, edges]);
 
   return (
     <div className="noc-surface">
-      <div className="noc-surface-header flex items-center gap-2">
-        <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-        <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted-foreground">
+      {/* Header */}
+      <div className="noc-surface-header flex items-center gap-2.5">
+        <div className="relative w-2 h-2">
+          <div className="absolute inset-0 rounded-full bg-cyan-400 animate-ping" style={{ animationDuration: '2s' }} />
+          <div className="absolute inset-0 rounded-full bg-cyan-400" />
+        </div>
+        <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-muted-foreground">
           DNS Query Path Flow
         </span>
       </div>
-      <div className="noc-surface-body p-0 overflow-hidden">
-        <svg
-          className="w-full"
-          viewBox={`0 0 ${W} ${H}`}
-          preserveAspectRatio="xMidYMid meet"
-          style={{ minHeight: 200 }}
-        >
-          <defs>
-            {/* Dotted background grid */}
-            <pattern id="dpf-dots" width="30" height="30" patternUnits="userSpaceOnUse">
-              <circle cx="15" cy="15" r="0.6" fill="hsl(var(--muted-foreground))" opacity="0.12" />
-            </pattern>
-            {/* Glow filter for particles */}
-            <filter id="dpf-particle-glow">
-              <feGaussianBlur stdDeviation="3" result="b" />
-              <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-            </filter>
-            {/* Node drop shadow */}
-            <filter id="dpf-shadow" x="-10%" y="-10%" width="120%" height="130%">
-              <feDropShadow dx="0" dy="2" stdDeviation="6" floodColor="rgba(0,0,0,0.35)" />
-            </filter>
-          </defs>
 
-          {/* BG */}
-          <rect width={W} height={H} fill="url(#dpf-dots)" rx="8" />
-
-          {/* Column headers */}
-          {activeLayers.map(li => (
-            <text
-              key={`hdr-${li}`}
-              x={lx(li)}
-              y={HEADER_Y}
-              textAnchor="middle"
-              fill="hsl(var(--muted-foreground))"
-              fontSize="10"
-              fontFamily="monospace"
-              fontWeight="700"
-              letterSpacing="2.5"
-              opacity="0.5"
-            >
-              {LAYER_LABELS[li]}
-            </text>
-          ))}
-
-          {/* Vertical guide lines per column */}
-          {activeLayers.map(li => (
-            <line
-              key={`guide-${li}`}
-              x1={lx(li)} y1={HEADER_Y + 8}
-              x2={lx(li)} y2={H - 10}
-              stroke="hsl(var(--border))"
-              strokeWidth="0.5"
-              strokeDasharray="4 6"
-              opacity="0.3"
-            />
-          ))}
-
-          {/* ── Edges ── */}
-          {edges.map((edge, ei) => {
-            const fromNode = nodeMap.get(edge.from);
-            const toNode = nodeMap.get(edge.to);
-            if (!fromNode || !toNode) return null;
-
-            const fromLi = layers.findIndex(l => l.some(n => n.id === fromNode.id));
-            const toLi = layers.findIndex(l => l.some(n => n.id === toNode.id));
-            if (fromLi < 0 || toLi < 0) return null;
-
-            const fromNi = layers[fromLi].indexOf(fromNode);
-            const toNi = layers[toLi].indexOf(toNode);
-
-            const x1 = lx(fromLi) + NODE_W / 2 + 4;
-            const y1 = ny(fromNi, layers[fromLi].length);
-            const x2 = lx(toLi) - NODE_W / 2 - 4;
-            const y2 = ny(toNi, layers[toLi].length);
-
-            const hasFail = safeNum(edge.failures, 0) > 0;
-            const color = hasFail ? '#ef4444' : latColor(edge.latencyMs);
-            const thick = Math.max(1.5, (safeNum(edge.qps, 0) / maxQps) * 5);
-
-            const dx = (x2 - x1) * 0.4;
-            const pathD = `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
-
-            const particles = Math.max(1, Math.min(4, Math.ceil((safeNum(edge.qps, 0) / maxQps) * 3)));
-            const speed = Math.max(1.5, 4 - (safeNum(edge.qps, 0) / maxQps) * 2);
-
-            const midX = (x1 + x2) / 2;
-            const midY = (y1 + y2) / 2;
-
+      {/* Body */}
+      <div className="noc-surface-body p-4 overflow-x-auto">
+        {/* Column labels */}
+        <div className="flex items-start justify-between mb-4 px-1">
+          {LAYER_TYPES.map((type, i) => {
+            const cfg = LAYER_CONFIG[type];
+            const hasNodes = layers[i].length > 0;
             return (
-              <g key={`e-${ei}`}>
-                {/* Glow */}
-                <path d={pathD} fill="none" stroke={color} strokeWidth={thick + 6} strokeLinecap="round" opacity={0.06} />
-                {/* Main line */}
-                <path
-                  d={pathD} fill="none"
-                  stroke={color}
-                  strokeWidth={thick}
-                  strokeLinecap="round"
-                  strokeDasharray={hasFail ? '6 4' : 'none'}
-                  opacity={0.5}
-                />
-
-                {/* Particles */}
-                {Array.from({ length: particles }).map((_, pi) => (
-                  <AnimatedParticle
-                    key={`p-${ei}-${pi}`}
-                    pathD={pathD}
-                    color={color}
-                    duration={speed}
-                    delay={pi * (speed / particles)}
-                    r={3}
-                  />
-                ))}
-
-                {/* QPS badge on edge */}
-                <rect
-                  x={midX - 28} y={midY - 11}
-                  width={56} height={18} rx={4}
-                  fill="hsl(var(--background))" stroke="hsl(var(--border))" strokeWidth={0.6} opacity={0.9}
-                />
-                <text
-                  x={midX} y={midY + 2}
-                  textAnchor="middle"
-                  fill={color}
-                  fontSize="9"
-                  fontFamily="monospace"
-                  fontWeight="700"
-                >
-                  {fmtQps(edge.qps)} q/s
-                </text>
-              </g>
+              <div key={type} className="flex-1 text-center" style={{ opacity: hasNodes ? 1 : 0.3 }}>
+                <span className="text-[9px] font-mono font-bold uppercase tracking-[0.25em] text-muted-foreground/50">
+                  {cfg.label}
+                </span>
+              </div>
             );
           })}
+        </div>
 
-          {/* ── Nodes ── */}
-          {activeLayers.map(li => {
-            const layer = layers[li];
-            const cx = lx(li);
+        {/* Flow row */}
+        <div className="flex items-center justify-between gap-0">
+          {LAYER_TYPES.map((type, li) => {
+            const layerNodes = layers[li];
+            const layerEdges = edgesByFromLayer.get(li) || [];
+            const isLast = li === LAYER_TYPES.length - 1;
 
-            return layer.map((node, ni) => {
-              const cy = ny(ni, layer.length);
-              const color = STATUS_COLORS[node.status] || STATUS_COLORS.unknown;
-              const hw = NODE_W / 2;
-              const hh = NODE_H / 2;
+            return (
+              <div key={type} className="contents">
+                {/* Node column */}
+                <div className="flex flex-col gap-2 items-center flex-shrink-0">
+                  {layerNodes.map(node => (
+                    <NodeCard key={node.id} node={node} />
+                  ))}
+                </div>
 
-              const metricsLine = [
-                node.latencyMs != null && Number.isFinite(node.latencyMs) ? `${node.latencyMs}ms` : null,
-                node.cacheHit != null && Number.isFinite(node.cacheHit) ? `${Math.round(node.cacheHit)}% hit` : null,
-                node.qps != null && Number.isFinite(node.qps) ? `${fmtQps(node.qps)} q/s` : null,
-              ].filter(Boolean).join('  ·  ') || node.extra || '';
-
-              return (
-                <g key={node.id} filter="url(#dpf-shadow)">
-                  {/* Card bg */}
-                  <rect
-                    x={cx - hw} y={cy - hh}
-                    width={NODE_W} height={NODE_H}
-                    rx={6}
-                    fill="hsl(var(--card))"
-                    stroke={color}
-                    strokeWidth={1}
-                    opacity={0.95}
-                  />
-                  {/* Top accent bar */}
-                  <rect
-                    x={cx - hw} y={cy - hh}
-                    width={NODE_W} height={3}
-                    rx={1}
-                    fill={color}
-                    opacity={0.9}
-                  />
-
-                  {/* Status dot */}
-                  <circle cx={cx - hw + 16} cy={cy - hh + 18} r={safeR(4.5, 4.5)} fill={color} opacity={0.25} />
-                  <circle cx={cx - hw + 16} cy={cy - hh + 18} r={safeR(3, 3)} fill={color}>
-                    {node.status === 'ok' && (
-                      <animate attributeName="r" values="3;3.5;3" dur="2s" repeatCount="indefinite" />
-                    )}
-                  </circle>
-
-                  {/* Label */}
-                  <text
-                    x={cx - hw + 28} y={cy - hh + 22}
-                    fill="hsl(var(--foreground))"
-                    fontSize="12"
-                    fontFamily="monospace"
-                    fontWeight="700"
-                  >
-                    {node.label.length > 16 ? node.label.slice(0, 15) + '…' : node.label}
-                  </text>
-
-                  {/* IP address */}
-                  {node.ip && (
-                    <text
-                      x={cx} y={cy + 4}
-                      textAnchor="middle"
-                      fill="hsl(var(--muted-foreground))"
-                      fontSize="10"
-                      fontFamily="monospace"
-                      opacity={0.75}
-                    >
-                      {node.ip}
-                    </text>
-                  )}
-
-                  {/* Metrics */}
-                  {metricsLine && (
-                    <text
-                      x={cx} y={cy + hh - 8}
-                      textAnchor="middle"
-                      fill="hsl(var(--muted-foreground))"
-                      fontSize="9"
-                      fontFamily="monospace"
-                      opacity={0.6}
-                    >
-                      {metricsLine}
-                    </text>
-                  )}
-                </g>
-              );
-            });
+                {/* Connector */}
+                {!isLast && (
+                  layerEdges.length > 0 ? (
+                    <div className="flex flex-col gap-1 flex-1 min-w-[60px] max-w-[200px]">
+                      {layerEdges.map((edge, ei) => (
+                        <FlowConnector key={ei} edge={edge} maxQps={maxQps} />
+                      ))}
+                    </div>
+                  ) : (
+                    <FlowConnector
+                      edge={{ from: '', to: '', qps: 0 }}
+                      maxQps={1}
+                    />
+                  )
+                )}
+              </div>
+            );
           })}
-        </svg>
+        </div>
       </div>
+
+      {/* Inline keyframes */}
+      <style>{`
+        @keyframes flowParticle {
+          0%   { left: 0%;   opacity: 0; transform: translateY(-50%) scale(0.5); }
+          10%  { opacity: 1; transform: translateY(-50%) scale(1); }
+          85%  { opacity: 1; transform: translateY(-50%) scale(1); }
+          100% { left: 100%; opacity: 0; transform: translateY(-50%) scale(0.5); }
+        }
+      `}</style>
     </div>
   );
 }
