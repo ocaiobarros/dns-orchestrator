@@ -563,7 +563,19 @@ def execute_deploy(
         totalSteps=len(steps),
     )
 
-    return _build_result(deploy_id, steps, all_ok, dry_run, scope, operator, files, health_checks, backup_id)
+    return _build_result(
+        deploy_id,
+        steps,
+        all_ok,
+        dry_run,
+        scope,
+        operator,
+        files,
+        health_checks,
+        backup_id,
+        validation_errors,
+        validation_results,
+    )
 
 
 def execute_rollback(backup_id: str, operator: str = "system") -> dict:
