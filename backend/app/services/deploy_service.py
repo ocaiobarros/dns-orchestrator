@@ -709,6 +709,68 @@ def list_backups() -> list[dict]:
     return backups[:20]
 
 
+def _detect_ip_collisions(payload: dict[str, Any]) -> list[str]:
+    """Detect invalid IP reuse across VIP, listener, egress and host layers.
+
+    Allowed exception: bindIp == controlInterface within the same instance.
+    """
+    normalized = normalize_payload(payload)
+    instances = normalized.get("instances", []) or []
+    vips = (
+        normalized.get("nat", {}).get("serviceVips", [])
+        or payload.get("serviceVips", [])
+        or []
+    )
+
+    entries_by_ip: dict[str, list[dict[str, str]]] = {}
+
+    def add(ip: str, layer: str, instance_name: str = ""):
+        if not ip:
+            return
+        entries_by_ip.setdefault(ip, []).append({
+            "layer": layer,
+            "instance": instance_name,
+        })
+
+    host_ip = (
+        normalized.get("environment", {}).get("ipv4Address", "")
+        or payload.get("ipv4Address", "")
+    )
+    if host_ip:
+        add(str(host_ip).split("/")[0], "host")
+
+    for vip in vips:
+        vip_ip = (vip or {}).get("ipv4", "")
+        add(vip_ip, "vip")
+
+    for inst in instances:
+        name = inst.get("name", "unknown")
+        add(inst.get("bindIp", ""), "bindIp", name)
+        add(inst.get("exitIp", ""), "egressIpv4", name)
+        add(inst.get("controlInterface", ""), "controlInterface", name)
+
+    collisions: list[str] = []
+    for ip, users in entries_by_ip.items():
+        if len(users) <= 1:
+            continue
+
+        # Allowed: same instance sharing bind/control IP
+        if len(users) == 2:
+            a, b = users
+            same_instance = a.get("instance") and a.get("instance") == b.get("instance")
+            allowed_layers = {a.get("layer"), b.get("layer")} == {"bindIp", "controlInterface"}
+            if same_instance and allowed_layers:
+                continue
+
+        labels = [
+            f"{u['instance']}/{u['layer']}" if u.get("instance") else u["layer"]
+            for u in users
+        ]
+        collisions.append(f"IP {ip} usado por {', '.join(labels)}")
+
+    return collisions
+
+
 # ═══ Internal helpers ═══
 
 def _write_file(f: dict):
