@@ -210,25 +210,119 @@ export default function Wizard() {
     }, 1000);
   };
 
-  const handleApply = (dryRun: boolean) => {
+  const [submitState, setSubmitState] = useState<'idle' | 'validating' | 'dispatching' | 'polling' | 'done' | 'error'>('idle');
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const handleApply = async (dryRun: boolean) => {
+    const mode = dryRun ? 'dry-run' : 'apply';
+    console.info(`[DNS Control] Deploy submit: mode=${mode}`, {
+      configHostname: config.hostname,
+      instances: config.instances.length,
+      vips: config.serviceVips.length,
+      deploymentMode: config.deploymentMode,
+    });
+
     setShowValidation(true);
-    if (!isConfigValid(validationErrors) && !dryRun) return;
-    setDeployProgress({ phase: dryRun ? 'dry_run_validating' : 'applying', currentStep: 'Iniciando...', completedSteps: 0, totalSteps: 0, lastMessage: '' });
+    setSubmitError(null);
+    setSubmitState('validating');
+
+    if (!isConfigValid(validationErrors) && !dryRun) {
+      const blocking = validationErrors.filter(e => e.severity === 'error');
+      const msg = `Deploy bloqueado: ${blocking.length} erro(s) de validação. Primeiro: [${STEPS[blocking[0]?.step]}] ${blocking[0]?.message}`;
+      console.error(`[DNS Control] ${msg}`);
+      setSubmitError(msg);
+      setSubmitState('error');
+      return;
+    }
+
+    setSubmitState('dispatching');
+    console.info(`[DNS Control] Dispatching ${mode} request to backend...`);
+
+    setDeployProgress({
+      phase: dryRun ? 'dry_run_validating' : 'applying',
+      currentStep: 'Iniciando...',
+      completedSteps: 0, totalSteps: 0, lastMessage: '',
+    });
     startPolling();
-    applyMutation.mutate(
-      { config, scope: 'full', dryRun, comment: '' },
-      {
-        onSuccess: (result) => {
-          setApplyResult(result);
-          setDeployProgress(null);
-          if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
-        },
-        onError: () => {
-          setDeployProgress(null);
-          if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
-        },
+
+    try {
+      // Use dedicated endpoint for dry-run vs apply
+      const apiCall = dryRun ? api.dryRunConfig : api.applyConfig;
+      const request: ApplyRequest = { config, scope: 'full', dryRun, comment: '' };
+      console.info(`[DNS Control] Calling ${dryRun ? 'POST /api/deploy/dry-run' : 'POST /api/deploy/apply'}`, { payloadKeys: Object.keys(config) });
+
+      const result = await apiCall(request);
+
+      if (!result.success) {
+        const errMsg = result.error || 'Erro desconhecido na API';
+        console.error(`[DNS Control] API error:`, errMsg);
+        setSubmitError(`Erro da API: ${errMsg}`);
+        setSubmitState('error');
+        setDeployProgress(null);
+        if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+        return;
       }
-    );
+
+      console.info(`[DNS Control] ${mode} success:`, { id: result.data?.id, status: result.data?.status });
+      setApplyResult(result.data);
+      setSubmitState('done');
+      setDeployProgress(null);
+      if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+    } catch (err: any) {
+      const errMsg = err?.message || String(err);
+      console.error(`[DNS Control] ${mode} exception:`, errMsg);
+      setSubmitError(`Exceção: ${errMsg}`);
+      setSubmitState('error');
+      setDeployProgress(null);
+      if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+    }
+  };
+
+  const handleTestConnectivity = async () => {
+    try {
+      console.info('[DNS Control] Testing API connectivity...');
+      const r = await api.getDeployState();
+      if (r.success) {
+        setSubmitError(null);
+        alert('✅ API acessível — GET /api/deploy/state respondeu com sucesso.');
+        console.info('[DNS Control] API connectivity OK', r.data);
+      } else {
+        setSubmitError(`API inacessível: ${r.error}`);
+        console.error('[DNS Control] API connectivity failed:', r.error);
+      }
+    } catch (err: any) {
+      setSubmitError(`API inacessível: ${err.message}`);
+      console.error('[DNS Control] API connectivity exception:', err);
+    }
+  };
+
+  const handleCopyPayload = () => {
+    const payload = { config, scope: 'full', dry_run: false, comment: '' };
+    navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+    alert('Payload JSON copiado para clipboard.');
+    console.info('[DNS Control] Payload copied to clipboard');
+  };
+
+  const handleForceDryRun = async () => {
+    console.info('[DNS Control] Force dry-run bypass...');
+    setSubmitError(null);
+    setSubmitState('dispatching');
+    try {
+      const r = await api.dryRunConfig({ config, scope: 'full', dryRun: true, comment: '' });
+      if (r.success) {
+        console.info('[DNS Control] Force dry-run success:', r.data);
+        setApplyResult(r.data);
+        setSubmitState('done');
+      } else {
+        setSubmitError(`Dry-run falhou: ${r.error}`);
+        setSubmitState('error');
+        console.error('[DNS Control] Force dry-run failed:', r.error);
+      }
+    } catch (err: any) {
+      setSubmitError(`Dry-run exceção: ${err.message}`);
+      setSubmitState('error');
+      console.error('[DNS Control] Force dry-run exception:', err);
+    }
   };
 
   const handleNext = () => {
