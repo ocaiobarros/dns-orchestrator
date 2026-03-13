@@ -31,6 +31,8 @@ _SUDO_ALLOWED_COMMANDS: list[tuple[str, list[str]]] = [
     ("nft", ["list", "tables"]),
     ("nft", ["list", "ruleset"]),
     ("nft", ["list", "counters"]),
+    ("nft", ["-c", "-f"]),  # staging syntax validation
+    ("nft", ["-f"]),          # apply ruleset
     ("vtysh", ["-c"]),  # read-only vtysh commands
     ("journalctl", ["--no-pager"]),
 ]
