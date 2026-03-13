@@ -103,9 +103,20 @@ def generate_nftables_config(payload: dict[str, Any], validation_mode: bool = Fa
         "# DNS Control — nftables configuration",
         "# Generated configuration — do not edit manually",
         f"# Distribution policy: {distribution_policy}",
+        f"# Egress delivery: {egress_delivery}",
         "",
+    ]
+
+    if is_border_routed:
+        lines.append("# BORDER-ROUTED MODE: No generic masquerade/SNAT generated.")
+        lines.append("# Public egress identity is defined in Unbound outgoing-interface.")
+        lines.append("# Border/firewall must route egress IPs back to this host.")
+        lines.append("")
+
+    lines.extend([
         flush_line,
         "",
+        "table inet filter {",
         "table inet filter {",
         "    chain input {",
         "        type filter hook input priority 0; policy drop;",
