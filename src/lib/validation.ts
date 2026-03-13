@@ -151,6 +151,7 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
   if (config.maxTtl < config.minTtl) e('maxTtl', 3, 'Max TTL deve ser maior que Min TTL');
 
   // ═══ Step 4 — Egress Público ═══
+  const isBorderRouted = config.egressDeliveryMode === 'border-routed';
   const egressIps = config.instances.map(i => i.egressIpv4).filter(Boolean);
   const dupEgress = findDuplicates(egressIps);
   if (dupEgress.length > 0 && config.egressFixedIdentity) {
@@ -173,8 +174,8 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
       }
     });
 
-    // Egress cannot equal host private IP
-    if (inst.egressIpv4 && config.ipv4Address && inst.egressIpv4 === extractIpFromCidr(config.ipv4Address)) {
+    // Egress vs host private IP — only warn in host-owned mode (border-routed is expected to differ)
+    if (!isBorderRouted && inst.egressIpv4 && config.ipv4Address && inst.egressIpv4 === extractIpFromCidr(config.ipv4Address)) {
       e(`instances[${i}].egressIpv4`, 4, `Egress ${inst.egressIpv4} conflita com IP privado do host`);
     }
 
@@ -183,6 +184,11 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
       e(`instances[${i}].egressIpv6`, 4, `Egress IPv6 da instância "${inst.name}" é inválido`);
     }
   });
+
+  // Border-routed INFO: egress IP not on host is expected
+  if (isBorderRouted && egressIps.length > 0) {
+    e('egressDeliveryMode', 4, 'Modo border-routed: IP público de egress não estará presente nas interfaces do host — esperado neste modo.', 'warning');
+  }
 
   // ═══ Step 5 — Mapeamento VIP → Instância ═══
   if (config.distributionPolicy === 'fixed-mapping') {
