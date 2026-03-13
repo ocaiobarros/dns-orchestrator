@@ -224,7 +224,7 @@ def generate_nftables_config(payload: dict[str, Any], validation_mode: bool = Fa
                 lines.append(f"    chain dns_{proto}_backend_{idx} {{")
                 if distribution_policy == "sticky-source":
                     lines.append(
-                        f"        add @sticky_{proto}_{idx} {{ ip saddr timeout {sticky_timeout_seconds}s }} counter"
+                        f"        update @sticky_{proto}_{idx} {{ ip saddr timeout {sticky_timeout_seconds}s }} counter"
                     )
                 lines.append(f"        {proto} dport 53 counter dnat to {backend_ip}:53")
                 lines.append("    }")
