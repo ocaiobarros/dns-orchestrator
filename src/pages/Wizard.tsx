@@ -994,6 +994,32 @@ export default function Wizard() {
               </div>
             </div>
 
+            {/* Compatibility Matrix (border-routed) */}
+            {config.egressDeliveryMode === 'border-routed' && (
+              <div className="noc-panel border-accent/20">
+                <div className="noc-panel-header flex items-center gap-2 text-accent">
+                  <Info size={12} /> Matriz de Compatibilidade — Border-Routed
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                  {[
+                    ['Entrega Listener', 'nftables DNAT'],
+                    ['Identidade Egress', 'Unbound outgoing-interface'],
+                    ['Caminho de Retorno', 'Rota estática na borda'],
+                    ['IP Público Local', 'Não necessário'],
+                    ['Masquerade/SNAT', 'Não gerado'],
+                    ['Post-up egress', 'Comentado (lógico)'],
+                    ['Responsável retorno', 'Firewall/Router de borda'],
+                    ['Deploy check', 'IP não presente no host (esperado)'],
+                  ].map(([k, v]) => (
+                    <div key={k} className="py-1">
+                      <div className="text-muted-foreground uppercase tracking-wider text-[10px]">{k}</div>
+                      <div className="font-mono font-medium">{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Deployment Summary */}
             <div className="noc-panel">
               <div className="noc-panel-header">Resumo do Deploy</div>
@@ -1002,6 +1028,7 @@ export default function Wizard() {
                   ['Hostname', config.hostname || '—'],
                   ['Interface', `${config.mainInterface} — ${config.ipv4Address}`],
                   ['Modo', config.deploymentMode],
+                  ['Egress', config.egressDeliveryMode === 'border-routed' ? 'Border-Routed (lógico)' : 'Host-Owned (local)'],
                   ['Roteamento', config.routingMode],
                   ['VIPs', `${config.serviceVips.length} IPv4${config.vipIpv6Enabled ? ' + IPv6' : ''}`],
                   ['Instâncias', String(config.instances.length)],
