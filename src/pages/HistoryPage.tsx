@@ -11,6 +11,7 @@ export default function HistoryPage() {
   const { data: backups } = useDeployBackups();
   const rollbackMutation = useRollback();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { data: detail, isLoading: detailLoading } = useHistoryDetail(expandedId);
   const [showBackups, setShowBackups] = useState(false);
 
   if (isLoading) return <LoadingState />;
