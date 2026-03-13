@@ -233,6 +233,7 @@ export default function Dashboard() {
           status: vipConfigured ? 'ok' : 'inactive',
           qps: dnsAvail ? totalQps : undefined,
           extra: vipConfigured ? 'Anycast active' : 'Not configured',
+          bindIp: vipAddress || undefined,
         });
 
         // Resolver nodes
