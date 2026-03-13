@@ -115,9 +115,9 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
       <motion.circle
         cx={safeNum(sx)}
         cy={safeNum(sy - radius + 6)}
-        r={safeR(3, 3)}
         fill={color}
-        animate={isAlertState ? { scale: [1, 1.4, 1] } : {}}
+        initial={{ r: safeR(3, 3) }}
+        animate={isAlertState ? { r: safeR(3, 3), scale: [1, 1.4, 1] } : { r: safeR(3, 3) }}
         transition={{ duration: 1, repeat: Infinity }}
       />
 
