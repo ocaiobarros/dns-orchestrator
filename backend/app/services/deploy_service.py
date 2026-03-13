@@ -906,7 +906,7 @@ def _get_restart_commands(scope: str, payload: dict) -> list[tuple[str, list[str
     if scope in ("full", "network"):
         cmds.append((
             "Materializar IPs de rede (post-up)",
-            ["bash", "/etc/network/post-up.d/dns-control"],
+            ["/etc/network/post-up.d/dns-control"],
             "Desfazer IPs adicionados ao loopback",
         ))
     return cmds
