@@ -114,7 +114,11 @@ export default function HistoryPage() {
                   <div>
                     <span className="text-xs text-muted-foreground uppercase tracking-wider">Pipeline de Execução</span>
                     <div className="mt-1">
-                      <ApplyStepsViewer steps={h.steps} showCommands />
+                      {detailLoading ? (
+                        <p className="text-xs text-muted-foreground">Carregando...</p>
+                      ) : (
+                        <ApplyStepsViewer steps={detail?.steps || h.steps} showCommands />
+                      )}
                     </div>
                   </div>
 
