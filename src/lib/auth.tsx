@@ -146,14 +146,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           };
           setSessionInfo(si);
           startSessionTimers(si.expiresAt, si.sessionWarningSeconds);
+        } else {
+          setUser(null);
+          setSessionInfo(null);
         }
         return;
       }
 
       const token = localStorage.getItem(TOKEN_KEY);
-      if (!token) return;
+      if (!token) {
+        setUser(null);
+        setSessionInfo(null);
+        return;
+      }
 
-      const res = await fetch(buildAuthUrl('/auth/me'), {
+      const res = await fetchWithTimeout(buildAuthUrl('/auth/me'), {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -175,22 +182,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSessionInfo(si);
         startSessionTimers(si.expiresAt, si.sessionWarningSeconds);
       } else if (res.status === 401) {
-        // Avoid tearing down a valid in-memory session due transient auth/me noise.
-        if (!user) {
-          setUser(null);
-          setSessionInfo(null);
-        }
+        // Keep current in-memory session on transient auth/me 401 noise.
+        setUser(prev => prev ?? null);
       } else {
         localStorage.removeItem(TOKEN_KEY);
         setUser(null);
         setSessionInfo(null);
       }
     } catch {
+      // Network timeout or transient API failure should never lock UI in loading state.
       setUser(prev => prev ?? null);
     } finally {
       setLoading(false);
     }
-  }, [startSessionTimers, user]);
+  }, [startSessionTimers]);
 
   useEffect(() => {
     checkSession();
