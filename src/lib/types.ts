@@ -445,7 +445,35 @@ export interface DeploymentRecord {
   backupId: string | null;
 }
 
-export interface ApplyResult extends DeploymentRecord {}
+export interface DeployValidationError {
+  category: string;
+  command: string | null;
+  file: string | null;
+  stderr: string;
+  remediation?: string;
+}
+
+export interface DeployValidationResultItem {
+  status: 'pass' | 'fail';
+  file: string | null;
+  command: string | null;
+  stderr?: string;
+  remediation?: string;
+  details?: string;
+}
+
+export interface DeployValidationResults {
+  unbound: DeployValidationResultItem[];
+  nftables: DeployValidationResultItem[];
+  network: DeployValidationResultItem[];
+  ipCollision: DeployValidationResultItem[];
+}
+
+export interface ApplyResult extends DeploymentRecord {
+  success?: boolean;
+  validationErrors?: DeployValidationError[];
+  validationResults?: DeployValidationResults;
+}
 
 export interface RollbackRequest {
   deploymentId: string;
