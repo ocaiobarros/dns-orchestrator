@@ -239,7 +239,13 @@ def execute_deploy(
 
         for ip, users in ip_map.items():
             if len(users) > 1:
-                validation_errors.append(f"IP collision: {ip} used by {', '.join(users)}")
+                validation_errors.append({
+                    "category": "ip-collision",
+                    "command": None,
+                    "file": None,
+                    "stderr": f"IP {ip} usado por {', '.join(users)}",
+                    "remediation": "Cada camada (VIP, Listener, Egress, Host) deve usar IPs distintos."
+                })
 
         if validation_errors:
             _update_live_state(errors=validation_errors)
