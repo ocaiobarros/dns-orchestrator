@@ -408,3 +408,56 @@
     filter: drop-shadow(0 0 2px currentColor);
   }
 }
+
+/* ── Leaflet dark theme overrides ── */
+.leaflet-container {
+  background: hsl(225, 30%, 5%) !important;
+  font-family: 'JetBrains Mono', monospace !important;
+}
+
+.leaflet-popup-content-wrapper {
+  background: hsl(225, 25%, 8%) !important;
+  border: 1px solid hsl(225, 22%, 13%) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+  padding: 0 !important;
+}
+
+.leaflet-popup-content {
+  margin: 0 !important;
+  color: hsl(210, 25%, 95%) !important;
+}
+
+.leaflet-popup-tip {
+  background: hsl(225, 25%, 8%) !important;
+  border: 1px solid hsl(225, 22%, 13%) !important;
+}
+
+.leaflet-popup-close-button {
+  color: hsl(218, 15%, 46%) !important;
+}
+
+.leaflet-control-zoom a {
+  background: hsl(225, 25%, 8%) !important;
+  color: hsl(210, 25%, 95%) !important;
+  border-color: hsl(225, 22%, 13%) !important;
+}
+
+.leaflet-control-attribution {
+  background: hsl(225, 30%, 5% / 0.7) !important;
+  color: hsl(218, 15%, 30%) !important;
+  font-size: 8px !important;
+}
+
+.leaflet-control-attribution a {
+  color: hsl(218, 15%, 40%) !important;
+}
+
+@keyframes noc-geo-pulse-anim {
+  0% { opacity: 0.6; transform: scale(1); }
+  100% { opacity: 0; transform: scale(2.5); }
+}
+
+.noc-geo-pulse {
+  animation: noc-geo-pulse-anim 2s ease-out infinite;
+}

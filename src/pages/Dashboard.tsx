@@ -13,6 +13,7 @@ import NocHealthSummary from '@/components/noc/NocHealthSummary';
 import NocMetricStrip from '@/components/noc/NocMetricStrip';
 import NocInstanceTable from '@/components/noc/NocInstanceTable';
 import NocTopologyPanel from '@/components/noc/NocTopologyPanel';
+import NocGeoMap from '@/components/noc/NocGeoMap';
 import NocNetworkMap, { type MapNode, type MapEdge } from '@/components/noc/NocNetworkMap';
 import NocEventsTimeline from '@/components/noc/NocEventsTimeline';
 import NocResolverPanel from '@/components/noc/NocResolverPanel';
@@ -219,7 +220,7 @@ export default function Dashboard() {
         </motion.div>
       )}
 
-      {/* ═══ TIER 4: DNS NETWORK MAP — Full-width centerpiece ═══ */}
+      {/* ═══ TIER 4: DNS GEO MAP — Real world map centerpiece ═══ */}
       {(() => {
         const mapNodes: MapNode[] = [];
         const mapEdges: MapEdge[] = [];
@@ -232,6 +233,7 @@ export default function Dashboard() {
           status: vipConfigured ? 'ok' : 'inactive',
           qps: dnsAvail ? totalQps : undefined,
           extra: vipConfigured ? 'Anycast active' : 'Not configured',
+          bindIp: vipAddress || undefined,
         });
 
         // Resolver nodes
@@ -268,6 +270,7 @@ export default function Dashboard() {
           status: upstreamOk === true ? 'ok' : upstreamOk === false ? 'failed' : 'unknown',
           latency: dnsAvail ? Math.max(Math.round(Number(avgLatency)) - 2, 1) : undefined,
           extra: upstreamOk === true ? 'Reachable' : upstreamOk === false ? 'Unreachable' : 'Unknown',
+          bindIp: '8.8.8.8',
         });
         const resolverIds = mapNodes.filter(n => n.type === 'resolver').map(n => n.id);
         resolverIds.forEach(rid => {
@@ -275,7 +278,7 @@ export default function Dashboard() {
           mapEdges.push({ from: rid, to: 'upstream-primary', latency: dnsAvail ? Math.max(Math.round(Number(avgLatency)) - 2, 1) : undefined, qps: rn?.qps ?? 0 });
         });
 
-        return <NocNetworkMap nodes={mapNodes} edges={mapEdges} />;
+        return <NocGeoMap nodes={mapNodes} edges={mapEdges} />;
       })()}
 
       {/* ═══ TIER 4B: DNS PATH FLOW ═══ */}
