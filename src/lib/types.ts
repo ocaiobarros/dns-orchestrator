@@ -41,6 +41,8 @@ export interface ServiceVip {
 
 export type EgressMode = 'fixed-per-instance' | 'shared-pool' | 'randomized';
 
+export type EgressDeliveryMode = 'host-owned' | 'border-routed';
+
 
 // ---- DNS Instance (expanded) ----
 
@@ -122,6 +124,7 @@ export interface WizardConfig {
   // (egress fields live on DnsInstance but are edited in step 5)
   egressFixedIdentity: boolean;
   egressMode: EgressMode;
+  egressDeliveryMode: EgressDeliveryMode;
   egressSharedPool: string[];
 
   // Step 6 - Mapeamento VIP → Instância
@@ -629,6 +632,7 @@ export const DEFAULT_CONFIG: WizardConfig = {
   // Step 5 - Egress Público
   egressFixedIdentity: true,
   egressMode: 'fixed-per-instance' as EgressMode,
+  egressDeliveryMode: 'border-routed' as EgressDeliveryMode,
   egressSharedPool: [],
 
   // Step 6 - Mapeamento VIP → Instância

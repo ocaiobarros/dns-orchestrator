@@ -512,9 +512,34 @@ export default function Wizard() {
               Este é o IP que os servidores autoritativos verão ao receber queries recursivas.
             </InfoBox>
 
+            {/* Egress Delivery Mode */}
+            <div className="space-y-3">
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Modo de Entrega do Egress</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <ModeCard selected={config.egressDeliveryMode === 'host-owned'}
+                  onClick={() => set('egressDeliveryMode', 'host-owned')}
+                  label="Host-Owned (IP Local)" desc="O IP público de egress é configurado localmente no host (loopback). O host é dono do IP." />
+                <ModeCard selected={config.egressDeliveryMode === 'border-routed'}
+                  onClick={() => set('egressDeliveryMode', 'border-routed')}
+                  label="Border-Routed (Lógico)" desc="O IP público de egress NÃO é configurado no host. O resolver usa como outgoing-interface lógico e o roteamento upstream retorna o tráfego." />
+              </div>
+              {config.egressDeliveryMode === 'border-routed' && (
+                <div className="flex gap-2 p-3 rounded bg-accent/10 border border-accent/20 text-xs text-accent">
+                  <Info size={14} className="shrink-0 mt-0.5" />
+                  <div>
+                    <strong>Border-Routed:</strong> O IP público de egress não é configurado localmente no host.
+                    O resolver usa o IP logicamente como <code className="font-mono bg-accent/20 px-1 rounded">outgoing-interface</code>, e o roteamento
+                    upstream (firewall/router de borda) deve retornar o tráfego para este servidor.
+                    <br />
+                    <span className="text-accent/70 mt-1 block">→ nftables NÃO gerará masquerade ou SNAT genérico para preservar a identidade de egress.</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Egress Mode Selection */}
             <div className="space-y-3">
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Modo de Egress</div>
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Modo de Alocação</div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <ModeCard selected={config.egressMode === 'fixed-per-instance'}
                   onClick={() => set('egressMode', 'fixed-per-instance')}
@@ -969,6 +994,32 @@ export default function Wizard() {
               </div>
             </div>
 
+            {/* Compatibility Matrix (border-routed) */}
+            {config.egressDeliveryMode === 'border-routed' && (
+              <div className="noc-panel border-accent/20">
+                <div className="noc-panel-header flex items-center gap-2 text-accent">
+                  <Info size={12} /> Matriz de Compatibilidade — Border-Routed
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                  {[
+                    ['Entrega Listener', 'nftables DNAT'],
+                    ['Identidade Egress', 'Unbound outgoing-interface'],
+                    ['Caminho de Retorno', 'Rota estática na borda'],
+                    ['IP Público Local', 'Não necessário'],
+                    ['Masquerade/SNAT', 'Não gerado'],
+                    ['Post-up egress', 'Comentado (lógico)'],
+                    ['Responsável retorno', 'Firewall/Router de borda'],
+                    ['Deploy check', 'IP não presente no host (esperado)'],
+                  ].map(([k, v]) => (
+                    <div key={k} className="py-1">
+                      <div className="text-muted-foreground uppercase tracking-wider text-[10px]">{k}</div>
+                      <div className="font-mono font-medium">{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Deployment Summary */}
             <div className="noc-panel">
               <div className="noc-panel-header">Resumo do Deploy</div>
@@ -977,6 +1028,7 @@ export default function Wizard() {
                   ['Hostname', config.hostname || '—'],
                   ['Interface', `${config.mainInterface} — ${config.ipv4Address}`],
                   ['Modo', config.deploymentMode],
+                  ['Egress', config.egressDeliveryMode === 'border-routed' ? 'Border-Routed (lógico)' : 'Host-Owned (local)'],
                   ['Roteamento', config.routingMode],
                   ['VIPs', `${config.serviceVips.length} IPv4${config.vipIpv6Enabled ? ' + IPv6' : ''}`],
                   ['Instâncias', String(config.instances.length)],

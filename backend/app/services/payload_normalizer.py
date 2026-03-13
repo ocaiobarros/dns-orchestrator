@@ -126,6 +126,7 @@ def normalize_payload(raw: dict[str, Any]) -> dict[str, Any]:
         "routingMode": raw.get("routingMode", "static"),
         "observability": raw.get("observability", {}),
         "egressMode": raw.get("egressMode", "fixed-per-instance"),
+        "egressDeliveryMode": raw.get("egressDeliveryMode", "host-owned"),
         # Preserve raw config for reference
         "_wizardConfig": raw,
     }

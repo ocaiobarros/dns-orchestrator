@@ -147,14 +147,26 @@ export function generatePostUpScript(config: WizardConfig): string {
     '',
   ];
 
-  // Egress IPs (public) on loopback
+  // Egress IPs (public) on loopback — only in host-owned mode
+  const isBorderRouted = config.egressDeliveryMode === 'border-routed';
   if (config.instances.some(i => i.egressIpv4)) {
-    lines.push('# === Egress IPs (public outgoing-interface) on loopback ===');
-    config.instances.forEach(inst => {
-      if (inst.egressIpv4) {
-        lines.push(`/usr/sbin/ip -4 addr add ${inst.egressIpv4}/32 dev lo`);
-      }
-    });
+    if (isBorderRouted) {
+      lines.push('# === Egress IPs (border-routed: NOT added to host interfaces) ===');
+      lines.push('# In border-routed mode, egress IPs are logical identities in Unbound outgoing-interface.');
+      lines.push('# Upstream routing must return traffic for these IPs to this host.');
+      config.instances.forEach(inst => {
+        if (inst.egressIpv4) {
+          lines.push(`# outgoing-interface: ${inst.egressIpv4} (${inst.name}) — routed at border`);
+        }
+      });
+    } else {
+      lines.push('# === Egress IPs (host-owned: added to loopback) ===');
+      config.instances.forEach(inst => {
+        if (inst.egressIpv4) {
+          lines.push(`/usr/sbin/ip -4 addr add ${inst.egressIpv4}/32 dev lo`);
+        }
+      });
+    }
     lines.push('');
   }
 
@@ -693,20 +705,47 @@ WantedBy=multi-user.target
 
 export function generateDeploymentManifest(config: WizardConfig, files: { path: string }[]): string {
   const now = new Date().toISOString();
-  return `# DNS Control — Deployment Manifest
+  const isBorderRouted = config.egressDeliveryMode === 'border-routed';
+  
+  let manifest = `# DNS Control — Deployment Manifest
 # Generated: ${now}
 # Hostname: ${config.hostname || '(not set)'}
 # Organization: ${config.organization || '(not set)'}
 # Deployment Mode: ${config.deploymentMode}
 # Distribution Policy: ${config.distributionPolicy}
 # Routing: ${config.routingMode}
+# Egress Delivery: ${config.egressDeliveryMode || 'host-owned'}
 # IPv6: ${config.enableIpv6 ? 'enabled' : 'disabled'}
 #
 # Architecture:
 #   VIPs: ${config.serviceVips.map(v => v.ipv4).join(', ') || '(none)'}
 #   Instances: ${config.instances.map(i => `${i.name}@${i.bindIp}`).join(', ') || '(none)'}
 #   Egress: ${config.instances.map(i => `${i.name}→${i.egressIpv4}`).join(', ') || '(none)'}
-#
+#`;
+
+  if (isBorderRouted) {
+    manifest += `
+# ┌─────────────────────────────────────────────────────────────┐
+# │  BORDER-ROUTED MODE                                        │
+# │                                                             │
+# │  Listener delivery: nftables DNAT (VIP → backend)          │
+# │  Egress identity:   Unbound outgoing-interface (logical)   │
+# │  Return path:       Border static route → DNS host         │
+# │  Host local public IP required: NO                         │
+# │                                                             │
+# │  IMPORTANT: Border-routed mode requires upstream static    │
+# │  routing for each public egress IP toward the DNS host.    │
+# │  The public egress IPs are NOT configured on host          │
+# │  interfaces. The resolver uses them logically via           │
+# │  outgoing-interface, and the upstream router/firewall       │
+# │  must route return traffic back to this server.            │
+# │                                                             │
+# │  No masquerade or generic SNAT is generated.               │
+# └─────────────────────────────────────────────────────────────┘
+#`;
+  }
+
+  manifest += `
 # Files (${files.length}):
 ${files.map(f => `#   ${f.path}`).join('\n')}
 #
@@ -720,6 +759,8 @@ ${config.routingMode === 'frr-ospf' ? '#   systemctl restart frr' : ''}
 ${config.serviceVips.map(v => `#   dig @${v.ipv4} google.com +short`).join('\n')}
 ${config.instances.map(i => `#   unbound-control -c /etc/unbound/${i.name}.conf -s ${i.controlInterface}@${i.controlPort} status`).join('\n')}
 `;
+
+  return manifest;
 }
 
 // ═══ GENERATE ALL FILES ═══
