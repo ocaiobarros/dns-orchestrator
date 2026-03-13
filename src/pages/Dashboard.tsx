@@ -278,7 +278,7 @@ export default function Dashboard() {
           mapEdges.push({ from: rid, to: 'upstream-primary', latency: dnsAvail ? Math.max(Math.round(Number(avgLatency)) - 2, 1) : undefined, qps: rn?.qps ?? 0 });
         });
 
-        return <NocNetworkMap nodes={mapNodes} edges={mapEdges} />;
+        return <NocGeoMap nodes={mapNodes} edges={mapEdges} />;
       })()}
 
       {/* ═══ TIER 4B: DNS PATH FLOW ═══ */}
