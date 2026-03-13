@@ -790,7 +790,12 @@ export default function Wizard() {
       // ═══ STEP 10: Revisão & Deploy ═══
       case 9:
         if (applyResult) {
-          const isSuccess = applyResult.status === 'success' || applyResult.status === 'dry-run';
+          const deployValidationErrors = applyResult.validationErrors ?? [];
+          const deployValidationResults = applyResult.validationResults;
+          const isSuccess = applyResult.success ?? (
+            applyResult.status === 'success' ||
+            (applyResult.status === 'dry-run' && deployValidationErrors.length === 0)
+          );
           return (
             <div className="space-y-4">
               <div className="flex items-center gap-2 mb-2">
@@ -808,33 +813,50 @@ export default function Wizard() {
                 <ApplyStepsViewer steps={applyResult.steps} />
               </div>
 
+              {/* Validation result section by category */}
+              {deployValidationResults && (
+                <div className="noc-panel">
+                  <div className="noc-panel-header">Resultado da Validação de Deploy</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                    {[
+                      ['Unbound validation', deployValidationResults.unbound || []],
+                      ['nftables validation', deployValidationResults.nftables || []],
+                      ['network file validation', deployValidationResults.network || []],
+                      ['IP collision validation', deployValidationResults.ipCollision || []],
+                    ].map(([label, items]) => {
+                      const list = items as Array<{ status: string }>;
+                      const failed = list.filter(i => i.status === 'fail').length;
+                      const passed = list.filter(i => i.status === 'pass').length;
+                      return (
+                        <div key={label as string} className={`p-2 rounded border ${failed > 0 ? 'border-destructive/30 bg-destructive/5' : 'border-border bg-secondary/30'}`}>
+                          <div className="font-medium">{label as string}</div>
+                          <div className="text-muted-foreground font-mono">{passed} ok · {failed} falha</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Structured validation errors from staging */}
-              {(applyResult as any).validationErrors && (applyResult as any).validationErrors.length > 0 && (
+              {deployValidationErrors.length > 0 && (
                 <div className="noc-panel border-destructive/30">
                   <div className="noc-panel-header flex items-center gap-2 text-destructive">
                     <AlertCircle size={12} />
-                    Erros de Validação em Staging ({(applyResult as any).validationErrors.length})
+                    Erros de Validação em Staging ({deployValidationErrors.length})
                   </div>
                   <div className="space-y-2">
-                    {(applyResult as any).validationErrors.map((ve: any, i: number) => (
+                    {deployValidationErrors.map((ve, i) => (
                       <div key={i} className="p-2 rounded bg-destructive/5 border border-destructive/10 text-xs space-y-1">
                         <div className="flex items-center gap-2">
                           <span className="px-1.5 py-0.5 rounded bg-destructive/15 text-destructive font-medium uppercase text-[10px]">
-                            {typeof ve === 'string' ? 'validation' : ve.category || 'validation'}
+                            {ve.category || 'validation'}
                           </span>
-                          {typeof ve !== 'string' && ve.file && (
-                            <span className="font-mono text-muted-foreground">{ve.file}</span>
-                          )}
+                          {ve.file && <span className="font-mono text-muted-foreground">{ve.file}</span>}
                         </div>
-                        {typeof ve !== 'string' && ve.command && (
-                          <code className="block font-mono text-muted-foreground opacity-70">$ {ve.command}</code>
-                        )}
-                        <pre className="font-mono text-destructive whitespace-pre-wrap break-all">
-                          {typeof ve === 'string' ? ve : ve.stderr}
-                        </pre>
-                        {typeof ve !== 'string' && ve.remediation && (
-                          <p className="text-muted-foreground italic">💡 {ve.remediation}</p>
-                        )}
+                        {ve.command && <code className="block font-mono text-muted-foreground opacity-70">$ {ve.command}</code>}
+                        <pre className="font-mono text-destructive whitespace-pre-wrap break-all">{ve.stderr}</pre>
+                        {ve.remediation && <p className="text-muted-foreground italic">💡 {ve.remediation}</p>}
                       </div>
                     ))}
                   </div>
