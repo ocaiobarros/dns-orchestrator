@@ -621,11 +621,12 @@ export default function Wizard() {
                 <div className="flex gap-2 p-3 rounded bg-accent/10 border border-accent/20 text-xs text-accent">
                   <Info size={14} className="shrink-0 mt-0.5" />
                   <div>
-                    <strong>Border-Routed:</strong> O IP público de egress não é configurado localmente no host.
-                    O resolver usa o IP logicamente como <code className="font-mono bg-accent/20 px-1 rounded">outgoing-interface</code>, e o roteamento
-                    upstream (firewall/router de borda) deve retornar o tráfego para este servidor.
+                    <strong>Border-Routed:</strong> O IP público de egress <strong>não é configurado localmente</strong> no host
+                    e <strong>não será emitido</strong> como <code className="font-mono bg-accent/20 px-1 rounded">outgoing-interface</code> no Unbound.
                     <br />
-                    <span className="text-accent/70 mt-1 block">→ nftables NÃO gerará masquerade ou SNAT genérico para preservar a identidade de egress.</span>
+                    <span className="text-accent/70 mt-1 block">→ O Unbound usará o IP padrão do host para queries recursivas.</span>
+                    <span className="text-accent/70 block">→ A identidade pública é imposta pelo dispositivo de borda (SNAT/policy routing/rota estática de retorno).</span>
+                    <span className="text-accent/70 block">→ nftables NÃO gerará masquerade genérico.</span>
                   </div>
                 </div>
               )}
