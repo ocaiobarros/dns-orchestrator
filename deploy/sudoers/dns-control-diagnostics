@@ -31,4 +31,5 @@ dns-control ALL=(root) NOPASSWD: \
     /usr/bin/systemctl status frr, \
     /usr/bin/systemctl status nftables, \
     /usr/sbin/sysctl --load *, \
-    /usr/sbin/ifreload -a
+    /usr/sbin/ifreload -a, \
+    /etc/network/post-up.d/dns-control
