@@ -2,6 +2,9 @@
 DNS Control — Command Catalog
 Defines all whitelisted diagnostic commands with their arguments.
 Frontend selects by command ID; arguments are constructed server-side.
+
+Multi-instance aware: unbound commands target each instance separately
+via -s <control_ip>@<control_port> and -c <config_path>.
 """
 
 from dataclasses import dataclass, field
@@ -30,24 +33,30 @@ class CommandDefinition:
         return args
 
 
+# ── Static catalog (non-instance-specific commands) ──
+
 COMMAND_CATALOG: dict[str, CommandDefinition] = {
-    # Systemctl
-    "svc-status-unbound": CommandDefinition(
-        id="svc-status-unbound", name="Status Unbound", description="Status do serviço Unbound",
-        category="services", executable="systemctl", base_args=["status", "unbound"],
+    # Systemctl — per instance
+    "svc-status-unbound01": CommandDefinition(
+        id="svc-status-unbound01", name="Status unbound01", description="Status do serviço unbound01",
+        category="services", executable="systemctl", base_args=["status", "unbound01"],
+    ),
+    "svc-status-unbound02": CommandDefinition(
+        id="svc-status-unbound02", name="Status unbound02", description="Status do serviço unbound02",
+        category="services", executable="systemctl", base_args=["status", "unbound02"],
     ),
     "svc-status-frr": CommandDefinition(
-        id="svc-status-frr", name="Status FRR", description="Status do serviço FRR",
+        id="svc-status-frr", name="Status FRR", description="Status do serviço FRR (opcional conforme topologia)",
         category="services", executable="systemctl", base_args=["status", "frr"],
-    ),
-    "svc-status-nftables": CommandDefinition(
-        id="svc-status-nftables", name="Status nftables", description="Status do serviço nftables",
-        category="services", executable="systemctl", base_args=["status", "nftables"],
     ),
 
     # Network
     "net-interfaces": CommandDefinition(
-        id="net-interfaces", name="Interfaces de rede", description="Lista todas as interfaces",
+        id="net-interfaces", name="Interfaces de rede", description="Lista todas as interfaces com IPs",
+        category="network", executable="ip", base_args=["-br", "addr", "show"],
+    ),
+    "net-interfaces-detail": CommandDefinition(
+        id="net-interfaces-detail", name="Interfaces detalhadas", description="Interfaces com todos os endereços",
         category="network", executable="ip", base_args=["addr", "show"],
     ),
     "net-routes": CommandDefinition(
@@ -56,70 +65,90 @@ COMMAND_CATALOG: dict[str, CommandDefinition] = {
     ),
     "net-listening": CommandDefinition(
         id="net-listening", name="Portas em escuta", description="Mostra portas TCP/UDP em escuta",
-        category="network", executable="ss", base_args=["-tlnp"],
+        category="network", executable="ss", base_args=["-tulnp"],
     ),
     "net-connections": CommandDefinition(
         id="net-connections", name="Conexões ativas", description="Mostra conexões ativas",
         category="network", executable="ss", base_args=["-tnp"],
     ),
 
-    # DNS
-    "dns-dig-google": CommandDefinition(
-        id="dns-dig-google", name="Dig google.com", description="Testa resolução DNS para google.com",
-        category="dns", executable="dig", base_args=["@127.0.0.1", "google.com", "+stats"],
-    ),
-    "dns-dig-reverse": CommandDefinition(
-        id="dns-dig-reverse", name="Dig reverso", description="Testa resolução reversa",
-        category="dns", executable="dig", base_args=["@127.0.0.1", "-x", "8.8.8.8"],
-    ),
-    "dns-unbound-stats": CommandDefinition(
-        id="dns-unbound-stats", name="Unbound stats", description="Estatísticas do Unbound",
-        category="dns", executable="unbound-control", base_args=["stats_noreset"],
+    # DNS — per-instance unbound-control
+    "dns-unbound01-stats": CommandDefinition(
+        id="dns-unbound01-stats", name="unbound01 stats", description="Estatísticas do unbound01",
+        category="dns", executable="unbound-control",
+        base_args=["-s", "127.0.0.11@8953", "-c", "/etc/unbound/unbound.conf.d/unbound01.conf", "stats_noreset"],
         requires_privilege=True,
-        expected_failure_unprivileged="Permission denied for /run/unbound.ctl",
+        expected_failure_unprivileged="Permission denied for unbound-control",
         remediation_hint="Ajustar permissão do socket ou usar execução via sudo controlado",
     ),
-    "dns-unbound-status": CommandDefinition(
-        id="dns-unbound-status", name="Unbound status", description="Status detalhado do Unbound",
-        category="dns", executable="unbound-control", base_args=["status"],
+    "dns-unbound01-status": CommandDefinition(
+        id="dns-unbound01-status", name="unbound01 status", description="Status detalhado do unbound01",
+        category="dns", executable="unbound-control",
+        base_args=["-s", "127.0.0.11@8953", "-c", "/etc/unbound/unbound.conf.d/unbound01.conf", "status"],
         requires_privilege=True,
-        expected_failure_unprivileged="Permission denied for /run/unbound.ctl",
+        expected_failure_unprivileged="Permission denied for unbound-control",
         remediation_hint="Ajustar permissão do socket ou usar execução via sudo controlado",
     ),
-    "dns-cache-dump": CommandDefinition(
-        id="dns-cache-dump", name="Cache dump", description="Lista entradas do cache Unbound",
-        category="dns", executable="unbound-control", base_args=["dump_cache"],
+    "dns-unbound02-stats": CommandDefinition(
+        id="dns-unbound02-stats", name="unbound02 stats", description="Estatísticas do unbound02",
+        category="dns", executable="unbound-control",
+        base_args=["-s", "127.0.0.12@8953", "-c", "/etc/unbound/unbound.conf.d/unbound02.conf", "stats_noreset"],
         requires_privilege=True,
-        expected_failure_unprivileged="Permission denied for /run/unbound.ctl",
+        expected_failure_unprivileged="Permission denied for unbound-control",
         remediation_hint="Ajustar permissão do socket ou usar execução via sudo controlado",
+    ),
+    "dns-unbound02-status": CommandDefinition(
+        id="dns-unbound02-status", name="unbound02 status", description="Status detalhado do unbound02",
+        category="dns", executable="unbound-control",
+        base_args=["-s", "127.0.0.12@8953", "-c", "/etc/unbound/unbound.conf.d/unbound02.conf", "status"],
+        requires_privilege=True,
+        expected_failure_unprivileged="Permission denied for unbound-control",
+        remediation_hint="Ajustar permissão do socket ou usar execução via sudo controlado",
+    ),
+    # DNS resolution tests per listener
+    "dns-dig-listener-101": CommandDefinition(
+        id="dns-dig-listener-101", name="Dig @100.127.255.101", description="Testa resolução no listener 101",
+        category="dns", executable="dig", base_args=["@100.127.255.101", "google.com", "+short", "+time=3", "+tries=1"],
+    ),
+    "dns-dig-listener-102": CommandDefinition(
+        id="dns-dig-listener-102", name="Dig @100.127.255.102", description="Testa resolução no listener 102",
+        category="dns", executable="dig", base_args=["@100.127.255.102", "google.com", "+short", "+time=3", "+tries=1"],
+    ),
+    "dns-dig-egress-205": CommandDefinition(
+        id="dns-dig-egress-205", name="Dig @191.243.128.205", description="Testa resolução no IP público 205",
+        category="dns", executable="dig", base_args=["@191.243.128.205", "google.com", "+short", "+time=3", "+tries=1"],
+    ),
+    "dns-dig-egress-206": CommandDefinition(
+        id="dns-dig-egress-206", name="Dig @191.243.128.206", description="Testa resolução no IP público 206",
+        category="dns", executable="dig", base_args=["@191.243.128.206", "google.com", "+short", "+time=3", "+tries=1"],
     ),
 
-    # NFTables
+    # NFTables — via ruleset, not service
     "nft-list-tables": CommandDefinition(
-        id="nft-list-tables", name="Tabelas nftables", description="Lista tabelas nftables",
+        id="nft-list-tables", name="Tabelas nftables", description="Lista tabelas nftables ativas",
         category="nftables", executable="nft", base_args=["list", "tables"],
         requires_privilege=True,
         expected_failure_unprivileged="Operation not permitted (must be root)",
         remediation_hint="Executar diagnóstico via sudo restrito para nft",
     ),
     "nft-list-ruleset": CommandDefinition(
-        id="nft-list-ruleset", name="Ruleset completo", description="Mostra ruleset completo",
+        id="nft-list-ruleset", name="Ruleset completo", description="Mostra ruleset nftables carregado no kernel",
         category="nftables", executable="nft", base_args=["list", "ruleset"],
         requires_privilege=True,
         expected_failure_unprivileged="Operation not permitted (must be root)",
         remediation_hint="Executar diagnóstico via sudo restrito para nft",
     ),
     "nft-list-counters": CommandDefinition(
-        id="nft-list-counters", name="Contadores nftables", description="Mostra contadores de tráfego",
+        id="nft-list-counters", name="Contadores nftables", description="Mostra contadores de tráfego DNAT/balanceamento",
         category="nftables", executable="nft", base_args=["list", "counters"],
         requires_privilege=True,
         expected_failure_unprivileged="Operation not permitted (must be root)",
         remediation_hint="Executar diagnóstico via sudo restrito para nft",
     ),
 
-    # FRR / OSPF
+    # FRR / OSPF — optional
     "frr-ospf-neighbor": CommandDefinition(
-        id="frr-ospf-neighbor", name="OSPF Neighbors", description="Mostra vizinhos OSPF",
+        id="frr-ospf-neighbor", name="OSPF Neighbors", description="Mostra vizinhos OSPF (opcional conforme topologia)",
         category="ospf", executable="vtysh", base_args=["-c", "show ip ospf neighbor"],
         requires_privilege=True,
         expected_failure_unprivileged="Permission denied on /etc/frr/vtysh.conf",

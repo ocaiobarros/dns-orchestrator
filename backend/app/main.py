@@ -15,7 +15,7 @@ from app.api.routes import (
     auth, users, dashboard, services, network, dns,
     nat, ospf, logs, troubleshooting, configs, apply,
     files, history, settings as settings_route,
-    healthcheck, deploy,
+    healthcheck, deploy, import_config,
 )
 from app.api.routes import (
     health_v2, metrics_v2, events, actions, instances,
@@ -78,6 +78,7 @@ app.include_router(history.router, prefix="/api/history", tags=["History"])
 app.include_router(settings_route.router, prefix="/api/settings", tags=["Settings"])
 app.include_router(healthcheck.router, prefix="/api/healthcheck", tags=["Health Check"])
 app.include_router(deploy.router, prefix="/api/deploy", tags=["Deploy"])
+app.include_router(import_config.router, prefix="/api/config", tags=["Config Import"])
 # Backward-compatibility alias for older frontend/runtime combinations.
 app.include_router(deploy.router, prefix="/deploy", tags=["Deploy Legacy"])
 

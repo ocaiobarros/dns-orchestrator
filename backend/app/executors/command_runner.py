@@ -29,6 +29,7 @@ ALLOWED_EXECUTABLES = frozenset({
 # Strict allowlist: only these exact (executable, args_prefix) combos may use sudo
 _SUDO_ALLOWED_COMMANDS: list[tuple[str, list[str]]] = [
     # Diagnostics
+    ("unbound-control", ["-s"]),   # per-instance targeting via -s <ip>@<port>
     ("unbound-control", ["stats_noreset"]),
     ("unbound-control", ["status"]),
     ("unbound-control", ["dump_cache"]),
