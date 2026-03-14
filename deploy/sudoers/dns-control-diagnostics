@@ -3,13 +3,14 @@
 # Validate: sudo visudo -cf /etc/sudoers.d/dns-control-diagnostics
 #
 # Grants the dns-control service user NOPASSWD access to:
-# 1. Diagnostic commands (read-only)
+# 1. Diagnostic commands (read-only, per-instance targeting)
 # 2. Deploy commands (file install, service restart, sysctl)
 
 # Change "dns-control" below to match the actual service user
 Defaults:dns-control !requiretty
 
 dns-control ALL=(root) NOPASSWD: \
+    /usr/sbin/unbound-control -s *, \
     /usr/sbin/unbound-control stats_noreset, \
     /usr/sbin/unbound-control status, \
     /usr/sbin/unbound-control dump_cache, \
