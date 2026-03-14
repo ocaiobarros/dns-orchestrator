@@ -22,8 +22,12 @@ export default function NetworkPage() {
   const { data: listeners } = useQuery({
     queryKey: ['network', 'listeners'],
     queryFn: async () => {
-      const r = await api.apiCallDirect<any[]>('GET', '/network/listeners');
-      return r;
+      const res = await fetch(
+        `${(import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '')}/api/network/listeners`,
+        { headers: { 'Authorization': `Bearer ${localStorage.getItem('dns-control-token') || ''}` } }
+      );
+      if (!res.ok) return [];
+      return res.json();
     },
     refetchInterval: 15000,
   });
