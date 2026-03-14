@@ -1,7 +1,7 @@
 """
 DNS Control — Instance Health Check Service
-Runs dig against each Unbound instance and reports health status.
-If an instance fails, it can be flagged for DNAT removal.
+Multi-instance aware: discovers unbound01/unbound02 and checks each
+at all their bind IPs.
 """
 
 import time
@@ -12,16 +12,11 @@ from app.executors.command_runner import run_command
 
 logger = logging.getLogger("dns-control.healthcheck")
 
-# Test domain used for health probes
 PROBE_DOMAIN = "google.com"
-PROBE_TIMEOUT = 3  # seconds
+PROBE_TIMEOUT = 3
 
 
 def check_instance_health(bind_ip: str, port: int = 53, name: str = "") -> dict[str, Any]:
-    """
-    Run dig @bind_ip -p port PROBE_DOMAIN +short +time=PROBE_TIMEOUT
-    Returns health status with latency.
-    """
     start = time.monotonic()
     result = run_command(
         "dig",
@@ -54,22 +49,22 @@ def check_instance_health(bind_ip: str, port: int = 53, name: str = "") -> dict[
 
 
 def check_all_instances(instances: list[dict] | None = None) -> dict[str, Any]:
-    """
-    Check all configured Unbound instances.
-    If no instances provided, discovers them from systemd.
-    Returns summary + per-instance results.
-    """
     if instances is None:
         instances = _discover_instances()
 
     results = []
     for inst in instances:
-        r = check_instance_health(
-            bind_ip=inst.get("bind_ip", inst.get("bindIp", "127.0.0.1")),
-            port=inst.get("port", 53),
-            name=inst.get("name", ""),
-        )
-        results.append(r)
+        bind_ips = inst.get("bind_ips", [])
+        if not bind_ips:
+            bind_ips = [inst.get("bind_ip", inst.get("bindIp", "127.0.0.1"))]
+
+        for ip in bind_ips:
+            r = check_instance_health(
+                bind_ip=ip,
+                port=inst.get("port", 53),
+                name=inst.get("name", ""),
+            )
+            results.append(r)
 
     healthy_count = sum(1 for r in results if r["healthy"])
     total = len(results)
@@ -86,17 +81,13 @@ def check_all_instances(instances: list[dict] | None = None) -> dict[str, Any]:
 
 
 def check_vip_health(vip: str = "4.2.2.5", port: int = 53) -> dict[str, Any]:
-    """
-    Check if the VIP (Anycast) address is responding to DNS queries.
-    This tests the full path: VIP → nftables DNAT → Unbound instance.
-    """
     return check_instance_health(bind_ip=vip, port=port, name="VIP-Anycast")
 
 
 def _discover_instances() -> list[dict]:
     """
-    Discover running Unbound instances from systemd.
-    Falls back to default config if systemctl is unavailable.
+    Discover running Unbound instances from systemd and parse their config files
+    to find all bind IPs.
     """
     result = run_command(
         "systemctl", ["list-units", "--type=service", "--state=running", "--no-pager", "--plain"],
@@ -108,26 +99,32 @@ def _discover_instances() -> list[dict]:
         for line in result["stdout"].split("\n"):
             if "unbound" in line and ".service" in line:
                 name = line.split()[0].replace(".service", "")
-                # Try to extract bind IP from config
-                bind_ip = _get_bind_ip_from_config(name)
-                instances.append({"name": name, "bind_ip": bind_ip, "port": 53})
+                if name == "unbound":
+                    continue
+                bind_ips = _get_bind_ips_from_config(name)
+                instances.append({"name": name, "bind_ips": bind_ips, "port": 53})
 
     if not instances:
-        # Fallback: default single instance
-        instances = [{"name": "unbound", "bind_ip": "127.0.0.1", "port": 53}]
+        instances = [
+            {"name": "unbound01", "bind_ips": ["100.127.255.101", "191.243.128.205"], "port": 53},
+            {"name": "unbound02", "bind_ips": ["100.127.255.102", "191.243.128.206"], "port": 53},
+        ]
 
     return instances
 
 
-def _get_bind_ip_from_config(instance_name: str) -> str:
-    """Extract bind IP from unbound config file."""
+def _get_bind_ips_from_config(instance_name: str) -> list[str]:
+    """Extract ALL interface: directives from unbound config."""
     result = run_command(
         "cat", [f"/etc/unbound/unbound.conf.d/{instance_name}.conf"],
         timeout=5,
     )
+    ips = []
     if result["exit_code"] == 0:
         for line in result["stdout"].split("\n"):
             stripped = line.strip()
-            if stripped.startswith("interface:"):
-                return stripped.split(":", 1)[1].strip()
-    return "127.0.0.1"
+            if stripped.startswith("interface:") and not stripped.startswith("interface-automatic"):
+                ip = stripped.split(":", 1)[1].strip()
+                if ip and not ip.startswith("#"):
+                    ips.append(ip)
+    return ips if ips else ["127.0.0.1"]

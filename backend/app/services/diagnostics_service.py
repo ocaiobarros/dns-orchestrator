@@ -4,6 +4,10 @@ System status, health checks, service management.
 All collection is best-effort: no single failure crashes the endpoint.
 Supports controlled privileged execution for diagnostic commands.
 
+Multi-instance aware: detects unbound01, unbound02 individually.
+nftables status based on loaded ruleset, not systemd service.
+FRR/OSPF treated as optional.
+
 Status taxonomy:
   ok                  → Command succeeded (INFO)
   inactive            → Service loaded but not active (INFO/WARNING)
@@ -61,7 +65,6 @@ _DEPENDENCY_PATTERNS = [
     "command not found",
 ]
 
-# Patterns indicating a specific daemon/service is not running (not a permission issue)
 _FRR_NOT_RUNNING_PATTERNS = [
     "is not running",
     "not running",
@@ -77,7 +80,6 @@ _TIMEOUT_PATTERNS = [
     "expirou",
 ]
 
-# Misconfiguration patterns
 _MISCONFIGURED_PATTERNS = [
     "syntax error",
     "parse error",
@@ -105,13 +107,6 @@ def _safe_run(executable: str, args: list[str], timeout: int = 5, use_privilege:
 
 
 def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) -> dict:
-    """
-    Classify command result into semantic status taxonomy.
-
-    Returns dict with:
-      status, summary, remediation, privileged, requires_root,
-      expected_in_unprivileged_mode, category (for structured events)
-    """
     combined_lower = ((stdout or "") + " " + (stderr or "")).lower()
 
     priv_meta = _PRIVILEGED_COMMANDS.get(executable, {})
@@ -134,7 +129,6 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
             **base_fields,
         }
 
-    # Inactive service
     if ("inactive (dead)" in combined_lower
         or ("active: inactive" in combined_lower and executable == "systemctl")
         or (exit_code == 3 and "inactive" in combined_lower)):
@@ -147,7 +141,6 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
             "expected_in_unprivileged_mode": False,
         }
 
-    # Service not running — for vtysh/FRR commands, distinguish daemon-not-running from permission
     if executable == "vtysh":
         combined_has_permission = any(kw in combined_lower for kw in ("permission denied", "must be root"))
         combined_has_not_running = any(kw in combined_lower for kw in _FRR_NOT_RUNNING_PATTERNS)
@@ -162,14 +155,11 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
             return {
                 "status": "service_not_running",
                 "summary": f"Daemon {daemon_name} não está em execução" if daemon_name else "Daemon FRR necessário não está ativo",
-                "remediation": "Verificar se este daemon deve estar habilitado neste host. Se sim, habilitar no FRR daemons config.",
+                "remediation": "FRR/OSPF é opcional conforme a topologia. Verificar se deve estar habilitado neste host.",
                 **base_fields,
                 "expected_in_unprivileged_mode": False,
             }
 
-    # Permission / privilege limitation
-    # Key change: use "permission_limited" instead of "permission_error"
-    # to semantically distinguish expected limitations from real errors
     is_permission = any(kw in combined_lower for kw in _PERMISSION_PATTERNS)
     if not is_permission and ("no journal files were opened" in combined_lower
         or ("users in groups" in combined_lower and "can see all messages" in combined_lower)):
@@ -204,7 +194,6 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
             "expected_in_unprivileged_mode": True,
         }
 
-    # Misconfiguration
     if any(kw in combined_lower for kw in _MISCONFIGURED_PATTERNS):
         first_stderr = (stderr or "").strip().split("\n")[0][:120] if stderr else ""
         return {
@@ -214,7 +203,6 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
             **base_fields,
         }
 
-    # Dependency error
     stderr_lower = (stderr or "").lower()
     if any(kw in stderr_lower for kw in _DEPENDENCY_PATTERNS):
         return {
@@ -224,7 +212,6 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
             **base_fields,
         }
 
-    # Timeout
     if any(kw in combined_lower for kw in _TIMEOUT_PATTERNS):
         return {
             "status": "timeout_error",
@@ -233,7 +220,6 @@ def _classify_result(exit_code: int, stdout: str, stderr: str, executable: str) 
             **base_fields,
         }
 
-    # Generic error — only real runtime failures reach here
     first_stderr = (stderr or "").strip().split("\n")[0][:120] if stderr else ""
     summary = first_stderr if first_stderr else "Comando retornou erro"
 
@@ -266,8 +252,11 @@ def get_dashboard_summary() -> dict:
             "config_version": "", "last_apply_at": None,
         }
 
-    # Collect real DNS metrics via privileged unbound-control
-    dns_metrics = _collect_dns_metrics()
+    # Collect per-instance DNS metrics
+    dns_metrics = _collect_dns_metrics_multi()
+
+    # nftables state from ruleset, not service
+    nft_state = _get_nftables_state()
 
     return {
         "total_queries": dns_metrics.get("total_queries", 0),
@@ -275,13 +264,17 @@ def get_dashboard_summary() -> dict:
         "latency_ms": dns_metrics.get("latency_ms", 0.0),
         "dns_metrics_available": dns_metrics.get("available", False),
         "dns_metrics_status": dns_metrics.get("status", "unknown"),
+        "per_instance": dns_metrics.get("per_instance", []),
         "active_services": active,
         "total_services": len(services),
+        "nftables_active": nft_state.get("active", False),
+        "nftables_tables": nft_state.get("tables", []),
+        "nftables_status": nft_state.get("status", "unknown"),
         "ospf_neighbors_up": 0,
         "ospf_neighbors_total": 0,
         "nat_active_connections": 0,
         "uptime": _get_uptime(),
-        "unbound_instances": sum(1 for s in services if "unbound" in s.get("name", "")),
+        "unbound_instances": sum(1 for s in services if "unbound" in s.get("name", "") and s.get("active")),
         "alerts": [],
         "hostname": sys_info.get("hostname", ""),
         "os": sys_info.get("os", ""),
@@ -300,6 +293,15 @@ def get_dashboard_summary() -> dict:
         "last_apply_available": sys_info.get("last_apply_available", False),
         "last_apply_status": sys_info.get("last_apply_status", "unknown"),
     }
+
+
+def _get_nftables_state() -> dict:
+    """Check nftables state via ruleset, not service status."""
+    r = _safe_run("nft", ["list", "tables"], timeout=5, use_privilege=True)
+    if r["exit_code"] == 0:
+        tables = [l.strip() for l in r["stdout"].split("\n") if l.strip()]
+        return {"active": len(tables) > 0, "tables": tables, "status": "active" if tables else "empty"}
+    return {"active": False, "tables": [], "status": "unavailable"}
 
 
 def _get_system_info() -> dict:
@@ -329,7 +331,6 @@ def _get_system_info() -> dict:
     except Exception:
         pass
 
-    # Unbound version: use dpkg (always available, no privilege needed) or unbound-control status
     try:
         r = _safe_run("dpkg", ["-s", "unbound"], timeout=5)
         if r["exit_code"] == 0:
@@ -338,7 +339,8 @@ def _get_system_info() -> dict:
                     unbound_version = "Unbound " + line.split(":", 1)[1].strip()
                     break
         if not unbound_version:
-            r2 = _safe_run("unbound-control", ["status"], timeout=5, use_privilege=True)
+            # Try per-instance unbound-control status
+            r2 = _safe_run("unbound-control", ["-s", "127.0.0.11@8953", "-c", "/etc/unbound/unbound.conf.d/unbound01.conf", "status"], timeout=5, use_privilege=True)
             if r2["exit_code"] == 0:
                 for line in r2["stdout"].split("\n"):
                     if "version" in line.lower():
@@ -373,7 +375,6 @@ def _get_system_info() -> dict:
     except Exception:
         pass
 
-    # VIP Anycast: check loopback and dummy interfaces for non-standard IPs
     vip_anycast_available = False
     try:
         r = _safe_run("ip", ["-j", "addr", "show"], timeout=5)
@@ -443,32 +444,107 @@ def _get_system_info() -> dict:
 # ── Services ──
 
 def get_services_status() -> list[dict]:
-    service_names = ["unbound", "frr", "nftables", "systemd-resolved"]
+    """
+    Detect real running services:
+    - unbound01, unbound02 as separate entities
+    - frr (optional)
+    - nftables state from ruleset, not service
+    - systemd-resolved
+    """
+    # Discover unbound instances dynamically
+    unbound_instances = _discover_unbound_services()
+    service_names = unbound_instances + ["frr", "systemd-resolved"]
+
     results = []
     for name in service_names:
         try:
-            result = _safe_run("systemctl", ["is-active", name], timeout=5)
-            active = result["stdout"].strip() == "active"
+            result = _safe_run("systemctl", ["status", name], timeout=5, use_privilege=True)
+            stdout = result["stdout"]
+            active = "Active: active" in stdout
+            pid = None
+            uptime = ""
+            memory = ""
+            cpu = ""
+
+            for line in stdout.split("\n"):
+                line_s = line.strip()
+                if "Main PID:" in line_s:
+                    try:
+                        pid = int(line_s.split("Main PID:")[1].strip().split()[0])
+                    except (ValueError, IndexError):
+                        pass
+                if "Memory:" in line_s:
+                    memory = line_s.split("Memory:")[1].strip().split()[0] if "Memory:" in line_s else ""
+                if "CPU:" in line_s:
+                    cpu = line_s.split("CPU:")[1].strip().split()[0] if "CPU:" in line_s else ""
+                if "Active: active" in line_s and "since" in line_s:
+                    # Extract uptime from "Active: active (running) since ..."
+                    parts = line_s.split(";")
+                    if len(parts) > 1:
+                        uptime = parts[-1].strip()
         except Exception:
             active = False
+            pid = None
+            uptime = ""
+            memory = ""
+            cpu = ""
+
+        # Determine display name
+        display = name
+        if name.startswith("unbound"):
+            display = name  # Keep unbound01, unbound02
+
         results.append({
             "name": name,
-            "display_name": name.capitalize(),
+            "display_name": display,
             "active": active,
             "status": "running" if active else "stopped",
             "enabled": True,
-            "pid": None, "uptime": "", "memory": "", "cpu": "",
+            "pid": pid,
+            "uptime": uptime,
+            "memory": memory,
+            "cpu": cpu,
         })
+
+    # Add nftables as special entry based on ruleset
+    nft_state = _get_nftables_state()
+    results.append({
+        "name": "nftables",
+        "display_name": "nftables (ruleset)",
+        "active": nft_state["active"],
+        "status": "active" if nft_state["active"] else "no ruleset",
+        "enabled": True,
+        "pid": None,
+        "uptime": "",
+        "memory": "",
+        "cpu": "",
+        "tables": nft_state.get("tables", []),
+        "nftables_status": nft_state["status"],
+    })
+
     return results
 
 
+def _discover_unbound_services() -> list[str]:
+    """Discover unbound instance service names from systemd."""
+    result = _safe_run("systemctl", ["list-units", "--type=service", "--no-pager", "--plain"], timeout=5)
+    instances = []
+    if result["exit_code"] == 0:
+        for line in result["stdout"].split("\n"):
+            if "unbound" in line and ".service" in line:
+                name = line.split()[0].replace(".service", "")
+                if name != "unbound":  # Skip default service
+                    instances.append(name)
+    return instances if instances else ["unbound01", "unbound02"]
+
+
 def get_service_detail(name: str) -> dict:
-    result = _safe_run("systemctl", ["status", name], timeout=10)
+    result = _safe_run("systemctl", ["status", name], timeout=10, use_privilege=True)
     return {"name": name, "status_output": result["stdout"], "active": result["exit_code"] == 0}
 
 
 def restart_service(name: str) -> dict:
-    allowed = ["unbound", "frr", "nftables"]
+    allowed = ["frr", "nftables"]
     if name not in allowed and not name.startswith("unbound"):
         return {"success": False, "error": "Serviço não permitido"}
     result = _safe_run("systemctl", ["restart", name], timeout=30)
@@ -478,22 +554,49 @@ def restart_service(name: str) -> dict:
 # ── Network ──
 
 def get_network_interfaces() -> list[dict]:
+    """Return all interfaces with ALL their IPs (multiple per interface)."""
     result = _safe_run("ip", ["-j", "addr", "show"], timeout=10)
     try:
         interfaces = json.loads(result["stdout"])
-        return [
-            {
+        parsed = []
+        for iface in interfaces:
+            ipv4_list = []
+            ipv6_list = []
+            for a in iface.get("addr_info", []):
+                addr_str = a.get("local", "") + "/" + str(a.get("prefixlen", ""))
+                if a.get("family") == "inet":
+                    ipv4_list.append(addr_str)
+                elif a.get("family") == "inet6":
+                    ipv6_list.append(addr_str)
+
+            parsed.append({
                 "name": iface.get("ifname", ""),
                 "status": iface.get("operstate", "UNKNOWN"),
-                "ipv4": next((a["local"] + "/" + str(a["prefixlen"]) for a in iface.get("addr_info", []) if a["family"] == "inet"), ""),
-                "ipv6": next((a["local"] for a in iface.get("addr_info", []) if a["family"] == "inet6" and not a["local"].startswith("fe80")), ""),
+                "state": iface.get("operstate", "UNKNOWN"),
+                "type": _classify_interface_type(iface.get("ifname", ""), iface.get("link_type", "")),
+                "ipv4": ipv4_list[0] if ipv4_list else "",
+                "ipv4Addresses": ipv4_list,
+                "ipv6": ipv6_list[0] if ipv6_list else "",
+                "ipv6Addresses": ipv6_list,
                 "mac": iface.get("address", ""),
                 "mtu": iface.get("mtu", 1500),
-            }
-            for iface in interfaces
-        ]
+                "flags": iface.get("flags", []),
+            })
+        return parsed
     except (json.JSONDecodeError, KeyError, StopIteration):
         return []
+
+
+def _classify_interface_type(name: str, link_type: str) -> str:
+    if name == "lo":
+        return "loopback"
+    if name.startswith("dummy"):
+        return "dummy"
+    if "." in name or name.startswith("vlan"):
+        return "vlan"
+    if name.startswith("br") or name.startswith("bridge"):
+        return "bridge"
+    return "physical"
 
 
 def get_routes() -> list[dict]:
@@ -504,9 +607,12 @@ def get_routes() -> list[dict]:
             {
                 "destination": r.get("dst", "default"),
                 "gateway": r.get("gateway", ""),
+                "via": r.get("gateway", ""),
                 "interface": r.get("dev", ""),
+                "device": r.get("dev", ""),
                 "protocol": r.get("protocol", ""),
                 "metric": r.get("metric", 0),
+                "scope": r.get("scope", ""),
             }
             for r in routes
         ]
@@ -514,15 +620,70 @@ def get_routes() -> list[dict]:
         return []
 
 
+def get_dns_listeners() -> list[dict]:
+    """Detect which IPs are listening on port 53 and test DNS resolution."""
+    listeners = []
+
+    # Get listening sockets
+    r = _safe_run("ss", ["-tulnp"], timeout=5)
+    if r["exit_code"] != 0:
+        return listeners
+
+    port53_ips = set()
+    for line in r["stdout"].split("\n"):
+        if ":53 " in line or ":53\t" in line:
+            # Extract IP from the local address column
+            parts = line.split()
+            for part in parts:
+                if ":53" in part:
+                    ip = part.rsplit(":", 1)[0]
+                    if ip.startswith("["):
+                        ip = ip[1:-1]
+                    if ip == "*" or ip == "0.0.0.0":
+                        continue
+                    port53_ips.add(ip)
+
+    # Test each listener
+    for ip in sorted(port53_ips):
+        dig_result = _safe_run("dig", [f"@{ip}", "google.com", "+short", "+time=2", "+tries=1"], timeout=5)
+        healthy = dig_result["exit_code"] == 0 and len(dig_result["stdout"].strip()) > 0
+        listeners.append({
+            "ip": ip,
+            "port": 53,
+            "listening": True,
+            "resolving": healthy,
+            "resolved_ip": dig_result["stdout"].strip().split("\n")[0] if healthy else "",
+            "error": dig_result["stderr"].strip()[:100] if not healthy else None,
+        })
+
+    return listeners
+
+
 def check_reachability() -> list[dict]:
-    targets = ["8.8.8.8", "1.1.1.1", "127.0.0.1"]
+    """Check reachability of key targets including DNS listeners."""
+    targets = [
+        {"target": "8.8.8.8", "label": "Google DNS"},
+        {"target": "1.1.1.1", "label": "Cloudflare DNS"},
+        {"target": "127.0.0.1", "label": "Localhost"},
+        {"target": "100.127.255.101", "label": "Listener unbound01"},
+        {"target": "100.127.255.102", "label": "Listener unbound02"},
+        {"target": "191.243.128.205", "label": "Egress IP 205"},
+        {"target": "191.243.128.206", "label": "Egress IP 206"},
+    ]
     results = []
-    for target in targets:
-        r = _safe_run("ping", ["-c", "1", "-W", "2", target], timeout=5)
+    for t in targets:
+        r = _safe_run("ping", ["-c", "1", "-W", "2", t["target"]], timeout=5)
+        latency_ms = None
+        if r["exit_code"] == 0:
+            import re
+            m = re.search(r'time=(\d+\.?\d*)', r["stdout"])
+            if m:
+                latency_ms = round(float(m.group(1)), 1)
         results.append({
-            "target": target,
+            "target": t["target"],
+            "label": t["label"],
             "reachable": r["exit_code"] == 0,
-            "latency_ms": 0,
+            "latencyMs": latency_ms,
             "output": r["stdout"][:200],
         })
     return results
@@ -531,19 +692,6 @@ def check_reachability() -> list[dict]:
 # ── Health Check (batch) ──
 
 def run_health_check() -> dict:
-    """
-    Run ALL catalog commands best-effort.
-    Privileged commands use sudo when available.
-    Returns consolidated summary + per-item results + privilege environment info.
-
-    Status counts:
-      passed             = ok
-      failed             = error, runtime_error, timeout_error, dependency_error
-      permission_limited = permission_limited (never counted as failed)
-      inactive           = inactive
-      service_not_running = service_not_running
-      misconfigured      = misconfigured
-    """
     from datetime import datetime, timezone
     from app.executors.command_catalog import COMMAND_CATALOG
 
@@ -590,7 +738,6 @@ def run_health_check() -> dict:
                 "expected_in_unprivileged_mode": classification["expected_in_unprivileged_mode"],
                 "executed_privileged": executed_privileged,
                 "requires_privilege": cmd_def.requires_privilege,
-                # Structured fields for event enrichment
                 "event_type": "diagnostic",
                 "severity": _status_to_event_severity(classification["status"]),
                 "expected": classification["expected_in_unprivileged_mode"],
@@ -652,7 +799,6 @@ def run_health_check() -> dict:
 
 
 def _status_to_event_severity(status: str) -> str:
-    """Map diagnostic status to event severity for the frontend."""
     if status == "ok":
         return "info"
     if status in ("permission_limited", "inactive", "service_not_running", "misconfigured", "dependency_error"):
@@ -668,37 +814,31 @@ def _get_uptime() -> str:
         return "unknown"
 
 
-def _collect_dns_metrics() -> dict:
-    """Collect real DNS metrics from unbound-control stats_noreset via privileged execution."""
+def _collect_dns_metrics_multi() -> dict:
+    """Collect real DNS metrics from all Unbound instances via per-instance unbound-control."""
+    from app.services.unbound_stats_service import get_instance_real_stats
+
     try:
-        r = _safe_run("unbound-control", ["stats_noreset"], timeout=10, use_privilege=True)
-        if r["exit_code"] != 0:
-            combined = ((r.get("stdout", "") or "") + " " + (r.get("stderr", "") or "")).lower()
-            if any(kw in combined for kw in _PERMISSION_PATTERNS):
-                return {"available": False, "status": "privilege_limited", "total_queries": 0, "cache_hit_ratio": 0.0, "latency_ms": 0.0}
-            return {"available": False, "status": "error", "total_queries": 0, "cache_hit_ratio": 0.0, "latency_ms": 0.0}
+        stats = get_instance_real_stats()
 
-        stats = {}
-        for line in r["stdout"].split("\n"):
-            if "=" in line:
-                key, val = line.split("=", 1)
-                try:
-                    stats[key.strip()] = float(val.strip())
-                except ValueError:
-                    stats[key.strip()] = val.strip()
+        live_stats = [s for s in stats if s.get("source") == "live"]
+        if not live_stats:
+            return {"available": False, "status": "error", "total_queries": 0, "cache_hit_ratio": 0.0, "latency_ms": 0.0, "per_instance": stats}
 
-        total_queries = int(stats.get("total.num.queries", 0))
-        cache_hits = float(stats.get("total.num.cachehits", 0))
-        cache_hit_ratio = (cache_hits / total_queries * 100) if total_queries > 0 else 0.0
-        latency_ms = float(stats.get("total.recursion.time.avg", 0)) * 1000
+        total_queries = sum(s["totalQueries"] for s in live_stats)
+        total_hits = sum(s["cacheHits"] for s in live_stats)
+        total_misses = sum(s["cacheMisses"] for s in live_stats)
+        cache_hit_ratio = (total_hits / (total_hits + total_misses) * 100) if (total_hits + total_misses) > 0 else 0.0
+        avg_latency = sum(s["avgLatencyMs"] for s in live_stats) / len(live_stats) if live_stats else 0.0
 
         return {
             "available": True,
             "status": "ok",
             "total_queries": total_queries,
             "cache_hit_ratio": round(cache_hit_ratio, 1),
-            "latency_ms": round(latency_ms, 2),
+            "latency_ms": round(avg_latency, 2),
+            "per_instance": stats,
         }
     except Exception as e:
         logger.debug(f"DNS metrics collection failed: {e}")
-        return {"available": False, "status": "error", "total_queries": 0, "cache_hit_ratio": 0.0, "latency_ms": 0.0}
+        return {"available": False, "status": "error", "total_queries": 0, "cache_hit_ratio": 0.0, "latency_ms": 0.0, "per_instance": []}

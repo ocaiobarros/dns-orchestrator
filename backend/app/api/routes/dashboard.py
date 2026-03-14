@@ -25,5 +25,5 @@ def instance_stats(_: User = Depends(get_current_user)):
 
 @router.get("/instance-health")
 def instance_health(_: User = Depends(get_current_user)):
-    """Per-instance health check via dig."""
+    """Per-instance health check via dig against all bind IPs."""
     return check_all_instances()
