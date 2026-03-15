@@ -260,6 +260,8 @@ export const api = {
     apiCall<ReconcileSummary>('POST', '/actions/reconcile-now'),
   getSchedulerStatus: () =>
     apiCall<{ running: boolean; jobs: Array<{ id: string; name: string; next_run: string | null }> }>('GET', '/health'),
+  importHostState: () =>
+    apiCall<any>('GET', '/config/import-host'),
 };
 
 // ---- Mock Response Router ----

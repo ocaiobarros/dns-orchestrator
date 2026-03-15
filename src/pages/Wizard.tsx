@@ -12,7 +12,7 @@ import {
   type ObservabilityConfig,
 } from '@/lib/types';
 import { validateConfig, getStepErrors, isConfigValid, getValidationSummary } from '@/lib/validation';
-import { generateAllFiles } from '@/lib/config-generator';
+import { generateAllFiles, createDefaultInstance } from '@/lib/config-generator';
 import { useApplyConfig } from '@/lib/hooks';
 import { api } from '@/lib/api';
 import ApplyStepsViewer from '@/components/ApplyStepsViewer';
@@ -335,14 +335,8 @@ export default function Wizard() {
   };
 
   const addInstance = () => {
-    const n = config.instances.length + 1;
-    set('instances', [...config.instances, {
-      name: `unbound${String(n).padStart(2, '0')}`,
-      bindIp: '', bindIpv6: '',
-      controlInterface: `127.0.0.${10 + n}`,
-      controlPort: 8953,
-      egressIpv4: '', egressIpv6: '',
-    }]);
+    const n = config.instances.length;
+    set('instances', [...config.instances, createDefaultInstance(n)]);
   };
 
   const generatedFiles = generateAllFiles(config);
@@ -1052,36 +1046,51 @@ export default function Wizard() {
               </div>
             )}
 
-            {/* 4-Layer Architecture View */}
+            {/* Architecture Blueprint */}
             <div className="noc-panel">
-              <div className="noc-panel-header">Arquitetura do Deploy — 4 Camadas</div>
+              <div className="noc-panel-header">Recursive DNS Node — Architecture Blueprint</div>
+              <div className="text-xs text-muted-foreground mb-3 font-mono space-y-1">
+                <div>Clients → Service VIPs → nftables PREROUTING (DNAT) → Unbound Resolvers → Public Egress → Global DNS</div>
+                <div className="text-[10px] text-muted-foreground/60">
+                  {config.instances.length} resolvers · {config.serviceVips.length} VIPs · {config.distributionPolicy} · {config.egressDeliveryMode} egress · {config.routingMode} routing
+                </div>
+              </div>
               <TopologySummary config={config} />
             </div>
 
             {/* Instance Table */}
             <div className="noc-panel">
-              <div className="noc-panel-header">Instâncias Resolver ({config.instances.length})</div>
+              <div className="noc-panel-header">Backend Resolver Layer ({config.instances.length} instâncias)</div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs font-mono">
                   <thead>
                     <tr className="text-muted-foreground border-b border-border">
                       <th className="text-left py-2 pr-4">Nome</th>
-                      <th className="text-left py-2 pr-4">Listener</th>
-                      <th className="text-left py-2 pr-4">Egress</th>
+                      <th className="text-left py-2 pr-4">Listener (interface:)</th>
+                      <th className="text-left py-2 pr-4">Egress (outgoing-interface:)</th>
                       <th className="text-left py-2 pr-4">Control</th>
+                      <th className="text-left py-2 pr-4">Config Path</th>
                       {config.enableIpv6 && <th className="text-left py-2 pr-4">Listener v6</th>}
-                      {config.enableIpv6 && <th className="text-left py-2">Egress v6</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {config.instances.map((inst, i) => (
                       <tr key={i} className="border-b border-border last:border-0">
                         <td className="py-2 pr-4 text-primary">{inst.name}</td>
-                        <td className="py-2 pr-4">{inst.bindIp || '—'}</td>
-                        <td className="py-2 pr-4">{inst.egressIpv4 || '—'}</td>
+                        <td className="py-2 pr-4">
+                          {inst.bindIp || '—'}
+                          {config.egressDeliveryMode === 'host-owned' && inst.egressIpv4 && inst.egressIpv4 !== inst.bindIp && (
+                            <span className="text-accent/70 ml-1">+ {inst.egressIpv4}</span>
+                          )}
+                        </td>
+                        <td className="py-2 pr-4">
+                          {config.egressDeliveryMode === 'border-routed' 
+                            ? <span className="text-muted-foreground/50 line-through">{inst.egressIpv4 || '—'}</span>
+                            : (inst.egressIpv4 || '—')}
+                        </td>
                         <td className="py-2 pr-4 text-muted-foreground">{inst.controlInterface}:{inst.controlPort}</td>
+                        <td className="py-2 pr-4 text-muted-foreground/70">/etc/unbound/unbound.conf.d/{inst.name}.conf</td>
                         {config.enableIpv6 && <td className="py-2 pr-4">{inst.bindIpv6 || '—'}</td>}
-                        {config.enableIpv6 && <td className="py-2">{inst.egressIpv6 || '—'}</td>}
                       </tr>
                     ))}
                   </tbody>
@@ -1274,14 +1283,62 @@ export default function Wizard() {
     }
   };
 
+  const [importLoading, setImportLoading] = useState(false);
+  const handleImportHost = async () => {
+    setImportLoading(true);
+    try {
+      const r = await api.importHostState();
+      if (r.success && r.data) {
+        const imported = r.data as any;
+        // Map imported state to WizardConfig
+        const newConfig: Partial<WizardConfig> = {};
+        if (imported.hostname) newConfig.hostname = imported.hostname;
+        if (imported.instances?.length > 0) {
+          newConfig.instances = imported.instances.map((inst: any, i: number) => ({
+            name: inst.name || `unbound${String(i + 1).padStart(2, '0')}`,
+            bindIp: inst.bind_ip || inst.bindIp || '',
+            bindIpv6: inst.bind_ipv6 || '',
+            controlInterface: inst.control_interface || inst.controlInterface || `127.0.0.${11 + i}`,
+            controlPort: inst.control_port || inst.controlPort || 8953,
+            egressIpv4: inst.egress_ipv4 || inst.egressIpv4 || '',
+            egressIpv6: inst.egress_ipv6 || '',
+          }));
+          newConfig.instanceCount = newConfig.instances!.length;
+        }
+        if (imported.egress_delivery_mode) newConfig.egressDeliveryMode = imported.egress_delivery_mode;
+        if (imported.service_vips?.length > 0) {
+          newConfig.serviceVips = imported.service_vips.map((v: any) => ({
+            ipv4: v.ipv4 || '', ipv6: v.ipv6 || '', port: v.port || 53,
+            protocol: 'udp+tcp' as const, description: v.description || '',
+            label: '', deliveryMode: 'firewall-delivered' as const,
+            healthCheckEnabled: true, healthCheckDomain: 'google.com', healthCheckInterval: 30,
+          }));
+        }
+        setConfig(prev => ({ ...prev, ...newConfig }));
+        alert(`✅ Estado importado: ${newConfig.instances?.length || 0} instâncias, ${newConfig.serviceVips?.length || 0} VIPs`);
+      } else {
+        alert(`❌ Falha ao importar: ${r.error || 'Erro desconhecido'}`);
+      }
+    } catch (err: any) {
+      alert(`❌ Exceção: ${err.message}`);
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Wizard de Deploy DNS Recursivo</h1>
-          <p className="text-sm text-muted-foreground">Infraestrutura DNS recursiva multi-instância · VIP + listeners + egress + roteamento</p>
+          <h1 className="text-xl font-semibold">Recursive DNS Node — Architecture Blueprint</h1>
+          <p className="text-sm text-muted-foreground">Nó recursivo multi-instância · VIP → nftables DNAT → Unbound resolvers → Egress</p>
         </div>
         <div className="flex gap-2">
+          <button onClick={handleImportHost} disabled={importLoading}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-accent/20 text-accent rounded border border-accent/30 hover:bg-accent/30 disabled:opacity-50">
+            {importLoading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+            {importLoading ? 'Importando...' : 'Sincronizar com Host'}
+          </button>
           <button onClick={exportConfig} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
             <Download size={12} /> Exportar JSON
           </button>
