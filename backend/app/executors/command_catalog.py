@@ -84,7 +84,7 @@ COMMAND_CATALOG: dict[str, CommandDefinition] = {
     "dns-unbound01-status": CommandDefinition(
         id="dns-unbound01-status", name="unbound01 status", description="Status detalhado do unbound01",
         category="dns", executable="unbound-control",
-        base_args=["-s", "127.0.0.11@8953", "-c", "/etc/unbound/unbound.conf.d/unbound01.conf", "status"],
+        base_args=["-s", "127.0.0.11@8953", "-c", "/etc/unbound/unbound01.conf", "status"],
         requires_privilege=True,
         expected_failure_unprivileged="Permission denied for unbound-control",
         remediation_hint="Ajustar permissão do socket ou usar execução via sudo controlado",
