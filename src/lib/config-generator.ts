@@ -143,7 +143,12 @@ ${aclIpv6Lines}
     local-data: "127.in-addr.arpa. 10800 IN SOA localhost. nobody.invalid. 2 3600 1200 604800 10800"
     local-data: "1.0.0.127.in-addr.arpa. 10800 IN PTR localhost."
 
-${config.enableBlocklist ? 'include: "/etc/unbound/unbound-block-domains.conf"' : '#forward-zone:\n#    name: "."\n#    forward-addr: 8.8.8.8\n#    forward-addr: 8.8.4.4'}
+    include: /etc/unbound/unbound-block-domains.conf
+
+#forward-zone:
+#    name: "."
+#    forward-addr: 8.8.8.8
+#    forward-addr: 8.8.4.4
 
 remote-control:
     control-enable: yes
