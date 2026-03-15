@@ -92,7 +92,7 @@ COMMAND_CATALOG: dict[str, CommandDefinition] = {
     "dns-unbound02-stats": CommandDefinition(
         id="dns-unbound02-stats", name="unbound02 stats", description="Estatísticas do unbound02",
         category="dns", executable="unbound-control",
-        base_args=["-s", "127.0.0.12@8953", "-c", "/etc/unbound/unbound.conf.d/unbound02.conf", "stats_noreset"],
+        base_args=["-s", "127.0.0.12@8953", "-c", "/etc/unbound/unbound02.conf", "stats_noreset"],
         requires_privilege=True,
         expected_failure_unprivileged="Permission denied for unbound-control",
         remediation_hint="Ajustar permissão do socket ou usar execução via sudo controlado",
