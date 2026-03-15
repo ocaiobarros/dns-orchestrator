@@ -56,7 +56,7 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
 
         config = f"""# DNS Control — Unbound instance: {name}
 # Generated configuration — do not edit manually
-# Config path: /etc/unbound/unbound.conf.d/{name}.conf
+# Config path: /etc/unbound/{name}.conf
 # Listener: {bind_ip}:{port}
 # Control: {control_interface}:{control_port}
 # Egress: {exit_ip} ({egress_delivery_mode})
