@@ -155,6 +155,9 @@ remote-control:
     control-interface: ${inst.controlInterface}
     control-port: ${inst.controlPort}
     control-use-cert: "no"
+
+server:
+    include: /etc/unbound/anablock.conf
 `;
 }
 
