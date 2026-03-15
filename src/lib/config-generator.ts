@@ -119,7 +119,7 @@ ${aclIpv6Lines}
     directory: "/etc/unbound"
     logfile: ""
     use-syslog: no
-    pidfile: "/var/run/${inst.name}.pid"
+    pidfile: "/var/run/unbound.pid"
     root-hints: "${config.rootHintsPath}"
 
     identity: "${config.dnsIdentity || config.hostname}"
