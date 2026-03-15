@@ -29,7 +29,7 @@ def get_instance_real_stats(instances: list[dict] | None = None) -> list[dict]:
         name = inst.get("name", "unbound")
         control_ip = inst.get("control_interface", "127.0.0.1")
         control_port = inst.get("control_port", 8953)
-        config_path = f"/etc/unbound/unbound.conf.d/{name}.conf"
+        config_path = f"/etc/unbound/{name}.conf"
 
         result = run_command(
             "unbound-control",
