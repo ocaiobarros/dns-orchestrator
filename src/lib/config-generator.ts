@@ -74,7 +74,7 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
 
   return `# DNS Control — Unbound instance: ${inst.name}
 # Generated configuration — do not edit manually
-# Config path: /etc/unbound/unbound.conf.d/${inst.name}.conf
+# Config path: /etc/unbound/${inst.name}.conf
 # Listener: ${inst.bindIp}:53
 # Control: ${inst.controlInterface}:${inst.controlPort}
 # Egress: ${inst.egressIpv4} (${config.egressDeliveryMode})
