@@ -1,7 +1,7 @@
 """
 DNS Control — Systemd Unit File Generator
 Generates per-instance service units for Unbound and the DNS Control API.
-Config path: /etc/unbound/unbound.conf.d/{name}.conf
+Config path: /etc/unbound/{name}.conf
 """
 
 from typing import Any

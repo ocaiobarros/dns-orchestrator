@@ -113,7 +113,7 @@ def _scrape_unbound_stats(instance_name: str, ctrl_port: int) -> dict | None:
     """Run unbound-control stats_noreset and parse key=value output."""
     result = run_command(
         "unbound-control",
-        ["-c", f"/etc/unbound/unbound.conf.d/{instance_name}.conf", "stats_noreset"],
+        ["-c", f"/etc/unbound/{instance_name}.conf", "stats_noreset"],
         timeout=10,
     )
     if result["exit_code"] != 0:
