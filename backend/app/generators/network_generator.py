@@ -1,7 +1,8 @@
 """
 DNS Control — Network Configuration Generator
-Generates ifupdown2 configuration and post-up scripts.
-Ensures listener IPs, egress IPs, and VIPs are materialized on the host stack.
+Generates ifupdown2 configuration, persistent loopback aliases, and post-up scripts.
+Ensures listener IPs, egress IPs, VIPs, and IPv6 addresses are materialized on the host stack.
+Aligned with vdns-01 production model.
 """
 
 from typing import Any
@@ -11,12 +12,19 @@ def generate_network_config(payload: dict[str, Any]) -> list[dict]:
     loopback = payload.get("loopback", {})
     instances = payload.get("instances", [])
     environment = payload.get("environment", {})
+    wizard_cfg = payload.get("_wizardConfig", {}) or {}
+
     egress_delivery = str(
         payload.get("egressDeliveryMode")
-        or payload.get("_wizardConfig", {}).get("egressDeliveryMode")
+        or wizard_cfg.get("egressDeliveryMode")
         or "host-owned"
     )
     is_border_routed = egress_delivery == "border-routed"
+    enable_ipv6 = payload.get("enableIpv6") or wizard_cfg.get("enableIpv6", False)
+
+    service_vips = payload.get("serviceVips") or payload.get("nat", {}).get("serviceVips", []) or []
+    deployment_mode = str(payload.get("deploymentMode") or wizard_cfg.get("deploymentMode") or "public-controlled")
+
     files = []
 
     # ── Collect distinct address sets ──
@@ -43,91 +51,134 @@ def generate_network_config(payload: dict[str, Any]) -> list[dict]:
         if exit_ipv6:
             egress_ipv6.append(exit_ipv6)
 
-    # ── Loopback configuration (ifupdown2) ──
-    lo_config = """# DNS Control — Loopback configuration
-# Generated configuration — do not edit manually
+    # ── Persistent loopback aliases (ifupdown2) ──
+    lo_lines = [
+        "# DNS Control — Persistent loopback addresses",
+        "# Generated configuration — do not edit manually",
+        "",
+    ]
+    alias_index = 0
 
-auto lo
-iface lo inet loopback
-"""
-    if loopback_ip:
-        lo_config += f"    address {loopback_ip}/32\n"
-    if loopback_vip:
-        lo_config += f"    address {loopback_vip}/32\n"
-
-    # Listener IPs MUST be on loopback for Unbound to bind and for direct dig to work
+    # Listener IPs
     for lip in listener_ips:
-        lo_config += f"    address {lip}/32\n"
+        lo_lines.extend([
+            f"# Listener IP",
+            f"auto lo:dc{alias_index}",
+            f"iface lo:dc{alias_index} inet static",
+            f"    address {lip}",
+            f"    netmask 255.255.255.255",
+            "",
+        ])
+        alias_index += 1
 
-    # Egress IPs on loopback — only in host-owned mode
+    # Egress IPs (host-owned only)
     if not is_border_routed:
         for eip in egress_ips:
             if eip not in reserved and eip not in listener_ips:
-                lo_config += f"    address {eip}/32\n"
+                lo_lines.extend([
+                    f"# Egress IP (host-owned)",
+                    f"auto lo:dc{alias_index}",
+                    f"iface lo:dc{alias_index} inet static",
+                    f"    address {eip}",
+                    f"    netmask 255.255.255.255",
+                    "",
+                ])
+                alias_index += 1
+
+    # VIPs (when local)
+    needs_local_vip = deployment_mode in ("pseudo-anycast-local", "vip-local-dummy", "anycast-frr-ospf")
+    if needs_local_vip:
+        for vip in service_vips:
+            if not isinstance(vip, dict):
+                continue
+            vip_ip = str(vip.get("ipv4", "")).strip()
+            if vip_ip:
+                lo_lines.extend([
+                    f"# VIP: {vip.get('description', vip_ip)}",
+                    f"auto lo:dc{alias_index}",
+                    f"iface lo:dc{alias_index} inet static",
+                    f"    address {vip_ip}",
+                    f"    netmask 255.255.255.255",
+                    "",
+                ])
+                alias_index += 1
 
     files.append({
         "path": "/etc/network/interfaces.d/dns-control-loopback",
-        "content": lo_config,
+        "content": "\n".join(lo_lines),
         "permissions": "0644",
         "owner": "root:root",
     })
 
     # ── Post-up script ──
     post_up_lines = [
-        "#!/bin/bash",
+        "#!/bin/sh",
         "# DNS Control — Network post-up script",
         "# Generated configuration — do not edit manually",
         "",
-        "set -e",
-        "",
     ]
 
-    # Listener IPs — ALWAYS add to loopback (required for Unbound bind + health checks)
+    # Listener IPs — ALWAYS add to loopback
     if listener_ips:
         post_up_lines.append("# === Listener IPs (MUST exist locally for Unbound interface: binding) ===")
         for lip in listener_ips:
-            post_up_lines.append(f'ip -4 addr replace {lip}/32 dev lo 2>/dev/null || true')
+            post_up_lines.append(f'  /usr/sbin/ip -4 addr add {lip}/32 dev lo')
         post_up_lines.append("")
 
     # IPv6 listener IPs
     if listener_ipv6:
         post_up_lines.append("# === Listener IPv6 IPs ===")
         for lip6 in listener_ipv6:
-            post_up_lines.append(f'ip -6 addr replace {lip6}/128 dev lo 2>/dev/null || true')
+            post_up_lines.append(f'  /usr/sbin/ip addr add {lip6}/128 dev lo')
         post_up_lines.append("")
 
     # Egress IPs
     if egress_ips:
         if is_border_routed:
             post_up_lines.append("# === Egress IPs (border-routed: NOT added to host interfaces) ===")
-            post_up_lines.append("# In border-routed mode, egress IPs are logical identities in Unbound outgoing-interface.")
-            post_up_lines.append("# Upstream routing must return traffic for these IPs to this host.")
             for inst in instances:
                 eip = str(inst.get("exitIp", "") or inst.get("egressIpv4", "")).strip()
                 name = inst.get("name", "unbound")
                 if eip:
-                    post_up_lines.append(f'# outgoing-interface: {eip} ({name}) — routed at border')
+                    post_up_lines.append(f'  # outgoing-interface: {eip} ({name}) — routed at border')
         else:
             post_up_lines.append("# === Egress IPs (host-owned: added to loopback) ===")
             for eip in egress_ips:
-                post_up_lines.append(f'ip -4 addr replace {eip}/32 dev lo 2>/dev/null || true')
+                post_up_lines.append(f'  /usr/sbin/ip -4 addr add {eip}/32 dev lo')
         post_up_lines.append("")
 
     # IPv6 egress IPs (only host-owned)
     if egress_ipv6 and not is_border_routed:
         post_up_lines.append("# === Egress IPv6 IPs ===")
         for eip6 in egress_ipv6:
-            post_up_lines.append(f'ip -6 addr replace {eip6}/128 dev lo 2>/dev/null || true')
+            post_up_lines.append(f'  /usr/sbin/ip addr add {eip6}/128 dev lo')
+        post_up_lines.append("")
+
+    # VIP anycast IPs
+    if service_vips:
+        if needs_local_vip:
+            post_up_lines.append("# === VIPs de serviço (local) ===")
+        else:
+            post_up_lines.append("# === VIPs de serviço (borda — descomentar se necessário) ===")
+        for vip in service_vips:
+            if not isinstance(vip, dict):
+                continue
+            vip_ip = str(vip.get("ipv4", "")).strip()
+            if vip_ip:
+                prefix = "" if needs_local_vip else "  #"
+                post_up_lines.append(f'{prefix}  /usr/sbin/ip addr add {vip_ip}/32 dev lo')
+            vip_ipv6 = str(vip.get("ipv6", "")).strip()
+            if vip_ipv6 and enable_ipv6:
+                prefix = "" if needs_local_vip else "  #"
+                post_up_lines.append(f'{prefix}  /usr/sbin/ip addr add {vip_ipv6}/128 dev lo')
         post_up_lines.append("")
 
     post_up_lines.extend([
-        "# Verify addresses",
-        'echo "DNS Control: Network addresses applied"',
-        "ip addr show lo",
+        "  exit 0",
     ])
 
     files.append({
-        "path": "/etc/network/post-up.d/dns-control",
+        "path": "/etc/network/post-up.sh",
         "content": "\n".join(post_up_lines),
         "permissions": "0755",
         "owner": "root:root",
