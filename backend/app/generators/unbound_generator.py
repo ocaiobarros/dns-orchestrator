@@ -1,7 +1,7 @@
 """
 DNS Control — Unbound Configuration Generator
-Generates per-instance unbound.conf files in /etc/unbound/unbound.conf.d/
-Also generates the master /etc/unbound/unbound.conf include file.
+Generates per-instance unbound configs at /etc/unbound/{name}.conf
+Each systemd unit references its own config file directly.
 """
 
 from typing import Any
@@ -56,7 +56,7 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
 
         config = f"""# DNS Control — Unbound instance: {name}
 # Generated configuration — do not edit manually
-# Config path: /etc/unbound/unbound.conf.d/{name}.conf
+# Config path: /etc/unbound/{name}.conf
 # Listener: {bind_ip}:{port}
 # Control: {control_interface}:{control_port}
 # Egress: {exit_ip} ({egress_delivery_mode})
@@ -138,7 +138,7 @@ remote-control:
 """
 
         files.append({
-            "path": f"/etc/unbound/unbound.conf.d/{name}.conf",
+            "path": f"/etc/unbound/{name}.conf",
             "content": config,
             "permissions": "0644",
             "owner": "root:unbound",

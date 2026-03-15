@@ -1089,7 +1089,7 @@ export default function Wizard() {
                             : (inst.egressIpv4 || '—')}
                         </td>
                         <td className="py-2 pr-4 text-muted-foreground">{inst.controlInterface}:{inst.controlPort}</td>
-                        <td className="py-2 pr-4 text-muted-foreground/70">/etc/unbound/unbound.conf.d/{inst.name}.conf</td>
+                        <td className="py-2 pr-4 text-muted-foreground/70">/etc/unbound/{inst.name}.conf</td>
                         {config.enableIpv6 && <td className="py-2 pr-4">{inst.bindIpv6 || '—'}</td>}
                       </tr>
                     ))}

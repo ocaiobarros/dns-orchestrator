@@ -74,7 +74,7 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
 
   return `# DNS Control — Unbound instance: ${inst.name}
 # Generated configuration — do not edit manually
-# Config path: /etc/unbound/unbound.conf.d/${inst.name}.conf
+# Config path: /etc/unbound/${inst.name}.conf
 # Listener: ${inst.bindIp}:53
 # Control: ${inst.controlInterface}:${inst.controlPort}
 # Egress: ${inst.egressIpv4} (${config.egressDeliveryMode})
@@ -119,7 +119,7 @@ ${aclIpv6Lines}
     directory: "/etc/unbound"
     logfile: ""
     use-syslog: no
-    pidfile: "/var/run/${inst.name}.pid"
+    pidfile: "/var/run/unbound.pid"
     root-hints: "${config.rootHintsPath}"
 
     identity: "${config.dnsIdentity || config.hostname}"
@@ -143,13 +143,21 @@ ${aclIpv6Lines}
     local-data: "127.in-addr.arpa. 10800 IN SOA localhost. nobody.invalid. 2 3600 1200 604800 10800"
     local-data: "1.0.0.127.in-addr.arpa. 10800 IN PTR localhost."
 
-${config.enableBlocklist ? 'include: "/etc/unbound/unbound-block-domains.conf"' : '#forward-zone:\n#    name: "."\n#    forward-addr: 8.8.8.8\n#    forward-addr: 8.8.4.4'}
+    include: /etc/unbound/unbound-block-domains.conf
+
+#forward-zone:
+#    name: "."
+#    forward-addr: 8.8.8.8
+#    forward-addr: 8.8.4.4
 
 remote-control:
     control-enable: yes
     control-interface: ${inst.controlInterface}
     control-port: ${inst.controlPort}
     control-use-cert: "no"
+
+server:
+    include: /etc/unbound/anablock.conf
 `;
 }
 
@@ -182,8 +190,8 @@ Restart=always
 EnvironmentFile=-/etc/default/unbound
 ExecStartPre=-/usr/lib/unbound/package-helper chroot_setup
 ExecStartPre=-/usr/lib/unbound/package-helper root_trust_anchor_update
-ExecStartPre=/usr/sbin/unbound-checkconf /etc/unbound/unbound.conf.d/${inst.name}.conf
-ExecStart=/usr/sbin/unbound -c /etc/unbound/unbound.conf.d/${inst.name}.conf -d -p $DAEMON_OPTS
+ExecStartPre=/usr/sbin/unbound-checkconf /etc/unbound/${inst.name}.conf
+ExecStart=/usr/sbin/unbound -c /etc/unbound/${inst.name}.conf -d -p $DAEMON_OPTS
 ExecStopPost=-/usr/lib/unbound/package-helper chroot_teardown
 ExecReload=+/bin/kill -HUP $MAINPID
 
@@ -884,7 +892,7 @@ ${config.routingMode === 'frr-ospf' ? '#   systemctl restart frr' : ''}
 #
 # Post-deploy checks:
 ${config.serviceVips.map(v => `#   dig @${v.ipv4} google.com +short`).join('\n')}
-${config.instances.map(i => `#   unbound-control -c /etc/unbound/unbound.conf.d/${i.name}.conf -s ${i.controlInterface}@${i.controlPort} status`).join('\n')}
+${config.instances.map(i => `#   unbound-control -c /etc/unbound/${i.name}.conf -s ${i.controlInterface}@${i.controlPort} status`).join('\n')}
 `;
 
   return manifest;
@@ -932,13 +940,10 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
   files.push({ path: '/etc/network/interfaces.d/dns-control-loopback', content: generateLoopbackInterfacesConf(config) });
   files.push({ path: '/etc/network/post-up.sh', content: generatePostUpScript(config) });
 
-  // Unbound — master include file
-  files.push({ path: '/etc/unbound/unbound.conf', content: generateUnboundMasterConf() });
-
-  // Unbound instances — per-instance configs in unbound.conf.d/
+  // Unbound — per-instance standalone configs (each systemd unit references its own)
   config.instances.forEach((_, i) => {
     files.push({
-      path: `/etc/unbound/unbound.conf.d/${config.instances[i].name}.conf`,
+      path: `/etc/unbound/${config.instances[i].name}.conf`,
       content: generateUnboundConf(config, i),
     });
   });

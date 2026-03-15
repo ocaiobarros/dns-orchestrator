@@ -29,7 +29,7 @@ def get_instance_real_stats(instances: list[dict] | None = None) -> list[dict]:
         name = inst.get("name", "unbound")
         control_ip = inst.get("control_interface", "127.0.0.1")
         control_port = inst.get("control_port", 8953)
-        config_path = f"/etc/unbound/unbound.conf.d/{name}.conf"
+        config_path = f"/etc/unbound/{name}.conf"
 
         result = run_command(
             "unbound-control",
@@ -162,7 +162,7 @@ def _discover_instances() -> list[dict]:
 def _get_control_from_config(instance_name: str) -> dict:
     """Extract control-interface and control-port from unbound config file."""
     result = run_command(
-        "cat", [f"/etc/unbound/unbound.conf.d/{instance_name}.conf"],
+        "cat", [f"/etc/unbound/{instance_name}.conf"],
         timeout=5,
     )
     ctrl = {"control_interface": "127.0.0.1", "control_port": 8953}
