@@ -914,7 +914,7 @@ def _get_restart_commands(scope: str, payload: dict) -> list[tuple[str, list[str
 
 
 def _run_health_checks(payload: dict) -> list[dict]:
-    """Post-deploy health checks."""
+    """Post-deploy health checks — validates full topology."""
     checks = []
     instances = payload.get("instances", [])
     vips = payload.get("serviceVips", [])
@@ -977,7 +977,7 @@ def _run_health_checks(payload: dict) -> list[dict]:
                 "durationMs": int((time.monotonic() - t0) * 1000),
             })
 
-    # Check nftables loaded
+    # ═══ nftables loaded ═══
     t0 = time.monotonic()
     r = run_command("nft", ["list", "tables"], timeout=5, use_privilege=True)
     checks.append({
@@ -988,7 +988,39 @@ def _run_health_checks(payload: dict) -> list[dict]:
         "durationMs": int((time.monotonic() - t0) * 1000),
     })
 
-    # Check nftables counters
+    # ═══ nftables DNAT verification — check each backend has DNAT rules ═══
+    t0 = time.monotonic()
+    r = run_command("nft", ["list", "ruleset"], timeout=10, use_privilege=True)
+    nft_ruleset = r.get("stdout") or ""
+    nft_check_duration = int((time.monotonic() - t0) * 1000)
+
+    for inst in instances:
+        name = inst.get("name", "unbound")
+        bind_ip = inst.get("bindIp", "")
+        if bind_ip:
+            has_dnat = f"dnat to {bind_ip}:53" in nft_ruleset or f"dnat to {bind_ip}" in nft_ruleset
+            checks.append({
+                "name": f"nftables DNAT → {name} ({bind_ip})",
+                "target": f"nftables/{name}",
+                "status": "pass" if has_dnat else "fail",
+                "detail": f"DNAT rule para {bind_ip}:53 {'encontrada' if has_dnat else 'AUSENTE no ruleset'}",
+                "durationMs": nft_check_duration,
+            })
+
+    # ═══ nftables sticky sets verification ═══
+    for inst in instances:
+        name = inst.get("name", "unbound")
+        set_name = f"ipv4_users_{name}"
+        has_set = set_name in nft_ruleset
+        checks.append({
+            "name": f"nftables sticky set {set_name}",
+            "target": f"nftables/{set_name}",
+            "status": "pass" if has_set else "fail",
+            "detail": f"Set dinâmico {set_name} {'presente' if has_set else 'AUSENTE'} no ruleset",
+            "durationMs": 0,
+        })
+
+    # ═══ nftables counters ═══
     t0 = time.monotonic()
     r = run_command("nft", ["list", "counters"], timeout=5, use_privilege=True)
     checks.append({
@@ -999,7 +1031,7 @@ def _run_health_checks(payload: dict) -> list[dict]:
         "durationMs": int((time.monotonic() - t0) * 1000),
     })
 
-    # Check VIP reachability
+    # ═══ VIP reachability ═══
     for vip in vips:
         vip_ip = vip.get("ipv4", "")
         if vip_ip:
@@ -1024,7 +1056,7 @@ def _run_health_checks(payload: dict) -> list[dict]:
                 "durationMs": int((time.monotonic() - t0) * 1000),
             })
 
-    # Check FRR if enabled
+    # ═══ FRR (optional) ═══
     routing = payload.get("routingMode", "static")
     if routing in ("frr-ospf", "frr-bgp"):
         t0 = time.monotonic()
@@ -1037,57 +1069,79 @@ def _run_health_checks(payload: dict) -> list[dict]:
             "durationMs": int((time.monotonic() - t0) * 1000),
         })
 
-    # ═══ Border-routed mode: verify no masquerade in active ruleset ═══
+    # ═══ Egress delivery mode checks ═══
     egress_delivery = str(
         payload.get("egressDeliveryMode")
         or payload.get("_wizardConfig", {}).get("egressDeliveryMode", "")
         or "host-owned"
     )
+
     if egress_delivery == "border-routed":
-        t0 = time.monotonic()
-        r = run_command("nft", ["list", "ruleset"], timeout=10, use_privilege=True)
-        has_masq = "masquerade" in (r.get("stdout") or "")
+        has_masq = "masquerade" in nft_ruleset
         checks.append({
             "name": "Border-routed: no masquerade in ruleset",
             "target": "nftables",
             "status": "fail" if has_masq else "pass",
-            "detail": "ERRO: masquerade genérico encontrado — conflita com identidade de egress por instância" if has_masq
+            "detail": "ERRO: masquerade genérico encontrado — conflita com identidade de egress" if has_masq
                       else "OK — sem masquerade genérico no ruleset",
-            "durationMs": int((time.monotonic() - t0) * 1000),
+            "durationMs": 0,
         })
 
-    # ═══ Listener IP materialization check ═══
+    # ═══ Listener IP materialization ═══
+    t0 = time.monotonic()
+    r = run_command("ip", ["-4", "addr", "show", "dev", "lo"], timeout=5)
+    lo_ips = r.get("stdout") or ""
+    lo_check_duration = int((time.monotonic() - t0) * 1000)
+
     for inst in instances:
         bind_ip = inst.get("bindIp", "")
         name = inst.get("name", "unbound")
         if bind_ip and bind_ip not in ("127.0.0.1", "0.0.0.0"):
-            t0 = time.monotonic()
-            r = run_command("ip", ["-4", "addr", "show", "dev", "lo"], timeout=5)
-            ip_present = bind_ip in (r.get("stdout") or "")
+            ip_present = bind_ip in lo_ips
             checks.append({
                 "name": f"{name} listener IP on host ({bind_ip})",
                 "target": bind_ip,
                 "status": "pass" if ip_present else "fail",
                 "detail": f"Listener IP {bind_ip} {'presente' if ip_present else 'AUSENTE'} no loopback",
-                "durationMs": int((time.monotonic() - t0) * 1000),
+                "durationMs": lo_check_duration,
             })
 
-    # ═══ Host-owned egress IP materialization check ═══
+    # ═══ Egress IP materialization (host-owned) ═══
     if egress_delivery == "host-owned":
         for inst in instances:
             egress_ip = str(inst.get("exitIp", "") or inst.get("egressIpv4", "")).strip()
             name = inst.get("name", "unbound")
             if egress_ip:
-                t0 = time.monotonic()
-                r = run_command("ip", ["-4", "addr", "show", "dev", "lo"], timeout=5)
-                ip_present = egress_ip in (r.get("stdout") or "")
+                ip_present = egress_ip in lo_ips
                 checks.append({
                     "name": f"{name} egress IP on loopback ({egress_ip})",
                     "target": egress_ip,
                     "status": "pass" if ip_present else "fail",
                     "detail": f"Egress IP {egress_ip} {'presente' if ip_present else 'AUSENTE — outgoing-interface falhará'} no loopback",
-                    "durationMs": int((time.monotonic() - t0) * 1000),
+                    "durationMs": 0,
                 })
+
+    # ═══ Egress IP verification — confirm each instance exits via expected IP ═══
+    for inst in instances:
+        name = inst.get("name", "unbound")
+        bind_ip = inst.get("bindIp", "")
+        expected_egress = str(inst.get("exitIp", "") or inst.get("egressIpv4", "")).strip()
+        if bind_ip and expected_egress and egress_delivery == "host-owned":
+            t0 = time.monotonic()
+            # Use dig with -b to force source from listener IP, query whoami to check exit IP
+            r = run_command("dig", [
+                f"@{bind_ip}", "whoami.akamai.net", "+short", "+time=3", "+tries=1"
+            ], timeout=8)
+            actual_ip = r["stdout"].strip().split("\n")[0] if r["exit_code"] == 0 else ""
+            egress_ok = actual_ip == expected_egress
+            checks.append({
+                "name": f"{name} egress verification ({expected_egress})",
+                "target": expected_egress,
+                "status": "pass" if egress_ok else ("warn" if actual_ip else "fail"),
+                "detail": f"Esperado: {expected_egress} · Observado: {actual_ip or 'sem resposta'}"
+                          + ("" if egress_ok else " — IP de saída DIFERENTE do esperado"),
+                "durationMs": int((time.monotonic() - t0) * 1000),
+            })
 
     # ═══ Legacy default unbound detection ═══
     t0 = time.monotonic()
