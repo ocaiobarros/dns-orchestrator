@@ -1060,28 +1060,37 @@ export default function Wizard() {
 
             {/* Instance Table */}
             <div className="noc-panel">
-              <div className="noc-panel-header">Instâncias Resolver ({config.instances.length})</div>
+              <div className="noc-panel-header">Backend Resolver Layer ({config.instances.length} instâncias)</div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs font-mono">
                   <thead>
                     <tr className="text-muted-foreground border-b border-border">
                       <th className="text-left py-2 pr-4">Nome</th>
-                      <th className="text-left py-2 pr-4">Listener</th>
-                      <th className="text-left py-2 pr-4">Egress</th>
+                      <th className="text-left py-2 pr-4">Listener (interface:)</th>
+                      <th className="text-left py-2 pr-4">Egress (outgoing-interface:)</th>
                       <th className="text-left py-2 pr-4">Control</th>
+                      <th className="text-left py-2 pr-4">Config Path</th>
                       {config.enableIpv6 && <th className="text-left py-2 pr-4">Listener v6</th>}
-                      {config.enableIpv6 && <th className="text-left py-2">Egress v6</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {config.instances.map((inst, i) => (
                       <tr key={i} className="border-b border-border last:border-0">
                         <td className="py-2 pr-4 text-primary">{inst.name}</td>
-                        <td className="py-2 pr-4">{inst.bindIp || '—'}</td>
-                        <td className="py-2 pr-4">{inst.egressIpv4 || '—'}</td>
+                        <td className="py-2 pr-4">
+                          {inst.bindIp || '—'}
+                          {config.egressDeliveryMode === 'host-owned' && inst.egressIpv4 && inst.egressIpv4 !== inst.bindIp && (
+                            <span className="text-accent/70 ml-1">+ {inst.egressIpv4}</span>
+                          )}
+                        </td>
+                        <td className="py-2 pr-4">
+                          {config.egressDeliveryMode === 'border-routed' 
+                            ? <span className="text-muted-foreground/50 line-through">{inst.egressIpv4 || '—'}</span>
+                            : (inst.egressIpv4 || '—')}
+                        </td>
                         <td className="py-2 pr-4 text-muted-foreground">{inst.controlInterface}:{inst.controlPort}</td>
+                        <td className="py-2 pr-4 text-muted-foreground/70">/etc/unbound/unbound.conf.d/{inst.name}.conf</td>
                         {config.enableIpv6 && <td className="py-2 pr-4">{inst.bindIpv6 || '—'}</td>}
-                        {config.enableIpv6 && <td className="py-2">{inst.egressIpv6 || '—'}</td>}
                       </tr>
                     ))}
                   </tbody>
