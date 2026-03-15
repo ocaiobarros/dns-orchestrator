@@ -138,7 +138,7 @@ remote-control:
 """
 
         files.append({
-            "path": f"/etc/unbound/unbound.conf.d/{name}.conf",
+            "path": f"/etc/unbound/{name}.conf",
             "content": config,
             "permissions": "0644",
             "owner": "root:unbound",

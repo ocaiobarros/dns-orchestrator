@@ -24,8 +24,8 @@ Wants=nss-lookup.target
 Type=notify
 Restart=on-failure
 RestartSec=5
-ExecStartPre=/usr/sbin/unbound-checkconf /etc/unbound/unbound.conf.d/{name}.conf
-ExecStart=/usr/sbin/unbound -d -c /etc/unbound/unbound.conf.d/{name}.conf
+ExecStartPre=/usr/sbin/unbound-checkconf /etc/unbound/{name}.conf
+ExecStart=/usr/sbin/unbound -d -c /etc/unbound/{name}.conf
 ExecReload=/bin/kill -HUP $MAINPID
 
 [Install]

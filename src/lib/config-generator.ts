@@ -940,13 +940,10 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
   files.push({ path: '/etc/network/interfaces.d/dns-control-loopback', content: generateLoopbackInterfacesConf(config) });
   files.push({ path: '/etc/network/post-up.sh', content: generatePostUpScript(config) });
 
-  // Unbound — master include file
-  files.push({ path: '/etc/unbound/unbound.conf', content: generateUnboundMasterConf() });
-
-  // Unbound instances — per-instance configs in unbound.conf.d/
+  // Unbound — per-instance standalone configs (each systemd unit references its own)
   config.instances.forEach((_, i) => {
     files.push({
-      path: `/etc/unbound/unbound.conf.d/${config.instances[i].name}.conf`,
+      path: `/etc/unbound/${config.instances[i].name}.conf`,
       content: generateUnboundConf(config, i),
     });
   });
