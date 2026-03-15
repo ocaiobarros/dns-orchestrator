@@ -1268,14 +1268,62 @@ export default function Wizard() {
     }
   };
 
+  const [importLoading, setImportLoading] = useState(false);
+  const handleImportHost = async () => {
+    setImportLoading(true);
+    try {
+      const r = await api.importHostState();
+      if (r.success && r.data) {
+        const imported = r.data as any;
+        // Map imported state to WizardConfig
+        const newConfig: Partial<WizardConfig> = {};
+        if (imported.hostname) newConfig.hostname = imported.hostname;
+        if (imported.instances?.length > 0) {
+          newConfig.instances = imported.instances.map((inst: any, i: number) => ({
+            name: inst.name || `unbound${String(i + 1).padStart(2, '0')}`,
+            bindIp: inst.bind_ip || inst.bindIp || '',
+            bindIpv6: inst.bind_ipv6 || '',
+            controlInterface: inst.control_interface || inst.controlInterface || `127.0.0.${11 + i}`,
+            controlPort: inst.control_port || inst.controlPort || 8953,
+            egressIpv4: inst.egress_ipv4 || inst.egressIpv4 || '',
+            egressIpv6: inst.egress_ipv6 || '',
+          }));
+          newConfig.instanceCount = newConfig.instances!.length;
+        }
+        if (imported.egress_delivery_mode) newConfig.egressDeliveryMode = imported.egress_delivery_mode;
+        if (imported.service_vips?.length > 0) {
+          newConfig.serviceVips = imported.service_vips.map((v: any) => ({
+            ipv4: v.ipv4 || '', ipv6: v.ipv6 || '', port: v.port || 53,
+            protocol: 'udp+tcp' as const, description: v.description || '',
+            label: '', deliveryMode: 'firewall-delivered' as const,
+            healthCheckEnabled: true, healthCheckDomain: 'google.com', healthCheckInterval: 30,
+          }));
+        }
+        setConfig(prev => ({ ...prev, ...newConfig }));
+        alert(`✅ Estado importado: ${newConfig.instances?.length || 0} instâncias, ${newConfig.serviceVips?.length || 0} VIPs`);
+      } else {
+        alert(`❌ Falha ao importar: ${r.error || 'Erro desconhecido'}`);
+      }
+    } catch (err: any) {
+      alert(`❌ Exceção: ${err.message}`);
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Wizard de Deploy DNS Recursivo</h1>
-          <p className="text-sm text-muted-foreground">Infraestrutura DNS recursiva multi-instância · VIP + listeners + egress + roteamento</p>
+          <h1 className="text-xl font-semibold">Recursive DNS Node — Architecture Blueprint</h1>
+          <p className="text-sm text-muted-foreground">Nó recursivo multi-instância · VIP → nftables DNAT → Unbound resolvers → Egress</p>
         </div>
         <div className="flex gap-2">
+          <button onClick={handleImportHost} disabled={importLoading}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-accent/20 text-accent rounded border border-accent/30 hover:bg-accent/30 disabled:opacity-50">
+            {importLoading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+            {importLoading ? 'Importando...' : 'Sincronizar com Host'}
+          </button>
           <button onClick={exportConfig} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
             <Download size={12} /> Exportar JSON
           </button>
