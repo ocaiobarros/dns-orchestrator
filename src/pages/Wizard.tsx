@@ -335,14 +335,8 @@ export default function Wizard() {
   };
 
   const addInstance = () => {
-    const n = config.instances.length + 1;
-    set('instances', [...config.instances, {
-      name: `unbound${String(n).padStart(2, '0')}`,
-      bindIp: '', bindIpv6: '',
-      controlInterface: `127.0.0.${10 + n}`,
-      controlPort: 8953,
-      egressIpv4: '', egressIpv6: '',
-    }]);
+    const n = config.instances.length;
+    set('instances', [...config.instances, createDefaultInstance(n)]);
   };
 
   const generatedFiles = generateAllFiles(config);
