@@ -98,7 +98,7 @@ def _discover_unbound_instances() -> list[tuple[str, int]]:
 
 def _get_control_port(instance_name: str) -> int:
     """Extract control-port from unbound config. Default 8953."""
-    result = run_command("cat", [f"/etc/unbound/unbound.conf.d/{instance_name}.conf"], timeout=5)
+    result = run_command("cat", [f"/etc/unbound/{instance_name}.conf"], timeout=5)
     if result["exit_code"] == 0:
         for line in result["stdout"].split("\n"):
             if "control-port:" in line:

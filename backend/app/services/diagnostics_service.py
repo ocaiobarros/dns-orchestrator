@@ -340,7 +340,7 @@ def _get_system_info() -> dict:
                     break
         if not unbound_version:
             # Try per-instance unbound-control status
-            r2 = _safe_run("unbound-control", ["-s", "127.0.0.11@8953", "-c", "/etc/unbound/unbound.conf.d/unbound01.conf", "status"], timeout=5, use_privilege=True)
+            r2 = _safe_run("unbound-control", ["-s", "127.0.0.11@8953", "-c", "/etc/unbound/unbound01.conf", "status"], timeout=5, use_privilege=True)
             if r2["exit_code"] == 0:
                 for line in r2["stdout"].split("\n"):
                     if "version" in line.lower():

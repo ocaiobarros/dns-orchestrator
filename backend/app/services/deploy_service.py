@@ -965,7 +965,7 @@ def _run_health_checks(payload: dict) -> list[dict]:
         if control_iface:
             t0 = time.monotonic()
             r = run_command("unbound-control", [
-                "-c", f"/etc/unbound/unbound.conf.d/{name}.conf",
+                "-c", f"/etc/unbound/{name}.conf",
                 "-s", f"{control_iface}@{control_port}",
                 "status"
             ], timeout=5, use_privilege=True)

@@ -62,7 +62,7 @@ def _read_unbound_instances() -> list[dict]:
 
     instances = []
     for name in names:
-        conf = run_command("cat", [f"/etc/unbound/unbound.conf.d/{name}.conf"], timeout=5)
+        conf = run_command("cat", [f"/etc/unbound/{name}.conf"], timeout=5)
         if conf["exit_code"] != 0:
             continue
 

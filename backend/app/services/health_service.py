@@ -129,7 +129,7 @@ def _check_dig(bind_ip: str, port: int, settings: dict) -> dict:
 
 
 def _check_unbound_control(instance_name: str) -> dict:
-    config_path = f"/etc/unbound/unbound.conf.d/{instance_name}.conf"
+    config_path = f"/etc/unbound/{instance_name}.conf"
     start = time.monotonic()
     result = run_command("unbound-control", ["-c", config_path, "status"], timeout=5)
     elapsed = int((time.monotonic() - start) * 1000)

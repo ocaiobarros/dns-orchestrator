@@ -1,7 +1,7 @@
 """
 DNS Control — Unbound Configuration Generator
-Generates per-instance unbound.conf files in /etc/unbound/unbound.conf.d/
-Also generates the master /etc/unbound/unbound.conf include file.
+Generates per-instance unbound configs at /etc/unbound/{name}.conf
+Each systemd unit references its own config file directly.
 """
 
 from typing import Any

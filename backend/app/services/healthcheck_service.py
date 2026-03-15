@@ -116,7 +116,7 @@ def _discover_instances() -> list[dict]:
 def _get_bind_ips_from_config(instance_name: str) -> list[str]:
     """Extract ALL interface: directives from unbound config."""
     result = run_command(
-        "cat", [f"/etc/unbound/unbound.conf.d/{instance_name}.conf"],
+        "cat", [f"/etc/unbound/{instance_name}.conf"],
         timeout=5,
     )
     ips = []
