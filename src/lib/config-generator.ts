@@ -892,7 +892,7 @@ ${config.routingMode === 'frr-ospf' ? '#   systemctl restart frr' : ''}
 #
 # Post-deploy checks:
 ${config.serviceVips.map(v => `#   dig @${v.ipv4} google.com +short`).join('\n')}
-${config.instances.map(i => `#   unbound-control -c /etc/unbound/unbound.conf.d/${i.name}.conf -s ${i.controlInterface}@${i.controlPort} status`).join('\n')}
+${config.instances.map(i => `#   unbound-control -c /etc/unbound/${i.name}.conf -s ${i.controlInterface}@${i.controlPort} status`).join('\n')}
 `;
 
   return manifest;
