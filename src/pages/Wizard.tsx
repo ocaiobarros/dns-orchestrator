@@ -1046,9 +1046,15 @@ export default function Wizard() {
               </div>
             )}
 
-            {/* 4-Layer Architecture View */}
+            {/* Architecture Blueprint */}
             <div className="noc-panel">
-              <div className="noc-panel-header">Arquitetura do Deploy — 4 Camadas</div>
+              <div className="noc-panel-header">Recursive DNS Node — Architecture Blueprint</div>
+              <div className="text-xs text-muted-foreground mb-3 font-mono space-y-1">
+                <div>Clients → Service VIPs → nftables PREROUTING (DNAT) → Unbound Resolvers → Public Egress → Global DNS</div>
+                <div className="text-[10px] text-muted-foreground/60">
+                  {config.instances.length} resolvers · {config.serviceVips.length} VIPs · {config.distributionPolicy} · {config.egressDeliveryMode} egress · {config.routingMode} routing
+                </div>
+              </div>
               <TopologySummary config={config} />
             </div>
 
