@@ -6,6 +6,21 @@
 
 import type { WizardConfig } from './types';
 
+// ═══ UNBOUND MASTER CONFIG ═══
+
+export function generateUnboundMasterConf(): string {
+  return `# DNS Control — Unbound master configuration
+# This file only includes per-instance configurations.
+# Do not edit manually — managed by DNS Control.
+
+server:
+    # Minimal server block — per-instance configs handle all settings
+    # Each instance has its own .conf in unbound.conf.d/
+
+include: "/etc/unbound/unbound.conf.d/*.conf"
+`;
+}
+
 // ═══ UNBOUND INSTANCE CONFIG ═══
 
 export function generateUnboundConf(config: WizardConfig, instanceIndex: number): string {
@@ -22,24 +37,57 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
         .join('\n')
     : '';
 
-  return `server:
+  // Collect all interface: directives
+  // Primary listener IP (always)
+  const interfaces: string[] = [`    interface: ${inst.bindIp}`];
+
+  // IPv6 listener
+  if (config.enableIpv6 && inst.bindIpv6) {
+    interfaces.push(`    interface: ${inst.bindIpv6}`);
+  }
+
+  // In host-owned mode, also bind on egress IP so resolver answers directly on public IP
+  if (config.egressDeliveryMode === 'host-owned' && inst.egressIpv4 && inst.egressIpv4 !== inst.bindIp) {
+    interfaces.push(`    interface: ${inst.egressIpv4}  # egress IP — also listening (host-owned mode)`);
+  }
+  if (config.egressDeliveryMode === 'host-owned' && config.enableIpv6 && inst.egressIpv6 && inst.egressIpv6 !== inst.bindIpv6) {
+    interfaces.push(`    interface: ${inst.egressIpv6}  # egress IPv6 — also listening (host-owned mode)`);
+  }
+
+  const interfaceBlock = interfaces.join('\n');
+
+  // Egress outgoing-interface
+  let egressBlock: string;
+  if (config.egressDeliveryMode === 'border-routed') {
+    egressBlock = `    # outgoing-interface: ${inst.egressIpv4}  # SUPPRESSED — border-routed mode
+    # Egress identity enforced at border device (SNAT/policy/static return path)
+    # Unbound will use the host's default IP for recursive queries`;
+    if (config.enableIpv6 && inst.egressIpv6) {
+      egressBlock += `\n    # outgoing-interface: ${inst.egressIpv6}  # SUPPRESSED — border-routed`;
+    }
+  } else {
+    egressBlock = `    outgoing-interface: ${inst.egressIpv4}`;
+    if (config.enableIpv6 && inst.egressIpv6) {
+      egressBlock += `\n    outgoing-interface: ${inst.egressIpv6}`;
+    }
+  }
+
+  return `# DNS Control — Unbound instance: ${inst.name}
+# Generated configuration — do not edit manually
+# Config path: /etc/unbound/unbound.conf.d/${inst.name}.conf
+# Listener: ${inst.bindIp}:53
+# Control: ${inst.controlInterface}:${inst.controlPort}
+# Egress: ${inst.egressIpv4} (${config.egressDeliveryMode})
+
+server:
     verbosity: ${config.enableDetailedLogs ? 2 : 1}
     statistics-interval: 20
     extended-statistics: yes
     num-threads: ${config.threads}
 
-    interface: ${inst.bindIp}
-${config.enableIpv6 && inst.bindIpv6 ? `    interface: ${inst.bindIpv6}` : ''}
+${interfaceBlock}
 
-${config.egressDeliveryMode === 'border-routed'
-    ? `    # outgoing-interface: ${inst.egressIpv4}  # SUPPRESSED — border-routed mode
-    # Egress identity enforced at border device (SNAT/policy/static return path)`
-    : `    outgoing-interface: ${inst.egressIpv4}`}
-${config.enableIpv6 && inst.egressIpv6
-    ? (config.egressDeliveryMode === 'border-routed'
-        ? `    # outgoing-interface: ${inst.egressIpv6}  # SUPPRESSED — border-routed`
-        : `    outgoing-interface: ${inst.egressIpv6}`)
-    : ''}
+${egressBlock}
 
     outgoing-range: 512
     num-queries-per-thread: 3200
@@ -134,7 +182,8 @@ Restart=always
 EnvironmentFile=-/etc/default/unbound
 ExecStartPre=-/usr/lib/unbound/package-helper chroot_setup
 ExecStartPre=-/usr/lib/unbound/package-helper root_trust_anchor_update
-ExecStart=/usr/sbin/unbound -c /etc/unbound/${inst.name}.conf -d -p $DAEMON_OPTS
+ExecStartPre=/usr/sbin/unbound-checkconf /etc/unbound/unbound.conf.d/${inst.name}.conf
+ExecStart=/usr/sbin/unbound -c /etc/unbound/unbound.conf.d/${inst.name}.conf -d -p $DAEMON_OPTS
 ExecStopPost=-/usr/lib/unbound/package-helper chroot_teardown
 ExecReload=+/bin/kill -HUP $MAINPID
 
@@ -151,8 +200,11 @@ export function generatePostUpScript(config: WizardConfig): string {
     '# DNS Control — Network post-up script',
     `# Generated for: ${config.hostname || 'dns-control'}`,
     `# Instances: ${config.instances.map(i => i.name).join(', ')}`,
+    `# Architecture: ${config.instances.length} resolvers · ${config.serviceVips.length} VIPs · ${config.egressDeliveryMode} egress`,
     '',
     'set -e',
+    '',
+    '# Idempotent: uses "replace" to avoid duplicate addresses',
     '',
   ];
 
@@ -160,10 +212,10 @@ export function generatePostUpScript(config: WizardConfig): string {
 
   // Listener IPs FIRST — MUST exist locally for Unbound bind + health checks
   if (config.instances.some(i => i.bindIp)) {
-    lines.push('# === Listener IPs (MUST exist locally for Unbound interface: binding) ===');
+    lines.push('# ═══ Listener IPs (MUST exist locally for Unbound interface: binding) ═══');
     config.instances.forEach(inst => {
       if (inst.bindIp) {
-        lines.push(`ip -4 addr replace ${inst.bindIp}/32 dev lo 2>/dev/null || true`);
+        lines.push(`ip -4 addr replace ${inst.bindIp}/32 dev lo 2>/dev/null || true  # ${inst.name} listener`);
       }
     });
     lines.push('');
@@ -173,9 +225,9 @@ export function generatePostUpScript(config: WizardConfig): string {
   if (config.enableIpv6) {
     const ipv6Listeners = config.instances.filter(i => i.bindIpv6);
     if (ipv6Listeners.length > 0) {
-      lines.push('# === Listener IPv6 IPs ===');
+      lines.push('# ═══ Listener IPv6 IPs ═══');
       ipv6Listeners.forEach(inst => {
-        lines.push(`ip -6 addr replace ${inst.bindIpv6}/128 dev lo 2>/dev/null || true`);
+        lines.push(`ip -6 addr replace ${inst.bindIpv6}/128 dev lo 2>/dev/null || true  # ${inst.name} listener v6`);
       });
       lines.push('');
     }
@@ -184,8 +236,8 @@ export function generatePostUpScript(config: WizardConfig): string {
   // Egress IPs — conditional on delivery mode
   if (config.instances.some(i => i.egressIpv4)) {
     if (isBorderRouted) {
-      lines.push('# === Egress IPs (border-routed: NOT added to host interfaces) ===');
-      lines.push('# In border-routed mode, egress IPs are logical identities in Unbound outgoing-interface.');
+      lines.push('# ═══ Egress IPs (border-routed: NOT added to host interfaces) ═══');
+      lines.push('# In border-routed mode, egress IPs are logical identities.');
       lines.push('# Upstream routing must return traffic for these IPs to this host.');
       config.instances.forEach(inst => {
         if (inst.egressIpv4) {
@@ -193,10 +245,10 @@ export function generatePostUpScript(config: WizardConfig): string {
         }
       });
     } else {
-      lines.push('# === Egress IPs (host-owned: added to loopback) ===');
+      lines.push('# ═══ Egress IPs (host-owned: added to loopback for outgoing-interface binding) ═══');
       config.instances.forEach(inst => {
         if (inst.egressIpv4) {
-          lines.push(`ip -4 addr replace ${inst.egressIpv4}/32 dev lo 2>/dev/null || true`);
+          lines.push(`ip -4 addr replace ${inst.egressIpv4}/32 dev lo 2>/dev/null || true  # ${inst.name} egress`);
         }
       });
     }
@@ -207,9 +259,9 @@ export function generatePostUpScript(config: WizardConfig): string {
   if (config.enableIpv6 && !isBorderRouted) {
     const ipv6Egress = config.instances.filter(i => i.egressIpv6);
     if (ipv6Egress.length > 0) {
-      lines.push('# === IPv6 egress IPs on loopback ===');
+      lines.push('# ═══ IPv6 egress IPs on loopback ═══');
       ipv6Egress.forEach(inst => {
-        lines.push(`ip -6 addr replace ${inst.egressIpv6}/128 dev lo 2>/dev/null || true`);
+        lines.push(`ip -6 addr replace ${inst.egressIpv6}/128 dev lo 2>/dev/null || true  # ${inst.name} egress v6`);
       });
       lines.push('');
     }
@@ -218,23 +270,85 @@ export function generatePostUpScript(config: WizardConfig): string {
   // VIP anycast IPs on loopback
   if (config.serviceVips.length > 0) {
     const needsLocalVip = ['pseudo-anycast-local', 'vip-local-dummy', 'anycast-frr-ospf'].includes(config.deploymentMode);
-    lines.push('# === VIPs de serviço (Anycast) ===');
+    lines.push('# ═══ VIPs de serviço (Anycast) ═══');
     if (!needsLocalVip) {
       lines.push('# VIPs ficam no equipamento de borda — descomentar apenas se necessário');
     }
-    config.serviceVips.forEach(vip => {
+    config.serviceVips.forEach((vip, i) => {
       const prefix = needsLocalVip ? '' : '#';
-      lines.push(`${prefix}ip -4 addr replace ${vip.ipv4}/32 dev lo 2>/dev/null || true`);
+      lines.push(`${prefix}ip -4 addr replace ${vip.ipv4}/32 dev lo 2>/dev/null || true  # VIP ${i + 1}: ${vip.description || vip.ipv4}`);
       if (config.enableIpv6 && vip.ipv6) {
-        lines.push(`${prefix}ip -6 addr replace ${vip.ipv6}/128 dev lo 2>/dev/null || true`);
+        lines.push(`${prefix}ip -6 addr replace ${vip.ipv6}/128 dev lo 2>/dev/null || true  # VIP ${i + 1} v6`);
       }
     });
     lines.push('');
   }
 
-  lines.push('# Verify addresses');
+  lines.push('# ═══ Verification ═══');
   lines.push('echo "DNS Control: Network addresses applied"');
   lines.push('ip addr show lo');
+  return lines.join('\n');
+}
+
+// ═══ PERSISTENT LOOPBACK INTERFACES FILE ═══
+
+export function generateLoopbackInterfacesConf(config: WizardConfig): string {
+  const lines: string[] = [
+    '# DNS Control — Persistent loopback addresses',
+    `# Generated for: ${config.hostname || 'dns-control'}`,
+    `# ${config.instances.length} resolver instances · ${config.serviceVips.length} service VIPs`,
+    '# This file persists loopback IPs across reboots.',
+    '# Managed by DNS Control — do not edit manually.',
+    '',
+  ];
+
+  const isBorderRouted = config.egressDeliveryMode === 'border-routed';
+  let aliasIndex = 0;
+
+  // Listener IPs
+  config.instances.forEach(inst => {
+    if (inst.bindIp) {
+      lines.push(`# ${inst.name} listener`);
+      lines.push(`auto lo:dc${aliasIndex}`);
+      lines.push(`iface lo:dc${aliasIndex} inet static`);
+      lines.push(`    address ${inst.bindIp}`);
+      lines.push(`    netmask 255.255.255.255`);
+      lines.push('');
+      aliasIndex++;
+    }
+  });
+
+  // Egress IPs (host-owned only)
+  if (!isBorderRouted) {
+    config.instances.forEach(inst => {
+      if (inst.egressIpv4 && inst.egressIpv4 !== inst.bindIp) {
+        lines.push(`# ${inst.name} egress (host-owned)`);
+        lines.push(`auto lo:dc${aliasIndex}`);
+        lines.push(`iface lo:dc${aliasIndex} inet static`);
+        lines.push(`    address ${inst.egressIpv4}`);
+        lines.push(`    netmask 255.255.255.255`);
+        lines.push('');
+        aliasIndex++;
+      }
+    });
+  }
+
+  // Service VIPs (when local)
+  const needsLocalVip = ['pseudo-anycast-local', 'vip-local-dummy', 'anycast-frr-ospf'].includes(config.deploymentMode);
+  if (needsLocalVip) {
+    config.serviceVips.forEach((vip, i) => {
+      if (vip.ipv4) {
+        lines.push(`# VIP ${i + 1}: ${vip.description || vip.ipv4}`);
+        lines.push(`auto lo:dc${aliasIndex}`);
+        lines.push(`iface lo:dc${aliasIndex} inet static`);
+        lines.push(`    address ${vip.ipv4}`);
+        lines.push(`    netmask 255.255.255.255`);
+        lines.push('');
+        aliasIndex++;
+      }
+    });
+  }
+
   return lines.join('\n');
 }
 
@@ -714,10 +828,15 @@ export function generateDeploymentManifest(config: WizardConfig, files: { path: 
 # Egress Delivery: ${config.egressDeliveryMode || 'host-owned'}
 # IPv6: ${config.enableIpv6 ? 'enabled' : 'disabled'}
 #
-# Architecture:
-#   VIPs: ${config.serviceVips.map(v => v.ipv4).join(', ') || '(none)'}
+# ═══ Recursive DNS Node Architecture ═══
+#
+#   Clients → Service VIPs → nftables DNAT → Unbound Instances → Egress → Global DNS
+#
+#   Service VIPs: ${config.serviceVips.map(v => v.ipv4).join(', ') || '(none)'}
 #   Instances: ${config.instances.map(i => `${i.name}@${i.bindIp}`).join(', ') || '(none)'}
 #   Egress: ${config.instances.map(i => `${i.name}→${i.egressIpv4}`).join(', ') || '(none)'}
+#   Distribution: ${config.distributionPolicy}
+#   Sticky Timeout: ${Math.floor(config.stickyTimeout / 60)}m
 #`;
 
   if (isBorderRouted) {
@@ -726,18 +845,29 @@ export function generateDeploymentManifest(config: WizardConfig, files: { path: 
 # │  BORDER-ROUTED MODE                                        │
 # │                                                             │
 # │  Listener delivery: nftables DNAT (VIP → backend)          │
-# │  Egress identity:   Unbound outgoing-interface (logical)   │
+# │  Egress identity:   NOT emitted (border handles SNAT)      │
 # │  Return path:       Border static route → DNS host         │
 # │  Host local public IP required: NO                         │
+# │  outgoing-interface: SUPPRESSED in Unbound config          │
 # │                                                             │
-# │  IMPORTANT: Border-routed mode requires upstream static    │
-# │  routing for each public egress IP toward the DNS host.    │
-# │  The public egress IPs are NOT configured on host          │
-# │  interfaces. The resolver uses them logically via           │
-# │  outgoing-interface, and the upstream router/firewall       │
-# │  must route return traffic back to this server.            │
+# │  IMPORTANT: Border device must SNAT outgoing traffic and   │
+# │  route return traffic for egress IPs back to this host.    │
+# │  No masquerade or generic SNAT is generated on the host.   │
+# └─────────────────────────────────────────────────────────────┘
+#`;
+  } else {
+    manifest += `
+# ┌─────────────────────────────────────────────────────────────┐
+# │  HOST-OWNED EGRESS MODE                                    │
 # │                                                             │
-# │  No masquerade or generic SNAT is generated.               │
+# │  Listener delivery: nftables DNAT (VIP → backend)          │
+# │  Egress identity:   Unbound outgoing-interface (local)     │
+# │  Egress IPs:        Configured on loopback /32             │
+# │  Unbound interface: Binds on listener + egress IPs         │
+# │  Return path:       Direct (IP is local)                   │
+# │                                                             │
+# │  Each resolver binds on its listener IP AND its public     │
+# │  egress IP, allowing direct DNS queries on both addresses. │
 # └─────────────────────────────────────────────────────────────┘
 #`;
   }
@@ -754,10 +884,42 @@ ${config.routingMode === 'frr-ospf' ? '#   systemctl restart frr' : ''}
 #
 # Post-deploy checks:
 ${config.serviceVips.map(v => `#   dig @${v.ipv4} google.com +short`).join('\n')}
-${config.instances.map(i => `#   unbound-control -c /etc/unbound/${i.name}.conf -s ${i.controlInterface}@${i.controlPort} status`).join('\n')}
+${config.instances.map(i => `#   unbound-control -c /etc/unbound/unbound.conf.d/${i.name}.conf -s ${i.controlInterface}@${i.controlPort} status`).join('\n')}
 `;
 
   return manifest;
+}
+
+// ═══ AUTO-DIMENSIONING HELPERS ═══
+
+/** Generate default listener IP for instance N (0-indexed) */
+export function autoListenerIp(index: number): string {
+  // Range: 100.127.255.101 + index
+  return `100.127.255.${101 + index}`;
+}
+
+/** Generate default control interface IP for instance N (0-indexed) */
+export function autoControlIp(index: number): string {
+  // Range: 127.0.0.11 + index
+  return `127.0.0.${11 + index}`;
+}
+
+/** Generate default instance name for instance N (0-indexed) */
+export function autoInstanceName(index: number): string {
+  return `unbound${String(index + 1).padStart(2, '0')}`;
+}
+
+/** Create a new default DnsInstance at given index */
+export function createDefaultInstance(index: number) {
+  return {
+    name: autoInstanceName(index),
+    bindIp: autoListenerIp(index),
+    bindIpv6: '',
+    controlInterface: autoControlIp(index),
+    controlPort: 8953,
+    egressIpv4: '',
+    egressIpv6: '',
+  };
 }
 
 // ═══ GENERATE ALL FILES ═══
@@ -767,12 +929,16 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
 
   // Network
   files.push({ path: '/etc/network/interfaces', content: generateNetworkInterfacesConf(config) });
+  files.push({ path: '/etc/network/interfaces.d/dns-control-loopback', content: generateLoopbackInterfacesConf(config) });
   files.push({ path: '/etc/network/post-up.sh', content: generatePostUpScript(config) });
 
-  // Unbound instances
+  // Unbound — master include file
+  files.push({ path: '/etc/unbound/unbound.conf', content: generateUnboundMasterConf() });
+
+  // Unbound instances — per-instance configs in unbound.conf.d/
   config.instances.forEach((_, i) => {
     files.push({
-      path: `/etc/unbound/${config.instances[i].name}.conf`,
+      path: `/etc/unbound/unbound.conf.d/${config.instances[i].name}.conf`,
       content: generateUnboundConf(config, i),
     });
   });
@@ -793,7 +959,7 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
     files.push({ path: '/etc/frr/frr.conf', content: generateFrrConf(config) });
   }
 
-  // systemd units
+  // systemd units — per-instance
   config.instances.forEach((_, i) => {
     files.push({
       path: `/usr/lib/systemd/system/${config.instances[i].name}.service`,
