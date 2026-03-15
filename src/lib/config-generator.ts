@@ -190,8 +190,8 @@ Restart=always
 EnvironmentFile=-/etc/default/unbound
 ExecStartPre=-/usr/lib/unbound/package-helper chroot_setup
 ExecStartPre=-/usr/lib/unbound/package-helper root_trust_anchor_update
-ExecStartPre=/usr/sbin/unbound-checkconf /etc/unbound/unbound.conf.d/${inst.name}.conf
-ExecStart=/usr/sbin/unbound -c /etc/unbound/unbound.conf.d/${inst.name}.conf -d -p $DAEMON_OPTS
+ExecStartPre=/usr/sbin/unbound-checkconf /etc/unbound/${inst.name}.conf
+ExecStart=/usr/sbin/unbound -c /etc/unbound/${inst.name}.conf -d -p $DAEMON_OPTS
 ExecStopPost=-/usr/lib/unbound/package-helper chroot_teardown
 ExecReload=+/bin/kill -HUP $MAINPID
 
