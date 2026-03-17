@@ -1,11 +1,16 @@
 // ============================================================
 // DNS Control — VIP Diagnostics Panel (Traffic-Based Validation)
-// Shows real counters, per-backend latency, distribution,
-// and inactive VIP detection.
+// Per-VIP entry counters, per-VIP×backend×protocol segregation,
+// inactive VIP detection, never-selected backend detection.
 // ============================================================
 
-import { Globe, CheckCircle, AlertTriangle, Radio, Loader2, Shield, Wifi, ArrowRight, Activity, XCircle, BarChart3 } from 'lucide-react';
+import { Globe, CheckCircle, AlertTriangle, Radio, Loader2, Shield, Wifi, Activity, XCircle, BarChart3 } from 'lucide-react';
 import { motion } from 'framer-motion';
+
+interface ProtoCounter {
+  packets: number;
+  bytes: number;
+}
 
 interface VipDnsProbe {
   resolves: boolean;
@@ -18,11 +23,23 @@ interface BackendProbe {
   ip: string;
   packets: number;
   bytes: number;
+  udp: ProtoCounter;
+  tcp: ProtoCounter;
   resolves: boolean;
   latency_ms: number;
   resolved_ip: string;
   dead: boolean;
+  never_selected: boolean;
   traffic_pct: number;
+}
+
+interface BackendPath {
+  backend_ip: string;
+  backend_port: number;
+  protocol: string;
+  packets: number;
+  bytes: number;
+  chain: string;
 }
 
 interface VipDiagResult {
@@ -36,7 +53,9 @@ interface VipDiagResult {
   local_bind: { bound: boolean; required: boolean; interface: string | null };
   route: { present: boolean; type: string | null };
   dnat: { active: boolean; rule_count: number };
-  traffic: { packets: number; bytes: number };
+  entry_counters: { udp: ProtoCounter; tcp: ProtoCounter };
+  traffic: { packets: number; bytes: number; udp: ProtoCounter; tcp: ProtoCounter };
+  backend_paths: BackendPath[];
   backends: BackendProbe[];
 }
 
@@ -89,6 +108,14 @@ function InactiveBadge() {
   );
 }
 
+function NeverSelectedBadge() {
+  return (
+    <span className="text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-warning/15 text-warning border border-warning/25">
+      NEVER SELECTED
+    </span>
+  );
+}
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
   const k = 1024;
@@ -103,18 +130,39 @@ function formatPackets(n: number): string {
   return n.toString();
 }
 
-/* ── Backend distribution bar ─────────────────────────────── */
+/* ── Protocol split bar ──────────────────────────────────── */
 
-function BackendBar({ backends }: { backends: BackendProbe[] }) {
+function ProtocolBar({ udp, tcp, label }: { udp: ProtoCounter; tcp: ProtoCounter; label?: string }) {
+  const total = udp.packets + tcp.packets;
+  if (total === 0) return null;
+  const udpPct = Math.round(udp.packets / total * 100);
+  return (
+    <div className="space-y-0.5">
+      {label && <div className="text-[9px] uppercase text-muted-foreground/60 font-bold">{label}</div>}
+      <div className="flex h-1.5 rounded-full overflow-hidden bg-muted/30">
+        <div className="bg-primary h-full" style={{ width: `${udpPct}%` }} title={`UDP: ${udpPct}%`} />
+        <div className="bg-accent h-full" style={{ width: `${100 - udpPct}%` }} title={`TCP: ${100 - udpPct}%`} />
+      </div>
+      <div className="flex justify-between text-[9px] font-mono text-muted-foreground">
+        <span>UDP {formatPackets(udp.packets)} ({udpPct}%)</span>
+        <span>TCP {formatPackets(tcp.packets)} ({100 - udpPct}%)</span>
+      </div>
+    </div>
+  );
+}
+
+/* ── Backend distribution ────────────────────────────────── */
+
+function BackendTable({ backends }: { backends: BackendProbe[] }) {
   if (backends.length === 0) return null;
   const colors = ['bg-primary', 'bg-accent', 'bg-success', 'bg-warning'];
 
   return (
-    <div className="mt-2 space-y-1.5">
-      <div className="flex items-center gap-1.5 mb-1">
+    <div className="mt-3 space-y-2">
+      <div className="flex items-center gap-1.5">
         <BarChart3 size={10} className="text-muted-foreground" />
         <span className="text-[9px] font-mono font-bold uppercase text-muted-foreground/60">
-          Backend Distribution
+          Per-Backend Distribution (VIP→Backend×Protocol)
         </span>
       </div>
 
@@ -123,42 +171,65 @@ function BackendBar({ backends }: { backends: BackendProbe[] }) {
         {backends.map((b, i) => (
           <div
             key={b.ip}
-            className={`${colors[i % colors.length]} ${b.dead ? 'opacity-20' : ''}`}
-            style={{ width: `${Math.max(b.traffic_pct, 1)}%` }}
+            className={`${colors[i % colors.length]} ${b.dead || b.never_selected ? 'opacity-20' : ''}`}
+            style={{ width: `${Math.max(b.traffic_pct, 0.5)}%` }}
             title={`${b.ip}: ${b.traffic_pct}%`}
           />
         ))}
       </div>
 
-      {/* Backend rows */}
-      {backends.map((b, i) => (
-        <div
-          key={b.ip}
-          className={`flex items-center gap-2 text-[10px] font-mono ${b.dead ? 'text-destructive' : 'text-foreground/80'}`}
-        >
-          <span className={`w-2 h-2 rounded-sm ${colors[i % colors.length]} ${b.dead ? 'opacity-20' : ''}`} />
-          <span className="font-bold">{b.ip}</span>
-          <span className="text-muted-foreground">
-            {formatPackets(b.packets)} pkts · {formatBytes(b.bytes)}
-          </span>
-          <span className={`font-bold ${b.traffic_pct > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>
-            {b.traffic_pct}%
-          </span>
-          <span className="text-muted-foreground">·</span>
-          {b.resolves ? (
-            <span className="text-success flex items-center gap-0.5">
-              <CheckCircle size={9} /> {b.latency_ms}ms
-            </span>
-          ) : (
-            <span className="text-destructive flex items-center gap-0.5">
-              <XCircle size={9} /> FAIL
-            </span>
-          )}
-          {b.dead && (
-            <span className="text-destructive font-bold ml-auto">DEAD</span>
-          )}
-        </div>
-      ))}
+      {/* Table with per-protocol breakdown */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-[10px] font-mono">
+          <thead>
+            <tr className="text-muted-foreground/60 border-b border-border">
+              <th className="text-left pb-1 font-bold">Backend</th>
+              <th className="text-right pb-1 font-bold">UDP pkts</th>
+              <th className="text-right pb-1 font-bold">TCP pkts</th>
+              <th className="text-right pb-1 font-bold">Total</th>
+              <th className="text-right pb-1 font-bold">Bytes</th>
+              <th className="text-right pb-1 font-bold">%</th>
+              <th className="text-right pb-1 font-bold">Latency</th>
+              <th className="text-left pb-1 font-bold">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {backends.map((b, i) => (
+              <tr key={b.ip} className="border-b border-border/50 last:border-0">
+                <td className="py-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-sm ${colors[i % colors.length]} ${b.dead || b.never_selected ? 'opacity-20' : ''}`} />
+                    <span className="font-bold text-foreground">{b.ip}</span>
+                  </span>
+                </td>
+                <td className="text-right py-1.5 text-primary">{formatPackets(b.udp.packets)}</td>
+                <td className="text-right py-1.5 text-accent">{formatPackets(b.tcp.packets)}</td>
+                <td className="text-right py-1.5 font-bold">{formatPackets(b.packets)}</td>
+                <td className="text-right py-1.5 text-muted-foreground">{formatBytes(b.bytes)}</td>
+                <td className="text-right py-1.5 font-bold">{b.traffic_pct}%</td>
+                <td className="text-right py-1.5">
+                  {b.resolves ? (
+                    <span className="text-success">{b.latency_ms}ms</span>
+                  ) : (
+                    <span className="text-destructive">FAIL</span>
+                  )}
+                </td>
+                <td className="py-1.5">
+                  {b.dead ? (
+                    <span className="text-destructive font-bold flex items-center gap-0.5"><XCircle size={9} /> DEAD</span>
+                  ) : b.never_selected ? (
+                    <NeverSelectedBadge />
+                  ) : b.resolves ? (
+                    <span className="text-success flex items-center gap-0.5"><CheckCircle size={9} /> OK</span>
+                  ) : (
+                    <span className="text-destructive flex items-center gap-0.5"><AlertTriangle size={9} /> ERR</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -197,10 +268,10 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
               <div className="flex items-center gap-2 mb-2">
                 <Radio size={11} className="text-primary" />
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-foreground/80">
-                  Service VIPs
+                  Service VIPs — Per-VIP Counters
                 </span>
               </div>
-              <div className="grid grid-cols-1 gap-2">
+              <div className="grid grid-cols-1 gap-3">
                 {data.vip_diagnostics.map((vip, i) => (
                   <motion.div
                     key={vip.ip}
@@ -225,7 +296,7 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
                     </div>
 
                     {/* Status grid */}
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-2">
                       {/* DNS Resolution */}
                       <div className="space-y-0.5">
                         <div className="text-[9px] uppercase text-muted-foreground/60 font-bold">DNS Probe</div>
@@ -245,7 +316,7 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
                         )}
                       </div>
 
-                      {/* Local Bind (context-aware) */}
+                      {/* Local Bind */}
                       <div className="space-y-0.5">
                         <div className="text-[9px] uppercase text-muted-foreground/60 font-bold">Local Bind</div>
                         {vip.local_bind.required ? (
@@ -270,20 +341,20 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
                         </div>
                       </div>
 
-                      {/* DNAT with rule count */}
+                      {/* DNAT */}
                       <div className="space-y-0.5">
-                        <div className="text-[9px] uppercase text-muted-foreground/60 font-bold">DNAT</div>
+                        <div className="text-[9px] uppercase text-muted-foreground/60 font-bold">DNAT Rules</div>
                         <div className={`flex items-center gap-1 ${vip.dnat.active ? 'text-success' : 'text-muted-foreground'}`}>
                           {vip.dnat.active ? <CheckCircle size={10} /> : <Wifi size={10} />}
                           <span className="font-mono">
-                            {vip.dnat.active ? `${vip.dnat.rule_count} rules` : 'N/A'}
+                            {vip.dnat.active ? `${vip.dnat.rule_count} paths` : 'N/A'}
                           </span>
                         </div>
                       </div>
 
-                      {/* Traffic counters */}
+                      {/* Entry Traffic */}
                       <div className="space-y-0.5">
-                        <div className="text-[9px] uppercase text-muted-foreground/60 font-bold">Traffic</div>
+                        <div className="text-[9px] uppercase text-muted-foreground/60 font-bold">VIP Entry Traffic</div>
                         <div className={`font-mono font-bold ${
                           vip.traffic.packets > 0 ? 'text-foreground/80' : 'text-warning'
                         }`}>
@@ -295,8 +366,11 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
                       </div>
                     </div>
 
-                    {/* Backend distribution */}
-                    <BackendBar backends={vip.backends} />
+                    {/* Per-VIP protocol split */}
+                    <ProtocolBar udp={vip.traffic.udp} tcp={vip.traffic.tcp} label="VIP Entry — UDP vs TCP" />
+
+                    {/* Backend distribution with per-protocol breakdown */}
+                    <BackendTable backends={vip.backends} />
 
                     {/* Error detail */}
                     {!vip.dns_probe.resolves && vip.dns_probe.error && (
