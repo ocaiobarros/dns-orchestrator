@@ -532,3 +532,28 @@ export function mockV2Actions(): V2Action[] {
     { id: 'act-002', action_type: 'restore_backend', target_type: 'instance', target_id: 'inst-03', status: 'success', exit_code: 0, trigger_source: 'health_engine', stdout_log: '', stderr_log: '', created_at: '2026-03-11T08:10:30Z', finished_at: '2026-03-11T08:10:31Z' },
   ];
 }
+
+export function mockExternalDnsProbes() {
+  return {
+    external_reachability: [
+      { resolver: '4.2.2.5', label: 'Lumen/Level3 Resolver A', provider: 'Lumen', reachable: true, latency_ms: 42.3, resolved_ip: '142.250.219.14', error: null, purpose: 'External DNS connectivity probe' },
+      { resolver: '4.2.2.6', label: 'Lumen/Level3 Resolver B', provider: 'Lumen', reachable: true, latency_ms: 38.7, resolved_ip: '142.250.219.14', error: null, purpose: 'External DNS connectivity probe' },
+    ],
+    hijack_detection: {
+      detected: false,
+      threshold_ms: 10,
+      suspicious_probes: [],
+      message: '✓ Nenhuma interceptação DNS detectada. Latências dentro do esperado para resolvers externos.',
+    },
+    root_recursion: {
+      trace: { status: 'ok', latency_ms: 320.5, reached_root: true, output_lines: 47, error: null },
+      root_query: { status: 'ok', target: 'a.root-servers.net', latency_ms: 85.2, answer: 'a.root-servers.net.\nb.root-servers.net.\nc.root-servers.net.', error: null },
+    },
+    summary: {
+      external_dns_reachable: true,
+      hijack_suspected: false,
+      root_recursion_ok: true,
+      trace_ok: true,
+    },
+  };
+}

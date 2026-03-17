@@ -23,6 +23,7 @@ import NocQuickActions from '@/components/noc/NocQuickActions';
 import NocDnsPathFlow from '@/components/noc/NocDnsPathFlow';
 import NocIncidentDetector from '@/components/noc/NocIncidentDetector';
 import NocDeploySimulation from '@/components/noc/NocDeploySimulation';
+import NocExternalDnsProbes from '@/components/noc/NocExternalDnsProbes';
 
 export default function Dashboard() {
   const { data: sysInfo, isLoading: sysLoading, error: sysError } = useSystemInfo();
