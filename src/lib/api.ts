@@ -36,7 +36,7 @@ import {
   mockOspfNeighbors, mockOspfRoutes, mockLogs, mockDiagCommands,
   mockHistory, mockProfiles, mockDiagOutputs, mockInstanceHealth,
   mockV2Events, mockV2Metrics, mockV2Instances, mockV2Actions,
-  mockExternalDnsProbes,
+  mockVipDiagnostics,
 } from './mock-data';
 
 // ---- Configuration ----
