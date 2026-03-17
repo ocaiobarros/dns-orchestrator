@@ -47,10 +47,10 @@ export default function Dashboard() {
     refetchInterval: 5000,
   });
 
-  const { data: externalDns, isLoading: externalDnsLoading } = useQuery({
-    queryKey: ['external-dns-probes'],
-    queryFn: async () => { const r = await api.getExternalDnsProbes(); if (!r.success) throw new Error(r.error!); return r.data; },
-    refetchInterval: 30000, // Every 30s — heavier probes
+  const { data: vipDiagnostics, isLoading: vipDiagLoading } = useQuery({
+    queryKey: ['vip-diagnostics'],
+    queryFn: async () => { const r = await api.getVipDiagnostics(); if (!r.success) throw new Error(r.error!); return r.data; },
+    refetchInterval: 30000,
   });
 
   const reconcileMutation = useMutation({
