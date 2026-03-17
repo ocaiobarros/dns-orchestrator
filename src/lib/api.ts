@@ -127,6 +127,7 @@ export const api = {
   getSystemInfo: () => apiCall<SystemInfo>('GET', '/dashboard/summary'),
   getInstanceHealth: () => apiCall<InstanceHealthReport>('GET', '/healthcheck'),
   getInstanceRealStats: () => apiCall<DnsInstanceStats[]>('GET', '/dashboard/instance-stats'),
+  getExternalDnsProbes: () => apiCall<any>('GET', '/dashboard/external-dns'),
 
   // Services
   getServices: () => apiCall<ServiceStatus[]>('GET', '/services'),
