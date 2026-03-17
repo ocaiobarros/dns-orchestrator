@@ -8,7 +8,7 @@ from app.models.user import User
 from app.services.diagnostics_service import get_dashboard_summary
 from app.services.unbound_stats_service import get_instance_real_stats
 from app.services.healthcheck_service import check_all_instances
-from app.services.external_dns_service import run_external_dns_probes
+from app.services.vip_diagnostics_service import run_vip_diagnostics
 
 router = APIRouter()
 
@@ -30,7 +30,7 @@ def instance_health(_: User = Depends(get_current_user)):
     return check_all_instances()
 
 
-@router.get("/external-dns")
-def external_dns_probes(_: User = Depends(get_current_user)):
-    """External DNS reachability, hijack detection, and root recursion tests."""
-    return run_external_dns_probes()
+@router.get("/vip-diagnostics")
+def vip_diagnostics(_: User = Depends(get_current_user)):
+    """Service VIP health: DNS resolution, local bind, DNAT, route, traffic."""
+    return run_vip_diagnostics()

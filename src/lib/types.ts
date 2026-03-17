@@ -26,6 +26,8 @@ export type RoutingMode = 'static' | 'frr-ospf' | 'frr-bgp';
 
 // ---- Service VIP ----
 
+export type VipType = 'owned' | 'intercepted';
+
 export interface ServiceVip {
   ipv4: string;
   ipv6: string;
@@ -33,6 +35,7 @@ export interface ServiceVip {
   protocol: 'udp+tcp' | 'udp' | 'tcp';
   description: string;
   label: string;
+  vipType: VipType;
   deliveryMode: VipDeliveryMode;
   healthCheckEnabled: boolean;
   healthCheckDomain: string;

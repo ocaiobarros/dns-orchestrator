@@ -23,7 +23,7 @@ import NocQuickActions from '@/components/noc/NocQuickActions';
 import NocDnsPathFlow from '@/components/noc/NocDnsPathFlow';
 import NocIncidentDetector from '@/components/noc/NocIncidentDetector';
 import NocDeploySimulation from '@/components/noc/NocDeploySimulation';
-import NocExternalDnsProbes from '@/components/noc/NocExternalDnsProbes';
+import NocVipDiagnostics from '@/components/noc/NocVipDiagnostics';
 
 export default function Dashboard() {
   const { data: sysInfo, isLoading: sysLoading, error: sysError } = useSystemInfo();
@@ -47,10 +47,10 @@ export default function Dashboard() {
     refetchInterval: 5000,
   });
 
-  const { data: externalDns, isLoading: externalDnsLoading } = useQuery({
-    queryKey: ['external-dns-probes'],
-    queryFn: async () => { const r = await api.getExternalDnsProbes(); if (!r.success) throw new Error(r.error!); return r.data; },
-    refetchInterval: 30000, // Every 30s — heavier probes
+  const { data: vipDiagnostics, isLoading: vipDiagLoading } = useQuery({
+    queryKey: ['vip-diagnostics'],
+    queryFn: async () => { const r = await api.getVipDiagnostics(); if (!r.success) throw new Error(r.error!); return r.data; },
+    refetchInterval: 30000,
   });
 
   const reconcileMutation = useMutation({
@@ -356,8 +356,8 @@ export default function Dashboard() {
         })}
       />
 
-      {/* ═══ TIER 4D: EXTERNAL DNS PROBES ═══ */}
-      <NocExternalDnsProbes data={externalDns} isLoading={externalDnsLoading} />
+      {/* ═══ TIER 4D: SERVICE VIP DIAGNOSTICS ═══ */}
+      <NocVipDiagnostics data={vipDiagnostics} isLoading={vipDiagLoading} />
 
       {/* ═══ TIER 5: TOPOLOGY DETAIL (8col) + Health Matrix (4col) ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">

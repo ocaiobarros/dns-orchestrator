@@ -36,7 +36,7 @@ import {
   mockOspfNeighbors, mockOspfRoutes, mockLogs, mockDiagCommands,
   mockHistory, mockProfiles, mockDiagOutputs, mockInstanceHealth,
   mockV2Events, mockV2Metrics, mockV2Instances, mockV2Actions,
-  mockExternalDnsProbes,
+  mockVipDiagnostics,
 } from './mock-data';
 
 // ---- Configuration ----
@@ -128,7 +128,7 @@ export const api = {
   getSystemInfo: () => apiCall<SystemInfo>('GET', '/dashboard/summary'),
   getInstanceHealth: () => apiCall<InstanceHealthReport>('GET', '/healthcheck'),
   getInstanceRealStats: () => apiCall<DnsInstanceStats[]>('GET', '/dashboard/instance-stats'),
-  getExternalDnsProbes: () => apiCall<any>('GET', '/dashboard/external-dns'),
+  getVipDiagnostics: () => apiCall<any>('GET', '/dashboard/vip-diagnostics'),
 
   // Services
   getServices: () => apiCall<ServiceStatus[]>('GET', '/services'),
@@ -293,7 +293,7 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path === '/api/dashboard/summary') return mockSystemInfo;
   if (path === '/api/healthcheck') return mockInstanceHealth();
   if (path === '/api/dashboard/instance-stats') return mockInstanceStats;
-  if (path === '/api/dashboard/external-dns') return mockExternalDnsProbes();
+  if (path === '/api/dashboard/vip-diagnostics') return mockVipDiagnostics();
 
   // Services
   if (path === '/api/services' && method === 'GET') return mockServices;

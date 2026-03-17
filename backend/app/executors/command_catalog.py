@@ -115,31 +115,38 @@ COMMAND_CATALOG: dict[str, CommandDefinition] = {
         category="dns", executable="dig", base_args=["@100.127.255.102", "google.com", "+short", "+time=3", "+tries=1"],
     ),
 
-    # External DNS probes — 4.2.2.5/4.2.2.6 are Lumen/Level3 PUBLIC resolvers,
-    # NOT local infrastructure. Used for connectivity and hijack detection.
-    "dns-ext-reachability-4225": CommandDefinition(
-        id="dns-ext-reachability-4225", name="External DNS @4.2.2.5",
-        description="Testa conectividade DNS externa via Lumen/Level3 (probe de reachability)",
-        category="dns-external", executable="dig",
+    # VIP Diagnostics — Service VIPs (owned + intercepted)
+    # 4.2.2.5/4.2.2.6 are intercepted VIPs captured locally via DNAT,
+    # NOT external probes. They are part of the local DNS service.
+    "dns-vip-probe-4225": CommandDefinition(
+        id="dns-vip-probe-4225", name="Service VIP @4.2.2.5",
+        description="Probe de resolução no VIP interceptado 4.2.2.5",
+        category="dns-vip", executable="dig",
         base_args=["@4.2.2.5", "google.com", "+short", "+time=3", "+tries=1"],
     ),
-    "dns-ext-reachability-4226": CommandDefinition(
-        id="dns-ext-reachability-4226", name="External DNS @4.2.2.6",
-        description="Testa conectividade DNS externa via Lumen/Level3 (probe de reachability)",
-        category="dns-external", executable="dig",
+    "dns-vip-probe-4226": CommandDefinition(
+        id="dns-vip-probe-4226", name="Service VIP @4.2.2.6",
+        description="Probe de resolução no VIP interceptado 4.2.2.6",
+        category="dns-vip", executable="dig",
         base_args=["@4.2.2.6", "google.com", "+short", "+time=3", "+tries=1"],
+    ),
+    "dns-vip-bind-check": CommandDefinition(
+        id="dns-vip-bind-check", name="VIP Bind Check (lo)",
+        description="Verifica se os VIPs estão configurados na interface loopback",
+        category="dns-vip", executable="ip",
+        base_args=["addr", "show", "lo"],
     ),
     "dns-root-trace": CommandDefinition(
         id="dns-root-trace", name="Root Trace (dig +trace)",
         description="Resolução iterativa completa desde root servers — valida recursão real",
-        category="dns-external", executable="dig",
+        category="dns-vip", executable="dig",
         base_args=["+trace", "google.com"],
         timeout=15,
     ),
     "dns-root-query": CommandDefinition(
         id="dns-root-query", name="Root NS Query",
         description="Consulta direta a a.root-servers.net — valida alcançabilidade dos root servers",
-        category="dns-external", executable="dig",
+        category="dns-vip", executable="dig",
         base_args=["@a.root-servers.net", ".", "NS", "+short", "+time=5", "+tries=1"],
         timeout=10,
     ),
