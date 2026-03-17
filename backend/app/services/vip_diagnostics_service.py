@@ -12,6 +12,14 @@ Counter segregation:
 - Per-VIP entry counters (PREROUTING rules matching VIP IP)
 - Per-VIP×backend×protocol counters (DNAT rules with full path)
 - UDP and TCP separated for each path
+
+Cross-validation:
+- Sum of path counters vs entry counters with tolerance
+- COUNTER_MISMATCH flagged when they diverge
+
+Resilience:
+- Parser is order/name agnostic for chains
+- Returns UNKNOWN / PARSE_ERROR instead of inferring
 """
 
 import time
@@ -23,6 +31,7 @@ logger = logging.getLogger("dns-control.vip-diagnostics")
 
 PROBE_DOMAIN = "google.com"
 INACTIVE_THRESHOLD_PACKETS = 0
+COUNTER_MISMATCH_TOLERANCE = 0.05  # 5% tolerance
 
 
 def _safe_run(executable: str, args: list[str], timeout: int = 10) -> dict:
@@ -36,27 +45,33 @@ def _safe_run(executable: str, args: list[str], timeout: int = 10) -> dict:
 # ── Public API ──────────────────────────────────────────────
 
 
-def run_vip_diagnostics(service_vips: list[dict] | None = None) -> dict:
+def run_vip_diagnostics(service_vips: list[dict] | None = None, debug: bool = False) -> dict:
     if not service_vips:
         service_vips = _discover_vips_from_loopback()
 
     # Fetch nftables ruleset once (expensive call)
     nft_r = _safe_run("nft", ["list", "ruleset"], timeout=10)
-    nft_stdout = nft_r.get("stdout", "") if nft_r["exit_code"] == 0 else ""
+    nft_ok = nft_r["exit_code"] == 0
+    nft_stdout = nft_r.get("stdout", "") if nft_ok else ""
+    nft_parse_error = None if nft_ok else (nft_r.get("stderr", "") or "nft command failed")
 
     # Fetch loopback addresses once
     lo_r = _safe_run("ip", ["addr", "show", "lo"], timeout=5)
     lo_stdout = lo_r.get("stdout", "")
 
     # Parse full chain structure once for VIP→backend mapping
-    chain_map = _parse_chain_structure(nft_stdout)
+    chain_map, parse_errors = _parse_chain_structure(nft_stdout)
 
     vip_results = []
     for vip in service_vips:
         ipv4 = vip.get("ipv4", "").strip()
         if not ipv4:
             continue
-        result = _probe_single_vip(ipv4, vip, nft_stdout, lo_stdout, chain_map)
+        result = _probe_single_vip(
+            ipv4, vip, nft_stdout, lo_stdout, chain_map,
+            nft_parse_error=nft_parse_error,
+            debug=debug,
+        )
         vip_results.append(result)
 
     # Root recursion — validates resolver reaches global DNS hierarchy
@@ -64,6 +79,8 @@ def run_vip_diagnostics(service_vips: list[dict] | None = None) -> dict:
 
     total = len(vip_results)
     healthy = sum(1 for v in vip_results if v["healthy"])
+    has_parse_errors = any(v.get("parse_error") for v in vip_results)
+    has_counter_mismatch = any(v.get("counter_mismatch") for v in vip_results)
 
     return {
         "vip_diagnostics": vip_results,
@@ -71,53 +88,77 @@ def run_vip_diagnostics(service_vips: list[dict] | None = None) -> dict:
         "summary": {
             "total_vips": total,
             "healthy_vips": healthy,
-            "all_healthy": total > 0 and healthy == total,
+            "all_healthy": total > 0 and healthy == total and not has_parse_errors,
             "degraded": healthy < total,
+            "has_parse_errors": has_parse_errors,
+            "has_counter_mismatch": has_counter_mismatch,
             "root_recursion_ok": root_recursion["root_query"]["status"] == "ok",
             "trace_ok": root_recursion["trace"]["status"] == "ok",
         },
     }
 
 
-# ── Chain structure parser ──────────────────────────────────
+# ── Chain structure parser (resilient, order-agnostic) ──────
 
 
-def _parse_chain_structure(nft_stdout: str) -> dict:
+def _parse_chain_structure(nft_stdout: str) -> tuple[dict, list[str]]:
     """Parse nftables ruleset into structured chain data.
 
-    Returns dict mapping chain_name -> list of rules with parsed fields.
-    This allows us to follow VIP -> jump chain -> DNAT backend paths.
+    Returns (chain_map, parse_errors).
+    chain_map: dict mapping chain_name -> list of rules with parsed fields.
+    parse_errors: list of warnings about unparseable structures.
+
+    Resilient to:
+    - Any chain naming convention
+    - Any ordering of chains/tables
+    - Nested table/chain structures
     """
     chains = {}
+    parse_errors = []
     current_chain = None
+    brace_depth = 0
 
-    for line in nft_stdout.split("\n"):
+    for line_num, line in enumerate(nft_stdout.split("\n"), 1):
         stripped = line.strip()
 
-        # Detect chain start
+        # Track brace depth for resilience
+        brace_depth += stripped.count("{") - stripped.count("}")
+
+        # Detect chain start (any table, any family)
         chain_match = re.match(r"chain\s+(\S+)\s*\{", stripped)
         if chain_match:
             current_chain = chain_match.group(1)
             chains[current_chain] = []
             continue
 
-        if stripped == "}":
+        # End of block
+        if stripped == "}" and current_chain:
             current_chain = None
             continue
 
+        # Skip metadata lines
         if current_chain and stripped and not stripped.startswith("type ") and not stripped.startswith("policy "):
             chains[current_chain].append(stripped)
 
-    return chains
+    if brace_depth != 0:
+        parse_errors.append(f"Unbalanced braces in nftables ruleset (depth={brace_depth})")
+
+    return chains, parse_errors
 
 
 # ── Single VIP probe ────────────────────────────────────────
 
 
-def _probe_single_vip(ip: str, vip_meta: dict, nft_stdout: str, lo_stdout: str, chain_map: dict) -> dict:
+def _probe_single_vip(
+    ip: str, vip_meta: dict, nft_stdout: str, lo_stdout: str, chain_map: dict,
+    nft_parse_error: str | None = None, debug: bool = False,
+) -> dict:
     vip_type = vip_meta.get("vipType", vip_meta.get("vip_type", "owned"))
     description = vip_meta.get("description", ip)
     ipv6 = vip_meta.get("ipv6", "")
+
+    # Track debug info
+    debug_info = {"matched_rules": [], "matched_chains": [], "parse_notes": []} if debug else None
 
     # 1. DNS resolution via VIP
     dns_probe = _probe_dns(ip)
@@ -132,11 +173,11 @@ def _probe_single_vip(ip: str, vip_meta: dict, nft_stdout: str, lo_stdout: str, 
     if not has_route and locally_bound:
         has_route = True  # kernel auto-creates host route for addr on lo
 
-    # 4. Per-VIP entry counters (segregated from PREROUTING)
-    vip_entry = _extract_vip_entry_counters(nft_stdout, ip)
+    # 4. Per-VIP entry counters (segregated from rules matching VIP IP)
+    vip_entry, entry_debug = _extract_vip_entry_counters(nft_stdout, ip, debug=debug)
 
     # 5. Per-VIP×backend×protocol DNAT counters
-    backend_paths = _extract_vip_backend_paths(nft_stdout, ip, chain_map)
+    backend_paths, path_debug = _extract_vip_backend_paths(nft_stdout, ip, chain_map, debug=debug)
 
     # 6. Per-backend latency probes
     backend_ips_seen = set()
@@ -156,24 +197,63 @@ def _probe_single_vip(ip: str, vip_meta: dict, nft_stdout: str, lo_stdout: str, 
     # 7. Aggregate per-backend totals and per-protocol breakdown
     backends_agg = _aggregate_backend_stats(backend_paths, backend_probes)
 
-    # 8. Health logic
+    # 8. Cross-validation: entry counters vs sum of path counters
+    total_entry = vip_entry["udp"]["packets"] + vip_entry["tcp"]["packets"]
+    total_paths = sum(p["packets"] for p in backend_paths)
+    counter_mismatch = _check_counter_mismatch(total_entry, total_paths)
+
+    # 9. Parse error detection
+    parse_error = None
+    if nft_parse_error:
+        parse_error = nft_parse_error
+    elif not nft_stdout.strip():
+        parse_error = "Empty nftables ruleset — cannot validate VIP"
+
+    # 10. Status determination
     dnat_active = len(backend_paths) > 0
-    total_vip_packets = vip_entry["udp"]["packets"] + vip_entry["tcp"]["packets"]
+    inactive = total_entry == INACTIVE_THRESHOLD_PACKETS
 
-    if vip_type == "intercepted":
-        healthy = dns_probe["resolves"] and dnat_active and total_vip_packets > INACTIVE_THRESHOLD_PACKETS
-    else:
-        healthy = dns_probe["resolves"] and locally_bound
+    if parse_error:
+        # Cannot determine health with certainty
+        healthy = False
+        status = "PARSE_ERROR"
+    elif vip_type == "intercepted":
+        if dnat_active and total_entry > INACTIVE_THRESHOLD_PACKETS and dns_probe["resolves"]:
+            healthy = True
+            status = "HEALTHY"
+        elif dnat_active and total_entry == INACTIVE_THRESHOLD_PACKETS:
+            healthy = False
+            status = "INACTIVE_VIP"
+        elif not dnat_active:
+            healthy = False
+            status = "UNKNOWN"
+        else:
+            healthy = False
+            status = "UNHEALTHY"
+    else:  # owned
+        if dns_probe["resolves"] and locally_bound:
+            healthy = True
+            status = "HEALTHY"
+        elif not locally_bound:
+            healthy = False
+            status = "UNHEALTHY"
+        else:
+            healthy = False
+            status = "UNKNOWN"
 
-    inactive = total_vip_packets == INACTIVE_THRESHOLD_PACKETS
+    if counter_mismatch and status == "HEALTHY":
+        status = "COUNTER_MISMATCH"
 
-    return {
+    result = {
         "ip": ip,
         "ipv6": ipv6,
         "description": description,
         "vip_type": vip_type,
+        "status": status,
         "healthy": healthy,
         "inactive": inactive,
+        "parse_error": parse_error,
+        "counter_mismatch": counter_mismatch,
         "dns_probe": dns_probe,
         "local_bind": {
             "bound": locally_bound,
@@ -190,14 +270,49 @@ def _probe_single_vip(ip: str, vip_meta: dict, nft_stdout: str, lo_stdout: str, 
         },
         "entry_counters": vip_entry,
         "traffic": {
-            "packets": total_vip_packets,
+            "packets": total_entry,
             "bytes": vip_entry["udp"]["bytes"] + vip_entry["tcp"]["bytes"],
             "udp": vip_entry["udp"],
             "tcp": vip_entry["tcp"],
         },
+        "cross_validation": {
+            "entry_total_packets": total_entry,
+            "paths_total_packets": total_paths,
+            "delta": abs(total_entry - total_paths),
+            "mismatch": counter_mismatch,
+            "tolerance_pct": COUNTER_MISMATCH_TOLERANCE * 100,
+        },
         "backend_paths": backend_paths,
         "backends": backends_agg,
     }
+
+    if debug and debug_info is not None:
+        debug_info["matched_rules"].extend(entry_debug)
+        debug_info["matched_chains"].extend(path_debug)
+        if parse_error:
+            debug_info["parse_notes"].append(parse_error)
+        if counter_mismatch:
+            debug_info["parse_notes"].append(
+                f"Counter mismatch: entry={total_entry} vs paths={total_paths} (delta={abs(total_entry - total_paths)})"
+            )
+        result["debug"] = debug_info
+
+    return result
+
+
+# ── Counter mismatch detection ──────────────────────────────
+
+
+def _check_counter_mismatch(entry_total: int, paths_total: int) -> bool:
+    """Check if entry counters and path counters diverge beyond tolerance."""
+    if entry_total == 0 and paths_total == 0:
+        return False
+    if entry_total == 0 or paths_total == 0:
+        # One is zero and other isn't — definite mismatch
+        return entry_total != paths_total
+    delta = abs(entry_total - paths_total)
+    max_val = max(entry_total, paths_total)
+    return (delta / max_val) > COUNTER_MISMATCH_TOLERANCE
 
 
 # ── DNS probing ─────────────────────────────────────────────
@@ -220,15 +335,17 @@ def _probe_dns(target_ip: str) -> dict:
 # ── nftables per-VIP entry counters ────────────────────────
 
 
-def _extract_vip_entry_counters(nft_stdout: str, vip_ip: str) -> dict:
+def _extract_vip_entry_counters(nft_stdout: str, vip_ip: str, debug: bool = False) -> tuple[dict, list[str]]:
     """Extract per-VIP entry counters segregated by protocol.
 
-    Looks for PREROUTING/prerouting rules that match the VIP IP
-    and contain protocol indicators (udp/tcp).
+    Looks for rules that match the VIP IP and contain counter statements.
+    Does NOT infer protocol — if protocol cannot be determined, attributes to UNKNOWN
+    and falls back to UDP only when all counters lack protocol context.
     """
     udp_packets, udp_bytes = 0, 0
     tcp_packets, tcp_bytes = 0, 0
-    other_packets, other_bytes = 0, 0
+    unknown_packets, unknown_bytes = 0, 0
+    debug_lines = []
 
     for line in nft_stdout.split("\n"):
         if vip_ip not in line:
@@ -239,51 +356,73 @@ def _extract_vip_entry_counters(nft_stdout: str, vip_ip: str) -> dict:
 
         pkts = int(counter.group(1))
         bts = int(counter.group(2))
+        stripped = line.strip()
 
-        # Determine protocol from rule context
-        if "udp" in line.lower() or "dport 53" in line:
-            if "tcp" in line.lower():
-                tcp_packets += pkts
-                tcp_bytes += bts
-            else:
-                udp_packets += pkts
-                udp_bytes += bts
-        elif "tcp" in line.lower():
+        # Determine protocol from explicit rule indicators only
+        proto = _detect_protocol_from_rule(stripped)
+
+        if proto == "udp":
+            udp_packets += pkts
+            udp_bytes += bts
+        elif proto == "tcp":
             tcp_packets += pkts
             tcp_bytes += bts
         else:
-            # Generic counter (no protocol specified) — split evenly as estimate
-            other_packets += pkts
-            other_bytes += bts
+            unknown_packets += pkts
+            unknown_bytes += bts
 
-    # If we only have "other" (no protocol-specific), attribute to UDP (DNS default)
+        if debug:
+            debug_lines.append(f"[entry] proto={proto} pkts={pkts} bytes={bts} rule={stripped[:120]}")
+
+    # If we have NO protocol-specific counters, attribute unknown to UDP (DNS primary)
+    # Otherwise, leave unknown unattributed (conservative)
     if udp_packets == 0 and tcp_packets == 0:
-        udp_packets = other_packets
-        udp_bytes = other_bytes
-    else:
-        udp_packets += other_packets // 2
-        udp_bytes += other_bytes // 2
-        tcp_packets += other_packets - other_packets // 2
-        tcp_bytes += other_bytes - other_bytes // 2
+        udp_packets = unknown_packets
+        udp_bytes = unknown_bytes
+    # If we DO have protocol-specific ones, do NOT redistribute unknown — report separately
 
     return {
         "udp": {"packets": udp_packets, "bytes": udp_bytes},
         "tcp": {"packets": tcp_packets, "bytes": tcp_bytes},
-    }
+        "unknown": {"packets": unknown_packets if (udp_packets > 0 or tcp_packets > 0) else 0,
+                     "bytes": unknown_bytes if (udp_packets > 0 or tcp_packets > 0) else 0},
+    }, debug_lines
+
+
+def _detect_protocol_from_rule(rule: str) -> str:
+    """Detect protocol from nftables rule text.
+
+    Only returns 'udp' or 'tcp' when there is EXPLICIT protocol indication.
+    Returns 'unknown' if ambiguous — never infers.
+    """
+    has_tcp = bool(re.search(r'\bmeta\s+l4proto\s+tcp\b', rule) or re.search(r'\btcp\s+dport\b', rule))
+    has_udp = bool(re.search(r'\bmeta\s+l4proto\s+udp\b', rule) or re.search(r'\budp\s+dport\b', rule))
+
+    if has_tcp and has_udp:
+        return "unknown"  # ambiguous
+    if has_tcp:
+        return "tcp"
+    if has_udp:
+        return "udp"
+    return "unknown"
 
 
 # ── Per-VIP×backend×protocol path extraction ───────────────
 
 
-def _extract_vip_backend_paths(nft_stdout: str, vip_ip: str, chain_map: dict) -> list[dict]:
+def _extract_vip_backend_paths(
+    nft_stdout: str, vip_ip: str, chain_map: dict, debug: bool = False,
+) -> tuple[list[dict], list[str]]:
     """Extract every VIP→backend DNAT path with per-path counters, segregated by protocol.
 
     Follows the nftables chain jump structure:
     PREROUTING → protocol dispatch chain → per-backend chain → dnat rule
 
-    Returns list of { backend_ip, protocol, packets, bytes, chain }
+    Returns (paths, debug_lines).
+    Each path: { backend_ip, protocol, packets, bytes, chain, data_source }
     """
     paths = []
+    debug_lines = []
 
     # Strategy 1: Direct rules containing VIP IP and dnat
     for line in nft_stdout.split("\n"):
@@ -291,42 +430,60 @@ def _extract_vip_backend_paths(nft_stdout: str, vip_ip: str, chain_map: dict) ->
             continue
         path = _parse_dnat_line(line)
         if path:
+            path["data_source"] = "direct_rule"
             paths.append(path)
+            if debug:
+                debug_lines.append(f"[direct] {path['protocol']} -> {path['backend_ip']} pkts={path['packets']} rule={line.strip()[:120]}")
 
     # Strategy 2: Follow chain jumps from VIP rules
     vip_jump_chains = _find_vip_jump_chains(nft_stdout, vip_ip)
-    for jump_chain, protocol in vip_jump_chains:
+    for jump_chain, jump_protocol in vip_jump_chains:
         if jump_chain not in chain_map:
+            if debug:
+                debug_lines.append(f"[warn] Jump target chain '{jump_chain}' not found in ruleset")
             continue
-        # Look for dnat rules or further jumps in this chain
+
+        if debug:
+            debug_lines.append(f"[chain] Following {jump_chain} (protocol_hint={jump_protocol})")
+
         for rule in chain_map[jump_chain]:
             if "dnat to" in rule:
-                path = _parse_dnat_line(rule, override_protocol=protocol)
+                path = _parse_dnat_line(rule, protocol_hint=jump_protocol)
                 if path:
                     path["chain"] = jump_chain
+                    path["data_source"] = "chain_rule"
                     paths.append(path)
+                    if debug:
+                        debug_lines.append(f"  [dnat] {path['protocol']} -> {path['backend_ip']} pkts={path['packets']}")
+
             # Follow nested jumps (per-backend chains)
             nested_jump = re.search(r"jump\s+(\S+)", rule)
             if nested_jump:
                 nested_chain = nested_jump.group(1)
                 nested_counter = re.search(r"counter packets (\d+) bytes (\d+)", rule)
                 if nested_chain in chain_map:
+                    if debug:
+                        debug_lines.append(f"  [nested] Following {nested_chain}")
                     for nested_rule in chain_map[nested_chain]:
                         if "dnat to" in nested_rule:
-                            path = _parse_dnat_line(nested_rule, override_protocol=protocol)
+                            path = _parse_dnat_line(nested_rule, protocol_hint=jump_protocol)
                             if path:
                                 path["chain"] = nested_chain
+                                path["data_source"] = "nested_chain_rule"
                                 # Use the jump rule's counter if the dnat rule has no counter
                                 if path["packets"] == 0 and nested_counter:
                                     path["packets"] = int(nested_counter.group(1))
                                     path["bytes"] = int(nested_counter.group(2))
+                                    path["data_source"] = "nested_chain_jump_counter"
                                 paths.append(path)
+                                if debug:
+                                    debug_lines.append(f"    [dnat] {path['protocol']} -> {path['backend_ip']} pkts={path['packets']} src={path['data_source']}")
 
     # Deduplicate: merge by (backend_ip, protocol)
-    return _deduplicate_paths(paths)
+    return _deduplicate_paths(paths), debug_lines
 
 
-def _parse_dnat_line(line: str, override_protocol: str | None = None) -> dict | None:
+def _parse_dnat_line(line: str, protocol_hint: str | None = None) -> dict | None:
     """Parse a single nftables line containing 'dnat to' into a path dict."""
     dnat_match = re.search(r"dnat to (\d+\.\d+\.\d+\.\d+)(?::(\d+))?", line)
     if not dnat_match:
@@ -339,15 +496,11 @@ def _parse_dnat_line(line: str, override_protocol: str | None = None) -> dict | 
     packets = int(counter.group(1)) if counter else 0
     bytes_count = int(counter.group(2)) if counter else 0
 
-    # Determine protocol
-    protocol = override_protocol
-    if not protocol:
-        if "meta l4proto tcp" in line or "tcp dport" in line:
-            protocol = "tcp"
-        elif "meta l4proto udp" in line or "udp dport" in line:
-            protocol = "udp"
-        else:
-            protocol = "udp"  # DNS default
+    # Determine protocol — explicit detection first, then hint, then unknown
+    protocol = _detect_protocol_from_rule(line)
+    if protocol == "unknown" and protocol_hint:
+        protocol = protocol_hint
+    # If still unknown, leave as unknown — do NOT default to udp
 
     return {
         "backend_ip": backend_ip,
@@ -356,6 +509,7 @@ def _parse_dnat_line(line: str, override_protocol: str | None = None) -> dict | 
         "packets": packets,
         "bytes": bytes_count,
         "chain": "",
+        "data_source": "",
     }
 
 
@@ -369,14 +523,14 @@ def _find_vip_jump_chains(nft_stdout: str, vip_ip: str) -> list[tuple[str, str]]
         if not jump_match:
             continue
         chain_name = jump_match.group(1)
-        # Infer protocol from chain name or rule
-        if "tcp" in chain_name.lower() or "tcp" in line.lower():
-            protocol = "tcp"
-        elif "udp" in chain_name.lower() or "udp" in line.lower():
-            protocol = "udp"
-        else:
-            protocol = "udp"
-        results.append((chain_name, protocol))
+        protocol = _detect_protocol_from_rule(line)
+        # Also check chain name for protocol hints (convention-based, not authoritative)
+        if protocol == "unknown":
+            if "tcp" in chain_name.lower():
+                protocol = "tcp"
+            elif "udp" in chain_name.lower():
+                protocol = "udp"
+        results.append((chain_name, protocol if protocol != "unknown" else None))
     return results
 
 
@@ -397,43 +551,50 @@ def _deduplicate_paths(paths: list[dict]) -> list[dict]:
 
 
 def _aggregate_backend_stats(backend_paths: list[dict], backend_probes: list[dict]) -> list[dict]:
-    """Aggregate per-backend stats from paths + probes.
-
-    Returns list with per-backend totals, per-protocol breakdown, and health info.
-    """
-    # Group paths by backend_ip
+    """Aggregate per-backend stats from paths + probes."""
     by_backend = {}
     for p in backend_paths:
         bip = p["backend_ip"]
         if bip not in by_backend:
-            by_backend[bip] = {"udp": {"packets": 0, "bytes": 0}, "tcp": {"packets": 0, "bytes": 0}}
-        proto = p["protocol"]
-        if proto in by_backend[bip]:
-            by_backend[bip][proto]["packets"] += p["packets"]
-            by_backend[bip][proto]["bytes"] += p["bytes"]
+            by_backend[bip] = {"udp": {"packets": 0, "bytes": 0}, "tcp": {"packets": 0, "bytes": 0}, "unknown": {"packets": 0, "bytes": 0}}
+        proto = p["protocol"] if p["protocol"] in ("udp", "tcp") else "unknown"
+        by_backend[bip][proto]["packets"] += p["packets"]
+        by_backend[bip][proto]["bytes"] += p["bytes"]
 
     total_packets = sum(
-        v["udp"]["packets"] + v["tcp"]["packets"] for v in by_backend.values()
+        v["udp"]["packets"] + v["tcp"]["packets"] + v["unknown"]["packets"] for v in by_backend.values()
     )
 
     results = []
     for probe in backend_probes:
         bip = probe["ip"]
-        proto_data = by_backend.get(bip, {"udp": {"packets": 0, "bytes": 0}, "tcp": {"packets": 0, "bytes": 0}})
-        total_bk = proto_data["udp"]["packets"] + proto_data["tcp"]["packets"]
-        total_bk_bytes = proto_data["udp"]["bytes"] + proto_data["tcp"]["bytes"]
+        proto_data = by_backend.get(bip, {"udp": {"packets": 0, "bytes": 0}, "tcp": {"packets": 0, "bytes": 0}, "unknown": {"packets": 0, "bytes": 0}})
+        total_bk = proto_data["udp"]["packets"] + proto_data["tcp"]["packets"] + proto_data["unknown"]["packets"]
+        total_bk_bytes = proto_data["udp"]["bytes"] + proto_data["tcp"]["bytes"] + proto_data["unknown"]["bytes"]
+
+        # Status determination — explicit, no inference
+        if total_bk == 0 and not probe["resolves"]:
+            backend_status = "DEAD"
+        elif total_bk == 0 and probe["resolves"]:
+            backend_status = "NEVER_SELECTED"
+        elif probe["resolves"]:
+            backend_status = "OK"
+        else:
+            backend_status = "UNHEALTHY"
 
         results.append({
             "ip": bip,
+            "status": backend_status,
             "packets": total_bk,
             "bytes": total_bk_bytes,
             "udp": proto_data["udp"],
             "tcp": proto_data["tcp"],
+            "unknown": proto_data["unknown"],
             "resolves": probe["resolves"],
             "latency_ms": probe["latency_ms"],
             "resolved_ip": probe["resolved_ip"],
-            "dead": total_bk == 0 and not probe["resolves"],
-            "never_selected": total_bk == 0 and probe["resolves"],
+            "dead": backend_status == "DEAD",
+            "never_selected": backend_status == "NEVER_SELECTED",
             "traffic_pct": round((total_bk / total_packets * 100) if total_packets > 0 else 0, 1),
         })
 

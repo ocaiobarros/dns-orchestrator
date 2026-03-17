@@ -2,7 +2,7 @@
 DNS Control — Dashboard Routes
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.services.diagnostics_service import get_dashboard_summary
@@ -31,6 +31,9 @@ def instance_health(_: User = Depends(get_current_user)):
 
 
 @router.get("/vip-diagnostics")
-def vip_diagnostics(_: User = Depends(get_current_user)):
-    """Service VIP health: DNS resolution, local bind, DNAT, route, traffic."""
-    return run_vip_diagnostics()
+def vip_diagnostics(
+    _: User = Depends(get_current_user),
+    debug: bool = Query(False, description="Include debug info (matched rules/chains)"),
+):
+    """Service VIP health: DNS resolution, local bind, DNAT, route, traffic, cross-validation."""
+    return run_vip_diagnostics(debug=debug)
