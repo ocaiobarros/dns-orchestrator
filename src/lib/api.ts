@@ -292,6 +292,7 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path === '/api/dashboard/summary') return mockSystemInfo;
   if (path === '/api/healthcheck') return mockInstanceHealth();
   if (path === '/api/dashboard/instance-stats') return mockInstanceStats;
+  if (path === '/api/dashboard/external-dns') return mockExternalDnsProbes();
 
   // Services
   if (path === '/api/services' && method === 'GET') return mockServices;
