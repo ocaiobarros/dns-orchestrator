@@ -534,18 +534,28 @@ export function mockV2Actions(): V2Action[] {
 }
 
 export function mockVipDiagnostics() {
-  const mkBackend = (ip: string, udpPkts: number, tcpPkts: number, latency: number, resolves = true) => ({
-    ip,
-    packets: udpPkts + tcpPkts,
-    bytes: (udpPkts + tcpPkts) * 72,
-    udp: { packets: udpPkts, bytes: udpPkts * 72 },
-    tcp: { packets: tcpPkts, bytes: tcpPkts * 72 },
-    resolves,
-    latency_ms: latency,
-    resolved_ip: resolves ? '142.250.219.14' : '',
-    dead: !resolves && (udpPkts + tcpPkts) === 0,
-    never_selected: resolves && (udpPkts + tcpPkts) === 0,
-    traffic_pct: 0, // calculated below
+  const mkBackend = (ip: string, udpPkts: number, tcpPkts: number, latency: number, resolves = true) => {
+    const total = udpPkts + tcpPkts;
+    const status = !resolves && total === 0 ? 'DEAD'
+      : resolves && total === 0 ? 'NEVER_SELECTED'
+      : resolves ? 'OK' : 'UNHEALTHY';
+    return {
+      ip, status,
+      packets: total, bytes: total * 72,
+      udp: { packets: udpPkts, bytes: udpPkts * 72 },
+      tcp: { packets: tcpPkts, bytes: tcpPkts * 72 },
+      unknown: { packets: 0, bytes: 0 },
+      resolves, latency_ms: latency,
+      resolved_ip: resolves ? '142.250.219.14' : '',
+      dead: status === 'DEAD',
+      never_selected: status === 'NEVER_SELECTED',
+      traffic_pct: 0,
+    };
+  };
+
+  const mkPath = (bip: string, proto: string, pkts: number, chain: string) => ({
+    backend_ip: bip, backend_port: 53, protocol: proto,
+    packets: pkts, bytes: pkts * 72, chain, data_source: 'chain_rule',
   });
 
   const vip1Backends = [
@@ -556,92 +566,89 @@ export function mockVipDiagnostics() {
   ];
   const vip1Total = vip1Backends.reduce((a, b) => a + b.packets, 0);
   vip1Backends.forEach(b => { b.traffic_pct = Math.round(b.packets / vip1Total * 1000) / 10; });
-
-  const vip1UdpTotal = vip1Backends.reduce((a, b) => a + b.udp.packets, 0);
-  const vip1TcpTotal = vip1Backends.reduce((a, b) => a + b.tcp.packets, 0);
+  const vip1Udp = vip1Backends.reduce((a, b) => a + b.udp.packets, 0);
+  const vip1Tcp = vip1Backends.reduce((a, b) => a + b.tcp.packets, 0);
 
   const vip2Backends = [
     mkBackend('100.127.255.101', 501200, 38100, 0.8),
     mkBackend('100.127.255.102', 489300, 36800, 1.3),
     mkBackend('100.127.255.103', 510100, 39200, 0.9),
-    mkBackend('100.127.255.104', 0, 0, 1.5, true), // never_selected — registered but no traffic
+    mkBackend('100.127.255.104', 0, 0, 1.5, true),
   ];
   const vip2Total = vip2Backends.reduce((a, b) => a + b.packets, 0);
   vip2Backends.forEach(b => { b.traffic_pct = Math.round(b.packets / vip2Total * 1000) / 10; });
+  const vip2Udp = vip2Backends.reduce((a, b) => a + b.udp.packets, 0);
+  const vip2Tcp = vip2Backends.reduce((a, b) => a + b.tcp.packets, 0);
 
-  const vip2UdpTotal = vip2Backends.reduce((a, b) => a + b.udp.packets, 0);
-  const vip2TcpTotal = vip2Backends.reduce((a, b) => a + b.tcp.packets, 0);
+  const mkVip = (
+    ip: string, ipv6: string, desc: string, backends: ReturnType<typeof mkBackend>[],
+    udpTotal: number, tcpTotal: number, total: number,
+    paths: ReturnType<typeof mkPath>[], status = 'HEALTHY',
+  ) => ({
+    ip, ipv6, description: desc,
+    vip_type: 'intercepted' as const,
+    status,
+    healthy: status === 'HEALTHY',
+    inactive: status === 'INACTIVE_VIP',
+    parse_error: null as string | null,
+    counter_mismatch: false,
+    dns_probe: { resolves: true, resolved_ip: '142.250.219.14', latency_ms: ip === '4.2.2.5' ? 1.8 : 2.1, error: null },
+    local_bind: { bound: false, required: false, interface: null },
+    route: { present: true, type: 'host /32' },
+    dnat: { active: true, rule_count: paths.length },
+    entry_counters: {
+      udp: { packets: udpTotal, bytes: udpTotal * 72 },
+      tcp: { packets: tcpTotal, bytes: tcpTotal * 72 },
+      unknown: { packets: 0, bytes: 0 },
+    },
+    traffic: {
+      packets: total, bytes: total * 72,
+      udp: { packets: udpTotal, bytes: udpTotal * 72 },
+      tcp: { packets: tcpTotal, bytes: tcpTotal * 72 },
+    },
+    cross_validation: {
+      entry_total_packets: total,
+      paths_total_packets: total,
+      delta: 0,
+      mismatch: false,
+      tolerance_pct: 5,
+    },
+    backend_paths: paths,
+    backends,
+  });
+
+  const vip1Paths = [
+    mkPath('100.127.255.101', 'udp', 612340, 'ipv4_dns_udp_unbound01'),
+    mkPath('100.127.255.101', 'tcp', 45890, 'ipv4_dns_tcp_unbound01'),
+    mkPath('100.127.255.102', 'udp', 598021, 'ipv4_dns_udp_unbound02'),
+    mkPath('100.127.255.102', 'tcp', 43780, 'ipv4_dns_tcp_unbound02'),
+    mkPath('100.127.255.103', 'udp', 610230, 'ipv4_dns_udp_unbound03'),
+    mkPath('100.127.255.103', 'tcp', 44920, 'ipv4_dns_tcp_unbound03'),
+    mkPath('100.127.255.104', 'udp', 592300, 'ipv4_dns_udp_unbound04'),
+    mkPath('100.127.255.104', 'tcp', 42100, 'ipv4_dns_tcp_unbound04'),
+  ];
+  const vip2Paths = [
+    mkPath('100.127.255.101', 'udp', 501200, 'ipv4_dns_udp_unbound01'),
+    mkPath('100.127.255.101', 'tcp', 38100, 'ipv4_dns_tcp_unbound01'),
+    mkPath('100.127.255.102', 'udp', 489300, 'ipv4_dns_udp_unbound02'),
+    mkPath('100.127.255.102', 'tcp', 36800, 'ipv4_dns_tcp_unbound02'),
+    mkPath('100.127.255.103', 'udp', 510100, 'ipv4_dns_udp_unbound03'),
+    mkPath('100.127.255.103', 'tcp', 39200, 'ipv4_dns_tcp_unbound03'),
+  ];
 
   return {
     vip_diagnostics: [
-      {
-        ip: '4.2.2.5', ipv6: '2620:119:35::35', description: 'DNS Público Primário (Intercepted)',
-        vip_type: 'intercepted' as const, healthy: true, inactive: false,
-        dns_probe: { resolves: true, resolved_ip: '142.250.219.14', latency_ms: 1.8, error: null },
-        local_bind: { bound: false, required: false, interface: null },
-        route: { present: true, type: 'host /32' },
-        dnat: { active: true, rule_count: 8 },
-        entry_counters: {
-          udp: { packets: vip1UdpTotal, bytes: vip1UdpTotal * 72 },
-          tcp: { packets: vip1TcpTotal, bytes: vip1TcpTotal * 72 },
-        },
-        traffic: {
-          packets: vip1Total,
-          bytes: vip1Total * 72,
-          udp: { packets: vip1UdpTotal, bytes: vip1UdpTotal * 72 },
-          tcp: { packets: vip1TcpTotal, bytes: vip1TcpTotal * 72 },
-        },
-        backend_paths: [
-          { backend_ip: '100.127.255.101', backend_port: 53, protocol: 'udp', packets: 612340, bytes: 612340 * 72, chain: 'ipv4_dns_udp_unbound01' },
-          { backend_ip: '100.127.255.101', backend_port: 53, protocol: 'tcp', packets: 45890, bytes: 45890 * 72, chain: 'ipv4_dns_tcp_unbound01' },
-          { backend_ip: '100.127.255.102', backend_port: 53, protocol: 'udp', packets: 598021, bytes: 598021 * 72, chain: 'ipv4_dns_udp_unbound02' },
-          { backend_ip: '100.127.255.102', backend_port: 53, protocol: 'tcp', packets: 43780, bytes: 43780 * 72, chain: 'ipv4_dns_tcp_unbound02' },
-          { backend_ip: '100.127.255.103', backend_port: 53, protocol: 'udp', packets: 610230, bytes: 610230 * 72, chain: 'ipv4_dns_udp_unbound03' },
-          { backend_ip: '100.127.255.103', backend_port: 53, protocol: 'tcp', packets: 44920, bytes: 44920 * 72, chain: 'ipv4_dns_tcp_unbound03' },
-          { backend_ip: '100.127.255.104', backend_port: 53, protocol: 'udp', packets: 592300, bytes: 592300 * 72, chain: 'ipv4_dns_udp_unbound04' },
-          { backend_ip: '100.127.255.104', backend_port: 53, protocol: 'tcp', packets: 42100, bytes: 42100 * 72, chain: 'ipv4_dns_tcp_unbound04' },
-        ],
-        backends: vip1Backends,
-      },
-      {
-        ip: '4.2.2.6', ipv6: '2620:119:53::53', description: 'DNS Público Secundário (Intercepted)',
-        vip_type: 'intercepted' as const, healthy: true, inactive: false,
-        dns_probe: { resolves: true, resolved_ip: '142.250.219.14', latency_ms: 2.1, error: null },
-        local_bind: { bound: true, required: false, interface: 'lo' },
-        route: { present: true, type: 'host /32' },
-        dnat: { active: true, rule_count: 6 },
-        entry_counters: {
-          udp: { packets: vip2UdpTotal, bytes: vip2UdpTotal * 72 },
-          tcp: { packets: vip2TcpTotal, bytes: vip2TcpTotal * 72 },
-        },
-        traffic: {
-          packets: vip2Total,
-          bytes: vip2Total * 72,
-          udp: { packets: vip2UdpTotal, bytes: vip2UdpTotal * 72 },
-          tcp: { packets: vip2TcpTotal, bytes: vip2TcpTotal * 72 },
-        },
-        backend_paths: [
-          { backend_ip: '100.127.255.101', backend_port: 53, protocol: 'udp', packets: 501200, bytes: 501200 * 72, chain: 'ipv4_dns_udp_unbound01' },
-          { backend_ip: '100.127.255.101', backend_port: 53, protocol: 'tcp', packets: 38100, bytes: 38100 * 72, chain: 'ipv4_dns_tcp_unbound01' },
-          { backend_ip: '100.127.255.102', backend_port: 53, protocol: 'udp', packets: 489300, bytes: 489300 * 72, chain: 'ipv4_dns_udp_unbound02' },
-          { backend_ip: '100.127.255.102', backend_port: 53, protocol: 'tcp', packets: 36800, bytes: 36800 * 72, chain: 'ipv4_dns_tcp_unbound02' },
-          { backend_ip: '100.127.255.103', backend_port: 53, protocol: 'udp', packets: 510100, bytes: 510100 * 72, chain: 'ipv4_dns_udp_unbound03' },
-          { backend_ip: '100.127.255.103', backend_port: 53, protocol: 'tcp', packets: 39200, bytes: 39200 * 72, chain: 'ipv4_dns_tcp_unbound03' },
-        ],
-        backends: vip2Backends,
-      },
+      mkVip('4.2.2.5', '2620:119:35::35', 'DNS Público Primário (Intercepted)', vip1Backends, vip1Udp, vip1Tcp, vip1Total, vip1Paths),
+      mkVip('4.2.2.6', '2620:119:53::53', 'DNS Público Secundário (Intercepted)', vip2Backends, vip2Udp, vip2Tcp, vip2Total, vip2Paths),
     ],
     root_recursion: {
       trace: { status: 'ok', latency_ms: 320.5, reached_root: true, output_lines: 47, error: null },
-      root_query: { status: 'ok', target: 'a.root-servers.net', latency_ms: 85.2, answer: 'a.root-servers.net.\nb.root-servers.net.\nc.root-servers.net.', error: null },
+      root_query: { status: 'ok', target: 'a.root-servers.net', latency_ms: 85.2, answer: 'a.root-servers.net.\nb.root-servers.net.', error: null },
     },
     summary: {
-      total_vips: 2,
-      healthy_vips: 2,
-      all_healthy: true,
-      degraded: false,
-      root_recursion_ok: true,
-      trace_ok: true,
+      total_vips: 2, healthy_vips: 2, all_healthy: true, degraded: false,
+      has_parse_errors: false, has_counter_mismatch: false,
+      root_recursion_ok: true, trace_ok: true,
     },
   };
 }
