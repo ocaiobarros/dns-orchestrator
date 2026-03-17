@@ -1,10 +1,10 @@
 // ============================================================
-// DNS Control — VIP Diagnostics Panel
-// Shows Service VIPs (owned + intercepted) with health,
-// resolution status, DNAT routing, local bind, and traffic.
+// DNS Control — VIP Diagnostics Panel (Traffic-Based Validation)
+// Shows real counters, per-backend latency, distribution,
+// and inactive VIP detection.
 // ============================================================
 
-import { Globe, CheckCircle, AlertTriangle, Radio, Loader2, Shield, Wifi, ArrowRight } from 'lucide-react';
+import { Globe, CheckCircle, AlertTriangle, Radio, Loader2, Shield, Wifi, ArrowRight, Activity, XCircle, BarChart3 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface VipDnsProbe {
@@ -14,17 +14,30 @@ interface VipDnsProbe {
   error: string | null;
 }
 
+interface BackendProbe {
+  ip: string;
+  packets: number;
+  bytes: number;
+  resolves: boolean;
+  latency_ms: number;
+  resolved_ip: string;
+  dead: boolean;
+  traffic_pct: number;
+}
+
 interface VipDiagResult {
   ip: string;
   ipv6: string;
   description: string;
   vip_type: 'owned' | 'intercepted';
   healthy: boolean;
+  inactive: boolean;
   dns_probe: VipDnsProbe;
-  local_bind: { bound: boolean; interface: string | null };
+  local_bind: { bound: boolean; required: boolean; interface: string | null };
   route: { present: boolean; type: string | null };
-  dnat: { active: boolean; backend_ip: string | null };
-  traffic: { packets: number };
+  dnat: { active: boolean; rule_count: number };
+  traffic: { packets: number; bytes: number };
+  backends: BackendProbe[];
 }
 
 interface RootRecursion {
@@ -68,13 +81,94 @@ function VipTypeBadge({ type }: { type: 'owned' | 'intercepted' }) {
   );
 }
 
+function InactiveBadge() {
+  return (
+    <span className="text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-warning/15 text-warning border border-warning/25">
+      INACTIVE
+    </span>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
+function formatPackets(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toString();
+}
+
+/* ── Backend distribution bar ─────────────────────────────── */
+
+function BackendBar({ backends }: { backends: BackendProbe[] }) {
+  if (backends.length === 0) return null;
+  const colors = ['bg-primary', 'bg-accent', 'bg-success', 'bg-warning'];
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex items-center gap-1.5 mb-1">
+        <BarChart3 size={10} className="text-muted-foreground" />
+        <span className="text-[9px] font-mono font-bold uppercase text-muted-foreground/60">
+          Backend Distribution
+        </span>
+      </div>
+
+      {/* Stacked bar */}
+      <div className="flex h-2 rounded-full overflow-hidden bg-muted/30">
+        {backends.map((b, i) => (
+          <div
+            key={b.ip}
+            className={`${colors[i % colors.length]} ${b.dead ? 'opacity-20' : ''}`}
+            style={{ width: `${Math.max(b.traffic_pct, 1)}%` }}
+            title={`${b.ip}: ${b.traffic_pct}%`}
+          />
+        ))}
+      </div>
+
+      {/* Backend rows */}
+      {backends.map((b, i) => (
+        <div
+          key={b.ip}
+          className={`flex items-center gap-2 text-[10px] font-mono ${b.dead ? 'text-destructive' : 'text-foreground/80'}`}
+        >
+          <span className={`w-2 h-2 rounded-sm ${colors[i % colors.length]} ${b.dead ? 'opacity-20' : ''}`} />
+          <span className="font-bold">{b.ip}</span>
+          <span className="text-muted-foreground">
+            {formatPackets(b.packets)} pkts · {formatBytes(b.bytes)}
+          </span>
+          <span className={`font-bold ${b.traffic_pct > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>
+            {b.traffic_pct}%
+          </span>
+          <span className="text-muted-foreground">·</span>
+          {b.resolves ? (
+            <span className="text-success flex items-center gap-0.5">
+              <CheckCircle size={9} /> {b.latency_ms}ms
+            </span>
+          ) : (
+            <span className="text-destructive flex items-center gap-0.5">
+              <XCircle size={9} /> FAIL
+            </span>
+          )}
+          {b.dead && (
+            <span className="text-destructive font-bold ml-auto">DEAD</span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Main component ──────────────────────────────────────── */
+
 export default function NocVipDiagnostics({ data, isLoading }: Props) {
   const hasData = !!data;
   const summary = data?.summary;
-
-  const overallOk = summary
-    ? summary.all_healthy && summary.root_recursion_ok
-    : null;
+  const overallOk = summary ? summary.all_healthy && summary.root_recursion_ok : null;
 
   return (
     <div className="noc-surface">
@@ -116,7 +210,9 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
                     className={`p-3 rounded text-xs border ${
                       vip.healthy
                         ? 'bg-success/5 border-success/20'
-                        : 'bg-destructive/8 border-destructive/20'
+                        : vip.inactive
+                          ? 'bg-warning/5 border-warning/20'
+                          : 'bg-destructive/8 border-destructive/20'
                     }`}
                   >
                     {/* Header row */}
@@ -124,6 +220,7 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
                       <StatusDot ok={vip.healthy} />
                       <span className="font-mono font-bold text-sm">{vip.ip}</span>
                       <VipTypeBadge type={vip.vip_type} />
+                      {vip.inactive && <InactiveBadge />}
                       <span className="text-[10px] text-muted-foreground ml-auto">{vip.description}</span>
                     </div>
 
@@ -148,13 +245,20 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
                         )}
                       </div>
 
-                      {/* Local Bind */}
+                      {/* Local Bind (context-aware) */}
                       <div className="space-y-0.5">
                         <div className="text-[9px] uppercase text-muted-foreground/60 font-bold">Local Bind</div>
-                        <div className={`flex items-center gap-1 ${vip.local_bind.bound ? 'text-success' : 'text-destructive'}`}>
-                          {vip.local_bind.bound ? <CheckCircle size={10} /> : <AlertTriangle size={10} />}
-                          <span className="font-mono">{vip.local_bind.bound ? vip.local_bind.interface : 'NOT BOUND'}</span>
-                        </div>
+                        {vip.local_bind.required ? (
+                          <div className={`flex items-center gap-1 ${vip.local_bind.bound ? 'text-success' : 'text-destructive'}`}>
+                            {vip.local_bind.bound ? <CheckCircle size={10} /> : <AlertTriangle size={10} />}
+                            <span className="font-mono">{vip.local_bind.bound ? vip.local_bind.interface : 'NOT BOUND'}</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <Wifi size={10} />
+                            <span className="font-mono text-[10px]">DNAT only</span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Route */}
@@ -166,28 +270,33 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
                         </div>
                       </div>
 
-                      {/* DNAT */}
+                      {/* DNAT with rule count */}
                       <div className="space-y-0.5">
                         <div className="text-[9px] uppercase text-muted-foreground/60 font-bold">DNAT</div>
                         <div className={`flex items-center gap-1 ${vip.dnat.active ? 'text-success' : 'text-muted-foreground'}`}>
                           {vip.dnat.active ? <CheckCircle size={10} /> : <Wifi size={10} />}
-                          <span className="font-mono">{vip.dnat.active ? 'ACTIVE' : 'N/A'}</span>
+                          <span className="font-mono">
+                            {vip.dnat.active ? `${vip.dnat.rule_count} rules` : 'N/A'}
+                          </span>
                         </div>
-                        {vip.dnat.backend_ip && (
-                          <div className="text-[9px] text-muted-foreground font-mono flex items-center gap-0.5">
-                            <ArrowRight size={8} /> {vip.dnat.backend_ip}
-                          </div>
-                        )}
                       </div>
 
-                      {/* Traffic */}
+                      {/* Traffic counters */}
                       <div className="space-y-0.5">
                         <div className="text-[9px] uppercase text-muted-foreground/60 font-bold">Traffic</div>
-                        <div className="font-mono font-bold text-foreground/80">
-                          {vip.traffic.packets > 0 ? vip.traffic.packets.toLocaleString() : '—'} pkts
+                        <div className={`font-mono font-bold ${
+                          vip.traffic.packets > 0 ? 'text-foreground/80' : 'text-warning'
+                        }`}>
+                          {formatPackets(vip.traffic.packets)} pkts
+                        </div>
+                        <div className="text-[9px] text-muted-foreground font-mono">
+                          {formatBytes(vip.traffic.bytes)}
                         </div>
                       </div>
                     </div>
+
+                    {/* Backend distribution */}
+                    <BackendBar backends={vip.backends} />
 
                     {/* Error detail */}
                     {!vip.dns_probe.resolves && vip.dns_probe.error && (
