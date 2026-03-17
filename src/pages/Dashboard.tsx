@@ -47,6 +47,12 @@ export default function Dashboard() {
     refetchInterval: 5000,
   });
 
+  const { data: externalDns, isLoading: externalDnsLoading } = useQuery({
+    queryKey: ['external-dns-probes'],
+    queryFn: async () => { const r = await api.getExternalDnsProbes(); if (!r.success) throw new Error(r.error!); return r.data; },
+    refetchInterval: 30000, // Every 30s — heavier probes
+  });
+
   const reconcileMutation = useMutation({
     mutationFn: async () => {
       setReconciling(true);
