@@ -347,13 +347,14 @@ export default function Dashboard() {
           return {
             name: inst.instance_name || `Resolver ${inst.id}`,
             latencyMs: dnsAvail ? Number(avgLatency) : 0,
-            servfailPct: 0.3, // from real data when available
+            servfailPct: 0.3,
             cacheHitPct: dnsAvail ? Number(avgCacheHit) : 100,
             qps: instStat ? getInstanceQueries(instStat) : (dnsAvail ? Math.round(totalQps / Math.max(safeV2.length, 1)) : 0),
             healthy: inst.current_status === 'healthy',
             upstreamReachable: upstreamOk !== false,
           };
         })}
+        vipDiagnostics={vipDiagnostics}
       />
 
       {/* ═══ TIER 4D: SERVICE VIP DIAGNOSTICS ═══ */}
