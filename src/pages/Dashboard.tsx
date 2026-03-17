@@ -356,8 +356,8 @@ export default function Dashboard() {
         })}
       />
 
-      {/* ═══ TIER 4D: EXTERNAL DNS PROBES ═══ */}
-      <NocExternalDnsProbes data={externalDns} isLoading={externalDnsLoading} />
+      {/* ═══ TIER 4D: SERVICE VIP DIAGNOSTICS ═══ */}
+      <NocVipDiagnostics data={vipDiagnostics} isLoading={vipDiagLoading} />
 
       {/* ═══ TIER 5: TOPOLOGY DETAIL (8col) + Health Matrix (4col) ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
