@@ -114,13 +114,34 @@ COMMAND_CATALOG: dict[str, CommandDefinition] = {
         id="dns-dig-listener-102", name="Dig @100.127.255.102", description="Testa resolução no listener 102",
         category="dns", executable="dig", base_args=["@100.127.255.102", "google.com", "+short", "+time=3", "+tries=1"],
     ),
-    "dns-dig-egress-205": CommandDefinition(
-        id="dns-dig-egress-205", name="Dig @191.243.128.205", description="Testa resolução no IP público 205",
-        category="dns", executable="dig", base_args=["@191.243.128.205", "google.com", "+short", "+time=3", "+tries=1"],
+
+    # External DNS probes — 4.2.2.5/4.2.2.6 are Lumen/Level3 PUBLIC resolvers,
+    # NOT local infrastructure. Used for connectivity and hijack detection.
+    "dns-ext-reachability-4225": CommandDefinition(
+        id="dns-ext-reachability-4225", name="External DNS @4.2.2.5",
+        description="Testa conectividade DNS externa via Lumen/Level3 (probe de reachability)",
+        category="dns-external", executable="dig",
+        base_args=["@4.2.2.5", "google.com", "+short", "+time=3", "+tries=1"],
     ),
-    "dns-dig-egress-206": CommandDefinition(
-        id="dns-dig-egress-206", name="Dig @191.243.128.206", description="Testa resolução no IP público 206",
-        category="dns", executable="dig", base_args=["@191.243.128.206", "google.com", "+short", "+time=3", "+tries=1"],
+    "dns-ext-reachability-4226": CommandDefinition(
+        id="dns-ext-reachability-4226", name="External DNS @4.2.2.6",
+        description="Testa conectividade DNS externa via Lumen/Level3 (probe de reachability)",
+        category="dns-external", executable="dig",
+        base_args=["@4.2.2.6", "google.com", "+short", "+time=3", "+tries=1"],
+    ),
+    "dns-root-trace": CommandDefinition(
+        id="dns-root-trace", name="Root Trace (dig +trace)",
+        description="Resolução iterativa completa desde root servers — valida recursão real",
+        category="dns-external", executable="dig",
+        base_args=["+trace", "google.com"],
+        timeout=15,
+    ),
+    "dns-root-query": CommandDefinition(
+        id="dns-root-query", name="Root NS Query",
+        description="Consulta direta a a.root-servers.net — valida alcançabilidade dos root servers",
+        category="dns-external", executable="dig",
+        base_args=["@a.root-servers.net", ".", "NS", "+short", "+time=5", "+tries=1"],
+        timeout=10,
     ),
 
     # NFTables — via ruleset, not service
