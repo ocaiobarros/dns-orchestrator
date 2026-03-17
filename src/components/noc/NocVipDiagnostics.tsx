@@ -1,12 +1,12 @@
 // ============================================================
-// DNS Control — VIP Diagnostics Panel (Hardened)
-// Per-VIP entry counters, cross-validation, debug mode,
-// explicit status: HEALTHY / INACTIVE_VIP / DEAD / NEVER_SELECTED /
-// COUNTER_MISMATCH / PARSE_ERROR / UNKNOWN / UNHEALTHY
+// DNS Control — VIP Diagnostics Panel (Audit-Grade)
+// Per-VIP entry counters, QPS from delta, cross-validation,
+// debug mode with literal nft rules, source timestamps,
+// STALE_DATA detection, 4-layer validation display
 // ============================================================
 
 import { useState } from 'react';
-import { Globe, CheckCircle, AlertTriangle, Radio, Loader2, Shield, Wifi, XCircle, BarChart3, Bug, AlertOctagon, HelpCircle } from 'lucide-react';
+import { Globe, CheckCircle, AlertTriangle, Radio, Loader2, Shield, Wifi, XCircle, BarChart3, Bug, AlertOctagon, HelpCircle, Clock, Layers } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface ProtoCounter {
@@ -26,12 +26,41 @@ interface CrossValidation {
   paths_total_packets: number;
   delta: number;
   mismatch: boolean;
-  tolerance_pct: number;
+  tolerance: string;
+}
+
+interface QpsData {
+  qps: number | null;
+  window_seconds: number | null;
+  delta_packets: number | null;
+  counter_reset?: boolean;
+}
+
+interface CounterHistoryEntry {
+  ts: number;
+  iso: string;
+  entry_packets: number;
+  entry_bytes: number;
+  qps?: number;
+}
+
+interface ValidationLayers {
+  configuration_present: boolean;
+  traffic_observed: boolean;
+  resolution_functional: boolean;
+  health_inferred: boolean;
+}
+
+interface SourceTimestamp {
+  collected_at: string;
+  duration_ms: number;
+  ok: boolean;
 }
 
 interface BackendProbe {
   ip: string;
   status: string;
+  reason?: string | null;
   packets: number;
   bytes: number;
   udp: ProtoCounter;
@@ -55,10 +84,22 @@ interface BackendPath {
   data_source?: string;
 }
 
+interface LiteralRule {
+  type: string;
+  chain?: string;
+  parent_chain?: string;
+  protocol_detected?: string;
+  protocol_hint?: string;
+  literal: string;
+  packets: number | null;
+  bytes: number | null;
+}
+
 interface DebugInfo {
   matched_rules: string[];
   matched_chains: string[];
   parse_notes: string[];
+  literal_rules?: LiteralRule[];
 }
 
 interface VipDiagResult {
@@ -67,16 +108,20 @@ interface VipDiagResult {
   description: string;
   vip_type: 'owned' | 'intercepted';
   status: string;
+  reason?: string | null;
   healthy: boolean;
   inactive: boolean;
   parse_error: string | null;
   counter_mismatch: boolean;
+  validation_layers?: ValidationLayers;
   dns_probe: VipDnsProbe;
   local_bind: { bound: boolean; required: boolean; interface: string | null };
   route: { present: boolean; type: string | null };
   dnat: { active: boolean; rule_count: number };
   entry_counters: { udp: ProtoCounter; tcp: ProtoCounter; unknown?: ProtoCounter };
   traffic: { packets: number; bytes: number; udp: ProtoCounter; tcp: ProtoCounter };
+  qps?: QpsData;
+  counter_history?: CounterHistoryEntry[];
   cross_validation: CrossValidation;
   backend_paths: BackendPath[];
   backends: BackendProbe[];
@@ -91,6 +136,7 @@ interface RootRecursion {
 interface VipDiagnosticsData {
   vip_diagnostics: VipDiagResult[];
   root_recursion: RootRecursion;
+  source_timestamps?: Record<string, SourceTimestamp>;
   summary: {
     total_vips: number;
     healthy_vips: number;
@@ -107,6 +153,8 @@ interface Props {
   data: VipDiagnosticsData | null | undefined;
   isLoading?: boolean;
 }
+
+const STALE_THRESHOLD_MS = 120_000; // 2 minutes
 
 /* ── Utility ─────────────────────────────────────────────── */
 
@@ -128,6 +176,12 @@ function formatPackets(n: number): string {
   return n.toString();
 }
 
+function isStale(ts: SourceTimestamp | undefined): boolean {
+  if (!ts) return true;
+  const age = Date.now() - new Date(ts.collected_at).getTime();
+  return age > STALE_THRESHOLD_MS;
+}
+
 /* ── Status badges ───────────────────────────────────────── */
 
 const STATUS_STYLES: Record<string, string> = {
@@ -139,6 +193,7 @@ const STATUS_STYLES: Record<string, string> = {
   UNHEALTHY: 'bg-destructive/15 text-destructive border-destructive/25',
   DEAD: 'bg-destructive/15 text-destructive border-destructive/25',
   NEVER_SELECTED: 'bg-warning/15 text-warning border-warning/25',
+  STALE_DATA: 'bg-warning/15 text-warning border-warning/25',
   OK: 'bg-success/15 text-success border-success/25',
 };
 
@@ -148,6 +203,7 @@ function StatusBadge({ status }: { status: string }) {
     : status === 'UNKNOWN' ? HelpCircle
     : status === 'COUNTER_MISMATCH' ? AlertTriangle
     : status === 'DEAD' ? XCircle
+    : status === 'STALE_DATA' ? Clock
     : status === 'HEALTHY' || status === 'OK' ? CheckCircle
     : AlertTriangle;
 
@@ -173,17 +229,79 @@ function VipTypeBadge({ type }: { type: 'owned' | 'intercepted' }) {
 
 /* ── Data source label ───────────────────────────────────── */
 
-function DataSourceTag({ label }: { label: string }) {
+function DataSourceTag({ label, stale }: { label: string; stale?: boolean }) {
   return (
-    <span className="text-[8px] font-mono px-1 py-0.5 rounded bg-muted/50 text-muted-foreground/70 border border-border/50">
-      {label}
+    <span className={`text-[8px] font-mono px-1 py-0.5 rounded border ${
+      stale
+        ? 'bg-warning/10 text-warning border-warning/30'
+        : 'bg-muted/50 text-muted-foreground/70 border-border/50'
+    }`}>
+      {stale && '⚠ '}{label}
     </span>
+  );
+}
+
+/* ── Source timestamps bar ───────────────────────────────── */
+
+function SourceTimestampsBar({ sources }: { sources?: Record<string, SourceTimestamp> }) {
+  if (!sources) return null;
+  const entries = Object.entries(sources);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap mb-2">
+      <Clock size={9} className="text-muted-foreground/50" />
+      <span className="text-[8px] font-mono text-muted-foreground/50 uppercase">Sources:</span>
+      {entries.map(([name, ts]) => {
+        const stale = isStale(ts);
+        const age = Math.round((Date.now() - new Date(ts.collected_at).getTime()) / 1000);
+        return (
+          <span
+            key={name}
+            className={`text-[8px] font-mono px-1 py-0.5 rounded border ${
+              stale ? 'bg-warning/10 text-warning border-warning/30' : ts.ok ? 'bg-success/5 text-success border-success/20' : 'bg-destructive/5 text-destructive border-destructive/20'
+            }`}
+            title={`Collected: ${ts.collected_at}, Duration: ${ts.duration_ms}ms`}
+          >
+            {name} {age}s ago {!ts.ok && '✗'}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── Validation layers ───────────────────────────────────── */
+
+function ValidationLayersBar({ layers }: { layers?: ValidationLayers }) {
+  if (!layers) return null;
+  const items = [
+    { label: 'Config', ok: layers.configuration_present },
+    { label: 'Traffic', ok: layers.traffic_observed },
+    { label: 'Resolution', ok: layers.resolution_functional },
+    { label: 'Health', ok: layers.health_inferred },
+  ];
+
+  return (
+    <div className="flex items-center gap-1 mb-2">
+      <Layers size={9} className="text-muted-foreground/50 mr-0.5" />
+      {items.map(({ label, ok }) => (
+        <span
+          key={label}
+          className={`text-[8px] font-mono font-bold px-1.5 py-0.5 rounded border ${
+            ok ? 'bg-success/10 text-success border-success/20' : 'bg-destructive/10 text-destructive border-destructive/20'
+          }`}
+        >
+          {ok ? '✓' : '✗'} {label}
+        </span>
+      ))}
+    </div>
   );
 }
 
 /* ── Protocol split bar ──────────────────────────────────── */
 
-function ProtocolBar({ udp, tcp, unknown, label }: { udp: ProtoCounter; tcp: ProtoCounter; unknown?: ProtoCounter; label?: string }) {
+function ProtocolBar({ udp, tcp, unknown, label, stale }: { udp: ProtoCounter; tcp: ProtoCounter; unknown?: ProtoCounter; label?: string; stale?: boolean }) {
   const unknownPkts = unknown?.packets || 0;
   const total = udp.packets + tcp.packets + unknownPkts;
   if (total === 0) return null;
@@ -196,7 +314,7 @@ function ProtocolBar({ udp, tcp, unknown, label }: { udp: ProtoCounter; tcp: Pro
       {label && (
         <div className="flex items-center gap-1.5">
           <span className="text-[9px] uppercase text-muted-foreground/60 font-bold">{label}</span>
-          <DataSourceTag label="nft counter" />
+          <DataSourceTag label="nft counter" stale={stale} />
         </div>
       )}
       <div className="flex h-1.5 rounded-full overflow-hidden bg-muted/30">
@@ -213,6 +331,30 @@ function ProtocolBar({ udp, tcp, unknown, label }: { udp: ProtoCounter; tcp: Pro
   );
 }
 
+/* ── QPS display ─────────────────────────────────────────── */
+
+function QpsDisplay({ qps }: { qps?: QpsData }) {
+  if (!qps || qps.qps === null) {
+    return (
+      <div className="text-[9px] text-muted-foreground/50 font-mono">QPS: calculating...</div>
+    );
+  }
+  return (
+    <div className="space-y-0.5">
+      <div className="flex items-center gap-1 text-[9px] uppercase text-muted-foreground/60 font-bold">
+        Real QPS <DataSourceTag label="delta/window" />
+      </div>
+      <div className="font-mono font-bold text-foreground/80">
+        {qps.qps.toLocaleString()} q/s
+      </div>
+      <div className="text-[9px] text-muted-foreground font-mono">
+        Δ{qps.delta_packets?.toLocaleString()} in {qps.window_seconds}s
+        {qps.counter_reset && <span className="text-warning ml-1">⚠ reset</span>}
+      </div>
+    </div>
+  );
+}
+
 /* ── Cross-validation banner ─────────────────────────────── */
 
 function CrossValidationBanner({ cv }: { cv: CrossValidation }) {
@@ -222,7 +364,7 @@ function CrossValidationBanner({ cv }: { cv: CrossValidation }) {
         <CheckCircle size={10} className="text-success" />
         <span className="text-success">Cross-validation OK</span>
         <span className="text-muted-foreground">
-          entry={formatPackets(cv.entry_total_packets)} paths={formatPackets(cv.paths_total_packets)} (Δ={cv.delta}, tol={cv.tolerance_pct}%)
+          entry={formatPackets(cv.entry_total_packets)} paths={formatPackets(cv.paths_total_packets)} (Δ={cv.delta}, tol={cv.tolerance})
         </span>
         <DataSourceTag label="entry vs path counters" />
       </div>
@@ -233,14 +375,14 @@ function CrossValidationBanner({ cv }: { cv: CrossValidation }) {
       <AlertTriangle size={10} className="text-accent" />
       <span className="text-accent font-bold">COUNTER MISMATCH</span>
       <span className="text-muted-foreground">
-        entry={formatPackets(cv.entry_total_packets)} vs paths={formatPackets(cv.paths_total_packets)} (Δ={cv.delta}, tol={cv.tolerance_pct}%)
+        entry={formatPackets(cv.entry_total_packets)} vs paths={formatPackets(cv.paths_total_packets)} (Δ={cv.delta}, tol={cv.tolerance})
       </span>
       <DataSourceTag label="entry vs path counters" />
     </div>
   );
 }
 
-/* ── Debug panel ─────────────────────────────────────────── */
+/* ── Debug panel (with literal rules) ────────────────────── */
 
 function DebugPanel({ debug, paths }: { debug: DebugInfo; paths: BackendPath[] }) {
   return (
@@ -274,6 +416,49 @@ function DebugPanel({ debug, paths }: { debug: DebugInfo; paths: BackendPath[] }
           {debug.matched_chains.map((c, i) => (
             <div key={i} className="text-[9px] font-mono text-muted-foreground/80 pl-2 break-all">{c}</div>
           ))}
+        </div>
+      )}
+
+      {/* Literal nft rules */}
+      {debug.literal_rules && debug.literal_rules.length > 0 && (
+        <div className="space-y-0.5">
+          <div className="text-[9px] font-bold text-muted-foreground">Literal nft Rules:</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[8px] font-mono">
+              <thead>
+                <tr className="text-muted-foreground/60 border-b border-border/50">
+                  <th className="text-left pb-0.5">Type</th>
+                  <th className="text-left pb-0.5">Chain</th>
+                  <th className="text-left pb-0.5">Proto</th>
+                  <th className="text-right pb-0.5">Pkts</th>
+                  <th className="text-right pb-0.5">Bytes</th>
+                  <th className="text-left pb-0.5">Rule</th>
+                </tr>
+              </thead>
+              <tbody>
+                {debug.literal_rules.map((r, i) => (
+                  <tr key={i} className="border-b border-border/20 last:border-0">
+                    <td className="py-0.5">
+                      <span className={`px-1 rounded ${
+                        r.type === 'dnat' || r.type === 'backend_dnat' || r.type === 'nested_dnat'
+                          ? 'bg-accent/15 text-accent'
+                          : r.type === 'dispatch' ? 'bg-primary/15 text-primary'
+                          : r.type === 'entry_counter' ? 'bg-success/15 text-success'
+                          : 'bg-muted text-muted-foreground'
+                      }`}>{r.type}</span>
+                    </td>
+                    <td className="py-0.5 text-muted-foreground/60">{r.chain || r.parent_chain || '—'}</td>
+                    <td className={`py-0.5 ${r.protocol_detected === 'unknown' ? 'text-warning' : ''}`}>
+                      {r.protocol_detected || r.protocol_hint || '?'}
+                    </td>
+                    <td className="text-right py-0.5">{r.packets != null ? formatPackets(r.packets) : '—'}</td>
+                    <td className="text-right py-0.5">{r.bytes != null ? formatBytes(r.bytes) : '—'}</td>
+                    <td className="py-0.5 text-muted-foreground/60 max-w-[300px] truncate" title={r.literal}>{r.literal}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -375,12 +560,47 @@ function BackendTable({ backends }: { backends: BackendProbe[] }) {
                   )}
                 </td>
                 <td className="py-1.5">
-                  <StatusBadge status={b.status} />
+                  <div className="flex flex-col gap-0.5">
+                    <StatusBadge status={b.status} />
+                    {b.reason && (
+                      <span className="text-[8px] text-muted-foreground/60 max-w-[200px] truncate" title={b.reason}>
+                        {b.reason}
+                      </span>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+/* ── Mini QPS sparkline ──────────────────────────────────── */
+
+function QpsSparkline({ history }: { history?: CounterHistoryEntry[] }) {
+  if (!history || history.length < 2) return null;
+  const qpsValues = history.filter(h => h.qps != null).map(h => h.qps!);
+  if (qpsValues.length < 2) return null;
+
+  const max = Math.max(...qpsValues, 1);
+  const w = 120;
+  const h = 24;
+  const step = w / (qpsValues.length - 1);
+  const pts = qpsValues.map((v, i) => `${i * step},${h - (v / max) * h}`).join(' ');
+
+  return (
+    <div className="space-y-0.5">
+      <div className="flex items-center gap-1 text-[9px] uppercase text-muted-foreground/60 font-bold">
+        QPS History <DataSourceTag label="counter delta" />
+      </div>
+      <svg width={w} height={h} className="overflow-visible">
+        <polyline points={pts} fill="none" stroke="hsl(var(--primary))" strokeWidth={1.5} />
+      </svg>
+      <div className="text-[8px] font-mono text-muted-foreground">
+        {qpsValues.length} samples, max {Math.round(max)} q/s
       </div>
     </div>
   );
@@ -393,6 +613,11 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
   const hasData = !!data;
   const summary = data?.summary;
   const overallOk = summary ? summary.all_healthy && summary.root_recursion_ok : null;
+
+  // Check for stale data
+  const anyStale = data?.source_timestamps
+    ? Object.values(data.source_timestamps).some(ts => isStale(ts))
+    : false;
 
   return (
     <div className="noc-surface">
@@ -409,6 +634,7 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
             </span>
             {summary.has_parse_errors && <StatusBadge status="PARSE_ERROR" />}
             {summary.has_counter_mismatch && <StatusBadge status="COUNTER_MISMATCH" />}
+            {anyStale && <StatusBadge status="STALE_DATA" />}
           </>
         )}
         <button
@@ -431,6 +657,9 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
 
         {hasData && (
           <>
+            {/* Source timestamps */}
+            <SourceTimestampsBar sources={data.source_timestamps} />
+
             {/* VIP Health Grid */}
             <div>
               <div className="flex items-center gap-2 mb-2">
@@ -438,7 +667,7 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-foreground/80">
                   Service VIPs — Per-VIP Counters
                 </span>
-                <DataSourceTag label="nft list ruleset + dig probes" />
+                <DataSourceTag label="nft list ruleset + dig probes" stale={data.source_timestamps ? isStale(data.source_timestamps.nft) : false} />
               </div>
               <div className="grid grid-cols-1 gap-3">
                 {data.vip_diagnostics.map((vip, i) => (
@@ -465,8 +694,16 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
                       <span className="text-[10px] text-muted-foreground ml-auto">{vip.description}</span>
                     </div>
 
+                    {/* Reason for non-healthy */}
+                    {vip.reason && (
+                      <div className="flex items-start gap-2 p-2 mb-2 rounded bg-muted/30 border border-border/50 text-[10px] font-mono text-muted-foreground">
+                        <HelpCircle size={10} className="shrink-0 mt-0.5" />
+                        <span>{vip.reason}</span>
+                      </div>
+                    )}
+
                     {/* Parse error banner */}
-                    {vip.parse_error && (
+                    {vip.parse_error && !vip.reason && (
                       <div className="flex items-center gap-2 p-2 mb-2 rounded bg-destructive/10 border border-destructive/20 text-[10px] font-mono text-destructive">
                         <AlertOctagon size={10} />
                         <span className="font-bold">PARSE ERROR:</span>
@@ -474,11 +711,14 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
                       </div>
                     )}
 
+                    {/* Validation layers */}
+                    <ValidationLayersBar layers={vip.validation_layers} />
+
                     {/* Status grid */}
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-2">
+                    <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-2">
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-1 text-[9px] uppercase text-muted-foreground/60 font-bold">
-                          DNS Probe <DataSourceTag label="dig" />
+                          DNS Probe <DataSourceTag label="dig" stale={data.source_timestamps ? isStale(data.source_timestamps.dig) : false} />
                         </div>
                         {vip.dns_probe.resolves ? (
                           <div className="flex items-center gap-1 text-success">
@@ -498,7 +738,7 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
 
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-1 text-[9px] uppercase text-muted-foreground/60 font-bold">
-                          Local Bind <DataSourceTag label="ip addr" />
+                          Local Bind <DataSourceTag label="ip addr" stale={data.source_timestamps ? isStale(data.source_timestamps.ip_addr) : false} />
                         </div>
                         {vip.local_bind.required ? (
                           <div className={`flex items-center gap-1 ${vip.local_bind.bound ? 'text-success' : 'text-destructive'}`}>
@@ -515,7 +755,7 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
 
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-1 text-[9px] uppercase text-muted-foreground/60 font-bold">
-                          Route /32 <DataSourceTag label="ip route" />
+                          Route /32 <DataSourceTag label="ip route" stale={data.source_timestamps ? isStale(data.source_timestamps.ip_route) : false} />
                         </div>
                         <div className={`flex items-center gap-1 ${vip.route.present ? 'text-success' : 'text-warning'}`}>
                           {vip.route.present ? <CheckCircle size={10} /> : <AlertTriangle size={10} />}
@@ -525,7 +765,7 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
 
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-1 text-[9px] uppercase text-muted-foreground/60 font-bold">
-                          DNAT Rules <DataSourceTag label="nft" />
+                          DNAT Rules <DataSourceTag label="nft" stale={data.source_timestamps ? isStale(data.source_timestamps.nft) : false} />
                         </div>
                         <div className={`flex items-center gap-1 ${vip.dnat.active ? 'text-success' : 'text-muted-foreground'}`}>
                           {vip.dnat.active ? <CheckCircle size={10} /> : <Wifi size={10} />}
@@ -548,7 +788,13 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
                           {formatBytes(vip.traffic.bytes)}
                         </div>
                       </div>
+
+                      {/* QPS from delta */}
+                      <QpsDisplay qps={vip.qps} />
                     </div>
+
+                    {/* QPS sparkline */}
+                    <QpsSparkline history={vip.counter_history} />
 
                     {/* Per-VIP protocol split */}
                     <ProtocolBar
@@ -556,6 +802,7 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
                       tcp={vip.traffic.tcp}
                       unknown={vip.entry_counters.unknown}
                       label="VIP Entry — UDP vs TCP"
+                      stale={data.source_timestamps ? isStale(data.source_timestamps.nft) : false}
                     />
 
                     {/* Cross-validation */}

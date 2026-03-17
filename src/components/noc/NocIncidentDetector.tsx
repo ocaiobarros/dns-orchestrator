@@ -1,6 +1,6 @@
 // ============================================================
 // DNS Control — DNS Incident Detection Panel
-// Automatic detection of DNS anomalies based on configurable thresholds
+// Automatic detection of DNS anomalies + VIP diagnostic alerts
 // ============================================================
 
 import { useState, useMemo } from 'react';
@@ -21,7 +21,7 @@ export interface DnsIncident {
   id: string;
   timestamp: string;
   resolver: string;
-  type: 'upstream_latency' | 'servfail_spike' | 'cache_degradation' | 'qps_drop' | 'instance_down' | 'upstream_unreachable';
+  type: string;
   severity: 'warning' | 'critical';
   metric: string;
   value: number;
@@ -40,9 +40,33 @@ interface ResolverMetrics {
   upstreamReachable: boolean;
 }
 
+interface VipDiagSummary {
+  has_parse_errors?: boolean;
+  has_counter_mismatch?: boolean;
+}
+
+interface VipDiagResult {
+  ip: string;
+  status: string;
+  reason?: string | null;
+  counter_mismatch: boolean;
+  parse_error: string | null;
+  backends?: Array<{
+    ip: string;
+    status: string;
+    never_selected: boolean;
+    dead: boolean;
+    reason?: string | null;
+  }>;
+}
+
 interface Props {
   resolvers: ResolverMetrics[];
   thresholds?: Partial<IncidentThresholds>;
+  vipDiagnostics?: {
+    vip_diagnostics: VipDiagResult[];
+    summary: VipDiagSummary;
+  } | null;
 }
 
 const DEFAULT_THRESHOLDS: IncidentThresholds = {
@@ -62,14 +86,23 @@ const INCIDENT_LABELS: Record<string, string> = {
   qps_drop: 'QPS Drop',
   instance_down: 'Instance Down',
   upstream_unreachable: 'Upstream Unreachable',
+  counter_mismatch: 'Counter Mismatch',
+  parse_error: 'Parse Error',
+  never_selected: 'Never Selected',
+  dead_backend: 'Dead Backend',
+  inactive_vip: 'Inactive VIP',
 };
 
-function detectIncidents(resolvers: ResolverMetrics[], t: IncidentThresholds): DnsIncident[] {
+function detectIncidents(
+  resolvers: ResolverMetrics[],
+  t: IncidentThresholds,
+  vipData?: { vip_diagnostics: VipDiagResult[]; summary: VipDiagSummary } | null,
+): DnsIncident[] {
   const incidents: DnsIncident[] = [];
   const now = new Date().toISOString();
 
+  // ── Resolver-based incidents ──
   resolvers.forEach(r => {
-    // Instance down
     if (!r.healthy) {
       incidents.push({
         id: `${r.name}-down`, timestamp: now, resolver: r.name,
@@ -79,7 +112,6 @@ function detectIncidents(resolvers: ResolverMetrics[], t: IncidentThresholds): D
       });
     }
 
-    // Upstream unreachable
     if (!r.upstreamReachable) {
       incidents.push({
         id: `${r.name}-upstream`, timestamp: now, resolver: r.name,
@@ -89,7 +121,6 @@ function detectIncidents(resolvers: ResolverMetrics[], t: IncidentThresholds): D
       });
     }
 
-    // Latency
     if (r.latencyMs > t.latencyCriticalMs) {
       incidents.push({
         id: `${r.name}-lat-crit`, timestamp: now, resolver: r.name,
@@ -106,7 +137,6 @@ function detectIncidents(resolvers: ResolverMetrics[], t: IncidentThresholds): D
       });
     }
 
-    // SERVFAIL
     if (r.servfailPct > t.servfailCriticalPct) {
       incidents.push({
         id: `${r.name}-sf-crit`, timestamp: now, resolver: r.name,
@@ -123,7 +153,6 @@ function detectIncidents(resolvers: ResolverMetrics[], t: IncidentThresholds): D
       });
     }
 
-    // Cache hit
     if (r.cacheHitPct < t.cacheHitCriticalPct) {
       incidents.push({
         id: `${r.name}-ch-crit`, timestamp: now, resolver: r.name,
@@ -140,7 +169,6 @@ function detectIncidents(resolvers: ResolverMetrics[], t: IncidentThresholds): D
       });
     }
 
-    // QPS drop
     if (r.previousQps != null && r.previousQps > 0) {
       const dropPct = ((r.previousQps - r.qps) / r.previousQps) * 100;
       if (dropPct > t.qpsDropPct) {
@@ -154,14 +182,71 @@ function detectIncidents(resolvers: ResolverMetrics[], t: IncidentThresholds): D
     }
   });
 
+  // ── VIP diagnostic incidents ──
+  if (vipData?.vip_diagnostics) {
+    for (const vip of vipData.vip_diagnostics) {
+      // COUNTER_MISMATCH
+      if (vip.counter_mismatch) {
+        incidents.push({
+          id: `vip-${vip.ip}-mismatch`, timestamp: now, resolver: `VIP ${vip.ip}`,
+          type: 'counter_mismatch', severity: 'warning',
+          metric: 'counter_cross_validation', value: 1, threshold: 0,
+          message: vip.reason || `VIP ${vip.ip} entry/path counter mismatch detectado`,
+        });
+      }
+
+      // PARSE_ERROR
+      if (vip.parse_error) {
+        incidents.push({
+          id: `vip-${vip.ip}-parse`, timestamp: now, resolver: `VIP ${vip.ip}`,
+          type: 'parse_error', severity: 'critical',
+          metric: 'nft_parse', value: 1, threshold: 0,
+          message: `VIP ${vip.ip}: ${vip.parse_error}`,
+        });
+      }
+
+      // INACTIVE_VIP
+      if (vip.status === 'INACTIVE_VIP') {
+        incidents.push({
+          id: `vip-${vip.ip}-inactive`, timestamp: now, resolver: `VIP ${vip.ip}`,
+          type: 'inactive_vip', severity: 'warning',
+          metric: 'vip_traffic', value: 0, threshold: 1,
+          message: vip.reason || `VIP ${vip.ip} sem tráfego observado`,
+        });
+      }
+
+      // Per-backend alerts
+      if (vip.backends) {
+        for (const backend of vip.backends) {
+          if (backend.never_selected) {
+            incidents.push({
+              id: `vip-${vip.ip}-ns-${backend.ip}`, timestamp: now, resolver: `VIP ${vip.ip}`,
+              type: 'never_selected', severity: 'warning',
+              metric: 'backend_selection', value: 0, threshold: 1,
+              message: backend.reason || `Backend ${backend.ip} configurado mas nunca selecionado via DNAT`,
+            });
+          }
+          if (backend.dead) {
+            incidents.push({
+              id: `vip-${vip.ip}-dead-${backend.ip}`, timestamp: now, resolver: `VIP ${vip.ip}`,
+              type: 'dead_backend', severity: 'critical',
+              metric: 'backend_health', value: 0, threshold: 1,
+              message: backend.reason || `Backend ${backend.ip} não responde e sem tráfego`,
+            });
+          }
+        }
+      }
+    }
+  }
+
   return incidents.sort((a, b) => (a.severity === 'critical' ? -1 : 1) - (b.severity === 'critical' ? -1 : 1));
 }
 
-export default function NocIncidentDetector({ resolvers, thresholds }: Props) {
+export default function NocIncidentDetector({ resolvers, thresholds, vipDiagnostics }: Props) {
   const [showSettings, setShowSettings] = useState(false);
   const t = { ...DEFAULT_THRESHOLDS, ...thresholds };
 
-  const incidents = useMemo(() => detectIncidents(resolvers, t), [resolvers, t]);
+  const incidents = useMemo(() => detectIncidents(resolvers, t, vipDiagnostics), [resolvers, t, vipDiagnostics]);
   const criticals = incidents.filter(i => i.severity === 'critical');
   const warnings = incidents.filter(i => i.severity === 'warning');
   const isClean = incidents.length === 0;
@@ -187,7 +272,6 @@ export default function NocIncidentDetector({ resolvers, thresholds }: Props) {
         </button>
       </div>
       <div className="noc-surface-body">
-        {/* Thresholds settings */}
         <AnimatePresence>
           {showSettings && (
             <motion.div
@@ -230,15 +314,13 @@ export default function NocIncidentDetector({ resolvers, thresholds }: Props) {
           )}
         </AnimatePresence>
 
-        {/* Clean state */}
         {isClean && (
           <div className="flex items-center gap-2 py-3 text-xs text-success">
             <CheckCircle size={14} />
-            <span>Nenhum incidente detectado — todos os resolvers operando dentro dos limiares</span>
+            <span>Nenhum incidente detectado — todos os resolvers e VIPs operando dentro dos limiares</span>
           </div>
         )}
 
-        {/* Incidents list */}
         <AnimatePresence>
           {incidents.map((inc, i) => (
             <motion.div
