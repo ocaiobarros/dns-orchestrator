@@ -588,10 +588,17 @@ export function mockVipDiagnostics() {
     ip, ipv6, description: desc,
     vip_type: 'intercepted' as const,
     status,
+    reason: status !== 'HEALTHY' ? `VIP ${ip} status is ${status}` : null,
     healthy: status === 'HEALTHY',
     inactive: status === 'INACTIVE_VIP',
     parse_error: null as string | null,
     counter_mismatch: false,
+    validation_layers: {
+      configuration_present: true,
+      traffic_observed: total > 0,
+      resolution_functional: true,
+      health_inferred: status === 'HEALTHY',
+    },
     dns_probe: { resolves: true, resolved_ip: '142.250.219.14', latency_ms: ip === '4.2.2.5' ? 1.8 : 2.1, error: null },
     local_bind: { bound: false, required: false, interface: null },
     route: { present: true, type: 'host /32' },
@@ -606,12 +613,20 @@ export function mockVipDiagnostics() {
       udp: { packets: udpTotal, bytes: udpTotal * 72 },
       tcp: { packets: tcpTotal, bytes: tcpTotal * 72 },
     },
+    qps: { qps: Math.round(total / 300), window_seconds: 10, delta_packets: Math.round(total / 30) },
+    counter_history: Array.from({ length: 10 }, (_, i) => ({
+      ts: Date.now() / 1000 - (10 - i) * 10,
+      iso: new Date(Date.now() - (10 - i) * 10000).toISOString(),
+      entry_packets: Math.round(total * (0.9 + i * 0.01)),
+      entry_bytes: Math.round(total * 72 * (0.9 + i * 0.01)),
+      qps: Math.round(total / 300 + (Math.random() - 0.5) * 100),
+    })),
     cross_validation: {
       entry_total_packets: total,
       paths_total_packets: total,
       delta: 0,
       mismatch: false,
-      tolerance_pct: 5,
+      tolerance: 'max(3 pkts, 2%)',
     },
     backend_paths: paths,
     backends,
@@ -636,6 +651,8 @@ export function mockVipDiagnostics() {
     mkPath('100.127.255.103', 'tcp', 39200, 'ipv4_dns_tcp_unbound03'),
   ];
 
+  const now = new Date().toISOString();
+
   return {
     vip_diagnostics: [
       mkVip('4.2.2.5', '2620:119:35::35', 'DNS Público Primário (Intercepted)', vip1Backends, vip1Udp, vip1Tcp, vip1Total, vip1Paths),
@@ -644,6 +661,12 @@ export function mockVipDiagnostics() {
     root_recursion: {
       trace: { status: 'ok', latency_ms: 320.5, reached_root: true, output_lines: 47, error: null },
       root_query: { status: 'ok', target: 'a.root-servers.net', latency_ms: 85.2, answer: 'a.root-servers.net.\nb.root-servers.net.', error: null },
+    },
+    source_timestamps: {
+      nft: { collected_at: now, duration_ms: 45, ok: true },
+      dig: { collected_at: now, duration_ms: 12, ok: true },
+      ip_addr: { collected_at: now, duration_ms: 3, ok: true },
+      ip_route: { collected_at: now, duration_ms: 5, ok: true },
     },
     summary: {
       total_vips: 2, healthy_vips: 2, all_healthy: true, degraded: false,
