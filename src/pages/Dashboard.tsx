@@ -23,6 +23,7 @@ import NocQuickActions from '@/components/noc/NocQuickActions';
 import NocDnsPathFlow from '@/components/noc/NocDnsPathFlow';
 import NocIncidentDetector from '@/components/noc/NocIncidentDetector';
 import NocDeploySimulation from '@/components/noc/NocDeploySimulation';
+import NocExternalDnsProbes from '@/components/noc/NocExternalDnsProbes';
 
 export default function Dashboard() {
   const { data: sysInfo, isLoading: sysLoading, error: sysError } = useSystemInfo();
@@ -44,6 +45,12 @@ export default function Dashboard() {
     queryKey: ['events', 'recent'],
     queryFn: async () => { const r = await api.getEvents(undefined, 20); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 5000,
+  });
+
+  const { data: externalDns, isLoading: externalDnsLoading } = useQuery({
+    queryKey: ['external-dns-probes'],
+    queryFn: async () => { const r = await api.getExternalDnsProbes(); if (!r.success) throw new Error(r.error!); return r.data; },
+    refetchInterval: 30000, // Every 30s — heavier probes
   });
 
   const reconcileMutation = useMutation({
@@ -348,6 +355,9 @@ export default function Dashboard() {
           };
         })}
       />
+
+      {/* ═══ TIER 4D: EXTERNAL DNS PROBES ═══ */}
+      <NocExternalDnsProbes data={externalDns} isLoading={externalDnsLoading} />
 
       {/* ═══ TIER 5: TOPOLOGY DETAIL (8col) + Health Matrix (4col) ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
