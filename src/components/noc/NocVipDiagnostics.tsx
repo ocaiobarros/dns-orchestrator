@@ -142,6 +142,7 @@ interface VipDiagnosticsData {
   vip_diagnostics: VipDiagResult[];
   root_recursion: RootRecursion;
   source_timestamps?: Record<string, SourceTimestamp>;
+  stale_thresholds?: Record<string, number>;
   summary: {
     total_vips: number;
     healthy_vips: number;
