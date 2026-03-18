@@ -712,6 +712,11 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
                       <span className="font-mono font-bold text-sm">{vip.ip}</span>
                       <VipTypeBadge type={vip.vip_type} />
                       <StatusBadge status={vip.status} />
+                      {vip.reason_code && (
+                        <span className="text-[8px] font-mono text-muted-foreground/60 px-1 py-0.5 bg-muted/40 rounded border border-border/30">
+                          {vip.reason_code}
+                        </span>
+                      )}
                       <span className="text-[10px] text-muted-foreground ml-auto">{vip.description}</span>
                     </div>
 
