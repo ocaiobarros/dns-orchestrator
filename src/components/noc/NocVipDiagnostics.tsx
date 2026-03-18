@@ -160,7 +160,7 @@ interface Props {
   isLoading?: boolean;
 }
 
-const STALE_THRESHOLD_MS = 120_000; // 2 minutes
+const DEFAULT_STALE_THRESHOLD_MS = 120_000; // 2 minutes fallback
 
 /* ── Utility ─────────────────────────────────────────────── */
 
