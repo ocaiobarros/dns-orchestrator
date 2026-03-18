@@ -597,6 +597,7 @@ export function mockVipDiagnostics() {
     vip_type: 'intercepted' as const,
     status,
     reason: status !== 'HEALTHY' ? `VIP ${ip} status is ${status}` : null,
+    reason_code: status !== 'HEALTHY' ? `VIP_${status}` : 'VIP_HEALTHY',
     healthy: status === 'HEALTHY',
     inactive: status === 'INACTIVE_VIP',
     parse_error: null as string | null,
