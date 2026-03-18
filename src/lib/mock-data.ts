@@ -35,8 +35,6 @@ export const mockSystemInfo: SystemInfo = {
 export const mockServices: ServiceStatus[] = [
   { name: 'unbound01', status: 'running', pid: 1234, memoryBytes: 134217728, cpuPercent: 2.3, restartCount: 0, uptime: '5d 12h 33m', lastLog: 'start of service (unbound 1.21.1)', unitFile: '/etc/systemd/system/unbound01.service' },
   { name: 'unbound02', status: 'running', pid: 1235, memoryBytes: 140509184, cpuPercent: 1.8, restartCount: 0, uptime: '5d 12h 33m', lastLog: 'start of service (unbound 1.21.1)', unitFile: '/etc/systemd/system/unbound02.service' },
-  { name: 'unbound03', status: 'running', pid: 1236, memoryBytes: 126877696, cpuPercent: 2.1, restartCount: 1, uptime: '2d 8h 15m', lastLog: 'start of service (unbound 1.21.1)', unitFile: '/etc/systemd/system/unbound03.service' },
-  { name: 'unbound04', status: 'running', pid: 1237, memoryBytes: 123731968, cpuPercent: 1.5, restartCount: 0, uptime: '5d 12h 33m', lastLog: 'start of service (unbound 1.21.1)', unitFile: '/etc/systemd/system/unbound04.service' },
   { name: 'frr', status: 'running', pid: 890, memoryBytes: 47185920, cpuPercent: 0.3, restartCount: 0, uptime: '5d 12h 34m', lastLog: 'ospfd[890]: Neighbor Full', unitFile: '/lib/systemd/system/frr.service' },
   { name: 'nftables', status: 'running', pid: null, memoryBytes: null, cpuPercent: null, restartCount: 0, uptime: '5d 12h 35m', lastLog: 'ruleset loaded', unitFile: '/lib/systemd/system/nftables.service' },
   { name: 'dns-control', status: 'running', pid: 2001, memoryBytes: 67108864, cpuPercent: 0.8, restartCount: 0, uptime: '5d 12h 30m', lastLog: 'API started on 0.0.0.0:8443', unitFile: '/etc/systemd/system/dns-control.service' },
