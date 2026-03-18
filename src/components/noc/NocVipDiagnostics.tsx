@@ -113,6 +113,7 @@ interface VipDiagResult {
   vip_type: 'owned' | 'intercepted';
   status: string;
   reason?: string | null;
+  reason_code?: string | null;
   healthy: boolean;
   inactive: boolean;
   parse_error: string | null;
