@@ -44,6 +44,7 @@ interface CounterHistoryEntry {
   entry_packets: number;
   entry_bytes: number;
   qps?: number;
+  counter_reset?: boolean;
 }
 
 interface ValidationLayers {
