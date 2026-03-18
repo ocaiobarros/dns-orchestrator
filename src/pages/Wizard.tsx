@@ -851,8 +851,8 @@ export default function Wizard() {
           </div>
         );
 
-      // ═══ STEP 7: Roteamento ═══
-      case 6:
+      // ═══ STEP 8: Roteamento ═══
+      case 7:
         return (
           <div className="space-y-4">
             <InfoBox>Define como os VIPs serão alcançáveis na rede.</InfoBox>
