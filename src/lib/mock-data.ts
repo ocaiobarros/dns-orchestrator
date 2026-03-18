@@ -162,14 +162,11 @@ export const mockOspfNeighbors: OspfNeighbor[] = [
 
 export const mockOspfRoutes: OspfRoute[] = [
   { prefix: '4.2.2.5/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
-  { prefix: '100.126.255.101/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
-  { prefix: '100.126.255.102/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
-  { prefix: '100.126.255.103/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
-  { prefix: '100.126.255.104/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
-  { prefix: '45.232.215.16/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
-  { prefix: '45.232.215.17/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
-  { prefix: '45.232.215.18/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
-  { prefix: '45.232.215.19/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '4.2.2.6/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '100.127.255.101/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '100.127.255.102/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '191.243.128.205/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '191.243.128.206/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
 ];
 
 // ---- Logs ----
