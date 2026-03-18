@@ -34,6 +34,8 @@ interface QpsData {
   window_seconds: number | null;
   delta_packets: number | null;
   counter_reset?: boolean;
+  history_reset?: boolean;
+  reason?: string;
 }
 
 interface CounterHistoryEntry {
