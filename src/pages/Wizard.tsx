@@ -5,6 +5,7 @@ import {
   type WizardConfig,
   type DnsInstance,
   type ServiceVip,
+  type InterceptedVip,
   type AccessControlEntry,
   type DeploymentMode,
   type VipDistributionPolicy,
