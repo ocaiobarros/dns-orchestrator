@@ -641,12 +641,14 @@ export const DEFAULT_CONFIG: WizardConfig = {
   serviceVips: [] as ServiceVip[],
   vipIpv6Enabled: false,
 
+  // Step 3b - VIP Interception
+  interceptedVips: [] as InterceptedVip[],
 
   // Step 4 - Instâncias de Resolução
   instanceCount: 2,
   instances: [
-    { name: 'unbound01', bindIp: '', bindIpv6: '', controlInterface: '127.0.0.11', controlPort: 8953, egressIpv4: '', egressIpv6: '' },
-    { name: 'unbound02', bindIp: '', bindIpv6: '', controlInterface: '127.0.0.12', controlPort: 8953, egressIpv4: '', egressIpv6: '' },
+    { name: 'unbound01', bindIp: '', bindIpv6: '', publicListenerIp: '', controlInterface: '127.0.0.11', controlPort: 8953, egressIpv4: '', egressIpv6: '' },
+    { name: 'unbound02', bindIp: '', bindIpv6: '', publicListenerIp: '', controlInterface: '127.0.0.12', controlPort: 8953, egressIpv4: '', egressIpv6: '' },
   ],
   threads: 4,
   msgCacheSize: '512m',
