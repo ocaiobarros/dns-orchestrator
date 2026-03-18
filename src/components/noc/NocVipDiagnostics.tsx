@@ -211,12 +211,13 @@ const STATUS_STYLES: Record<string, string> = {
 
 function StatusBadge({ status }: { status: string }) {
   const style = STATUS_STYLES[status] || STATUS_STYLES.UNKNOWN;
-  const Icon = status === 'PARSE_ERROR' ? AlertOctagon
+  const Icon = status === 'PARSE_ERROR' || status === 'NO_CAPTURE_RULE' ? AlertOctagon
     : status === 'UNKNOWN' ? HelpCircle
     : status === 'COUNTER_MISMATCH' ? AlertTriangle
-    : status === 'DEAD' ? XCircle
+    : status === 'DEAD' || status === 'BACKEND_DOWN' ? XCircle
+    : status === 'INTERNET_ESCAPING' ? AlertTriangle
     : status === 'STALE_DATA' ? Clock
-    : status === 'HEALTHY' || status === 'OK' ? CheckCircle
+    : status === 'HEALTHY' || status === 'OK' || status === 'INTERCEPTED_LOCAL' ? CheckCircle
     : AlertTriangle;
 
   return (
