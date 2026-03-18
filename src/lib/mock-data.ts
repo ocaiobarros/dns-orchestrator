@@ -136,25 +136,21 @@ export const mockTopDomains: DnsTopDomain[] = [
 export const mockInstanceStats: DnsInstanceStats[] = [
   { instance: 'unbound01', totalQueries: 1284532, cacheHitRatio: 87.3, avgLatencyMs: 2.1, uptime: '5d 12h', threads: 4, currentConnections: 342 },
   { instance: 'unbound02', totalQueries: 1283891, cacheHitRatio: 86.8, avgLatencyMs: 2.3, uptime: '5d 12h', threads: 4, currentConnections: 338 },
-  { instance: 'unbound03', totalQueries: 1285102, cacheHitRatio: 87.1, avgLatencyMs: 2.0, uptime: '2d 8h', threads: 4, currentConnections: 345 },
-  { instance: 'unbound04', totalQueries: 1282761, cacheHitRatio: 86.5, avgLatencyMs: 2.4, uptime: '5d 12h', threads: 4, currentConnections: 331 },
 ];
 
 // ---- NAT ----
 
 export const mockNftCounters: NftCounter[] = [
-  { chain: 'prerouting', rule: 'dnat to 100.126.255.101', packets: 1284532, bytes: 98234123, backend: '100.126.255.101' },
-  { chain: 'prerouting', rule: 'dnat to 100.126.255.102', packets: 1283891, bytes: 98112344, backend: '100.126.255.102' },
-  { chain: 'prerouting', rule: 'dnat to 100.126.255.103', packets: 1285102, bytes: 98345211, backend: '100.126.255.103' },
-  { chain: 'prerouting', rule: 'dnat to 100.126.255.104', packets: 1282761, bytes: 98023456, backend: '100.126.255.104' },
+  { chain: 'intercepted_udp_4_2_2_5', rule: 'dnat to 100.127.255.101 (intercepted VIP 4.2.2.5)', packets: 1284532, bytes: 98234123, backend: '100.127.255.101' },
+  { chain: 'intercepted_tcp_4_2_2_5', rule: 'dnat to 100.127.255.101 (intercepted VIP 4.2.2.5)', packets: 45890, bytes: 3423456, backend: '100.127.255.101' },
+  { chain: 'intercepted_udp_4_2_2_6', rule: 'dnat to 100.127.255.102 (intercepted VIP 4.2.2.6)', packets: 1283891, bytes: 98112344, backend: '100.127.255.102' },
+  { chain: 'intercepted_tcp_4_2_2_6', rule: 'dnat to 100.127.255.102 (intercepted VIP 4.2.2.6)', packets: 43780, bytes: 3267890, backend: '100.127.255.102' },
 ];
 
 export const mockStickyEntries: NftStickyEntry[] = [
-  { sourceIp: '10.0.1.15', backend: '100.126.255.101', expires: 245, packets: 42 },
-  { sourceIp: '10.0.2.30', backend: '100.126.255.102', expires: 189, packets: 28 },
-  { sourceIp: '10.0.3.8', backend: '100.126.255.103', expires: 301, packets: 55 },
-  { sourceIp: '172.16.0.100', backend: '100.126.255.104', expires: 120, packets: 15 },
-  { sourceIp: '192.168.1.50', backend: '100.126.255.101', expires: 280, packets: 33 },
+  { sourceIp: '10.0.1.15', backend: '100.127.255.101', expires: 245, packets: 42 },
+  { sourceIp: '10.0.2.30', backend: '100.127.255.102', expires: 189, packets: 28 },
+  { sourceIp: '192.168.1.50', backend: '100.127.255.101', expires: 280, packets: 33 },
 ];
 
 // ---- OSPF ----
