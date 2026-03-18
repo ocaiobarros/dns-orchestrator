@@ -1300,6 +1300,7 @@ export default function Wizard() {
             name: inst.name || `unbound${String(i + 1).padStart(2, '0')}`,
             bindIp: inst.bind_ip || inst.bindIp || '',
             bindIpv6: inst.bind_ipv6 || '',
+            publicListenerIp: inst.public_listener_ip || inst.publicListenerIp || '',
             controlInterface: inst.control_interface || inst.controlInterface || `127.0.0.${11 + i}`,
             controlPort: inst.control_port || inst.controlPort || 8953,
             egressIpv4: inst.egress_ipv4 || inst.egressIpv4 || '',
