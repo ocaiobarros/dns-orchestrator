@@ -895,8 +895,8 @@ export default function Wizard() {
           </div>
         );
 
-      // ═══ STEP 8: Segurança ═══
-      case 7:
+      // ═══ STEP 9: Segurança ═══
+      case 8:
         return (
           <div className="space-y-4">
             <InfoBox>
