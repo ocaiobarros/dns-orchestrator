@@ -34,6 +34,8 @@ interface QpsData {
   window_seconds: number | null;
   delta_packets: number | null;
   counter_reset?: boolean;
+  history_reset?: boolean;
+  reason?: string;
 }
 
 interface CounterHistoryEntry {
@@ -42,6 +44,7 @@ interface CounterHistoryEntry {
   entry_packets: number;
   entry_bytes: number;
   qps?: number;
+  counter_reset?: boolean;
 }
 
 interface ValidationLayers {
@@ -55,12 +58,14 @@ interface SourceTimestamp {
   collected_at: string;
   duration_ms: number;
   ok: boolean;
+  stale_threshold_s?: number;
 }
 
 interface BackendProbe {
   ip: string;
   status: string;
   reason?: string | null;
+  reason_code?: string | null;
   packets: number;
   bytes: number;
   udp: ProtoCounter;
@@ -109,6 +114,7 @@ interface VipDiagResult {
   vip_type: 'owned' | 'intercepted';
   status: string;
   reason?: string | null;
+  reason_code?: string | null;
   healthy: boolean;
   inactive: boolean;
   parse_error: string | null;
@@ -137,6 +143,7 @@ interface VipDiagnosticsData {
   vip_diagnostics: VipDiagResult[];
   root_recursion: RootRecursion;
   source_timestamps?: Record<string, SourceTimestamp>;
+  stale_thresholds?: Record<string, number>;
   summary: {
     total_vips: number;
     healthy_vips: number;
@@ -154,7 +161,7 @@ interface Props {
   isLoading?: boolean;
 }
 
-const STALE_THRESHOLD_MS = 120_000; // 2 minutes
+const DEFAULT_STALE_THRESHOLD_MS = 120_000; // 2 minutes fallback
 
 /* ── Utility ─────────────────────────────────────────────── */
 
@@ -178,8 +185,9 @@ function formatPackets(n: number): string {
 
 function isStale(ts: SourceTimestamp | undefined): boolean {
   if (!ts) return true;
+  const thresholdMs = (ts.stale_threshold_s || DEFAULT_STALE_THRESHOLD_MS / 1000) * 1000;
   const age = Date.now() - new Date(ts.collected_at).getTime();
-  return age > STALE_THRESHOLD_MS;
+  return age > thresholdMs;
 }
 
 /* ── Status badges ───────────────────────────────────────── */
@@ -336,7 +344,19 @@ function ProtocolBar({ udp, tcp, unknown, label, stale }: { udp: ProtoCounter; t
 function QpsDisplay({ qps }: { qps?: QpsData }) {
   if (!qps || qps.qps === null) {
     return (
-      <div className="text-[9px] text-muted-foreground/50 font-mono">QPS: calculating...</div>
+      <div className="space-y-0.5">
+        <div className="text-[9px] text-muted-foreground/50 font-mono">QPS: calculating...</div>
+        {qps?.history_reset && (
+          <div className="text-[8px] font-mono text-warning flex items-center gap-1">
+            ⟳ History reset{qps.reason ? `: ${qps.reason}` : ''}
+          </div>
+        )}
+        {qps?.counter_reset && (
+          <div className="text-[8px] font-mono text-warning flex items-center gap-1">
+            ⚠ Counter reset detected
+          </div>
+        )}
+      </div>
     );
   }
   return (
@@ -350,6 +370,7 @@ function QpsDisplay({ qps }: { qps?: QpsData }) {
       <div className="text-[9px] text-muted-foreground font-mono">
         Δ{qps.delta_packets?.toLocaleString()} in {qps.window_seconds}s
         {qps.counter_reset && <span className="text-warning ml-1">⚠ reset</span>}
+        {qps.history_reset && <span className="text-warning ml-1">⟳ history reset</span>}
       </div>
     </div>
   );
@@ -691,6 +712,11 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
                       <span className="font-mono font-bold text-sm">{vip.ip}</span>
                       <VipTypeBadge type={vip.vip_type} />
                       <StatusBadge status={vip.status} />
+                      {vip.reason_code && (
+                        <span className="text-[8px] font-mono text-muted-foreground/60 px-1 py-0.5 bg-muted/40 rounded border border-border/30">
+                          {vip.reason_code}
+                        </span>
+                      )}
                       <span className="text-[10px] text-muted-foreground ml-auto">{vip.description}</span>
                     </div>
 

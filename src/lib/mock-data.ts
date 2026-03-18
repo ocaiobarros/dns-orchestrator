@@ -543,8 +543,12 @@ export function mockVipDiagnostics() {
       : status === 'NEVER_SELECTED' ? `Backend ${ip} responds to DNS but was never selected by DNAT (0 packets)`
       : status === 'UNHEALTHY' ? `Backend ${ip} has traffic but DNS probe failed`
       : null;
+    const reason_code = status === 'DEAD' ? 'BACKEND_UNREACHABLE_NO_TRAFFIC'
+      : status === 'NEVER_SELECTED' ? 'BACKEND_HEALTHY_ZERO_DNAT'
+      : status === 'UNHEALTHY' ? 'DNS_PROBE_FAILURE'
+      : 'VIP_HEALTHY';
     return {
-      ip, status, reason,
+      ip, status, reason, reason_code,
       packets: total, bytes: total * 72,
       udp: { packets: udpPkts, bytes: udpPkts * 72 },
       tcp: { packets: tcpPkts, bytes: tcpPkts * 72 },
@@ -593,6 +597,7 @@ export function mockVipDiagnostics() {
     vip_type: 'intercepted' as const,
     status,
     reason: status !== 'HEALTHY' ? `VIP ${ip} status is ${status}` : null,
+    reason_code: status !== 'HEALTHY' ? `VIP_${status}` : 'VIP_HEALTHY',
     healthy: status === 'HEALTHY',
     inactive: status === 'INACTIVE_VIP',
     parse_error: null as string | null,
@@ -667,11 +672,12 @@ export function mockVipDiagnostics() {
       root_query: { status: 'ok', target: 'a.root-servers.net', latency_ms: 85.2, answer: 'a.root-servers.net.\nb.root-servers.net.', error: null },
     },
     source_timestamps: {
-      nft: { collected_at: now, duration_ms: 45, ok: true },
-      dig: { collected_at: now, duration_ms: 12, ok: true },
-      ip_addr: { collected_at: now, duration_ms: 3, ok: true },
-      ip_route: { collected_at: now, duration_ms: 5, ok: true },
+      nft: { collected_at: now, duration_ms: 45, ok: true, stale_threshold_s: 120 },
+      dig: { collected_at: now, duration_ms: 12, ok: true, stale_threshold_s: 120 },
+      ip_addr: { collected_at: now, duration_ms: 3, ok: true, stale_threshold_s: 300 },
+      ip_route: { collected_at: now, duration_ms: 5, ok: true, stale_threshold_s: 300 },
     },
+    stale_thresholds: { nft: 120, dig: 120, ip_addr: 300, ip_route: 300 },
     summary: {
       total_vips: 2, healthy_vips: 2, all_healthy: true, degraded: false,
       has_parse_errors: false, has_counter_mismatch: false,
