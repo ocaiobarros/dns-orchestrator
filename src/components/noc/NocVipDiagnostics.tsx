@@ -1,8 +1,8 @@
 // ============================================================
-// DNS Control — VIP Diagnostics Panel (Audit-Grade)
+// DNS Control — VIP Interception Diagnostics (Audit-Grade)
+// Core product feature: DNS VIP Seizure monitoring
 // Per-VIP entry counters, QPS from delta, cross-validation,
-// debug mode with literal nft rules, source timestamps,
-// STALE_DATA detection, 4-layer validation display
+// interception status, capture mode evidence, debug mode
 // ============================================================
 
 import { useState } from 'react';
