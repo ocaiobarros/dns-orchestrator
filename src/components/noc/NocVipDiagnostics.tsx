@@ -650,7 +650,7 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
       <div className="noc-surface-header flex items-center gap-2">
         <Shield size={12} className={overallOk === true ? 'text-success' : overallOk === false ? 'text-destructive' : 'text-muted-foreground'} />
         <span className="text-[10px] font-mono font-bold uppercase tracking-widest">
-          Service VIP Diagnostics
+          VIP Interception Diagnostics
         </span>
         {isLoading && <Loader2 size={10} className="animate-spin text-muted-foreground" />}
         {summary && (
