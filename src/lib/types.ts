@@ -133,6 +133,9 @@ export interface WizardConfig {
   serviceVips: ServiceVip[];
   vipIpv6Enabled: boolean;
 
+  // Step 3b - VIP Interception / DNS Seizure
+  interceptedVips: InterceptedVip[];
+
   // Step 4 - Instâncias de Resolução (listeners + control)
   instanceCount: number;
   instances: DnsInstance[];
