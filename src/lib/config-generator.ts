@@ -923,6 +923,7 @@ export function createDefaultInstance(index: number) {
     name: autoInstanceName(index),
     bindIp: autoListenerIp(index),
     bindIpv6: '',
+    publicListenerIp: '',
     controlInterface: autoControlIp(index),
     controlPort: 8953,
     egressIpv4: '',

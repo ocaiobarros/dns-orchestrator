@@ -150,44 +150,59 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
   if (config.threads < 1 || config.threads > 64) e('threads', 3, 'Threads deve ser entre 1 e 64');
   if (config.maxTtl < config.minTtl) e('maxTtl', 3, 'Max TTL deve ser maior que Min TTL');
 
-  // ═══ Step 4 — Egress Público ═══
+  // ═══ Step 4 — VIP Interception / DNS Seizure ═══
+  if (config.interceptedVips && config.interceptedVips.length > 0) {
+    const ivipIps = config.interceptedVips.map(v => v.vipIp).filter(Boolean);
+    const dupIvips = findDuplicates(ivipIps);
+    if (dupIvips.length > 0) e('interceptedVips', 4, `VIPs interceptados duplicados: ${dupIvips.join(', ')}`);
+
+    config.interceptedVips.forEach((vip, i) => {
+      if (!vip.vipIp.trim()) e(`interceptedVips[${i}].vipIp`, 4, `VIP IP ${i + 1} é obrigatório`);
+      else if (!isValidIpv4(vip.vipIp)) e(`interceptedVips[${i}].vipIp`, 4, `VIP IP ${i + 1} inválido`);
+      if (!vip.backendInstance.trim()) e(`interceptedVips[${i}].backendInstance`, 4, `Backend instance do VIP ${vip.vipIp || i + 1} é obrigatório`);
+      if (!vip.backendTargetIp.trim()) e(`interceptedVips[${i}].backendTargetIp`, 4, `Backend target IP do VIP ${vip.vipIp || i + 1} é obrigatório`);
+      else if (!isValidIpv4(vip.backendTargetIp)) e(`interceptedVips[${i}].backendTargetIp`, 4, `Backend target IP inválido`);
+    });
+  }
+
+  // ═══ Step 5 — Egress Público ═══
   const isBorderRouted = config.egressDeliveryMode === 'border-routed';
   const egressIps = config.instances.map(i => i.egressIpv4).filter(Boolean);
   const dupEgress = findDuplicates(egressIps);
   if (dupEgress.length > 0 && config.egressFixedIdentity) {
-    e('egressIpv4', 4, `IPs de egress duplicados com identidade fixa ativa: ${dupEgress.join(', ')}`);
+    e('egressIpv4', 5, `IPs de egress duplicados com identidade fixa ativa: ${dupEgress.join(', ')}`);
   }
 
   config.instances.forEach((inst, i) => {
-    if (!inst.egressIpv4.trim()) e(`instances[${i}].egressIpv4`, 4, `Egress IPv4 da instância "${inst.name}" é obrigatório`);
-    else if (!isValidIpv4(inst.egressIpv4)) e(`instances[${i}].egressIpv4`, 4, `Egress IPv4 da instância "${inst.name}" é inválido`);
+    if (!inst.egressIpv4.trim()) e(`instances[${i}].egressIpv4`, 5, `Egress IPv4 da instância "${inst.name}" é obrigatório`);
+    else if (!isValidIpv4(inst.egressIpv4)) e(`instances[${i}].egressIpv4`, 5, `Egress IPv4 da instância "${inst.name}" é inválido`);
 
     // Egress cannot equal listener
     if (inst.egressIpv4 && inst.bindIp && inst.egressIpv4 === inst.bindIp) {
-      e(`instances[${i}].egressIpv4`, 4, `Egress ${inst.egressIpv4} da instância "${inst.name}" é igual ao listener — devem ser IPs distintos`);
+      e(`instances[${i}].egressIpv4`, 5, `Egress ${inst.egressIpv4} da instância "${inst.name}" é igual ao listener — devem ser IPs distintos`);
     }
 
     // Egress cannot equal VIP
     config.serviceVips.forEach(vip => {
       if (inst.egressIpv4 && vip.ipv4 && inst.egressIpv4 === vip.ipv4) {
-        e(`instances[${i}].egressIpv4`, 4, `Egress ${inst.egressIpv4} conflita com VIP ${vip.ipv4}`);
+        e(`instances[${i}].egressIpv4`, 5, `Egress ${inst.egressIpv4} conflita com VIP ${vip.ipv4}`);
       }
     });
 
     // Egress vs host private IP — only warn in host-owned mode (border-routed is expected to differ)
     if (!isBorderRouted && inst.egressIpv4 && config.ipv4Address && inst.egressIpv4 === extractIpFromCidr(config.ipv4Address)) {
-      e(`instances[${i}].egressIpv4`, 4, `Egress ${inst.egressIpv4} conflita com IP privado do host`);
+      e(`instances[${i}].egressIpv4`, 5, `Egress ${inst.egressIpv4} conflita com IP privado do host`);
     }
 
     // IPv6 egress
     if (config.enableIpv6 && inst.egressIpv6 && !isValidIpv6(inst.egressIpv6)) {
-      e(`instances[${i}].egressIpv6`, 4, `Egress IPv6 da instância "${inst.name}" é inválido`);
+      e(`instances[${i}].egressIpv6`, 5, `Egress IPv6 da instância "${inst.name}" é inválido`);
     }
   });
 
   // Border-routed INFO: egress IP not on host is expected
   if (isBorderRouted && egressIps.length > 0) {
-    e('egressDeliveryMode', 4, 'Modo border-routed: IP público de egress não estará presente nas interfaces do host — esperado neste modo. Roteamento estático na borda é obrigatório.', 'warning');
+    e('egressDeliveryMode', 5, 'Modo border-routed: IP público de egress não estará presente nas interfaces do host — esperado neste modo. Roteamento estático na borda é obrigatório.', 'warning');
   }
 
   // Listener IPs MUST be materialized locally — always required
@@ -197,52 +212,52 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
     }
   });
 
-  // ═══ Step 5 — Mapeamento VIP → Instância ═══
+  // ═══ Step 6 — Mapeamento VIP → Instância ═══
   if (config.distributionPolicy === 'fixed-mapping') {
     if (config.vipMappings.length === 0 && config.serviceVips.length > 0 && config.instances.length > 0) {
-      e('vipMappings', 5, 'Mapeamento fixo requer pelo menos uma associação VIP→instância', 'warning');
+      e('vipMappings', 6, 'Mapeamento fixo requer pelo menos uma associação VIP→instância', 'warning');
     }
     // Check for orphaned VIPs
     const mappedVips = new Set(config.vipMappings.map(m => m.vipIndex));
     config.serviceVips.forEach((_, i) => {
       if (!mappedVips.has(i)) {
-        e(`vipMappings`, 5, `VIP ${config.serviceVips[i]?.ipv4 || i + 1} não tem instância associada no mapeamento fixo`, 'warning');
+        e(`vipMappings`, 6, `VIP ${config.serviceVips[i]?.ipv4 || i + 1} não tem instância associada no mapeamento fixo`, 'warning');
       }
     });
   }
 
   if (config.distributionPolicy === 'active-passive' && config.instances.length < 2) {
-    e('distributionPolicy', 5, 'Ativo/passivo requer pelo menos 2 instâncias');
+    e('distributionPolicy', 6, 'Ativo/passivo requer pelo menos 2 instâncias');
   }
 
-  // ═══ Step 6 — Roteamento ═══
+  // ═══ Step 7 — Roteamento ═══
   if (config.routingMode === 'frr-ospf') {
-    if (!config.routerId) e('routerId', 6, 'Router ID é obrigatório');
-    else if (!isValidIpv4(config.routerId)) e('routerId', 6, 'Router ID deve ser um IPv4 válido');
-    if (!config.ospfArea) e('ospfArea', 6, 'Área OSPF é obrigatória');
-    if (config.ospfInterfaces.length === 0) e('ospfInterfaces', 6, 'Pelo menos uma interface OSPF é necessária');
-    if (config.ospfCost < 1 || config.ospfCost > 65535) e('ospfCost', 6, 'Custo OSPF deve ser entre 1 e 65535');
+    if (!config.routerId) e('routerId', 7, 'Router ID é obrigatório');
+    else if (!isValidIpv4(config.routerId)) e('routerId', 7, 'Router ID deve ser um IPv4 válido');
+    if (!config.ospfArea) e('ospfArea', 7, 'Área OSPF é obrigatória');
+    if (config.ospfInterfaces.length === 0) e('ospfInterfaces', 7, 'Pelo menos uma interface OSPF é necessária');
+    if (config.ospfCost < 1 || config.ospfCost > 65535) e('ospfCost', 7, 'Custo OSPF deve ser entre 1 e 65535');
   }
   if (config.routingMode === 'frr-bgp') {
-    e('routingMode', 6, 'BGP ainda não é suportado', 'warning');
+    e('routingMode', 7, 'BGP ainda não é suportado', 'warning');
   }
 
-  // ═══ Step 7 — Segurança ═══
-  if (config.accessControlIpv4.length === 0) e('accessControlIpv4', 7, 'Pelo menos uma ACL IPv4 é necessária');
+  // ═══ Step 8 — Segurança ═══
+  if (config.accessControlIpv4.length === 0) e('accessControlIpv4', 8, 'Pelo menos uma ACL IPv4 é necessária');
   
   config.accessControlIpv4.forEach((acl, i) => {
-    if (!acl.network.trim()) e(`accessControlIpv4[${i}].network`, 7, `Rede da ACL ${i + 1} é obrigatória`);
+    if (!acl.network.trim()) e(`accessControlIpv4[${i}].network`, 8, `Rede da ACL ${i + 1} é obrigatória`);
     else if (!isValidIpv4Cidr(acl.network) && acl.network !== '0.0.0.0/0') {
-      e(`accessControlIpv4[${i}].network`, 7, `Rede "${acl.network}" não é um CIDR válido`);
+      e(`accessControlIpv4[${i}].network`, 8, `Rede "${acl.network}" não é um CIDR válido`);
     }
   });
 
   const hasOpenResolver = config.accessControlIpv4.some(a => a.network === '0.0.0.0/0' && a.action === 'allow');
   if (hasOpenResolver && !config.openResolverConfirmed) {
-    e('openResolverConfirmed', 7, 'Open resolver requer confirmação explícita');
+    e('openResolverConfirmed', 8, 'Open resolver requer confirmação explícita');
   }
   if (hasOpenResolver) {
-    e('openResolver', 7, 'Configurado como open resolver — risco de amplificação DNS', 'warning');
+    e('openResolver', 8, 'Configurado como open resolver — risco de amplificação DNS', 'warning');
   }
 
   // Wide ACL warning
@@ -252,17 +267,17 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
     return cidr && parseInt(cidr) < 8;
   });
   if (wideAcls.length > 0 && !hasOpenResolver) {
-    e('accessControlIpv4', 7, `ACLs muito amplas detectadas (${wideAcls.map(a => a.network).join(', ')}) — verifique se é intencional`, 'warning');
+    e('accessControlIpv4', 8, `ACLs muito amplas detectadas (${wideAcls.map(a => a.network).join(', ')}) — verifique se é intencional`, 'warning');
   }
 
-  if (!config.adminUser.trim()) e('adminUser', 7, 'Usuário admin é obrigatório');
-  if (config.panelPort < 1 || config.panelPort > 65535) e('panelPort', 7, 'Porta do painel inválida');
+  if (!config.adminUser.trim()) e('adminUser', 8, 'Usuário admin é obrigatório');
+  if (config.panelPort < 1 || config.panelPort > 65535) e('panelPort', 8, 'Porta do painel inválida');
 
   if (config.panelBind === '0.0.0.0' && config.allowedIps.length === 0) {
-    e('panelBind', 7, 'Painel exposto em 0.0.0.0 sem restrição de IPs — risco de segurança', 'warning');
+    e('panelBind', 8, 'Painel exposto em 0.0.0.0 sem restrição de IPs — risco de segurança', 'warning');
   }
 
-  // ═══ Step 8 — Observabilidade (always valid) ═══
+  // ═══ Step 9 — Observabilidade (always valid) ═══
 
   // ═══ Cross-layer architectural validations ═══
   
@@ -272,6 +287,7 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
   config.serviceVips.forEach(v => { if (v.ipv4) allIps.push({ ip: v.ipv4, layer: 'VIP de serviço' }); });
   config.instances.forEach(inst => {
     if (inst.bindIp) allIps.push({ ip: inst.bindIp, layer: `Listener ${inst.name}` });
+    if (inst.publicListenerIp) allIps.push({ ip: inst.publicListenerIp, layer: `Public Listener ${inst.name}` });
     if (inst.egressIpv4) allIps.push({ ip: inst.egressIpv4, layer: `Egress ${inst.name}` });
     if (inst.controlInterface) allIps.push({ ip: inst.controlInterface, layer: `Control ${inst.name}` });
   });
@@ -285,13 +301,13 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
   });
   ipMap.forEach((layers, ip) => {
     if (layers.length > 1) {
-      e('architecture', 9, `IP ${ip} usado em múltiplas camadas: ${layers.join(', ')} — cada camada deve ter IPs exclusivos`, 'warning');
+      e('architecture', 10, `IP ${ip} usado em múltiplas camadas: ${layers.join(', ')} — cada camada deve ter IPs exclusivos`, 'warning');
     }
   });
 
   // Instance count vs VIP count warnings
   if (config.distributionPolicy === 'fixed-mapping' && config.serviceVips.length > config.instances.length) {
-    e('architecture', 9, `Mais VIPs (${config.serviceVips.length}) do que instâncias (${config.instances.length}) em modo mapeamento fixo — alguns VIPs ficarão sem resolver`, 'warning');
+    e('architecture', 10, `Mais VIPs (${config.serviceVips.length}) do que instâncias (${config.instances.length}) em modo mapeamento fixo — alguns VIPs ficarão sem resolver`, 'warning');
   }
 
   return errors;
@@ -314,7 +330,7 @@ export function getValidationSummary(errors: ValidationError[]) {
   return {
     totalErrors: errors.filter(e => e.severity === 'error').length,
     totalWarnings: errors.filter(e => e.severity === 'warning').length,
-    errorsByStep: Array.from({ length: 10 }, (_, i) => ({
+    errorsByStep: Array.from({ length: 11 }, (_, i) => ({
       step: i,
       errors: errors.filter(e => e.step === i && e.severity === 'error').length,
       warnings: errors.filter(e => e.step === i && e.severity === 'warning').length,

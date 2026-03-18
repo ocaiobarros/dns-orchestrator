@@ -1,8 +1,8 @@
 // ============================================================
-// DNS Control — VIP Diagnostics Panel (Audit-Grade)
+// DNS Control — VIP Interception Diagnostics (Audit-Grade)
+// Core product feature: DNS VIP Seizure monitoring
 // Per-VIP entry counters, QPS from delta, cross-validation,
-// debug mode with literal nft rules, source timestamps,
-// STALE_DATA detection, 4-layer validation display
+// interception status, capture mode evidence, debug mode
 // ============================================================
 
 import { useState } from 'react';
@@ -194,6 +194,10 @@ function isStale(ts: SourceTimestamp | undefined): boolean {
 
 const STATUS_STYLES: Record<string, string> = {
   HEALTHY: 'bg-success/15 text-success border-success/25',
+  INTERCEPTED_LOCAL: 'bg-success/15 text-success border-success/25',
+  INTERNET_ESCAPING: 'bg-destructive/15 text-destructive border-destructive/25',
+  NO_CAPTURE_RULE: 'bg-destructive/15 text-destructive border-destructive/25',
+  BACKEND_DOWN: 'bg-destructive/15 text-destructive border-destructive/25',
   INACTIVE_VIP: 'bg-warning/15 text-warning border-warning/25',
   COUNTER_MISMATCH: 'bg-accent/15 text-accent border-accent/25',
   PARSE_ERROR: 'bg-destructive/15 text-destructive border-destructive/25',
@@ -207,12 +211,13 @@ const STATUS_STYLES: Record<string, string> = {
 
 function StatusBadge({ status }: { status: string }) {
   const style = STATUS_STYLES[status] || STATUS_STYLES.UNKNOWN;
-  const Icon = status === 'PARSE_ERROR' ? AlertOctagon
+  const Icon = status === 'PARSE_ERROR' || status === 'NO_CAPTURE_RULE' ? AlertOctagon
     : status === 'UNKNOWN' ? HelpCircle
     : status === 'COUNTER_MISMATCH' ? AlertTriangle
-    : status === 'DEAD' ? XCircle
+    : status === 'DEAD' || status === 'BACKEND_DOWN' ? XCircle
+    : status === 'INTERNET_ESCAPING' ? AlertTriangle
     : status === 'STALE_DATA' ? Clock
-    : status === 'HEALTHY' || status === 'OK' ? CheckCircle
+    : status === 'HEALTHY' || status === 'OK' || status === 'INTERCEPTED_LOCAL' ? CheckCircle
     : AlertTriangle;
 
   return (
@@ -645,7 +650,7 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
       <div className="noc-surface-header flex items-center gap-2">
         <Shield size={12} className={overallOk === true ? 'text-success' : overallOk === false ? 'text-destructive' : 'text-muted-foreground'} />
         <span className="text-[10px] font-mono font-bold uppercase tracking-widest">
-          Service VIP Diagnostics
+          VIP Interception Diagnostics
         </span>
         {isLoading && <Loader2 size={10} className="animate-spin text-muted-foreground" />}
         {summary && (
@@ -686,9 +691,9 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
               <div className="flex items-center gap-2 mb-2">
                 <Radio size={11} className="text-primary" />
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-foreground/80">
-                  Service VIPs — Per-VIP Counters
+                  Intercepted VIPs — DNS Seizure Status
                 </span>
-                <DataSourceTag label="nft list ruleset + dig probes" stale={data.source_timestamps ? isStale(data.source_timestamps.nft) : false} />
+                <DataSourceTag label="nft list ruleset + dig probes + ip route" stale={data.source_timestamps ? isStale(data.source_timestamps.nft) : false} />
               </div>
               <div className="grid grid-cols-1 gap-3">
                 {data.vip_diagnostics.map((vip, i) => (

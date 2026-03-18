@@ -5,6 +5,7 @@ import {
   type WizardConfig,
   type DnsInstance,
   type ServiceVip,
+  type InterceptedVip,
   type AccessControlEntry,
   type DeploymentMode,
   type VipDistributionPolicy,
@@ -22,7 +23,7 @@ import {
   Check, ChevronLeft, ChevronRight, AlertTriangle, Play, Eye, AlertCircle,
   Loader2, Server, Network, Shield, Globe, Layers, Route, Settings, FileText,
   Plus, Trash2, Info, ExternalLink, Activity, Lock, BarChart3, Download,
-  X, SkipForward,
+  X, SkipForward, Crosshair,
 } from 'lucide-react';
 import type { ApplyResult, ApplyRequest } from '@/lib/types';
 
@@ -31,6 +32,7 @@ const STEPS = [
   'Publicação DNS',
   'VIPs de Serviço',
   'Instâncias Resolver',
+  'VIP Interception',
   'Egress Público',
   'Mapeamento VIP→Instância',
   'Roteamento',
@@ -39,7 +41,7 @@ const STEPS = [
   'Revisão & Deploy',
 ];
 
-const STEP_ICONS = [Server, Network, Globe, Layers, ExternalLink, Route, Settings, Shield, BarChart3, FileText];
+const STEP_ICONS = [Server, Network, Globe, Layers, Crosshair, ExternalLink, Route, Settings, Shield, BarChart3, FileText];
 const LAST_STEP = STEPS.length - 1;
 
 // ---- Reusable form components ----
@@ -569,8 +571,11 @@ export default function Wizard() {
                       <FieldGroup label="Nome *" error={fieldError(`instances[${i}].name`)}>
                         <Input value={inst.name} onChange={v => updateInstance(i, 'name', v)} />
                       </FieldGroup>
-                      <FieldGroup label="Listener IPv4 *" error={fieldError(`instances[${i}].bindIp`)} hint="IP interno (loopback)">
+                      <FieldGroup label="Listener Privado *" error={fieldError(`instances[${i}].bindIp`)} hint="IP interno (loopback)">
                         <Input value={inst.bindIp} onChange={v => updateInstance(i, 'bindIp', v)} placeholder="100.127.255.101" />
+                      </FieldGroup>
+                      <FieldGroup label="Listener Público" hint="IP público da instância (identidade)">
+                        <Input value={inst.publicListenerIp} onChange={v => updateInstance(i, 'publicListenerIp', v)} placeholder="191.243.128.205" />
                       </FieldGroup>
                       {config.enableIpv6 && (
                         <FieldGroup label="Listener IPv6">
@@ -591,8 +596,148 @@ export default function Wizard() {
           </div>
         );
 
-      // ═══ STEP 5: Egress Público ═══
+      // ═══ STEP 5: VIP Interception / DNS Seizure ═══
       case 4:
+        return (
+          <div className="space-y-4">
+            <InfoBox>
+              Configure quais IPs DNS públicos conhecidos serão "sequestrados" dentro da rede.
+              Clientes acreditam estar usando o DNS público, mas a resolução é local.
+              <strong> Esta é a feature principal do DNS Control.</strong>
+            </InfoBox>
+
+            <div className="space-y-3">
+              {config.interceptedVips.map((vip, i) => (
+                <div key={i} className="p-4 rounded bg-secondary border border-border space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-accent uppercase flex items-center gap-1.5">
+                      <Crosshair size={12} /> Intercepted VIP {i + 1}
+                    </span>
+                    <button onClick={() => set('interceptedVips', config.interceptedVips.filter((_, j) => j !== i))}
+                      className="text-xs text-destructive hover:text-destructive/80 flex items-center gap-1">
+                      <Trash2 size={12} /> Remover
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    <FieldGroup label="VIP IP *" hint="DNS público a ser sequestrado">
+                      <Input value={vip.vipIp} onChange={v => {
+                        const vips = [...config.interceptedVips];
+                        vips[i] = { ...vips[i], vipIp: v };
+                        set('interceptedVips', vips);
+                      }} placeholder="4.2.2.5" />
+                    </FieldGroup>
+                    <FieldGroup label="Tipo">
+                      <Select value={vip.vipType} onChange={v => {
+                        const vips = [...config.interceptedVips];
+                        vips[i] = { ...vips[i], vipType: v as 'owned' | 'intercepted' };
+                        set('interceptedVips', vips);
+                      }} options={[
+                        { value: 'intercepted', label: 'Intercepted (sequestrado)' },
+                        { value: 'owned', label: 'Owned (próprio)' },
+                      ]} />
+                    </FieldGroup>
+                    <FieldGroup label="Modo de Captura">
+                      <Select value={vip.captureMode} onChange={v => {
+                        const vips = [...config.interceptedVips];
+                        vips[i] = { ...vips[i], captureMode: v as 'dnat' | 'route' | 'bind' };
+                        set('interceptedVips', vips);
+                      }} options={[
+                        { value: 'dnat', label: 'DNAT (nftables)' },
+                        { value: 'route', label: 'Route (rota local)' },
+                        { value: 'bind', label: 'Bind (listener direto)' },
+                      ]} />
+                    </FieldGroup>
+                    <FieldGroup label="Backend Instance *" hint="Instância que atende este VIP">
+                      <Select value={vip.backendInstance} onChange={v => {
+                        const vips = [...config.interceptedVips];
+                        const inst = config.instances.find(inst => inst.name === v);
+                        vips[i] = { ...vips[i], backendInstance: v, backendTargetIp: inst?.bindIp || vip.backendTargetIp };
+                        set('interceptedVips', vips);
+                      }} options={[
+                        { value: '', label: '— Selecionar —' },
+                        ...config.instances.map(inst => ({
+                          value: inst.name,
+                          label: `${inst.name} (${inst.bindIp || '?'})`,
+                        })),
+                      ]} />
+                    </FieldGroup>
+                    <FieldGroup label="Backend Target IP" hint="IP de destino do DNAT">
+                      <Input value={vip.backendTargetIp} onChange={v => {
+                        const vips = [...config.interceptedVips];
+                        vips[i] = { ...vips[i], backendTargetIp: v };
+                        set('interceptedVips', vips);
+                      }} placeholder="100.127.255.101" />
+                    </FieldGroup>
+                    <FieldGroup label="Protocolo">
+                      <Select value={vip.protocol} onChange={v => {
+                        const vips = [...config.interceptedVips];
+                        vips[i] = { ...vips[i], protocol: v as 'udp+tcp' | 'udp' | 'tcp' };
+                        set('interceptedVips', vips);
+                      }} options={[
+                        { value: 'udp+tcp', label: 'UDP + TCP' },
+                        { value: 'udp', label: 'UDP only' },
+                        { value: 'tcp', label: 'TCP only' },
+                      ]} />
+                    </FieldGroup>
+                    <FieldGroup label="Latência esperada (ms)" hint="< 1ms = local">
+                      <Input type="number" value={vip.expectedLocalLatencyMs} onChange={v => {
+                        const vips = [...config.interceptedVips];
+                        vips[i] = { ...vips[i], expectedLocalLatencyMs: parseFloat(v) || 1 };
+                        set('interceptedVips', vips);
+                      }} placeholder="1" />
+                    </FieldGroup>
+                    <FieldGroup label="Validação">
+                      <Select value={vip.validationMode} onChange={v => {
+                        const vips = [...config.interceptedVips];
+                        vips[i] = { ...vips[i], validationMode: v as 'strict' | 'relaxed' };
+                        set('interceptedVips', vips);
+                      }} options={[
+                        { value: 'strict', label: 'Strict (todas as camadas)' },
+                        { value: 'relaxed', label: 'Relaxed (DNS probe only)' },
+                      ]} />
+                    </FieldGroup>
+                  </div>
+                  <FieldGroup label="Descrição">
+                    <Input value={vip.description} onChange={v => {
+                      const vips = [...config.interceptedVips];
+                      vips[i] = { ...vips[i], description: v };
+                      set('interceptedVips', vips);
+                    }} placeholder="DNS público Level3 sequestrado para resolver local" />
+                  </FieldGroup>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={() => set('interceptedVips', [...config.interceptedVips, {
+              vipIp: '', vipIpv6: '', vipType: 'intercepted', captureMode: 'dnat',
+              backendInstance: config.instances[0]?.name || '', backendTargetIp: config.instances[0]?.bindIp || '',
+              description: '', expectedLocalLatencyMs: 1, validationMode: 'strict',
+              protocol: 'udp+tcp', port: 53,
+            } as InterceptedVip])}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-accent/20 text-accent rounded border border-accent/30 hover:bg-accent/30">
+              <Plus size={12} /> Adicionar VIP Interceptado
+            </button>
+
+            {config.interceptedVips.length > 0 && (
+              <div className="p-3 rounded bg-accent/5 border border-accent/15 text-xs space-y-1">
+                <div className="font-bold text-accent flex items-center gap-1.5">
+                  <Crosshair size={12} /> Resumo de Interception
+                </div>
+                {config.interceptedVips.map((v, i) => (
+                  <div key={i} className="font-mono text-muted-foreground">
+                    VIP <span className="text-accent font-bold">{v.vipIp || '?'}</span>
+                    {' → '}<span className="text-primary">{v.backendInstance || '?'}</span>
+                    {' ('}{v.backendTargetIp || '?'}{') '}
+                    <span className="text-muted-foreground/50">[{v.captureMode}] [{v.vipType}]</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+
+      // ═══ STEP 6: Egress Público ═══
+      case 5:
         return (
           <div className="space-y-4">
             <InfoBox>
@@ -680,8 +825,8 @@ export default function Wizard() {
           </div>
         );
 
-      // ═══ STEP 6: Mapeamento VIP → Instância ═══
-      case 5:
+      // ═══ STEP 7: Mapeamento VIP → Instância ═══
+      case 6:
         return (
           <div className="space-y-4">
             <InfoBox>
@@ -709,8 +854,8 @@ export default function Wizard() {
           </div>
         );
 
-      // ═══ STEP 7: Roteamento ═══
-      case 6:
+      // ═══ STEP 8: Roteamento ═══
+      case 7:
         return (
           <div className="space-y-4">
             <InfoBox>Define como os VIPs serão alcançáveis na rede.</InfoBox>
@@ -753,8 +898,8 @@ export default function Wizard() {
           </div>
         );
 
-      // ═══ STEP 8: Segurança ═══
-      case 7:
+      // ═══ STEP 9: Segurança ═══
+      case 8:
         return (
           <div className="space-y-4">
             <InfoBox>
@@ -861,8 +1006,8 @@ export default function Wizard() {
           </div>
         );
 
-      // ═══ STEP 9: Observabilidade ═══
-      case 8:
+      // ═══ STEP 10: Observabilidade ═══
+      case 9:
         return (
           <div className="space-y-4">
             <InfoBox>
@@ -901,8 +1046,8 @@ export default function Wizard() {
           </div>
         );
 
-      // ═══ STEP 10: Revisão & Deploy ═══
-      case 9:
+      // ═══ STEP 11: Revisão & Deploy ═══
+      case 10:
         if (applyResult) {
           const deployValidationErrors = applyResult.validationErrors ?? [];
           const deployValidationResults = applyResult.validationResults;
@@ -1298,6 +1443,7 @@ export default function Wizard() {
             name: inst.name || `unbound${String(i + 1).padStart(2, '0')}`,
             bindIp: inst.bind_ip || inst.bindIp || '',
             bindIpv6: inst.bind_ipv6 || '',
+            publicListenerIp: inst.public_listener_ip || inst.publicListenerIp || '',
             controlInterface: inst.control_interface || inst.controlInterface || `127.0.0.${11 + i}`,
             controlPort: inst.control_port || inst.controlPort || 8953,
             egressIpv4: inst.egress_ipv4 || inst.egressIpv4 || '',

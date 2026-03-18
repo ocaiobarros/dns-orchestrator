@@ -46,6 +46,30 @@ export type EgressMode = 'fixed-per-instance' | 'shared-pool' | 'randomized';
 
 export type EgressDeliveryMode = 'host-owned' | 'border-routed';
 
+// ---- VIP Interception / DNS Seizure ----
+
+export type CaptureMode = 'dnat' | 'route' | 'bind';
+
+export type VipInterceptionStatus =
+  | 'INTERCEPTED_LOCAL'
+  | 'INTERNET_ESCAPING'
+  | 'NO_CAPTURE_RULE'
+  | 'BACKEND_DOWN'
+  | 'UNKNOWN';
+
+export interface InterceptedVip {
+  vipIp: string;
+  vipIpv6: string;
+  vipType: 'owned' | 'intercepted';
+  captureMode: CaptureMode;
+  backendInstance: string;
+  backendTargetIp: string;
+  description: string;
+  expectedLocalLatencyMs: number;
+  validationMode: 'strict' | 'relaxed';
+  protocol: 'udp+tcp' | 'udp' | 'tcp';
+  port: number;
+}
 
 // ---- DNS Instance (expanded) ----
 
@@ -53,6 +77,7 @@ export interface DnsInstance {
   name: string;
   bindIp: string;
   bindIpv6: string;
+  publicListenerIp: string;
   controlInterface: string;
   controlPort: number;
   egressIpv4: string;
@@ -107,6 +132,9 @@ export interface WizardConfig {
   // Step 3 - VIPs de Serviço
   serviceVips: ServiceVip[];
   vipIpv6Enabled: boolean;
+
+  // Step 3b - VIP Interception / DNS Seizure
+  interceptedVips: InterceptedVip[];
 
   // Step 4 - Instâncias de Resolução (listeners + control)
   instanceCount: number;
@@ -613,12 +641,14 @@ export const DEFAULT_CONFIG: WizardConfig = {
   serviceVips: [] as ServiceVip[],
   vipIpv6Enabled: false,
 
+  // Step 3b - VIP Interception
+  interceptedVips: [] as InterceptedVip[],
 
   // Step 4 - Instâncias de Resolução
   instanceCount: 2,
   instances: [
-    { name: 'unbound01', bindIp: '', bindIpv6: '', controlInterface: '127.0.0.11', controlPort: 8953, egressIpv4: '', egressIpv6: '' },
-    { name: 'unbound02', bindIp: '', bindIpv6: '', controlInterface: '127.0.0.12', controlPort: 8953, egressIpv4: '', egressIpv6: '' },
+    { name: 'unbound01', bindIp: '', bindIpv6: '', publicListenerIp: '', controlInterface: '127.0.0.11', controlPort: 8953, egressIpv4: '', egressIpv6: '' },
+    { name: 'unbound02', bindIp: '', bindIpv6: '', publicListenerIp: '', controlInterface: '127.0.0.12', controlPort: 8953, egressIpv4: '', egressIpv6: '' },
   ],
   threads: 4,
   msgCacheSize: '512m',
