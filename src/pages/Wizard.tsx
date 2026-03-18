@@ -822,8 +822,8 @@ export default function Wizard() {
           </div>
         );
 
-      // ═══ STEP 6: Mapeamento VIP → Instância ═══
-      case 5:
+      // ═══ STEP 7: Mapeamento VIP → Instância ═══
+      case 6:
         return (
           <div className="space-y-4">
             <InfoBox>
