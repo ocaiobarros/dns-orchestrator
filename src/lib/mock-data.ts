@@ -543,8 +543,12 @@ export function mockVipDiagnostics() {
       : status === 'NEVER_SELECTED' ? `Backend ${ip} responds to DNS but was never selected by DNAT (0 packets)`
       : status === 'UNHEALTHY' ? `Backend ${ip} has traffic but DNS probe failed`
       : null;
+    const reason_code = status === 'DEAD' ? 'BACKEND_UNREACHABLE_NO_TRAFFIC'
+      : status === 'NEVER_SELECTED' ? 'BACKEND_HEALTHY_ZERO_DNAT'
+      : status === 'UNHEALTHY' ? 'DNS_PROBE_FAILURE'
+      : 'VIP_HEALTHY';
     return {
-      ip, status, reason,
+      ip, status, reason, reason_code,
       packets: total, bytes: total * 72,
       udp: { packets: udpPkts, bytes: udpPkts * 72 },
       tcp: { packets: tcpPkts, bytes: tcpPkts * 72 },
