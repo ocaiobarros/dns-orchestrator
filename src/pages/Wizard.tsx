@@ -1003,8 +1003,8 @@ export default function Wizard() {
           </div>
         );
 
-      // ═══ STEP 9: Observabilidade ═══
-      case 8:
+      // ═══ STEP 10: Observabilidade ═══
+      case 9:
         return (
           <div className="space-y-4">
             <InfoBox>
