@@ -184,8 +184,9 @@ function formatPackets(n: number): string {
 
 function isStale(ts: SourceTimestamp | undefined): boolean {
   if (!ts) return true;
+  const thresholdMs = (ts.stale_threshold_s || DEFAULT_STALE_THRESHOLD_MS / 1000) * 1000;
   const age = Date.now() - new Date(ts.collected_at).getTime();
-  return age > STALE_THRESHOLD_MS;
+  return age > thresholdMs;
 }
 
 /* ── Status badges ───────────────────────────────────────── */
