@@ -343,7 +343,19 @@ function ProtocolBar({ udp, tcp, unknown, label, stale }: { udp: ProtoCounter; t
 function QpsDisplay({ qps }: { qps?: QpsData }) {
   if (!qps || qps.qps === null) {
     return (
-      <div className="text-[9px] text-muted-foreground/50 font-mono">QPS: calculating...</div>
+      <div className="space-y-0.5">
+        <div className="text-[9px] text-muted-foreground/50 font-mono">QPS: calculating...</div>
+        {qps?.history_reset && (
+          <div className="text-[8px] font-mono text-warning flex items-center gap-1">
+            ⟳ History reset{qps.reason ? `: ${qps.reason}` : ''}
+          </div>
+        )}
+        {qps?.counter_reset && (
+          <div className="text-[8px] font-mono text-warning flex items-center gap-1">
+            ⚠ Counter reset detected
+          </div>
+        )}
+      </div>
     );
   }
   return (
@@ -357,6 +369,7 @@ function QpsDisplay({ qps }: { qps?: QpsData }) {
       <div className="text-[9px] text-muted-foreground font-mono">
         Δ{qps.delta_packets?.toLocaleString()} in {qps.window_seconds}s
         {qps.counter_reset && <span className="text-warning ml-1">⚠ reset</span>}
+        {qps.history_reset && <span className="text-warning ml-1">⟳ history reset</span>}
       </div>
     </div>
   );
