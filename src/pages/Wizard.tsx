@@ -23,7 +23,7 @@ import {
   Check, ChevronLeft, ChevronRight, AlertTriangle, Play, Eye, AlertCircle,
   Loader2, Server, Network, Shield, Globe, Layers, Route, Settings, FileText,
   Plus, Trash2, Info, ExternalLink, Activity, Lock, BarChart3, Download,
-  X, SkipForward,
+  X, SkipForward, Crosshair,
 } from 'lucide-react';
 import type { ApplyResult, ApplyRequest } from '@/lib/types';
 
@@ -32,6 +32,7 @@ const STEPS = [
   'Publicação DNS',
   'VIPs de Serviço',
   'Instâncias Resolver',
+  'VIP Interception',
   'Egress Público',
   'Mapeamento VIP→Instância',
   'Roteamento',
@@ -40,7 +41,7 @@ const STEPS = [
   'Revisão & Deploy',
 ];
 
-const STEP_ICONS = [Server, Network, Globe, Layers, ExternalLink, Route, Settings, Shield, BarChart3, FileText];
+const STEP_ICONS = [Server, Network, Globe, Layers, Crosshair, ExternalLink, Route, Settings, Shield, BarChart3, FileText];
 const LAST_STEP = STEPS.length - 1;
 
 // ---- Reusable form components ----
