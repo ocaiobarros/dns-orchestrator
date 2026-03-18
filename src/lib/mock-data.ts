@@ -678,7 +678,6 @@ export function mockVipDiagnostics() {
       ip_route: { collected_at: now, duration_ms: 5, ok: true, stale_threshold_s: 300 },
     },
     stale_thresholds: { nft: 120, dig: 120, ip_addr: 300, ip_route: 300 },
-    },
     summary: {
       total_vips: 2, healthy_vips: 2, all_healthy: true, degraded: false,
       has_parse_errors: false, has_counter_mismatch: false,
