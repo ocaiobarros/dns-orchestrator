@@ -46,6 +46,30 @@ export type EgressMode = 'fixed-per-instance' | 'shared-pool' | 'randomized';
 
 export type EgressDeliveryMode = 'host-owned' | 'border-routed';
 
+// ---- VIP Interception / DNS Seizure ----
+
+export type CaptureMode = 'dnat' | 'route' | 'bind';
+
+export type VipInterceptionStatus =
+  | 'INTERCEPTED_LOCAL'
+  | 'INTERNET_ESCAPING'
+  | 'NO_CAPTURE_RULE'
+  | 'BACKEND_DOWN'
+  | 'UNKNOWN';
+
+export interface InterceptedVip {
+  vipIp: string;
+  vipIpv6: string;
+  vipType: 'owned' | 'intercepted';
+  captureMode: CaptureMode;
+  backendInstance: string;
+  backendTargetIp: string;
+  description: string;
+  expectedLocalLatencyMs: number;
+  validationMode: 'strict' | 'relaxed';
+  protocol: 'udp+tcp' | 'udp' | 'tcp';
+  port: number;
+}
 
 // ---- DNS Instance (expanded) ----
 
@@ -53,6 +77,7 @@ export interface DnsInstance {
   name: string;
   bindIp: string;
   bindIpv6: string;
+  publicListenerIp: string;
   controlInterface: string;
   controlPort: number;
   egressIpv4: string;
