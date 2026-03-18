@@ -672,10 +672,12 @@ export function mockVipDiagnostics() {
       root_query: { status: 'ok', target: 'a.root-servers.net', latency_ms: 85.2, answer: 'a.root-servers.net.\nb.root-servers.net.', error: null },
     },
     source_timestamps: {
-      nft: { collected_at: now, duration_ms: 45, ok: true },
-      dig: { collected_at: now, duration_ms: 12, ok: true },
-      ip_addr: { collected_at: now, duration_ms: 3, ok: true },
-      ip_route: { collected_at: now, duration_ms: 5, ok: true },
+      nft: { collected_at: now, duration_ms: 45, ok: true, stale_threshold_s: 120 },
+      dig: { collected_at: now, duration_ms: 12, ok: true, stale_threshold_s: 120 },
+      ip_addr: { collected_at: now, duration_ms: 3, ok: true, stale_threshold_s: 300 },
+      ip_route: { collected_at: now, duration_ms: 5, ok: true, stale_threshold_s: 300 },
+    },
+    stale_thresholds: { nft: 120, dig: 120, ip_addr: 300, ip_route: 300 },
     },
     summary: {
       total_vips: 2, healthy_vips: 2, all_healthy: true, degraded: false,
