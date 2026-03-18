@@ -571,8 +571,11 @@ export default function Wizard() {
                       <FieldGroup label="Nome *" error={fieldError(`instances[${i}].name`)}>
                         <Input value={inst.name} onChange={v => updateInstance(i, 'name', v)} />
                       </FieldGroup>
-                      <FieldGroup label="Listener IPv4 *" error={fieldError(`instances[${i}].bindIp`)} hint="IP interno (loopback)">
+                      <FieldGroup label="Listener Privado *" error={fieldError(`instances[${i}].bindIp`)} hint="IP interno (loopback)">
                         <Input value={inst.bindIp} onChange={v => updateInstance(i, 'bindIp', v)} placeholder="100.127.255.101" />
+                      </FieldGroup>
+                      <FieldGroup label="Listener Público" hint="IP público da instância (identidade)">
+                        <Input value={inst.publicListenerIp} onChange={v => updateInstance(i, 'publicListenerIp', v)} placeholder="191.243.128.205" />
                       </FieldGroup>
                       {config.enableIpv6 && (
                         <FieldGroup label="Listener IPv6">
