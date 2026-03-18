@@ -373,6 +373,21 @@ export function generateLoopbackInterfacesConf(config: WizardConfig): string {
     });
   }
 
+  // Intercepted VIPs (bind mode — need local address)
+  if (config.interceptedVips?.length > 0) {
+    config.interceptedVips.forEach(vip => {
+      if (vip.vipIp && vip.captureMode === 'bind') {
+        lines.push(`# Intercepted VIP: ${vip.description || vip.vipIp} [bind]`);
+        lines.push(`auto lo:dc${aliasIndex}`);
+        lines.push(`iface lo:dc${aliasIndex} inet static`);
+        lines.push(`    address ${vip.vipIp}`);
+        lines.push(`    netmask 255.255.255.255`);
+        lines.push('');
+        aliasIndex++;
+      }
+    });
+  }
+
   return lines.join('\n');
 }
 
