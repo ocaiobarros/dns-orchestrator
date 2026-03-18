@@ -58,6 +58,7 @@ interface SourceTimestamp {
   collected_at: string;
   duration_ms: number;
   ok: boolean;
+  stale_threshold_s?: number;
 }
 
 interface BackendProbe {
