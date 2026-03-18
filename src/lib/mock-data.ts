@@ -73,21 +73,21 @@ export const mockRoutes: Route[] = [
   { destination: 'default', via: '172.28.22.5', device: 'enp6s18', protocol: 'static', scope: 'global', metric: 100 },
   { destination: '172.28.22.4/30', via: null, device: 'enp6s18', protocol: 'kernel', scope: 'link', metric: 0 },
   { destination: '4.2.2.5', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
-  { destination: '100.126.255.101', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
-  { destination: '100.126.255.102', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
-  { destination: '100.126.255.103', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
-  { destination: '100.126.255.104', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '4.2.2.6', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '100.127.255.101', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '100.127.255.102', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '191.243.128.205', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '191.243.128.206', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
 ];
 
 export const mockReachability: ReachabilityResult[] = [
   { target: '172.28.22.5', label: 'Gateway', reachable: true, latencyMs: 0.3, error: null },
-  { target: '8.8.8.8', label: 'Google DNS', reachable: true, latencyMs: 12.4, error: null },
-  { target: '1.1.1.1', label: 'Cloudflare', reachable: true, latencyMs: 8.7, error: null },
-  { target: '4.2.2.5', label: 'VIP Anycast', reachable: true, latencyMs: 0.1, error: null },
-  { target: '100.126.255.101', label: 'Unbound 01', reachable: true, latencyMs: 0.1, error: null },
-  { target: '100.126.255.102', label: 'Unbound 02', reachable: true, latencyMs: 0.1, error: null },
-  { target: '100.126.255.103', label: 'Unbound 03', reachable: true, latencyMs: 0.1, error: null },
-  { target: '100.126.255.104', label: 'Unbound 04', reachable: true, latencyMs: 0.1, error: null },
+  { target: '4.2.2.5', label: 'VIP Intercepted (Level3 Primário)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '4.2.2.6', label: 'VIP Intercepted (Level3 Secundário)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '100.127.255.101', label: 'Unbound 01 (private)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '100.127.255.102', label: 'Unbound 02 (private)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '191.243.128.205', label: 'Unbound 01 (public)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '191.243.128.206', label: 'Unbound 02 (public)', reachable: true, latencyMs: 0.1, error: null },
 ];
 
 // ---- DNS Metrics ----
