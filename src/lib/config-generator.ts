@@ -292,6 +292,22 @@ export function generatePostUpScript(config: WizardConfig): string {
     lines.push('');
   }
 
+  // ═══ Intercepted VIP routes/addresses ═══
+  if (config.interceptedVips && config.interceptedVips.length > 0) {
+    lines.push('# ═══ Intercepted VIPs (DNS Seizure) ═══');
+    config.interceptedVips.forEach(vip => {
+      if (!vip.vipIp) return;
+      if (vip.captureMode === 'bind' || vip.captureMode === 'route') {
+        // Bind/route mode: add VIP IP on loopback so it's locally reachable
+        lines.push(`ip -4 addr replace ${vip.vipIp}/32 dev lo 2>/dev/null || true  # Intercepted VIP: ${vip.description || vip.vipIp} [${vip.captureMode}]`);
+      } else if (vip.captureMode === 'dnat') {
+        // DNAT mode: add /32 route to attract traffic, but no local bind needed
+        lines.push(`ip -4 route replace ${vip.vipIp}/32 dev lo 2>/dev/null || true  # Intercepted VIP route: ${vip.vipIp} → ${vip.backendInstance} [dnat]`);
+      }
+    });
+    lines.push('');
+  }
+
   lines.push('# ═══ Verification ═══');
   lines.push('echo "DNS Control: Network addresses applied"');
   lines.push('ip addr show lo');
