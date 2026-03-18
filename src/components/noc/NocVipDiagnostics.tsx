@@ -691,9 +691,9 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
               <div className="flex items-center gap-2 mb-2">
                 <Radio size={11} className="text-primary" />
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-foreground/80">
-                  Service VIPs — Per-VIP Counters
+                  Intercepted VIPs — DNS Seizure Status
                 </span>
-                <DataSourceTag label="nft list ruleset + dig probes" stale={data.source_timestamps ? isStale(data.source_timestamps.nft) : false} />
+                <DataSourceTag label="nft list ruleset + dig probes + ip route" stale={data.source_timestamps ? isStale(data.source_timestamps.nft) : false} />
               </div>
               <div className="grid grid-cols-1 gap-3">
                 {data.vip_diagnostics.map((vip, i) => (
