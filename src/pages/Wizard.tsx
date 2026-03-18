@@ -1043,8 +1043,8 @@ export default function Wizard() {
           </div>
         );
 
-      // ═══ STEP 10: Revisão & Deploy ═══
-      case 9:
+      // ═══ STEP 11: Revisão & Deploy ═══
+      case 10:
         if (applyResult) {
           const deployValidationErrors = applyResult.validationErrors ?? [];
           const deployValidationResults = applyResult.validationResults;
