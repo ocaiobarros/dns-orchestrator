@@ -194,6 +194,10 @@ function isStale(ts: SourceTimestamp | undefined): boolean {
 
 const STATUS_STYLES: Record<string, string> = {
   HEALTHY: 'bg-success/15 text-success border-success/25',
+  INTERCEPTED_LOCAL: 'bg-success/15 text-success border-success/25',
+  INTERNET_ESCAPING: 'bg-destructive/15 text-destructive border-destructive/25',
+  NO_CAPTURE_RULE: 'bg-destructive/15 text-destructive border-destructive/25',
+  BACKEND_DOWN: 'bg-destructive/15 text-destructive border-destructive/25',
   INACTIVE_VIP: 'bg-warning/15 text-warning border-warning/25',
   COUNTER_MISMATCH: 'bg-accent/15 text-accent border-accent/25',
   PARSE_ERROR: 'bg-destructive/15 text-destructive border-destructive/25',
