@@ -292,6 +292,22 @@ export function generatePostUpScript(config: WizardConfig): string {
     lines.push('');
   }
 
+  // ═══ Intercepted VIP routes/addresses ═══
+  if (config.interceptedVips && config.interceptedVips.length > 0) {
+    lines.push('# ═══ Intercepted VIPs (DNS Seizure) ═══');
+    config.interceptedVips.forEach(vip => {
+      if (!vip.vipIp) return;
+      if (vip.captureMode === 'bind' || vip.captureMode === 'route') {
+        // Bind/route mode: add VIP IP on loopback so it's locally reachable
+        lines.push(`ip -4 addr replace ${vip.vipIp}/32 dev lo 2>/dev/null || true  # Intercepted VIP: ${vip.description || vip.vipIp} [${vip.captureMode}]`);
+      } else if (vip.captureMode === 'dnat') {
+        // DNAT mode: add /32 route to attract traffic, but no local bind needed
+        lines.push(`ip -4 route replace ${vip.vipIp}/32 dev lo 2>/dev/null || true  # Intercepted VIP route: ${vip.vipIp} → ${vip.backendInstance} [dnat]`);
+      }
+    });
+    lines.push('');
+  }
+
   lines.push('# ═══ Verification ═══');
   lines.push('echo "DNS Control: Network addresses applied"');
   lines.push('ip addr show lo');
@@ -350,6 +366,21 @@ export function generateLoopbackInterfacesConf(config: WizardConfig): string {
         lines.push(`auto lo:dc${aliasIndex}`);
         lines.push(`iface lo:dc${aliasIndex} inet static`);
         lines.push(`    address ${vip.ipv4}`);
+        lines.push(`    netmask 255.255.255.255`);
+        lines.push('');
+        aliasIndex++;
+      }
+    });
+  }
+
+  // Intercepted VIPs (bind mode — need local address)
+  if (config.interceptedVips?.length > 0) {
+    config.interceptedVips.forEach(vip => {
+      if (vip.vipIp && vip.captureMode === 'bind') {
+        lines.push(`# Intercepted VIP: ${vip.description || vip.vipIp} [bind]`);
+        lines.push(`auto lo:dc${aliasIndex}`);
+        lines.push(`iface lo:dc${aliasIndex} inet static`);
+        lines.push(`    address ${vip.vipIp}`);
         lines.push(`    netmask 255.255.255.255`);
         lines.push('');
         aliasIndex++;
@@ -609,6 +640,42 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     }
   }
 
+  // ═══ Intercepted VIP DNAT rules (per-VIP, not external probes) ═══
+  if (config.interceptedVips?.length > 0) {
+    const dnatVips = config.interceptedVips.filter(v => v.captureMode === 'dnat' && v.vipIp && v.backendTargetIp);
+    if (dnatVips.length > 0) {
+      ruleid = 8001;
+      dnatVips.forEach(vip => {
+        const safeVip = vip.vipIp.replace(/\./g, '_');
+        for (const proto of ['udp', 'tcp']) {
+          if (vip.protocol !== 'udp+tcp' && vip.protocol !== proto) continue;
+          const chainName = `intercepted_${proto}_${safeVip}`;
+          // Chain
+          files.push({
+            path: `/etc/nftables.d/${ruleid}-nat-chain-${chainName}.nft`,
+            content: `add chain ip nat ${chainName}`,
+          });
+          // Entry counter + DNAT rule
+          files.push({
+            path: `/etc/nftables.d/${ruleid}-nat-rule-${chainName}.nft`,
+            content: [
+              `# Intercepted VIP: ${vip.vipIp} → ${vip.backendInstance} (${vip.backendTargetIp})`,
+              `# Capture mode: DNAT — clients believe they use ${vip.vipIp} (public DNS)`,
+              `# but traffic is intercepted locally by ${vip.backendInstance}`,
+              `add rule ip nat ${chainName} counter dnat to ${vip.backendTargetIp}:${vip.port || 53}`,
+            ].join('\n'),
+          });
+          // PREROUTING jump
+          files.push({
+            path: `/etc/nftables.d/${ruleid}-nat-preroute-${chainName}.nft`,
+            content: `add rule ip nat PREROUTING ip daddr ${vip.vipIp} ${proto} dport ${vip.port || 53} counter packets 0 bytes 0 jump ${chainName}`,
+          });
+          ruleid++;
+        }
+      });
+    }
+  }
+
   return files;
 }
 
@@ -841,7 +908,8 @@ export function generateDeploymentManifest(config: WizardConfig, files: { path: 
 #   Clients → Service VIPs → nftables DNAT → Unbound Instances → Egress → Global DNS
 #
 #   Service VIPs: ${config.serviceVips.map(v => v.ipv4).join(', ') || '(none)'}
-#   Instances: ${config.instances.map(i => `${i.name}@${i.bindIp}`).join(', ') || '(none)'}
+#   Intercepted VIPs: ${(config.interceptedVips || []).map(v => `${v.vipIp} → ${v.backendInstance} [${v.captureMode}]`).join(', ') || '(none)'}
+#   Instances: ${config.instances.map(i => `${i.name}@${i.bindIp}${i.publicListenerIp ? ` pub:${i.publicListenerIp}` : ''}`).join(', ') || '(none)'}
 #   Egress: ${config.instances.map(i => `${i.name}→${i.egressIpv4}`).join(', ') || '(none)'}
 #   Distribution: ${config.distributionPolicy}
 #   Sticky Timeout: ${Math.floor(config.stickyTimeout / 60)}m
