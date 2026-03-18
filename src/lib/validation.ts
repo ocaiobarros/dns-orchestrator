@@ -330,7 +330,7 @@ export function getValidationSummary(errors: ValidationError[]) {
   return {
     totalErrors: errors.filter(e => e.severity === 'error').length,
     totalWarnings: errors.filter(e => e.severity === 'warning').length,
-    errorsByStep: Array.from({ length: 10 }, (_, i) => ({
+    errorsByStep: Array.from({ length: 11 }, (_, i) => ({
       step: i,
       errors: errors.filter(e => e.step === i && e.severity === 'error').length,
       warnings: errors.filter(e => e.step === i && e.severity === 'warning').length,
