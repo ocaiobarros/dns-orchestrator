@@ -493,32 +493,20 @@ export function mockV2Metrics(): V2MetricEntry[] {
     { instance_id: 'inst-02', instance_name: 'unbound02', metric_name: 'dns_latency_ms', metric_value: 2.3, collected_at: now },
     { instance_id: 'inst-02', instance_name: 'unbound02', metric_name: 'dns_servfail_total', metric_value: 8, collected_at: now },
     { instance_id: 'inst-02', instance_name: 'unbound02', metric_name: 'dns_nxdomain_total', metric_value: 3190, collected_at: now },
-    { instance_id: 'inst-03', instance_name: 'unbound03', metric_name: 'dns_queries_total', metric_value: 1285102, collected_at: now },
-    { instance_id: 'inst-03', instance_name: 'unbound03', metric_name: 'dns_cache_hit_ratio', metric_value: 0.871, collected_at: now },
-    { instance_id: 'inst-03', instance_name: 'unbound03', metric_name: 'dns_latency_ms', metric_value: 2.0, collected_at: now },
-    { instance_id: 'inst-03', instance_name: 'unbound03', metric_name: 'dns_servfail_total', metric_value: 5, collected_at: now },
-    { instance_id: 'inst-03', instance_name: 'unbound03', metric_name: 'dns_nxdomain_total', metric_value: 3502, collected_at: now },
-    { instance_id: 'inst-04', instance_name: 'unbound04', metric_name: 'dns_queries_total', metric_value: 1282761, collected_at: now },
-    { instance_id: 'inst-04', instance_name: 'unbound04', metric_name: 'dns_cache_hit_ratio', metric_value: 0.865, collected_at: now },
-    { instance_id: 'inst-04', instance_name: 'unbound04', metric_name: 'dns_latency_ms', metric_value: 2.4, collected_at: now },
-    { instance_id: 'inst-04', instance_name: 'unbound04', metric_name: 'dns_servfail_total', metric_value: 15, collected_at: now },
-    { instance_id: 'inst-04', instance_name: 'unbound04', metric_name: 'dns_nxdomain_total', metric_value: 3280, collected_at: now },
   ];
 }
 
 export function mockV2Instances(): V2Instance[] {
   return [
-    { id: 'inst-01', instance_name: 'unbound01', bind_ip: '100.126.255.101', bind_port: 53, outgoing_ip: '45.232.215.16', control_port: 8953, current_status: 'healthy', in_rotation: true, consecutive_failures: 0, consecutive_successes: 142, last_success_at: new Date().toISOString(), last_failure_at: null, last_transition_at: '2026-03-10T14:30:00Z', reason: null, cooldown_remaining: 0, last_reconciliation_at: null },
-    { id: 'inst-02', instance_name: 'unbound02', bind_ip: '100.126.255.102', bind_port: 53, outgoing_ip: '45.232.215.17', control_port: 8954, current_status: 'healthy', in_rotation: true, consecutive_failures: 0, consecutive_successes: 140, last_success_at: new Date().toISOString(), last_failure_at: '2026-03-11T06:30:00Z', last_transition_at: '2026-03-11T06:31:00Z', reason: 'Recovery: passed consecutive health checks', cooldown_remaining: 0, last_reconciliation_at: '2026-03-11T06:31:00Z' },
-    { id: 'inst-03', instance_name: 'unbound03', bind_ip: '100.126.255.103', bind_port: 53, outgoing_ip: '45.232.215.18', control_port: 8955, current_status: 'healthy', in_rotation: true, consecutive_failures: 0, consecutive_successes: 85, last_success_at: new Date().toISOString(), last_failure_at: '2026-03-11T07:54:30Z', last_transition_at: '2026-03-11T08:10:00Z', reason: 'Recovery: passed consecutive health checks', cooldown_remaining: 0, last_reconciliation_at: '2026-03-11T08:10:30Z' },
-    { id: 'inst-04', instance_name: 'unbound04', bind_ip: '100.126.255.104', bind_port: 53, outgoing_ip: '45.232.215.19', control_port: 8956, current_status: 'healthy', in_rotation: true, consecutive_failures: 0, consecutive_successes: 142, last_success_at: new Date().toISOString(), last_failure_at: null, last_transition_at: '2026-03-10T14:30:00Z', reason: null, cooldown_remaining: 0, last_reconciliation_at: null },
+    { id: 'inst-01', instance_name: 'unbound01', bind_ip: '100.127.255.101', bind_port: 53, outgoing_ip: '191.243.128.205', control_port: 8953, current_status: 'healthy', in_rotation: true, consecutive_failures: 0, consecutive_successes: 142, last_success_at: new Date().toISOString(), last_failure_at: null, last_transition_at: '2026-03-10T14:30:00Z', reason: null, cooldown_remaining: 0, last_reconciliation_at: null },
+    { id: 'inst-02', instance_name: 'unbound02', bind_ip: '100.127.255.102', bind_port: 53, outgoing_ip: '191.243.128.206', control_port: 8954, current_status: 'healthy', in_rotation: true, consecutive_failures: 0, consecutive_successes: 140, last_success_at: new Date().toISOString(), last_failure_at: '2026-03-11T06:30:00Z', last_transition_at: '2026-03-11T06:31:00Z', reason: 'Recovery: passed consecutive health checks', cooldown_remaining: 0, last_reconciliation_at: '2026-03-11T06:31:00Z' },
   ];
 }
 
 export function mockV2Actions(): V2Action[] {
   return [
-    { id: 'act-001', action_type: 'remove_backend', target_type: 'instance', target_id: 'inst-03', status: 'success', exit_code: 0, trigger_source: 'health_engine', stdout_log: '', stderr_log: '', created_at: '2026-03-11T07:55:00Z', finished_at: '2026-03-11T07:55:01Z' },
-    { id: 'act-002', action_type: 'restore_backend', target_type: 'instance', target_id: 'inst-03', status: 'success', exit_code: 0, trigger_source: 'health_engine', stdout_log: '', stderr_log: '', created_at: '2026-03-11T08:10:30Z', finished_at: '2026-03-11T08:10:31Z' },
+    { id: 'act-001', action_type: 'remove_backend', target_type: 'instance', target_id: 'inst-02', status: 'success', exit_code: 0, trigger_source: 'health_engine', stdout_log: '', stderr_log: '', created_at: '2026-03-11T06:30:00Z', finished_at: '2026-03-11T06:30:01Z' },
+    { id: 'act-002', action_type: 'restore_backend', target_type: 'instance', target_id: 'inst-02', status: 'success', exit_code: 0, trigger_source: 'health_engine', stdout_log: '', stderr_log: '', created_at: '2026-03-11T06:31:00Z', finished_at: '2026-03-11T06:31:01Z' },
   ];
 }
 
