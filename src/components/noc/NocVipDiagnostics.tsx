@@ -65,6 +65,7 @@ interface BackendProbe {
   ip: string;
   status: string;
   reason?: string | null;
+  reason_code?: string | null;
   packets: number;
   bytes: number;
   udp: ProtoCounter;
