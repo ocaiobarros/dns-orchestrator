@@ -908,7 +908,8 @@ export function generateDeploymentManifest(config: WizardConfig, files: { path: 
 #   Clients → Service VIPs → nftables DNAT → Unbound Instances → Egress → Global DNS
 #
 #   Service VIPs: ${config.serviceVips.map(v => v.ipv4).join(', ') || '(none)'}
-#   Instances: ${config.instances.map(i => `${i.name}@${i.bindIp}`).join(', ') || '(none)'}
+#   Intercepted VIPs: ${(config.interceptedVips || []).map(v => `${v.vipIp} → ${v.backendInstance} [${v.captureMode}]`).join(', ') || '(none)'}
+#   Instances: ${config.instances.map(i => `${i.name}@${i.bindIp}${i.publicListenerIp ? ` pub:${i.publicListenerIp}` : ''}`).join(', ') || '(none)'}
 #   Egress: ${config.instances.map(i => `${i.name}→${i.egressIpv4}`).join(', ') || '(none)'}
 #   Distribution: ${config.distributionPolicy}
 #   Sticky Timeout: ${Math.floor(config.stickyTimeout / 60)}m
