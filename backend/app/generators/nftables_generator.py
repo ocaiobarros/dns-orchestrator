@@ -64,6 +64,28 @@ def _collect_service_vips(payload: dict[str, Any], nat: dict[str, Any]) -> list[
     return []
 
 
+def _collect_intercepted_vips(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    wizard_cfg = payload.get("_wizardConfig", {}) or {}
+    raw_vips = payload.get("interceptedVips") or wizard_cfg.get("interceptedVips") or []
+    vips: list[dict[str, Any]] = []
+    for vip in raw_vips:
+        if not isinstance(vip, dict):
+            continue
+        vip_ip = str(vip.get("vipIp", "")).strip()
+        backend_target_ip = str(vip.get("backendTargetIp", "")).strip()
+        if not vip_ip or not backend_target_ip:
+            continue
+        vips.append({
+            "vipIp": vip_ip,
+            "backendTargetIp": backend_target_ip,
+            "backendInstance": str(vip.get("backendInstance", "")).strip(),
+            "captureMode": str(vip.get("captureMode", "dnat")).strip() or "dnat",
+            "protocol": str(vip.get("protocol", "udp+tcp")).strip() or "udp+tcp",
+            "port": int(vip.get("port", 53) or 53),
+        })
+    return vips
+
+
 def generate_nftables_config(payload: dict[str, Any], validation_mode: bool = False) -> list[dict]:
     """Generate modular nftables snippets in /etc/nftables.d/.
     Returns list of file dicts. For validation_mode, returns single monolithic file.
@@ -80,12 +102,13 @@ def generate_nftables_config(payload: dict[str, Any], validation_mode: bool = Fa
     sticky_timeout_min = max(1, sticky_timeout_seconds // 60)
 
     service_vips = _collect_service_vips(payload, nat)
+    intercepted_vips = _collect_intercepted_vips(payload)
     backends = _collect_backends(instances)
 
     if validation_mode:
         return _generate_monolithic_validation(payload, service_vips, backends, enable_ipv6, distribution_policy, sticky_timeout_min)
 
-    return _generate_modular(service_vips, backends, enable_ipv6, distribution_policy, sticky_timeout_min, payload)
+    return _generate_modular(service_vips, backends, enable_ipv6, distribution_policy, sticky_timeout_min, payload, intercepted_vips)
 
 
 def _generate_modular(
@@ -95,6 +118,7 @@ def _generate_modular(
     distribution_policy: str,
     sticky_timeout_min: int,
     payload: dict,
+    intercepted_vips: list[dict],
 ) -> list[dict]:
     """Generate /etc/nftables.d/*.nft modular snippets matching vdns-01 production layout."""
     files: list[dict] = []
@@ -270,6 +294,32 @@ def _generate_modular(
                       f"add rule ip6 nat {topchain} numgen inc mod {rand_num} 0 counter jump {subchain}")
                 ruleid += 1
                 rand_num -= 1
+
+    ruleid = 8001
+    for vip in intercepted_vips:
+        if vip.get("captureMode") != "dnat":
+            continue
+        vip_ip = vip.get("vipIp", "")
+        backend_target = vip.get("backendTargetIp", "")
+        protocol = vip.get("protocol", "udp+tcp")
+        if not vip_ip or not backend_target:
+            continue
+        chain_suffix = vip_ip.replace(".", "_")
+        protos = ("udp", "tcp") if protocol == "udp+tcp" else (protocol,)
+        for proto in protos:
+            chain_name = f"intercepted_{proto}_{chain_suffix}"
+            _file(f"/etc/nftables.d/{ruleid}-nat-chain-{chain_name}.nft", f"add chain ip nat {chain_name}")
+            ruleid += 1
+            _file(
+                f"/etc/nftables.d/{ruleid}-nat-rule-prerouting-{chain_name}.nft",
+                f"add rule ip nat PREROUTING ip daddr {vip_ip} {proto} dport 53 counter jump {chain_name}",
+            )
+            ruleid += 1
+            _file(
+                f"/etc/nftables.d/{ruleid}-nat-rule-action-{chain_name}.nft",
+                f"add rule ip nat {chain_name} {proto} dport 53 counter dnat to {backend_target}:53",
+            )
+            ruleid += 1
 
     return files
 

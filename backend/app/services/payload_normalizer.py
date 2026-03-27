@@ -54,6 +54,7 @@ def normalize_payload(raw: dict[str, Any]) -> dict[str, Any]:
             "name": inst.get("name", "unbound"),
             "bindIp": inst.get("bindIp", "127.0.0.1"),
             "bindIpv6": inst.get("bindIpv6", ""),
+            "publicListenerIp": inst.get("publicListenerIp", ""),
             "port": 53,
             "exitIp": inst.get("egressIpv4", ""),
             "exitIpv6": inst.get("egressIpv6", ""),
@@ -115,11 +116,14 @@ def normalize_payload(raw: dict[str, Any]) -> dict[str, Any]:
         "bootstrapDns": raw.get("bootstrapDns", ""),
     }
 
+    intercepted_vips = raw.get("interceptedVips", [])
+
     return {
         "environment": environment,
         "instances": instances,
         "loopback": loopback,
         "nat": nat,
+        "interceptedVips": intercepted_vips,
         "security": security,
         "ospf": ospf,
         "dnsTuning": dns_tuning,
