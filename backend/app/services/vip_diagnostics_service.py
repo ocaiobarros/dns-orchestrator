@@ -197,9 +197,9 @@ def _calculate_qps_hardened(vip_ip: str, current_packets: int, current_ts: float
     }
 
 
-def _safe_run(executable: str, args: list[str], timeout: int = 10) -> dict:
+def _safe_run(executable: str, args: list[str], timeout: int = 10, use_privilege: bool = False) -> dict:
     try:
-        return run_command(executable, args, timeout=timeout)
+        return run_command(executable, args, timeout=timeout, use_privilege=use_privilege)
     except Exception as e:
         logger.debug(f"Command {executable} failed: {e}")
         return {"exit_code": -1, "stdout": "", "stderr": str(e), "duration_ms": 0}
@@ -233,7 +233,7 @@ def run_vip_diagnostics(service_vips: list[dict] | None = None, debug: bool = Fa
 
     # Fetch nftables ruleset once
     nft_start = time.monotonic()
-    nft_r = _safe_run("nft", ["list", "ruleset"], timeout=10)
+    nft_r = _safe_run("nft", ["list", "ruleset"], timeout=10, use_privilege=True)
     nft_ok = nft_r["exit_code"] == 0
     nft_stdout = nft_r.get("stdout", "") if nft_ok else ""
     nft_parse_error = None if nft_ok else (nft_r.get("stderr", "") or "nft command failed")

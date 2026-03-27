@@ -74,6 +74,7 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
         name = inst.get("name", "unbound")
         bind_ip = inst.get("bindIp", "127.0.0.1")
         bind_ipv6 = _safe_str(inst.get("bindIpv6", ""))
+        public_listener_ip = _safe_str(inst.get("publicListenerIp", ""))
         port = _safe_int(inst.get("port", 53), 53)
         exit_ip = _safe_str(inst.get("exitIp", "") or inst.get("egressIpv4", ""))
         exit_ipv6 = _safe_str(inst.get("exitIpv6", "") or inst.get("egressIpv6", ""))
@@ -104,6 +105,10 @@ server:
         # IPv6 listener
         if enable_ipv6 and bind_ipv6:
             config += f"    interface: {bind_ipv6}\n"
+
+        # Public listener / public identity can coexist with private listener
+        if public_listener_ip and public_listener_ip != bind_ip:
+            config += f"    interface: {public_listener_ip}  # public listener / identity\n"
 
         # In host-owned mode, also bind on egress IP for direct DNS queries
         if not is_border_routed and exit_ip and exit_ip != bind_ip:
