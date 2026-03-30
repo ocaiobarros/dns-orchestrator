@@ -168,7 +168,7 @@ server:
     directory: "/etc/unbound"
     logfile: ""
     use-syslog: no
-    pidfile: "/var/run/unbound.pid"
+    pidfile: "/var/run/{name}.pid"
     root-hints: "{root_hints_path}"
 
     identity: "{dns_identity}"

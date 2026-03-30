@@ -171,8 +171,6 @@ def _update_instance_state(db: Session, instance: DnsInstance, check_result: str
             state.cooldown_until = now + timedelta(seconds=cooldown_seconds)
             _emit_event(db, "instance_recovered", "warning", instance.id,
                         f"{instance.instance_name} recovered after {recovery_threshold} successful checks (cooldown: {cooldown_seconds}s)")
-            _emit_event(db, "instance_recovered", "warning", instance.id,
-                        f"{instance.instance_name} recovered after {recovery_threshold} successful checks")
 
     elif check_result == "degraded":
         state.current_status = "degraded"
