@@ -426,7 +426,7 @@ if curl -sf --max-time 30 "\$BLOCK_V4_URL" -o "\$NEW_V4"; then
 else
     logger -t anablock-ip-sync "ERRO: falha ao baixar lista IPv4"
     rm -f "\$NEW_V4"
-    ERRORS=$((ERRORS + 1))
+    ERRORS=\$((ERRORS + 1))
 fi
 ${ipv6Block}
 if [ "\$ERRORS" -eq 0 ]; then
