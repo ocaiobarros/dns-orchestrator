@@ -178,7 +178,7 @@ export function generateSystemdUnit(_config: WizardConfig, instanceIndex: number
   if (!inst) return '# Error: Instance not found';
 
   return `[Unit]
-Description=Unbound DNS server — ${inst.name}
+Description=Unbound DNS server (${inst.name})
 Documentation=man:unbound(8)
 After=network.target
 Before=nss-lookup.target
@@ -190,7 +190,6 @@ Restart=always
 EnvironmentFile=-/etc/default/unbound
 ExecStartPre=-/usr/lib/unbound/package-helper chroot_setup
 ExecStartPre=-/usr/lib/unbound/package-helper root_trust_anchor_update
-ExecStartPre=/usr/sbin/unbound-checkconf /etc/unbound/${inst.name}.conf
 ExecStart=/usr/sbin/unbound -c /etc/unbound/${inst.name}.conf -d -p $DAEMON_OPTS
 ExecStopPost=-/usr/lib/unbound/package-helper chroot_teardown
 ExecReload=+/bin/kill -HUP $MAINPID
