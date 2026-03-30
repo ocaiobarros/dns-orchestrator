@@ -638,41 +638,8 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     }
   }
 
-  // ═══ Intercepted VIP DNAT rules (per-VIP, not external probes) ═══
-  if (config.interceptedVips?.length > 0) {
-    const dnatVips = config.interceptedVips.filter(v => v.captureMode === 'dnat' && v.vipIp && v.backendTargetIp);
-    if (dnatVips.length > 0) {
-      ruleid = 8001;
-      dnatVips.forEach(vip => {
-        const safeVip = vip.vipIp.replace(/\./g, '_');
-        for (const proto of ['udp', 'tcp']) {
-          if (vip.protocol !== 'udp+tcp' && vip.protocol !== proto) continue;
-          const chainName = `intercepted_${proto}_${safeVip}`;
-          // Chain
-          files.push({
-            path: `/etc/nftables.d/${ruleid}-nat-chain-${chainName}.nft`,
-            content: `add chain ip nat ${chainName}`,
-          });
-          // Entry counter + DNAT rule
-          files.push({
-            path: `/etc/nftables.d/${ruleid}-nat-rule-${chainName}.nft`,
-            content: [
-              `# Intercepted VIP: ${vip.vipIp} → ${vip.backendInstance} (${vip.backendTargetIp})`,
-              `# Capture mode: DNAT — clients believe they use ${vip.vipIp} (public DNS)`,
-              `# but traffic is intercepted locally by ${vip.backendInstance}`,
-              `add rule ip nat ${chainName} counter dnat to ${vip.backendTargetIp}:${vip.port || 53}`,
-            ].join('\n'),
-          });
-          // PREROUTING jump
-          files.push({
-            path: `/etc/nftables.d/${ruleid}-nat-preroute-${chainName}.nft`,
-            content: `add rule ip nat PREROUTING ip daddr ${vip.vipIp} ${proto} dport ${vip.port || 53} counter packets 0 bytes 0 jump ${chainName}`,
-          });
-          ruleid++;
-        }
-      });
-    }
-  }
+  // Intercepted VIPs are merged into DNS_ANYCAST_IPV4 and balanced
+  // across ALL backends via sticky+nth. No 1:1 per-VIP chains needed.
 
   return files;
 }
