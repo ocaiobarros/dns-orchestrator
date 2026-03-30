@@ -1,6 +1,7 @@
 """
 DNS Control — Deploy Service
 Full production deployment lifecycle: validate → generate → stage → validate-staged → backup → apply → reload → verify.
+Includes global deploy lock, bash -n validation, and version manifest tracking.
 """
 
 import json
@@ -18,6 +19,8 @@ from app.services.config_service import validate_config, generate_preview
 from app.services.payload_normalizer import normalize_payload
 from app.generators.nftables_generator import generate_nftables_config
 from app.executors.command_runner import run_command
+from app.services.deploy_lock import deploy_lock
+from app.services.drift_service import write_version_manifest
 
 logger = logging.getLogger("dns-control.deploy")
 
@@ -108,7 +111,27 @@ def execute_deploy(
     dry_run: bool = False,
     operator: str = "system",
 ) -> dict:
-    """Full deployment pipeline with staging directory validation."""
+    """Full deployment pipeline with staging directory validation and global lock."""
+    try:
+        with deploy_lock("deploy" if not dry_run else "dry-run", timeout=60):
+            return _execute_deploy_locked(payload, scope, dry_run, operator)
+    except RuntimeError as e:
+        return {
+            "id": "blocked",
+            "success": False,
+            "status": "blocked",
+            "steps": [],
+            "error": str(e),
+            "duration": 0,
+        }
+
+
+def _execute_deploy_locked(
+    payload: dict[str, Any],
+    scope: str = "full",
+    dry_run: bool = False,
+    operator: str = "system",
+) -> dict:
     deploy_id = str(uuid.uuid4())[:12]
     steps: list[dict] = []
     all_ok = True
@@ -314,6 +337,23 @@ def execute_deploy(
                     _add_validation_result("network", "fail", network_path, cmd, err["stderr"], err["remediation"])
                 else:
                     _add_validation_result("network", "pass", network_path, cmd)
+
+                # bash -n syntax validation for shell scripts
+                bash_cmd = f"bash -n {staged_network_path}"
+                bash_result = run_command("bash", ["-n", staged_network_path], timeout=10)
+                if bash_result["exit_code"] != 0:
+                    bash_stderr = (bash_result.get("stderr") or bash_result.get("stdout") or "Erro de sintaxe bash").strip()
+                    err = {
+                        "category": "bash-syntax-validation",
+                        "command": bash_cmd,
+                        "file": network_path,
+                        "stderr": bash_stderr,
+                        "remediation": "Corrija erros de sintaxe no script shell antes de aplicar.",
+                    }
+                    validation_errors.append(err)
+                    _add_validation_result("network", "fail", network_path, bash_cmd, bash_stderr, err["remediation"])
+                else:
+                    _add_validation_result("network", "pass", network_path, bash_cmd, "", "", "bash -n OK")
 
         if not found_network_artifact:
             _add_validation_result(
@@ -612,9 +652,14 @@ def execute_deploy(
         except Exception:
             pass
 
-    # Save deploy state
+    # Save deploy state + version manifest
     final_status = "success" if all_ok else "failed"
     _save_deploy_state(deploy_id, operator, all_ok, backup_id)
+    if all_ok:
+        try:
+            write_version_manifest(deploy_id, operator, files)
+        except Exception as e:
+            logger.warning(f"Failed to write version manifest: {e}")
     _update_live_state(
         phase=final_status,
         lastMessage=f"Deploy {'concluído com sucesso' if all_ok else 'falhou'}",
@@ -638,7 +683,16 @@ def execute_deploy(
 
 
 def execute_rollback(backup_id: str, operator: str = "system") -> dict:
-    """Rollback to a previous backup snapshot."""
+    """Rollback to a previous backup snapshot with global lock."""
+    try:
+        with deploy_lock("rollback", timeout=60):
+            return _execute_rollback_locked(backup_id, operator)
+    except RuntimeError as e:
+        return {"success": False, "error": str(e), "restoredFiles": [], "restartedServices": [], "steps": [], "duration": 0}
+
+
+def _execute_rollback_locked(backup_id: str, operator: str = "system") -> dict:
+    """Internal rollback implementation (runs under deploy lock)."""
     steps: list[dict] = []
     restored_files: list[str] = []
     services_to_restart: set[str] = set()
