@@ -8,6 +8,41 @@ O Wizard de Configuração do DNS Control é composto por **11 etapas** sequenci
 
 ---
 
+## Pré-Requisitos de Infraestrutura (OBRIGATÓRIO)
+
+Antes de iniciar o wizard, o operador **DEVE** confirmar que a infraestrutura externa atende aos requisitos abaixo. Sem eles, o deploy resultará em **SERVFAIL global** — o DNS resolverá localmente mas falhará para queries externas.
+
+### Checklist obrigatório:
+
+| # | Requisito | Comando de verificação | Consequência se ausente |
+|---|---|---|---|
+| 1 | **SNAT funcional na borda** para IPs de egress | Verificar no equipamento de borda (MikroTik/Cisco/Juniper) | Queries recursivas saem com IP privado → respostas descartadas na internet |
+| 2 | **Rota de saída válida para Internet** | `ip route get 8.8.8.8` — deve retornar `via <gateway>` | Host não alcança root servers → Unbound falha no priming |
+| 3 | **Conectividade externa funcional** | `dig @8.8.8.8 google.com +short` | Sem DNS externo → Unbound não consegue resolver nada |
+| 4 | **Portas UDP/TCP 53 liberadas** (entrada E saída) | `ss -lntup \| grep :53` (pós-deploy) + teste externo | Clientes não alcançam o serviço / Unbound não faz recursão |
+| 5 | **Retorno assimétrico tratado** (se aplicável) | `traceroute -s <egress_ip> 8.8.8.8` | Respostas DNS chegam por caminho inesperado → descartadas por rp_filter |
+| 6 | **Rotas estáticas na borda** para VIPs e listeners | Verificar tabela de rotas do gateway de borda | Tráfego para VIPs não chega ao host DNS Control |
+
+### Validação mínima antes de prosseguir:
+
+```bash
+# 1. Rota default existe
+ip route get 8.8.8.8
+# Esperado: 8.8.8.8 via 172.29.22.5 dev ens192 src 172.29.22.6
+
+# 2. Conectividade externa funciona
+ping -c 3 8.8.8.8
+# Esperado: 0% packet loss
+
+# 3. DNS externo funciona (prova que porta 53 de saída está aberta)
+dig @8.8.8.8 google.com +short +time=3
+# Esperado: IP válido (ex: 142.250.79.46)
+```
+
+> ⛔ **Se qualquer validação acima falhar, NÃO prossiga com o wizard.** Corrija a infraestrutura de rede primeiro.
+
+---
+
 ## Cenário de Referência
 
 | Camada | IP | Descrição |
@@ -199,6 +234,13 @@ remote-control:
 
 > ⚠️ Cada instância tem `pidfile: "/var/run/{name}.pid"` único. Sem isso, conflito de PID impede inicialização simultânea.
 
+> ⛔ **ATENÇÃO — `outgoing-interface` SUPRIMIDO (border-routed):**
+> No modo border-routed, o Unbound **NÃO** define `outgoing-interface`. A identidade pública de saída (egress) é imposta exclusivamente pelo equipamento de borda via SNAT ou policy routing. O Unbound utiliza o IP padrão do host (`172.29.22.6`) para enviar queries recursivas aos root servers.
+>
+> **Se o SNAT na borda NÃO estiver configurado**, as queries recursivas sairão com IP privado (`172.29.22.6`), que será descartado na internet → **falha total de resolução** (SERVFAIL em todas as queries).
+>
+> **Se `outgoing-interface` for declarado com um IP que não existe localmente no host**, o Unbound falha no priming do root com erro crítico: `could not send: Can't assign requested address` → **REFUSED/SERVFAIL para todas as queries**.
+
 ### Arquivo gerado — `/etc/network/post-up.sh` (materialização):
 
 ```bash
@@ -300,6 +342,8 @@ Resultado: todo tráfego DNS (porta 53) para **qualquer** desses 4 IPs é captur
 | **Border-Routed (Lógico)** | ✅ | IP NÃO configurado no host, sem `outgoing-interface` |
 
 > **Border-Routed:** O Unbound usa o IP padrão do host para queries recursivas. A identidade pública é imposta pelo equipamento de borda (SNAT/policy routing).
+>
+> ⛔ **Dependência externa obrigatória:** O equipamento de borda (roteador/firewall) **DEVE** ter regras de SNAT que traduzam o IP privado do host (`172.29.22.6`) para o IP de egress público correspondente (`191.243.128.20X`). Adicionalmente, **rotas estáticas** devem existir na borda apontando cada IP de egress de volta para o host DNS Control, garantindo que o tráfego de resposta da internet retorne corretamente. **Se essa configuração não existir na borda → falha total de resolução DNS.**
 
 ### Modo de Alocação:
 
@@ -364,19 +408,24 @@ add rule ip nat ipv4_udp_dns ip saddr @ipv4_users_unbound02 counter jump ipv4_dn
 add rule ip nat ipv4_udp_dns ip saddr @ipv4_users_unbound03 counter jump ipv4_dns_udp_unbound03
 add rule ip nat ipv4_udp_dns ip saddr @ipv4_users_unbound04 counter jump ipv4_dns_udp_unbound04
 
-# Fallback nth (novos clientes — mod decrescente)
-add rule ip nat ipv4_udp_dns numgen inc mod 4 0 counter jump ipv4_dns_udp_unbound01
-add rule ip nat ipv4_udp_dns numgen inc mod 3 0 counter jump ipv4_dns_udp_unbound02
-add rule ip nat ipv4_udp_dns numgen inc mod 2 0 counter jump ipv4_dns_udp_unbound03
-add rule ip nat ipv4_udp_dns numgen inc mod 1 0 counter jump ipv4_dns_udp_unbound04
+# Fallback nth (novos clientes — distribuição uniforme via vmap)
+add rule ip nat ipv4_udp_dns numgen inc mod 4 vmap {
+    0 : jump ipv4_dns_udp_unbound01,
+    1 : jump ipv4_dns_udp_unbound02,
+    2 : jump ipv4_dns_udp_unbound03,
+    3 : jump ipv4_dns_udp_unbound04
+}
 ```
+
+> ⚠️ **IMPORTANTE — Distribuição uniforme com `vmap`:**
+> A implementação anterior usava `numgen inc mod N` decrescente (mod 4, mod 3, mod 2, mod 1), que resultava em distribuição **desigual** entre backends (unbound04 recebia 100% do tráfego residual). A implementação correta usa `numgen inc mod 4 vmap { ... }`, que garante distribuição **uniforme 25%** para cada instância. O mesmo padrão é aplicado para TCP (`ipv4_tcp_dns`).
 
 ### Fluxo de decisão:
 1. Query de `10.0.0.1` chega no VIP (`45.160.10.1`)
 2. PREROUTING → `jump ipv4_udp_dns`
 3. Dispatch chain verifica: `10.0.0.1` está em algum `ipv4_users_*`?
    - **Sim** → jump para backend memorizado
-   - **Não** → `numgen inc mod 4` seleciona backend
+   - **Não** → `numgen inc mod 4 vmap` seleciona backend uniformemente
 4. Backend chain (ex: `ipv4_dns_udp_unbound02`):
    - `add @ipv4_users_unbound02 { ip saddr }` — memoriza
    - `set update ip saddr timeout 0s @ipv4_users_unbound02` — renova timer
@@ -477,6 +526,26 @@ Todos os toggles **ligados** (padrão recomendado):
 | 4 | **Sintaxe bash** | `bash -n <post-up.sh>` | ✅ se falhar |
 | 5 | Colisão de IPs | Cruzamento entre todas as camadas | ✅ se colisão |
 
+### Validação manual obrigatória (ANTES do deploy):
+
+Mesmo com staging automático, o operador **DEVE** executar validação manual após o preview e antes de confirmar o deploy:
+
+```bash
+# Validar cada instância Unbound individualmente
+unbound-checkconf /etc/unbound/unbound01.conf
+unbound-checkconf /etc/unbound/unbound02.conf
+unbound-checkconf /etc/unbound/unbound03.conf
+unbound-checkconf /etc/unbound/unbound04.conf
+
+# Validar ruleset nftables completo
+nft -c -f /etc/nftables.conf
+
+# Validar sintaxe do script de materialização
+bash -n /etc/network/post-up.sh
+```
+
+> ⚠️ O staging automático valida os arquivos em `/var/lib/dns-control/staging/`. A validação manual acima verifica os arquivos **já instalados em produção** após o deploy. Ambas são necessárias.
+
 ### Pipeline de execução:
 
 ```
@@ -501,7 +570,20 @@ Todos os toggles **ligados** (padrão recomendado):
 
 ## VALIDAÇÃO PÓS-DEPLOY — Checklist Obrigatório
 
-### 1. IPs materializados no loopback
+### 1. Rota de saída funcional (CRÍTICO)
+
+```bash
+ip route get 8.8.8.8
+```
+
+Esperado:
+```
+8.8.8.8 via 172.29.22.5 dev ens192 src 172.29.22.6
+```
+
+> ⛔ Se não retornar rota válida → Unbound não consegue fazer recursão → SERVFAIL para todas as queries externas. Corrija a rota default antes de prosseguir.
+
+### 2. IPs materializados no loopback
 
 ```bash
 ip addr show dev lo | grep "100.127.255"
@@ -515,7 +597,7 @@ Esperado:
     inet 100.127.255.4/32 scope global lo
 ```
 
-### 2. Instâncias Unbound ativas
+### 3. Instâncias Unbound ativas
 
 ```bash
 systemctl status unbound01 unbound02 unbound03 unbound04
@@ -523,13 +605,13 @@ systemctl status unbound01 unbound02 unbound03 unbound04
 
 Esperado: todas `active (running)`
 
-### 3. Portas DNS abertas (8 linhas)
+### 4. Portas DNS abertas (8 sockets)
 
 ```bash
 ss -lntup | grep :53
 ```
 
-Esperado (4 instâncias × 2 protocolos = 8 linhas):
+Esperado (4 instâncias × 2 protocolos = **8 linhas**):
 ```
 udp  UNCONN  0  0  100.127.255.1:53   *:*  users:(("unbound",pid=...))
 tcp  LISTEN  0  0  100.127.255.1:53   *:*  users:(("unbound",pid=...))
@@ -541,7 +623,9 @@ udp  UNCONN  0  0  100.127.255.4:53   *:*  ...
 tcp  LISTEN  0  0  100.127.255.4:53   *:*  ...
 ```
 
-### 4. nftables ruleset carregado
+> Cada listener IP (`100.127.255.X`) deve aparecer exatamente **2 vezes** (UDP + TCP). Se aparecer menos → instância não subiu ou bind falhou.
+
+### 5. nftables ruleset carregado
 
 ```bash
 nft list ruleset | head -50
@@ -552,9 +636,9 @@ Verificar:
 - ✅ Chains `ipv4_udp_dns` e `ipv4_tcp_dns`
 - ✅ Sets `ipv4_users_unbound01..04`
 - ✅ Backend chains com DNAT para `100.127.255.X:53`
-- ✅ Regras memorized-source e nth balancing
+- ✅ Regras memorized-source e nth balancing via `vmap`
 
-### 5. DNS direto por instância
+### 6. DNS direto por instância
 
 ```bash
 dig @100.127.255.1 google.com A +short
@@ -565,7 +649,7 @@ dig @100.127.255.4 google.com A +short
 
 Esperado: cada instância retorna IP válido (ex: `142.250.79.46`)
 
-### 6. DNS via VIP de serviço
+### 7. DNS via VIP de serviço
 
 ```bash
 dig @45.160.10.1 google.com A +short
@@ -574,7 +658,7 @@ dig @45.160.10.2 google.com A +short
 
 Esperado: resposta DNS — tráfego capturado por PREROUTING e redirecionado via sticky/nth
 
-### 7. DNS via VIP interceptado
+### 8. DNS via VIP interceptado
 
 ```bash
 dig @4.2.2.5 google.com A +short
@@ -583,16 +667,28 @@ dig @4.2.2.6 google.com A +short
 
 Esperado: resposta local (latência < 1ms) — prova que o sequestro DNS funciona
 
-### 8. Distribuição entre backends
+### 9. Distribuição uniforme entre backends
 
 ```bash
 for i in $(seq 1 100); do dig @45.160.10.1 example$i.com A +short > /dev/null 2>&1; done
 nft list chain ip nat ipv4_udp_dns
 ```
 
-Verificar: counters distribuídos entre as 4 backend chains
+Verificar: counters distribuídos **uniformemente** (~25% cada) entre as 4 backend chains. Se uma chain tiver significativamente mais tráfego → problema na distribuição nth.
 
-### 9. Teste de resiliência (auto-healing)
+### 10. Teste de idempotência do ruleset
+
+```bash
+nft -f /etc/nftables.conf
+nft -f /etc/nftables.conf
+nft list ruleset | wc -l
+```
+
+Executar `nft -f` duas vezes consecutivas. O número de linhas do ruleset **DEVE ser idêntico** nas duas execuções. Se o número cresce → regras estão sendo duplicadas em vez de substituídas (batch não é atômico).
+
+> Este teste garante que re-deploys e reconciliações não acumulam regras espúrias.
+
+### 11. Teste de resiliência (auto-healing)
 
 ```bash
 # Parar uma instância
@@ -608,6 +704,16 @@ dig @45.160.10.1 google.com A +short
 nft list chain ip nat ipv4_udp_dns | grep -c "jump"
 # Esperado: 6 (3 memorized + 3 nth — sem unbound03)
 
+# Verificar limpeza dos sticky sets (unbound03 não deve receber tráfego)
+nft list set ip nat ipv4_users_unbound03
+# Esperado: set existe mas não recebe novos membros (sem regra de dispatch apontando para ele)
+
+# Verificar que sets das instâncias ativas continuam funcionando
+nft list set ip nat ipv4_users_unbound01
+nft list set ip nat ipv4_users_unbound02
+nft list set ip nat ipv4_users_unbound04
+# Esperado: sets com membros ativos (IPs de clientes recentes)
+
 # Restaurar instância
 systemctl start unbound03
 
@@ -617,6 +723,11 @@ sleep 150
 # Verificar reintegração
 nft list chain ip nat ipv4_udp_dns | grep -c "jump"
 # Esperado: 8 (4 memorized + 4 nth — unbound03 de volta)
+
+# Confirmar que unbound03 volta a receber tráfego
+for i in $(seq 1 40); do dig @45.160.10.1 test$i.com A +short > /dev/null 2>&1; done
+nft list set ip nat ipv4_users_unbound03
+# Esperado: set com novos membros — prova de reintegração
 ```
 
 ---
@@ -635,6 +746,10 @@ nft list chain ip nat ipv4_udp_dns | grep -c "jump"
 | `nft -f` com erro de sintaxe | Ruleset inteiro falha — DNS para de funcionar |
 | PID file compartilhado | Instâncias sobrescrevem PID — `systemctl stop` mata instância errada |
 | `bash -n post-up.sh` com erro | Script de materialização falha — IPs não aparecem |
+| **SNAT ausente na borda (border-routed)** | Queries recursivas saem com IP privado → respostas descartadas → SERVFAIL global |
+| **Rota default ausente** | Unbound não alcança root servers → falha no priming → nenhuma query resolve |
+| **Rotas estáticas ausentes na borda** | Tráfego de retorno da internet não chega ao host → timeout → SERVFAIL |
+| **`numgen inc mod` decrescente (sem vmap)** | Distribuição desigual — última instância recebe 100% do tráfego residual |
 
 ---
 
@@ -642,13 +757,19 @@ nft list chain ip nat ipv4_udp_dns | grep -c "jump"
 
 O wizard está corretamente preenchido **se e somente se**:
 
+- [ ] `ip route get 8.8.8.8` → rota default válida via gateway
 - [ ] `ip addr show dev lo` → 4 IPs listener presentes
 - [ ] `ss -lntup | grep :53` → 8 linhas (4 × UDP + TCP)
 - [ ] `systemctl status unbound01..04` → todos `active (running)`
 - [ ] `nft list ruleset` → `DNS_ANYCAST_IPV4` com 4 IPs
+- [ ] `nft list chain ip nat ipv4_udp_dns` → distribuição via `vmap` (não `mod` decrescente)
 - [ ] `dig @<VIP> google.com` → responde
 - [ ] `dig @<VIP_interceptado> google.com` → responde com latência local
 - [ ] `dig @<Listener> google.com` → cada instância responde
-- [ ] Counters nftables mostram distribuição entre backends
+- [ ] Counters nftables mostram distribuição **uniforme** (~25%) entre backends
+- [ ] `nft -f /etc/nftables.conf` × 2 → ruleset idêntico (idempotência)
 - [ ] Parar uma instância → DNS continua respondendo
 - [ ] Instância volta → reintegrada automaticamente após cooldown (120s)
+- [ ] Sticky sets da instância removida param de receber membros
+- [ ] Reconciliação não depende de parsing textual do nftables
+- [ ] Re-deploy não altera estado funcional (idempotência)
