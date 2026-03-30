@@ -683,7 +683,16 @@ def _execute_deploy_locked(
 
 
 def execute_rollback(backup_id: str, operator: str = "system") -> dict:
-    """Rollback to a previous backup snapshot."""
+    """Rollback to a previous backup snapshot with global lock."""
+    try:
+        with deploy_lock("rollback", timeout=60):
+            return _execute_rollback_locked(backup_id, operator)
+    except RuntimeError as e:
+        return {"success": False, "error": str(e), "restoredFiles": [], "restartedServices": [], "steps": [], "duration": 0}
+
+
+def _execute_rollback_locked(backup_id: str, operator: str = "system") -> dict:
+    """Internal rollback implementation (runs under deploy lock)."""
     steps: list[dict] = []
     restored_files: list[str] = []
     services_to_restart: set[str] = set()
