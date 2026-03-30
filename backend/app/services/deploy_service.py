@@ -276,20 +276,21 @@ def _execute_deploy_locked(
                     # unbound-checkconf resolves include: as absolute paths, but files
                     # are in staging dir. Create a temp copy with rewritten paths.
                     original_content = open(staged_path).read()
-                    rewritten = include_pattern.sub(
-                        lambda m: m.group(0).replace(
-                            m.group(1),
-                            os.path.join(staging_dir, m.group(1).lstrip("/"))
-                        ),
-                        original_content,
-                    )
-                    checkconf_path = staged_path
-                    if rewritten != original_content:
-                        checkconf_path = staged_path + ".checkconf"
-                        with open(checkconf_path, "w") as tmp:
-                            tmp.write(rewritten)
 
-                    cmd = f"unbound-checkconf {checkconf_path}"
+                    # Rewrite ALL /etc/unbound/ include paths to staging equivalents
+                    def _rewrite_inc(match):
+                        inc = match.group(1)
+                        return match.group(0).replace(inc, os.path.join(staging_dir, inc.lstrip("/")))
+
+                    rewritten = include_pattern.sub(_rewrite_inc, original_content)
+
+                    # Always use a .checkconf copy to avoid mutating the staged file
+                    checkconf_path = staged_path + ".checkconf"
+                    with open(checkconf_path, "w") as tmp:
+                        tmp.write(rewritten)
+
+                    logger.debug(f"Checkconf rewrite for {f['path']}: {'paths rewritten' if rewritten != original_content else 'no includes found'}")
+
                     r = run_command("unbound-checkconf", [checkconf_path], timeout=10)
 
                     # Cleanup temp file
