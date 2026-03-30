@@ -431,7 +431,7 @@ fi
 ${ipv6Block}
 if [ "\$ERRORS" -eq 0 ]; then
     echo "\$REMOTE_VERSION" > "\$VERSION_FILE"
-    TOTAL_V4=$(wc -l < "\$LIST_V4" 2>/dev/null || echo "0")
+    TOTAL_V4=\$(wc -l < "\$LIST_V4" 2>/dev/null || echo "0")
     logger -t anablock-ip-sync "AnaBlock IP: sync concluído (versão \$REMOTE_VERSION, \$TOTAL_V4 rotas IPv4)"
 else
     logger -t anablock-ip-sync "ERRO: sync com \$ERRORS erro(s) — versão NÃO atualizada"
