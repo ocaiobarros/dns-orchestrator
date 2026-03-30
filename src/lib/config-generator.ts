@@ -553,21 +553,18 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     }
   });
 
-  // Nth balancing fallback
+  // Nth balancing fallback — numgen inc mod N vmap for uniform distribution
   ruleid = 7201;
   for (const proto of ['tcp', 'udp']) {
-    let randNum = config.instances.length;
-    config.instances.forEach(inst => {
-      const topchain = `ipv4_${proto}_dns`;
-      const subchain = `ipv4_dns_${proto}_${inst.name}`;
-
-      files.push({
-        path: `/etc/nftables.d/${ruleid}-nat-rule-nth-${subchain}.nft`,
-        content: `add rule ip nat ${topchain} numgen inc mod ${randNum} 0 counter jump ${subchain}`,
-      });
-      ruleid++;
-      randNum--;
+    const topchain = `ipv4_${proto}_dns`;
+    const vmapEntries = config.instances
+      .map((inst, i) => `${i} : jump ipv4_dns_${proto}_${inst.name}`)
+      .join(', ');
+    files.push({
+      path: `/etc/nftables.d/${ruleid}-nat-rule-nth-ipv4_${proto}_dns.nft`,
+      content: `add rule ip nat ${topchain} numgen inc mod ${config.instances.length} vmap { ${vmapEntries} }`,
     });
+    ruleid++;
   }
 
   // IPv6 rules
