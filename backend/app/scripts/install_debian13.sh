@@ -19,6 +19,15 @@ warn() { echo -e "  ${YELLOW}⚠${NC} $1"; }
 fail() { echo -e "  ${RED}✗${NC} $1"; }
 info() { echo -e "  ${BLUE}ℹ${NC} $1"; }
 
+# ── Path constants (must be defined before any use) ──
+INSTALL_DIR="/opt/dns-control"
+DATA_DIR="/var/lib/dns-control"
+DB_PATH="${DATA_DIR}/dns-control.db"
+LOCK_FILE="/var/lock/dns-control-install.lock"
+STAGING_DIR="${INSTALL_DIR}/.upgrade-staging"
+BACKUP_DIR="${INSTALL_DIR}/.upgrade-backup"
+TOTAL_STEPS=7
+
 # ── Auto-detect source root (supports reinstall/upgrade) ──
 # Strategy: find repo root first (via multiple markers), then locate deps file separately.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
