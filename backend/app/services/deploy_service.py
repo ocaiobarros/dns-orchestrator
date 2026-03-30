@@ -698,24 +698,58 @@ def execute_rollback(backup_id: str, operator: str = "system") -> dict:
     _run_step(s3, sysctl_reload)
     steps.append(s3)
 
-    # Step 4+: Restart affected services
+    # Step 4+: Restart services in correct order:
+    # 1. Network post-up (materialize IPs on loopback — required before Unbound bind)
+    # 2. nftables (load DNAT rules — requires listener IPs to exist)
+    # 3. Unbound instances (bind on listener IPs — requires IPs + DNAT ready)
+    # 4. FRR (routing — independent, last)
     order = 4
-    for svc in sorted(services_to_restart):
-        s = _step(order, f"Reiniciar {svc}", f"systemctl restart {svc}")
-        def restart_svc(name=svc):
-            r = run_command("systemctl", ["restart", name], timeout=30)
+
+    # Determine which categories are affected
+    has_network = any("/network/" in f or "post-up" in f for f in restored_files)
+    has_nftables = "nftables" in services_to_restart
+    unbound_services = sorted(s for s in services_to_restart if s.startswith("unbound"))
+    has_frr = "frr" in services_to_restart
+
+    # Phase 1: Network materialization
+    if has_network:
+        s = _step(order, "Materializar IPs de rede (post-up)", "/etc/network/post-up.d/dns-control")
+        def run_postup():
+            r = run_command("/etc/network/post-up.d/dns-control", [], timeout=30, use_privilege=True)
             return {"status": "success" if r["exit_code"] == 0 else "failed", "output": r["stdout"][:500]}
-        _run_step(s, restart_svc)
+        _run_step(s, run_postup)
         steps.append(s)
         order += 1
 
-    if "nftables" in services_to_restart:
+    # Phase 2: nftables
+    if has_nftables:
         s = _step(order, "Recarregar nftables", "nft -f /etc/nftables.conf")
         def reload_nft():
             r = run_command("nft", ["-f", "/etc/nftables.conf"], timeout=15, use_privilege=True)
             return {"status": "success" if r["exit_code"] == 0 else "failed", "output": r["stdout"][:500]}
         _run_step(s, reload_nft)
         steps.append(s)
+        order += 1
+
+    # Phase 3: Unbound instances
+    for svc in unbound_services:
+        s = _step(order, f"Reiniciar {svc}", f"systemctl restart {svc}")
+        def restart_svc(name=svc):
+            r = run_command("systemctl", ["restart", name], timeout=30, use_privilege=True)
+            return {"status": "success" if r["exit_code"] == 0 else "failed", "output": r["stdout"][:500]}
+        _run_step(s, restart_svc)
+        steps.append(s)
+        order += 1
+
+    # Phase 4: FRR
+    if has_frr:
+        s = _step(order, "Reiniciar FRR", "systemctl restart frr")
+        def restart_frr():
+            r = run_command("systemctl", ["restart", "frr"], timeout=30, use_privilege=True)
+            return {"status": "success" if r["exit_code"] == 0 else "failed", "output": r["stdout"][:500]}
+        _run_step(s, restart_frr)
+        steps.append(s)
+        order += 1
 
     duration = int((time.monotonic() - t0) * 1000)
     all_ok = all(s["status"] == "success" for s in steps)
