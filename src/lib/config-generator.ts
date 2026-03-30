@@ -203,113 +203,103 @@ WantedBy=multi-user.target
 
 export function generatePostUpScript(config: WizardConfig): string {
   const lines: string[] = [
-    '#!/bin/bash',
+    '#!/bin/sh',
     '# DNS Control — Network post-up script',
     `# Generated for: ${config.hostname || 'dns-control'}`,
     `# Instances: ${config.instances.map(i => i.name).join(', ')}`,
     `# Architecture: ${config.instances.length} resolvers · ${config.serviceVips.length} VIPs · ${config.egressDeliveryMode} egress`,
     '',
-    'set -e',
-    '',
-    '# Idempotent: uses "replace" to avoid duplicate addresses',
-    '',
   ];
 
   const isBorderRouted = config.egressDeliveryMode === 'border-routed';
 
-  // Listener IPs FIRST — MUST exist locally for Unbound bind + health checks
-  if (config.instances.some(i => i.bindIp)) {
-    lines.push('# ═══ Listener IPs (MUST exist locally for Unbound interface: binding) ═══');
+  // Egress IPs FIRST (outgoing-interface sources) — host-owned only
+  if (config.instances.some(i => i.egressIpv4) && !isBorderRouted) {
+    lines.push('     # Egress IPv4 (outgoing-interface sources)');
     config.instances.forEach(inst => {
-      if (inst.bindIp) {
-        lines.push(`ip -4 addr replace ${inst.bindIp}/32 dev lo 2>/dev/null || true  # ${inst.name} listener`);
+      if (inst.egressIpv4) {
+        lines.push(`     /usr/sbin/ip -4 addr add ${inst.egressIpv4}/32 dev lo 2>/dev/null || true`);
       }
     });
     lines.push('');
   }
 
-  // IPv6 listener IPs
-  if (config.enableIpv6) {
-    const ipv6Listeners = config.instances.filter(i => i.bindIpv6);
-    if (ipv6Listeners.length > 0) {
-      lines.push('# ═══ Listener IPv6 IPs ═══');
-      ipv6Listeners.forEach(inst => {
-        lines.push(`ip -6 addr replace ${inst.bindIpv6}/128 dev lo 2>/dev/null || true  # ${inst.name} listener v6`);
-      });
-      lines.push('');
-    }
+  // IPv4 default gateway
+  if (config.ipv4Gateway) {
+    lines.push(`     /usr/sbin/ip -4 route add default via ${config.ipv4Gateway} 2>/dev/null || true`);
+    lines.push('');
   }
 
-  // Egress IPs — conditional on delivery mode
-  if (config.instances.some(i => i.egressIpv4)) {
-    if (isBorderRouted) {
-      lines.push('# ═══ Egress IPs (border-routed: NOT added to host interfaces) ═══');
-      lines.push('# In border-routed mode, egress IPs are logical identities.');
-      lines.push('# Upstream routing must return traffic for these IPs to this host.');
-      config.instances.forEach(inst => {
-        if (inst.egressIpv4) {
-          lines.push(`# outgoing-interface: ${inst.egressIpv4} (${inst.name}) — routed at border`);
-        }
-      });
-    } else {
-      lines.push('# ═══ Egress IPs (host-owned: added to loopback for outgoing-interface binding) ═══');
-      config.instances.forEach(inst => {
-        if (inst.egressIpv4) {
-          lines.push(`ip -4 addr replace ${inst.egressIpv4}/32 dev lo 2>/dev/null || true  # ${inst.name} egress`);
-        }
-      });
+  // IPv6 address on main interface + gateway
+  if (config.enableIpv6 && config.ipv6Address) {
+    lines.push(`     /usr/sbin/ip -6 addr add ${config.ipv6Address} dev ${config.mainInterface} 2>/dev/null || true`);
+    if (config.ipv6Gateway) {
+      lines.push(`     /usr/sbin/ip -6 route add default via ${config.ipv6Gateway} 2>/dev/null || true`);
     }
     lines.push('');
   }
 
-  // IPv6 egress IPs (only host-owned)
+  // IPv6 egress IPs on loopback (host-owned only)
   if (config.enableIpv6 && !isBorderRouted) {
     const ipv6Egress = config.instances.filter(i => i.egressIpv6);
     if (ipv6Egress.length > 0) {
-      lines.push('# ═══ IPv6 egress IPs on loopback ═══');
+      lines.push('     # Egress IPv6 (outgoing-interface sources)');
       ipv6Egress.forEach(inst => {
-        lines.push(`ip -6 addr replace ${inst.egressIpv6}/128 dev lo 2>/dev/null || true  # ${inst.name} egress v6`);
+        lines.push(`     /usr/sbin/ip addr add ${inst.egressIpv6}/128 dev lo 2>/dev/null || true`);
       });
       lines.push('');
     }
   }
 
-  // VIP anycast IPs on loopback
-  if (config.serviceVips.length > 0) {
-    const needsLocalVip = ['pseudo-anycast-local', 'vip-local-dummy', 'anycast-frr-ospf'].includes(config.deploymentMode);
-    lines.push('# ═══ VIPs de serviço (Anycast) ═══');
-    if (!needsLocalVip) {
-      lines.push('# VIPs ficam no equipamento de borda — descomentar apenas se necessário');
-    }
-    config.serviceVips.forEach((vip, i) => {
-      const prefix = needsLocalVip ? '' : '#';
-      lines.push(`${prefix}ip -4 addr replace ${vip.ipv4}/32 dev lo 2>/dev/null || true  # VIP ${i + 1}: ${vip.description || vip.ipv4}`);
-      if (config.enableIpv6 && vip.ipv6) {
-        lines.push(`${prefix}ip -6 addr replace ${vip.ipv6}/128 dev lo 2>/dev/null || true  # VIP ${i + 1} v6`);
+  // Listener IPv4 IPs on loopback
+  if (config.instances.some(i => i.bindIp)) {
+    lines.push('     # Listener IPv4 (Unbound bind addresses)');
+    config.instances.forEach(inst => {
+      if (inst.bindIp) {
+        lines.push(`     /usr/sbin/ip addr add ${inst.bindIp}/32 dev lo 2>/dev/null || true`);
       }
     });
     lines.push('');
   }
 
-  // ═══ Intercepted VIP routes/addresses ═══
+  // Listener IPv6 IPs on loopback
+  if (config.enableIpv6) {
+    const ipv6Listeners = config.instances.filter(i => i.bindIpv6);
+    if (ipv6Listeners.length > 0) {
+      lines.push('     # Listener IPv6 (Unbound bind addresses)');
+      ipv6Listeners.forEach(inst => {
+        lines.push(`     /usr/sbin/ip addr add ${inst.bindIpv6}/128 dev lo 2>/dev/null || true`);
+      });
+      lines.push('');
+    }
+  }
+
+  // Service VIPs — commented by default, uncomment at end of deploy
+  if (config.serviceVips.length > 0) {
+    lines.push('     # Anycast publico, descomentar ao final do deploy');
+    config.serviceVips.forEach(vip => {
+      lines.push(`     #/usr/sbin/ip addr add ${vip.ipv4}/32 dev lo`);
+      if (config.enableIpv6 && vip.ipv6) {
+        lines.push(`     #/usr/sbin/ip addr add ${vip.ipv6}/128 dev lo`);
+      }
+    });
+    lines.push('');
+  }
+
+  // Intercepted VIPs — commented by default
   if (config.interceptedVips && config.interceptedVips.length > 0) {
-    lines.push('# ═══ Intercepted VIPs (DNS Seizure) ═══');
+    lines.push('     # Anycast publico interceptado, descomentar para ativar');
     config.interceptedVips.forEach(vip => {
       if (!vip.vipIp) return;
-      if (vip.captureMode === 'bind' || vip.captureMode === 'route') {
-        // Bind/route mode: add VIP IP on loopback so it's locally reachable
-        lines.push(`ip -4 addr replace ${vip.vipIp}/32 dev lo 2>/dev/null || true  # Intercepted VIP: ${vip.description || vip.vipIp} [${vip.captureMode}]`);
-      } else if (vip.captureMode === 'dnat') {
-        // DNAT mode: add /32 route to attract traffic, but no local bind needed
-        lines.push(`ip -4 route replace ${vip.vipIp}/32 dev lo 2>/dev/null || true  # Intercepted VIP route: ${vip.vipIp} → ${vip.backendInstance} [dnat]`);
+      lines.push(`     #/usr/sbin/ip addr add ${vip.vipIp}/32 dev lo`);
+      if (config.enableIpv6 && vip.vipIpv6) {
+        lines.push(`     #/usr/sbin/ip addr add ${vip.vipIpv6}/128 dev lo`);
       }
     });
     lines.push('');
   }
 
-  lines.push('# ═══ Verification ═══');
-  lines.push('echo "DNS Control: Network addresses applied"');
-  lines.push('ip addr show lo');
+  lines.push('exit 0');
   return lines.join('\n');
 }
 
