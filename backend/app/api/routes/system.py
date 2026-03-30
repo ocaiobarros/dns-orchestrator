@@ -125,6 +125,38 @@ def _check_login(username: str, password: str) -> dict[str, Any]:
         }
 
 
+def _check_nft_access() -> dict[str, Any]:
+    start = monotonic()
+    result = run_command("nft", ["list", "tables"], timeout=5, use_privilege=True)
+    ok = result.get("exit_code") == 0
+    return {
+        "name": "nft_access",
+        "status": "pass" if ok else "fail",
+        "detail": "nft list tables OK" if ok else (result.get("stderr") or "nft failed").strip(),
+        "duration_ms": int((monotonic() - start) * 1000),
+    }
+
+
+def _check_sudoers() -> dict[str, Any]:
+    """Check that the service user has sudo privileges configured."""
+    start = monotonic()
+    import os
+    sudoers_path = "/etc/sudoers.d/dns-control"
+    if os.path.isfile(sudoers_path):
+        return {
+            "name": "sudoers_ok",
+            "status": "pass",
+            "detail": f"{sudoers_path} exists",
+            "duration_ms": int((monotonic() - start) * 1000),
+        }
+    return {
+        "name": "sudoers_ok",
+        "status": "fail",
+        "detail": f"{sudoers_path} not found",
+        "duration_ms": int((monotonic() - start) * 1000),
+    }
+
+
 @router.post("/self-test")
 def run_self_test(
     body: dict[str, Any] = Body(default={}),
@@ -138,6 +170,8 @@ def run_self_test(
         _check_api_health(),
         _check_database(),
         _check_login(username=username, password=password),
+        _check_nft_access(),
+        _check_sudoers(),
     ]
 
     passed = sum(1 for c in checks if c["status"] == "pass")

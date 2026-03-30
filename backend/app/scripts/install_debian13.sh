@@ -261,7 +261,7 @@ echo "[5/${TOTAL_STEPS}] Setting up Python environment..."
 STAGING_VENV_DIR="${BACKEND_STAGING_DIR}/venv"
 python3 -m venv --clear "${STAGING_VENV_DIR}" 2>>"${INSTALL_LOG}"
 "${STAGING_VENV_DIR}/bin/pip" install --upgrade pip wheel -q 2>>"${INSTALL_LOG}"
-"${STAGING_VENV_DIR}/bin/pip" install -r "${BACKEND_STAGING_DIR}/requirements.txt" -q 2>>"${INSTALL_LOG}"
+"${STAGING_VENV_DIR}/bin/pip" install -r "${STAGING_REQUIREMENTS}" -q 2>>"${INSTALL_LOG}"
 ok "Python dependencies installed"
 
 # Verify critical imports
