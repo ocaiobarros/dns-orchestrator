@@ -272,20 +272,42 @@ def _execute_deploy_locked(
             if "/unbound/" in f["path"] and f["path"].endswith(".conf") and "block" not in f["path"] and "anablock" not in f["path"]:
                 staged_path = os.path.join(staging_dir, f["path"].lstrip("/"))
                 if os.path.exists(staged_path):
-                    cmd = f"unbound-checkconf {staged_path}"
-                    r = run_command("unbound-checkconf", [staged_path], timeout=10)
+                    # ═══ Rewrite absolute include paths to staging paths for checkconf ═══
+                    # unbound-checkconf resolves include: as absolute paths, but files
+                    # are in staging dir. Create a temp copy with rewritten paths.
+                    original_content = open(staged_path).read()
+                    rewritten = include_pattern.sub(
+                        lambda m: m.group(0).replace(
+                            m.group(1),
+                            os.path.join(staging_dir, m.group(1).lstrip("/"))
+                        ),
+                        original_content,
+                    )
+                    checkconf_path = staged_path
+                    if rewritten != original_content:
+                        checkconf_path = staged_path + ".checkconf"
+                        with open(checkconf_path, "w") as tmp:
+                            tmp.write(rewritten)
+
+                    cmd = f"unbound-checkconf {checkconf_path}"
+                    r = run_command("unbound-checkconf", [checkconf_path], timeout=10)
+
+                    # Cleanup temp file
+                    if checkconf_path != staged_path and os.path.exists(checkconf_path):
+                        os.remove(checkconf_path)
+
                     if r["exit_code"] != 0:
                         err = {
                             "category": "unbound-validation",
-                            "command": cmd,
+                            "command": f"unbound-checkconf {staged_path}",
                             "file": f["path"],
                             "stderr": (r.get("stderr") or r.get("stdout") or "Falha de validação do Unbound").strip(),
                             "remediation": "Verifique a sintaxe do arquivo Unbound e os blocos include/remote-control.",
                         }
                         validation_errors.append(err)
-                        _add_validation_result("unbound", "fail", f["path"], cmd, err["stderr"], err["remediation"])
+                        _add_validation_result("unbound", "fail", f["path"], err["command"], err["stderr"], err["remediation"])
                     else:
-                        _add_validation_result("unbound", "pass", f["path"], cmd, "")
+                        _add_validation_result("unbound", "pass", f["path"], f"unbound-checkconf {staged_path}", "")
 
         # Validate nftables safe config (without flush ruleset)
         if nft_validation_staged_path and os.path.exists(nft_validation_staged_path):
