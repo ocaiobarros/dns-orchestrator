@@ -5,6 +5,7 @@ Anti-flap cooldown, safe backend rotation with structured logging.
 
 import json
 import logging
+import re
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 
@@ -65,9 +66,20 @@ def reconcile(db: Session) -> dict:
 
 
 def _remove_backend(db: Session, instance: DnsInstance, state: InstanceState):
-    """Remove a failed backend from nftables DNAT."""
+    """Remove a failed backend from nftables DNAT.
+
+    Strategy: delete all rules that DNAT to this backend's bind_ip from the
+    dispatch chains (ipv4_tcp_dns, ipv4_udp_dns). This removes both the
+    memorized-source jump rules and the nth-balancing jump rules for this
+    instance, so no new traffic is sent to the dead backend.
+
+    The per-instance sticky set (ipv4_users_{name}) is flushed so stale
+    client affinities don't survive a future restore.
+    """
     now = datetime.now(timezone.utc)
-    logger.warning(f"Removing failed backend {instance.instance_name} ({instance.bind_ip}) from DNAT")
+    name = instance.instance_name
+    bind_ip = instance.bind_ip
+    logger.warning(f"Removing failed backend {name} ({bind_ip}) from DNAT")
 
     action = OperationalAction(
         action_type="remove_backend",
@@ -79,20 +91,32 @@ def _remove_backend(db: Session, instance: DnsInstance, state: InstanceState):
     db.add(action)
     db.flush()
 
-    # Get current nftables ruleset to find and remove the backend
-    result = run_command("nft", ["list", "ruleset"], timeout=10)
-    if result["exit_code"] != 0:
-        action.status = "failed"
-        action.stderr_log = result["stderr"]
-        action.exit_code = result["exit_code"]
-        action.finished_at = now
-        return
+    errors: list[str] = []
+    commands_run: list[str] = []
 
-    delete_result = run_command(
-        "nft",
-        ["delete", "element", "ip", "nat", "dns_backends", f"{{ {instance.bind_ip} }}"],
-        timeout=10,
-    )
+    # 1. Delete jump rules from dispatch chains that reference this backend's chains
+    for proto in ("tcp", "udp"):
+        dispatch_chain = f"ipv4_{proto}_dns"
+        backend_chain = f"ipv4_dns_{proto}_{name}"
+
+        # Get handles of rules jumping to this backend's chain
+        handles = _get_rule_handles_for_jump(dispatch_chain, backend_chain)
+        for handle in handles:
+            cmd_args = ["delete", "rule", "ip", "nat", dispatch_chain, "handle", str(handle)]
+            commands_run.append(f"nft {' '.join(cmd_args)}")
+            result = run_command("nft", cmd_args, timeout=10, use_privilege=True)
+            if result["exit_code"] != 0:
+                errors.append(f"delete rule handle {handle} from {dispatch_chain}: {result['stderr'][:200]}")
+
+    # 2. Flush the sticky set so stale affinities are cleared
+    for proto in ("tcp", "udp"):
+        set_name = f"ipv4_users_{name}"
+        cmd_args = ["flush", "set", "ip", "nat", set_name]
+        commands_run.append(f"nft {' '.join(cmd_args)}")
+        result = run_command("nft", cmd_args, timeout=10, use_privilege=True)
+        if result["exit_code"] != 0:
+            # Non-fatal: set might already be empty
+            logger.warning(f"Failed to flush set {set_name}: {result['stderr'][:200]}")
 
     state.in_rotation = False
     state.current_status = "withdrawn"
@@ -100,22 +124,37 @@ def _remove_backend(db: Session, instance: DnsInstance, state: InstanceState):
     state.last_reconciliation_at = now
     state.reason = f"Removed from DNAT: {state.consecutive_failures} consecutive failures"
 
-    action.status = "success" if delete_result["exit_code"] == 0 else "failed"
-    action.stdout_log = delete_result["stdout"]
-    action.stderr_log = delete_result["stderr"]
-    action.exit_code = delete_result["exit_code"]
+    action.status = "failed" if errors else "success"
+    action.stdout_log = "; ".join(commands_run)
+    action.stderr_log = "; ".join(errors) if errors else ""
+    action.exit_code = 1 if errors else 0
     action.finished_at = now
 
     _emit_event(db, "backend_removed_from_dnat", "warning", instance.id,
-                f"Backend {instance.instance_name} ({instance.bind_ip}) removed from DNAT rotation",
+                f"Backend {name} ({bind_ip}) removed from DNAT rotation — "
+                f"deleted {len(commands_run)} rules/sets",
                 {"action_source": "reconciliation_engine", "reason": "health check failure",
-                 "consecutive_failures": state.consecutive_failures})
+                 "consecutive_failures": state.consecutive_failures,
+                 "commands": commands_run})
 
 
 def _restore_backend(db: Session, instance: DnsInstance, state: InstanceState):
-    """Restore a recovered backend to nftables DNAT (after cooldown)."""
+    """Restore a recovered backend to nftables DNAT (after cooldown).
+
+    Strategy: re-add the memorized-source jump rules and nth-balancing jump
+    rules for this instance back into the dispatch chains. The per-instance
+    backend chains (ipv4_dns_{tcp,udp}_{name}) and sticky sets still exist
+    in the ruleset — we only removed the jump rules during removal.
+
+    Note: nth balancing mod values are NOT recalculated here. The restored
+    instance is added at the end of the chain, which means it will receive
+    traffic from new flows via the existing nth distribution. This is safe
+    because sticky clients will be re-memorized naturally.
+    """
     now = datetime.now(timezone.utc)
-    logger.info(f"Restoring recovered backend {instance.instance_name} ({instance.bind_ip}) to DNAT")
+    name = instance.instance_name
+    bind_ip = instance.bind_ip
+    logger.info(f"Restoring recovered backend {name} ({bind_ip}) to DNAT")
 
     action = OperationalAction(
         action_type="restore_backend",
@@ -127,27 +166,48 @@ def _restore_backend(db: Session, instance: DnsInstance, state: InstanceState):
     db.add(action)
     db.flush()
 
-    restore_result = run_command(
-        "nft",
-        ["add", "element", "ip", "nat", "dns_backends", f"{{ {instance.bind_ip} }}"],
-        timeout=10,
-    )
+    errors: list[str] = []
+    commands_run: list[str] = []
+
+    # Re-add jump rules: memorized-source + nth balancing
+    for proto in ("tcp", "udp"):
+        dispatch_chain = f"ipv4_{proto}_dns"
+        backend_chain = f"ipv4_dns_{proto}_{name}"
+        set_name = f"ipv4_users_{name}"
+
+        # Memorized-source rule (sticky clients jump to their backend)
+        cmd_args = ["add", "rule", "ip", "nat", dispatch_chain,
+                    "ip", "saddr", f"@{set_name}", "counter", "jump", backend_chain]
+        commands_run.append(f"nft {' '.join(cmd_args)}")
+        result = run_command("nft", cmd_args, timeout=10, use_privilege=True)
+        if result["exit_code"] != 0:
+            errors.append(f"add memorized rule for {backend_chain}: {result['stderr'][:200]}")
+
+        # Nth balancing rule (new flows)
+        cmd_args = ["add", "rule", "ip", "nat", dispatch_chain,
+                    "numgen", "inc", "mod", "1", "0", "counter", "jump", backend_chain]
+        commands_run.append(f"nft {' '.join(cmd_args)}")
+        result = run_command("nft", cmd_args, timeout=10, use_privilege=True)
+        if result["exit_code"] != 0:
+            errors.append(f"add nth rule for {backend_chain}: {result['stderr'][:200]}")
 
     state.in_rotation = True
     state.last_transition_at = now
     state.last_reconciliation_at = now
-    state.cooldown_until = None  # Clear cooldown
+    state.cooldown_until = None
     state.reason = "Restored to DNAT after recovery (cooldown elapsed)"
 
-    action.status = "success" if restore_result["exit_code"] == 0 else "failed"
-    action.stdout_log = restore_result["stdout"]
-    action.stderr_log = restore_result["stderr"]
-    action.exit_code = restore_result["exit_code"]
+    action.status = "failed" if errors else "success"
+    action.stdout_log = "; ".join(commands_run)
+    action.stderr_log = "; ".join(errors) if errors else ""
+    action.exit_code = 1 if errors else 0
     action.finished_at = now
 
     _emit_event(db, "backend_restored_to_dnat", "info", instance.id,
-                f"Backend {instance.instance_name} ({instance.bind_ip}) restored to DNAT rotation",
-                {"action_source": "reconciliation_engine", "reason": "recovery confirmed after cooldown"})
+                f"Backend {name} ({bind_ip}) restored to DNAT rotation — "
+                f"added {len(commands_run)} rules",
+                {"action_source": "reconciliation_engine", "reason": "recovery confirmed after cooldown",
+                 "commands": commands_run})
 
 
 def manual_remove_backend(db: Session, instance_id: str) -> dict:
@@ -227,6 +287,30 @@ def set_cooldown(db: Session, instance_id: str, cooldown_seconds: int):
     state = db.query(InstanceState).filter(InstanceState.instance_id == instance_id).first()
     if state:
         state.cooldown_until = datetime.now(timezone.utc) + timedelta(seconds=cooldown_seconds)
+
+
+def _get_rule_handles_for_jump(dispatch_chain: str, target_chain: str) -> list[int]:
+    """Get nftables rule handles in dispatch_chain that jump to target_chain.
+
+    Parses `nft -a list chain ip nat <chain>` output to find handles of rules
+    containing `jump <target_chain>`.
+    """
+    result = run_command(
+        "nft", ["-a", "list", "chain", "ip", "nat", dispatch_chain],
+        timeout=10, use_privilege=True,
+    )
+    if result["exit_code"] != 0:
+        logger.warning(f"Failed to list chain {dispatch_chain}: {result['stderr'][:200]}")
+        return []
+
+    handles: list[int] = []
+    for line in result["stdout"].splitlines():
+        if f"jump {target_chain}" in line:
+            # nft -a outputs lines ending with "# handle N"
+            match = re.search(r"#\s*handle\s+(\d+)", line)
+            if match:
+                handles.append(int(match.group(1)))
+    return handles
 
 
 def _emit_event(db: Session, event_type: str, severity: str, instance_id: str, message: str, details: dict | None = None):

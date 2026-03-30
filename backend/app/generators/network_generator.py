@@ -64,6 +64,7 @@ iface lo inet loopback
 allow-hotplug {main_interface}
 iface {main_interface} inet static
     address {ipv4_address}
+    gateway {ipv4_gateway}
     dns-nameservers {bootstrap_dns}
 
 post-up /etc/network/post-up.sh
