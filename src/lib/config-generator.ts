@@ -303,6 +303,176 @@ WantedBy=multi-user.target
 `;
 }
 
+// ═══ IP BLOCKING (BLACKHOLE ROUTES) ═══
+
+export function generateIpBlockingSyncScript(config: WizardConfig): string {
+  const base = (config.ipBlockingApiUrl || 'https://api.anablock.net.br').replace(/\/$/, '');
+
+  const ipv6Block = config.enableIpv6 ? `
+# ═══ IPv6 Blocking ═══
+BLOCK_V6_URL="\${APIURL_BASE}/ipv6/block"
+LIST_V6="/var/lib/dns-control/anablock-ipv6-current.list"
+LIST_V6_BAK="/var/lib/dns-control/anablock-ipv6-current.list.bak"
+NEW_V6="/tmp/anablock-ipv6-new-\$\$.list"
+BATCH_V6="/tmp/anablock-ipv6-batch-\$\$.txt"
+
+if curl -sf --max-time 30 "\$BLOCK_V6_URL" -o "\$NEW_V6"; then
+    [ -f "\$LIST_V6" ] && cp "\$LIST_V6" "\$LIST_V6_BAK"
+    touch "\$LIST_V6"
+    TO_ADD_V6=$(comm -13 <(sort "\$LIST_V6") <(sort "\$NEW_V6"))
+    TO_DEL_V6=$(comm -23 <(sort "\$LIST_V6") <(sort "\$NEW_V6"))
+    > "\$BATCH_V6"
+    while IFS= read -r prefix; do
+        [ -z "\$prefix" ] && continue
+        echo "route add blackhole \$prefix" >> "\$BATCH_V6"
+    done <<< "\$TO_ADD_V6"
+    while IFS= read -r prefix; do
+        [ -z "\$prefix" ] && continue
+        echo "route del blackhole \$prefix" >> "\$BATCH_V6"
+    done <<< "\$TO_DEL_V6"
+    if [ -s "\$BATCH_V6" ]; then
+        if ip -6 -batch "\$BATCH_V6" 2>/dev/null; then
+            ADDED_V6=$(echo "\$TO_ADD_V6" | grep -c . || true)
+            REMOVED_V6=$(echo "\$TO_DEL_V6" | grep -c . || true)
+            logger -t anablock-ip-sync "IPv6: +\${ADDED_V6} -\${REMOVED_V6} rotas blackhole"
+        else
+            logger -t anablock-ip-sync "ERRO: falha ao aplicar batch IPv6 — rollback"
+            [ -f "\$LIST_V6_BAK" ] && cp "\$LIST_V6_BAK" "\$LIST_V6"
+            rm -f "\$NEW_V6" "\$BATCH_V6"
+            ERRORS=\$((ERRORS + 1))
+        fi
+    else
+        logger -t anablock-ip-sync "IPv6: sem alterações"
+    fi
+    mv "\$NEW_V6" "\$LIST_V6"
+    rm -f "\$BATCH_V6"
+else
+    logger -t anablock-ip-sync "AVISO: falha ao baixar lista IPv6 — ignorando"
+fi
+` : '';
+
+  return `#!/bin/bash
+# DNS Control — AnaBlock IP Blocking Sync Script
+# Sincroniza IPs bloqueados judicialmente via rotas blackhole
+# Método: ip route add/del blackhole (NÃO usa nftables)
+# IPv6: ${config.enableIpv6 ? 'ativo' : 'desativado'}
+# Gerado automaticamente — não editar manualmente
+
+set -euo pipefail
+
+APIURL_BASE="${base}"
+BLOCK_V4_URL="\${APIURL_BASE}/ipv4/block"
+VERSION_URL="\${APIURL_BASE}/api/version"
+VERSION_FILE="/var/lib/dns-control/anablock-ip-version"
+LIST_V4="/var/lib/dns-control/anablock-ipv4-current.list"
+LIST_V4_BAK="/var/lib/dns-control/anablock-ipv4-current.list.bak"
+NEW_V4="/tmp/anablock-ipv4-new-\$\$.list"
+BATCH_V4="/tmp/anablock-ipv4-batch-\$\$.txt"
+ERRORS=0
+
+mkdir -p /var/lib/dns-control
+
+REMOTE_VERSION=$(curl -sf --max-time 10 "\$VERSION_URL" 2>/dev/null || echo "0")
+LOCAL_VERSION=$(cat "\$VERSION_FILE" 2>/dev/null || echo "0")
+
+if [ "\$REMOTE_VERSION" = "\$LOCAL_VERSION" ] && [ -f "\$LIST_V4" ]; then
+    logger -t anablock-ip-sync "AnaBlock IP: sem alterações (versão \$LOCAL_VERSION)"
+    exit 0
+fi
+
+logger -t anablock-ip-sync "AnaBlock IP: atualizando \$LOCAL_VERSION → \$REMOTE_VERSION"
+
+# ═══ IPv4 Blocking ═══
+if curl -sf --max-time 30 "\$BLOCK_V4_URL" -o "\$NEW_V4"; then
+    [ -f "\$LIST_V4" ] && cp "\$LIST_V4" "\$LIST_V4_BAK"
+    touch "\$LIST_V4"
+    TO_ADD=$(comm -13 <(sort "\$LIST_V4") <(sort "\$NEW_V4"))
+    TO_DEL=$(comm -23 <(sort "\$LIST_V4") <(sort "\$NEW_V4"))
+    > "\$BATCH_V4"
+    while IFS= read -r prefix; do
+        [ -z "\$prefix" ] && continue
+        echo "route add blackhole \$prefix" >> "\$BATCH_V4"
+    done <<< "\$TO_ADD"
+    while IFS= read -r prefix; do
+        [ -z "\$prefix" ] && continue
+        echo "route del blackhole \$prefix" >> "\$BATCH_V4"
+    done <<< "\$TO_DEL"
+    if [ -s "\$BATCH_V4" ]; then
+        if ip -batch "\$BATCH_V4" 2>/dev/null; then
+            ADDED=$(echo "\$TO_ADD" | grep -c . || true)
+            REMOVED=$(echo "\$TO_DEL" | grep -c . || true)
+            logger -t anablock-ip-sync "IPv4: +\${ADDED} -\${REMOVED} rotas blackhole"
+        else
+            logger -t anablock-ip-sync "ERRO: falha ao aplicar batch IPv4 — rollback"
+            if [ -f "\$LIST_V4_BAK" ]; then
+                cp "\$LIST_V4_BAK" "\$LIST_V4"
+                ROLLBACK="/tmp/anablock-ipv4-rollback-\$\$.txt"
+                > "\$ROLLBACK"
+                while IFS= read -r prefix; do
+                    [ -z "\$prefix" ] && continue
+                    echo "route add blackhole \$prefix" >> "\$ROLLBACK"
+                done < "\$LIST_V4_BAK"
+                ip -batch "\$ROLLBACK" 2>/dev/null || true
+                rm -f "\$ROLLBACK"
+            fi
+            rm -f "\$NEW_V4" "\$BATCH_V4"
+            ERRORS=\$((ERRORS + 1))
+        fi
+    else
+        logger -t anablock-ip-sync "IPv4: sem alterações"
+    fi
+    mv "\$NEW_V4" "\$LIST_V4"
+    rm -f "\$BATCH_V4"
+else
+    logger -t anablock-ip-sync "ERRO: falha ao baixar lista IPv4"
+    rm -f "\$NEW_V4"
+    ERRORS=\$((ERRORS + 1))
+fi
+${ipv6Block}
+if [ "\$ERRORS" -eq 0 ]; then
+    echo "\$REMOTE_VERSION" > "\$VERSION_FILE"
+    TOTAL_V4=\$(wc -l < "\$LIST_V4" 2>/dev/null || echo "0")
+    logger -t anablock-ip-sync "AnaBlock IP: sync concluído (versão \$REMOTE_VERSION, \$TOTAL_V4 rotas IPv4)"
+else
+    logger -t anablock-ip-sync "ERRO: sync com \$ERRORS erro(s) — versão NÃO atualizada"
+    exit 1
+fi
+`;
+}
+
+export function generateIpBlockingService(): string {
+  return `[Unit]
+Description=AnaBlock IP blocking sync (blackhole routes)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/anablock-ip-sync.sh
+TimeoutSec=120
+User=root
+
+[Install]
+WantedBy=multi-user.target
+`;
+}
+
+export function generateIpBlockingTimer(config: WizardConfig): string {
+  const hours = config.ipBlockingSyncIntervalHours || 6;
+  return `[Unit]
+Description=AnaBlock IP blocking sync timer
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=${hours}h
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+`;
+}
+
 // ═══ SYSTEMD UNIT ═══
 
 export function generateSystemdUnit(_config: WizardConfig, instanceIndex: number): string {
@@ -1122,7 +1292,16 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
     files.push({ path: '/opt/dns-control/scripts/anablock-sync.sh', content: generateAnablockSyncScript(config) });
     files.push({ path: '/etc/systemd/system/anablock-sync.service', content: generateAnablockService() });
     if (config.blocklistAutoSync) {
-      files.push({ path: '/etc/systemd/system/anablock-sync.timer', content: generateAnablockTimer(config) });
+    files.push({ path: '/etc/systemd/system/anablock-sync.timer', content: generateAnablockTimer(config) });
+    }
+  }
+
+  // IP Blocking (blackhole routes — NOT nftables)
+  if (config.enableIpBlocking) {
+    files.push({ path: '/usr/local/bin/anablock-ip-sync.sh', content: generateIpBlockingSyncScript(config) });
+    files.push({ path: '/etc/systemd/system/anablock-ip-sync.service', content: generateIpBlockingService() });
+    if (config.ipBlockingAutoSync) {
+      files.push({ path: '/etc/systemd/system/anablock-ip-sync.timer', content: generateIpBlockingTimer(config) });
     }
   }
 
