@@ -3,7 +3,8 @@ DNS Control — Unbound Configuration Generator
 Generates per-instance unbound configs at /etc/unbound/{name}.conf
 Each systemd unit references its own config file directly.
 Aligned with vdns-01 production model: standalone instances, IPv4+IPv6,
-statistics, outgoing-range, local-zones, anablock, named.cache.
+statistics, outgoing-range, local-zones, conditional blocklist, named.cache.
+DNSSEC via auto-trust-anchor-file only (no inline trust-anchor).
 """
 
 from typing import Any
