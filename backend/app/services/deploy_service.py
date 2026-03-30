@@ -652,9 +652,14 @@ def _execute_deploy_locked(
         except Exception:
             pass
 
-    # Save deploy state
+    # Save deploy state + version manifest
     final_status = "success" if all_ok else "failed"
     _save_deploy_state(deploy_id, operator, all_ok, backup_id)
+    if all_ok:
+        try:
+            write_version_manifest(deploy_id, operator, files)
+        except Exception as e:
+            logger.warning(f"Failed to write version manifest: {e}")
     _update_live_state(
         phase=final_status,
         lastMessage=f"Deploy {'concluído com sucesso' if all_ok else 'falhou'}",
