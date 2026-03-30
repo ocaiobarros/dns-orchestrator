@@ -157,6 +157,13 @@ export interface WizardConfig {
   blocklistAutoSync: boolean;
   blocklistValidateBeforeReload: boolean;
   blocklistAutoReload: boolean;
+
+  // IP Blocking (blackhole routes — NOT nftables)
+  enableIpBlocking: boolean;
+  ipBlockingApiUrl: string;
+  ipBlockingSyncIntervalHours: number;
+  ipBlockingAutoSync: boolean;
+
   dnsIdentity: string;
   dnsVersion: string;
 
