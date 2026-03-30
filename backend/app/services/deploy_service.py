@@ -111,7 +111,27 @@ def execute_deploy(
     dry_run: bool = False,
     operator: str = "system",
 ) -> dict:
-    """Full deployment pipeline with staging directory validation."""
+    """Full deployment pipeline with staging directory validation and global lock."""
+    try:
+        with deploy_lock("deploy" if not dry_run else "dry-run", timeout=60):
+            return _execute_deploy_locked(payload, scope, dry_run, operator)
+    except RuntimeError as e:
+        return {
+            "id": "blocked",
+            "success": False,
+            "status": "blocked",
+            "steps": [],
+            "error": str(e),
+            "duration": 0,
+        }
+
+
+def _execute_deploy_locked(
+    payload: dict[str, Any],
+    scope: str = "full",
+    dry_run: bool = False,
+    operator: str = "system",
+) -> dict:
     deploy_id = str(uuid.uuid4())[:12]
     steps: list[dict] = []
     all_ok = True
