@@ -453,22 +453,31 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     });
   }
 
-  // VIP definitions
-  if (config.serviceVips.length > 0) {
-    const vipIpv4s = config.serviceVips.map(v => v.ipv4).filter(Boolean).join(',\n    ');
+  // VIP definitions — merge service VIPs + intercepted VIPs into one define
+  const allVipIpv4s: string[] = [];
+  const allVipIpv6s: string[] = [];
+  config.serviceVips.forEach(v => {
+    if (v.ipv4 && !allVipIpv4s.includes(v.ipv4)) allVipIpv4s.push(v.ipv4);
+    if (v.ipv6 && !allVipIpv6s.includes(v.ipv6)) allVipIpv6s.push(v.ipv6);
+  });
+  if (config.interceptedVips) {
+    config.interceptedVips.forEach(v => {
+      if (v.vipIp && !allVipIpv4s.includes(v.vipIp)) allVipIpv4s.push(v.vipIp);
+      if (v.vipIpv6 && !allVipIpv6s.includes(v.vipIpv6)) allVipIpv6s.push(v.vipIpv6);
+    });
+  }
+
+  if (allVipIpv4s.length > 0) {
     files.push({
       path: '/etc/nftables.d/5100-nat-define-anyaddr-ipv4.nft',
-      content: `define DNS_ANYCAST_IPV4 = {\n    ${vipIpv4s}\n}`,
+      content: `define DNS_ANYCAST_IPV4 = {\n    ${allVipIpv4s.join(',\n    ')}\n}`,
     });
 
-    if (config.enableIpv6) {
-      const vipIpv6s = config.serviceVips.filter(v => v.ipv6).map(v => v.ipv6).join(',\n    ');
-      if (vipIpv6s) {
-        files.push({
-          path: '/etc/nftables.d/5200-nat-define-anyaddr-ipv6.nft',
-          content: `define DNS_ANYCAST_IPV6 = {\n    ${vipIpv6s}\n}`,
-        });
-      }
+    if (config.enableIpv6 && allVipIpv6s.length > 0) {
+      files.push({
+        path: '/etc/nftables.d/5200-nat-define-anyaddr-ipv6.nft',
+        content: `define DNS_ANYCAST_IPV6 = {\n    ${allVipIpv6s.join(',\n    ')}\n}`,
+      });
     }
   }
 
