@@ -416,7 +416,7 @@ if curl -sf --max-time 30 "\$BLOCK_V4_URL" -o "\$NEW_V4"; then
                 rm -f "\$ROLLBACK"
             fi
             rm -f "\$NEW_V4" "\$BATCH_V4"
-            ERRORS=$((ERRORS + 1))
+            ERRORS=\$((ERRORS + 1))
         fi
     else
         logger -t anablock-ip-sync "IPv4: sem alterações"
