@@ -19,6 +19,20 @@ warn() { echo -e "  ${YELLOW}⚠${NC} $1"; }
 fail() { echo -e "  ${RED}✗${NC} $1"; }
 info() { echo -e "  ${BLUE}ℹ${NC} $1"; }
 
+ensure_runtime_dirs() {
+    mkdir -p "${INSTALL_DIR}"
+    mkdir -p "${DATA_DIR}/backups"
+    mkdir -p "${DATA_DIR}/generated"
+    mkdir -p "${DATA_DIR}/staging"
+    mkdir -p "${DATA_DIR}/deployments"
+    mkdir -p "${LOG_DIR}"
+    mkdir -p "${ENV_DIR}"
+    mkdir -p "/etc/unbound"
+    mkdir -p "/etc/nftables.d"
+    mkdir -p "/etc/network"
+    mkdir -p "/etc/systemd/system"
+}
+
 # ── Path constants (must be defined before any use) ──
 INSTALL_DIR="${INSTALL_DIR:-/opt/dns-control}"
 DATA_DIR="${DATA_DIR:-/var/lib/dns-control}"
@@ -248,19 +262,7 @@ fi
 
 # ═══ Step 3: Directories ═══
 echo "[3/${TOTAL_STEPS}] Creating directories..."
-mkdir -p "${INSTALL_DIR}"
-mkdir -p "${DATA_DIR}/backups"
-mkdir -p "${DATA_DIR}/generated"
-mkdir -p "${DATA_DIR}/staging"
-mkdir -p "${DATA_DIR}/deployments"
-mkdir -p "${LOG_DIR}"
-mkdir -p "${ENV_DIR}"
-# Create ALL directories referenced by the systemd unit file ReadWritePaths
-# Without these, ProtectSystem=strict causes status=226/NAMESPACE failures
-mkdir -p "/etc/unbound"
-mkdir -p "/etc/nftables.d"
-mkdir -p "/etc/network"
-mkdir -p "/etc/systemd/system"
+ensure_runtime_dirs
 ok "Directories created (including unit file ReadWritePaths)"
 
 # ═══ Step 4: Copy application files ═══
@@ -315,6 +317,9 @@ else
     ERRORS=$((ERRORS+1))
     exit 1
 fi
+
+# Always rebuild venv in final backend path; moved venv scripts keep stale shebangs.
+rm -rf "${BACKEND_STAGING_DIR}/venv"
 
 # Copy or build frontend dist
 if [[ -d "${SOURCE_ROOT}/dist" ]]; then
@@ -374,19 +379,17 @@ else
     info "  The API will run standalone on port 8000 without reverse proxy"
 fi
 
-# ═══ Step 5: Python virtualenv ═══
-echo "[5/${TOTAL_STEPS}] Setting up Python environment..."
-STAGING_VENV_DIR="${BACKEND_STAGING_DIR}/venv"
-python3 -m venv --clear "${STAGING_VENV_DIR}" 2>>"${INSTALL_LOG}"
-"${STAGING_VENV_DIR}/bin/pip" install --upgrade pip wheel -q 2>>"${INSTALL_LOG}"
-"${STAGING_VENV_DIR}/bin/pip" install -r "${STAGING_REQUIREMENTS}" -q 2>>"${INSTALL_LOG}"
-ok "Python dependencies installed"
-
-# Verify critical imports
-if (cd "${BACKEND_STAGING_DIR}" && "${STAGING_VENV_DIR}/bin/python" -c "from app.main import app; print('ok')" 2>/dev/null); then
-    ok "FastAPI application loads correctly"
+# ═══ Step 5: Backend dependency manifest validation ═══
+echo "[5/${TOTAL_STEPS}] Validating staged dependency manifest..."
+if [[ ! -f "${STAGING_REQUIREMENTS}" ]]; then
+    fail "requirements.txt missing in staged backend"
+    ERRORS=$((ERRORS+1))
+    exit 1
+fi
+if grep -Eiq '^\s*uvicorn(\[[^]]+\])?' "${STAGING_REQUIREMENTS}"; then
+    ok "uvicorn dependency found in requirements"
 else
-    fail "FastAPI application failed to load from staged backend — aborting before swap"
+    fail "uvicorn dependency missing from requirements"
     ERRORS=$((ERRORS+1))
     exit 1
 fi
@@ -447,7 +450,19 @@ fi
 mv "${BACKEND_STAGING_DIR}" "${INSTALL_DIR}/backend"
 BACKEND_SWAPPED=true
 VENV_DIR="${INSTALL_DIR}/backend/venv"
+ACTIVE_REQUIREMENTS="${INSTALL_DIR}/backend/requirements.txt"
 ok "Staged backend activated"
+
+# Build venv in final path to keep uvicorn/python shebangs valid.
+python3 -m venv --clear "${VENV_DIR}" 2>>"${INSTALL_LOG}"
+"${VENV_DIR}/bin/pip" install --upgrade pip wheel -q 2>>"${INSTALL_LOG}"
+if [[ ! -f "${ACTIVE_REQUIREMENTS}" ]]; then
+    fail "requirements.txt missing in active backend: ${ACTIVE_REQUIREMENTS}"
+    ERRORS=$((ERRORS+1))
+    exit 1
+fi
+"${VENV_DIR}/bin/pip" install -r "${ACTIVE_REQUIREMENTS}" -q 2>>"${INSTALL_LOG}"
+ok "Python dependencies installed in active backend venv"
 
 # ── Validate venv binaries exist and are executable ──
 if [[ ! -x "${VENV_DIR}/bin/python" ]]; then
@@ -460,7 +475,21 @@ if [[ ! -x "${VENV_DIR}/bin/uvicorn" ]]; then
     ERRORS=$((ERRORS+1))
     exit 1
 fi
+if ! "${VENV_DIR}/bin/uvicorn" --version >/dev/null 2>&1; then
+    fail "venv uvicorn is present but not runnable (invalid shebang/runtime)"
+    ERRORS=$((ERRORS+1))
+    exit 1
+fi
 ok "venv binaries validated (python + uvicorn)"
+
+# Verify critical imports from active backend
+if (cd "${INSTALL_DIR}/backend" && "${VENV_DIR}/bin/python" -c "from app.main import app; print('ok')" 2>/dev/null); then
+    ok "FastAPI application loads correctly"
+else
+    fail "FastAPI application failed to load from active backend"
+    ERRORS=$((ERRORS+1))
+    exit 1
+fi
 
 if (cd "${INSTALL_DIR}/backend" && "${VENV_DIR}/bin/python" -c "
 from app.core.database import init_db
@@ -570,12 +599,22 @@ ok "Legacy unbound.service masked"
 # ═══ Step 10: Systemd service & start ═══
 echo "[10/${TOTAL_STEPS}] Installing systemd service..."
 
+# Re-assert runtime dirs before service start (hardening + upgrades)
+ensure_runtime_dirs
+if [[ ! -d "/etc/nftables.d" ]]; then
+    fail "Required runtime directory missing before service start: /etc/nftables.d"
+    ERRORS=$((ERRORS+1))
+    exit 1
+fi
+
 # Create systemd service (always overwrite to stay in sync)
 cat > /etc/systemd/system/dns-control-api.service << 'SERVICEEOF'
 [Unit]
 Description=DNS Control API v2.1
 After=network.target
 Documentation=https://github.com/ocaiobarros/dns-orchestrator
+ConditionPathIsDirectory=/etc/nftables.d
+ConditionPathExists=/opt/dns-control/backend/venv/bin/uvicorn
 
 [Service]
 Type=simple
@@ -583,6 +622,8 @@ User=dns-control
 Group=dns-control
 WorkingDirectory=/opt/dns-control/backend
 EnvironmentFile=/etc/dns-control/env
+ExecStartPre=/usr/bin/test -d /etc/nftables.d
+ExecStartPre=/usr/bin/test -x /opt/dns-control/backend/venv/bin/uvicorn
 ExecStart=/opt/dns-control/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5
@@ -605,6 +646,15 @@ SERVICEEOF
 systemctl daemon-reload
 systemctl enable dns-control-api
 systemctl restart dns-control-api
+if ! systemctl is-active --quiet dns-control-api; then
+    fail "dns-control-api did not start"
+    echo ""
+    echo "  ── journalctl -u dns-control-api (last 50 lines) ──"
+    journalctl -u dns-control-api --no-pager -n 50 2>/dev/null || true
+    echo "  ── end of journal ──"
+    echo ""
+    ERRORS=$((ERRORS+1))
+fi
 
 # Wait for API to come up
 echo ""
@@ -638,6 +688,15 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 
 CHECKS_PASS=0
 CHECKS_FAIL=0
+
+# Check 0: venv uvicorn executable really works
+if [[ -x "${VENV_DIR}/bin/uvicorn" ]] && "${VENV_DIR}/bin/uvicorn" --version >/dev/null 2>&1; then
+    ok "venv uvicorn executable is present and runnable"
+    CHECKS_PASS=$((CHECKS_PASS+1))
+else
+    fail "venv uvicorn executable missing or broken"
+    CHECKS_FAIL=$((CHECKS_FAIL+1))
+fi
 
 # Check 1: API health
 if curl -sf http://127.0.0.1:8000/api/health >/dev/null 2>&1; then
