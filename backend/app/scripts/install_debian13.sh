@@ -301,21 +301,56 @@ else
     exit 1
 fi
 
-# Copy frontend dist if exists
+# Copy or build frontend dist
 if [[ -d "${SOURCE_ROOT}/dist" ]]; then
     mkdir -p "${INSTALL_DIR}/dist"
     cp -a "${SOURCE_ROOT}/dist/." "${INSTALL_DIR}/dist/"
-    ok "Frontend build copied"
+    ok "Frontend build copied from existing dist/"
 else
-    warn "Frontend dist/ not found — build with 'npm run build' first"
-    WARNINGS=$((WARNINGS+1))
+    info "dist/ not found — attempting automatic frontend build..."
+    if [[ -f "${SOURCE_ROOT}/package.json" ]]; then
+        # Ensure Node.js is available (installed in step 1)
+        if ! command -v node &>/dev/null; then
+            fail "Node.js not available — cannot build frontend"
+            WARNINGS=$((WARNINGS+1))
+        elif ! command -v npm &>/dev/null; then
+            fail "npm not available — cannot build frontend"
+            WARNINGS=$((WARNINGS+1))
+        else
+            info "Running npm install..."
+            (cd "${SOURCE_ROOT}" && npm install --production=false --ignore-scripts 2>>"${INSTALL_LOG}") && ok "npm install completed" || {
+                fail "npm install failed (see ${INSTALL_LOG})"
+                WARNINGS=$((WARNINGS+1))
+            }
+            info "Running npm run build..."
+            if (cd "${SOURCE_ROOT}" && npm run build 2>>"${INSTALL_LOG}"); then
+                if [[ -d "${SOURCE_ROOT}/dist" ]]; then
+                    mkdir -p "${INSTALL_DIR}/dist"
+                    cp -a "${SOURCE_ROOT}/dist/." "${INSTALL_DIR}/dist/"
+                    ok "Frontend built and copied successfully"
+                else
+                    fail "npm run build succeeded but dist/ was not created"
+                    WARNINGS=$((WARNINGS+1))
+                fi
+            else
+                fail "npm run build failed (see ${INSTALL_LOG})"
+                WARNINGS=$((WARNINGS+1))
+            fi
+        fi
+    else
+        warn "No package.json found — skipping frontend build (API-only mode)"
+        WARNINGS=$((WARNINGS+1))
+    fi
 fi
 
-# Copy deploy configs
+# Copy deploy configs (optional — not all installations use nginx proxy)
 if [[ -d "${SOURCE_ROOT}/deploy" ]]; then
     rm -rf "${INSTALL_DIR}/deploy"
     cp -a "${SOURCE_ROOT}/deploy" "${INSTALL_DIR}/"
-    ok "Deploy configs copied"
+    ok "Deploy configs copied (nginx, systemd templates)"
+else
+    info "deploy/ directory not found — skipping (optional: nginx/systemd templates)"
+    info "  The API will run standalone on port 8000 without reverse proxy"
 fi
 
 # ═══ Step 5: Python virtualenv ═══
