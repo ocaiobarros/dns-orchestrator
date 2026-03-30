@@ -66,9 +66,9 @@ describe('Unbound blocklist conditional includes', () => {
       }
     });
 
-    it('generateAllConfigs must NOT produce blocklist files', () => {
+    it('generateAllFiles must NOT produce blocklist files', () => {
       const config = baseConfig({ enableBlocklist: false });
-      const files = generateAllConfigs(config);
+      const files = generateAllFiles(config);
       const paths = files.map(f => f.path);
       
       expect(paths).not.toContain('/etc/unbound/unbound-block-domains.conf');
@@ -87,9 +87,9 @@ describe('Unbound blocklist conditional includes', () => {
       }
     });
 
-    it('generateAllConfigs MUST produce both blocklist files', () => {
+    it('generateAllFiles MUST produce both blocklist files', () => {
       const config = baseConfig({ enableBlocklist: true });
-      const files = generateAllConfigs(config);
+      const files = generateAllFiles(config);
       const paths = files.map(f => f.path);
       
       expect(paths).toContain('/etc/unbound/unbound-block-domains.conf');
