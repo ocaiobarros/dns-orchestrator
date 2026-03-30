@@ -55,6 +55,7 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     # Global settings from payload or wizard config
     wizard_cfg = payload.get("_wizardConfig", {}) or {}
     enable_ipv6 = payload.get("enableIpv6") or wizard_cfg.get("enableIpv6", False)
+    enable_blocklist = payload.get("enableBlocklist") or wizard_cfg.get("enableBlocklist", False)
     threads = _safe_int(payload.get("threads") or wizard_cfg.get("threads"), 4)
     msg_cache_size = _safe_str(payload.get("msgCacheSize") or wizard_cfg.get("msgCacheSize"), "512m")
     rrset_cache_size = _safe_str(payload.get("rrsetCacheSize") or wizard_cfg.get("rrsetCacheSize"), "32m")
