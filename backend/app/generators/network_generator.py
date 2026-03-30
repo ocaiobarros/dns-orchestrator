@@ -1,8 +1,8 @@
 """
 DNS Control — Network Configuration Generator
 Generates ifupdown2 configuration, persistent loopback aliases, and post-up scripts.
-Ensures listener IPs, egress IPs, VIPs, and IPv6 addresses are materialized on the host stack.
-Aligned with vdns-01 production model.
+Matches production tutorial structure: ip addr add with 2>/dev/null || true,
+gateway setup, IPv6 addressing, loopback for all addresses.
 """
 
 from typing import Any
@@ -23,29 +23,28 @@ def generate_network_config(payload: dict[str, Any]) -> list[dict]:
     enable_ipv6 = payload.get("enableIpv6") or wizard_cfg.get("enableIpv6", False)
 
     service_vips = payload.get("serviceVips") or payload.get("nat", {}).get("serviceVips", []) or []
-    deployment_mode = str(payload.get("deploymentMode") or wizard_cfg.get("deploymentMode") or "public-controlled")
+    intercepted_vips = payload.get("interceptedVips") or wizard_cfg.get("interceptedVips", []) or []
+
+    # Network params
+    main_interface = str(payload.get("mainInterface") or wizard_cfg.get("mainInterface") or "ens192")
+    ipv4_address = str(payload.get("ipv4Address") or wizard_cfg.get("ipv4Address") or "")
+    ipv4_gateway = str(payload.get("ipv4Gateway") or wizard_cfg.get("ipv4Gateway") or "")
+    ipv6_address = str(payload.get("ipv6Address") or wizard_cfg.get("ipv6Address") or "")
+    ipv6_gateway = str(payload.get("ipv6Gateway") or wizard_cfg.get("ipv6Gateway") or "")
+    bootstrap_dns = str(payload.get("bootstrapDns") or wizard_cfg.get("bootstrapDns") or "8.8.8.8")
 
     files = []
 
-    # ── Collect distinct address sets ──
-    loopback_ip = loopback.get("ip", "")
-    loopback_vip = loopback.get("vip", "")
-    reserved = {"127.0.0.1", loopback_ip, loopback_vip}
-
-    listener_ips: list[str] = []
-    public_listener_ips: list[str] = []
+    # ── Collect address sets ──
     egress_ips: list[str] = []
-    listener_ipv6: list[str] = []
     egress_ipv6: list[str] = []
-    intercepted_vips = payload.get("interceptedVips") or wizard_cfg.get("interceptedVips", []) or []
+    listener_ips: list[str] = []
+    listener_ipv6: list[str] = []
 
     for inst in instances:
         bind_ip = str(inst.get("bindIp", "")).strip()
-        if bind_ip and bind_ip not in reserved:
+        if bind_ip and bind_ip != "127.0.0.1":
             listener_ips.append(bind_ip)
-        public_listener_ip = str(inst.get("publicListenerIp", "")).strip()
-        if public_listener_ip and public_listener_ip not in reserved:
-            public_listener_ips.append(public_listener_ip)
         bind_ipv6 = str(inst.get("bindIpv6", "")).strip()
         if bind_ipv6:
             listener_ipv6.append(bind_ipv6)
@@ -56,94 +55,28 @@ def generate_network_config(payload: dict[str, Any]) -> list[dict]:
         if exit_ipv6:
             egress_ipv6.append(exit_ipv6)
 
-    # ── Persistent loopback aliases (ifupdown2) ──
-    lo_lines = [
-        "# DNS Control — Persistent loopback addresses",
-        "# Generated configuration — do not edit manually",
-        "",
-    ]
-    alias_index = 0
+    # ── /etc/network/interfaces ──
+    interfaces_content = f"""source /etc/network/interfaces.d/*
 
-    # Listener IPs
-    for lip in listener_ips:
-        lo_lines.extend([
-            f"# Listener IP",
-            f"auto lo:dc{alias_index}",
-            f"iface lo:dc{alias_index} inet static",
-            f"    address {lip}",
-            f"    netmask 255.255.255.255",
-            "",
-        ])
-        alias_index += 1
+auto lo
+iface lo inet loopback
 
-    for plip in public_listener_ips:
-        if plip not in listener_ips:
-            lo_lines.extend([
-                f"# Public listener IP",
-                f"auto lo:dc{alias_index}",
-                f"iface lo:dc{alias_index} inet static",
-                f"    address {plip}",
-                f"    netmask 255.255.255.255",
-                "",
-            ])
-            alias_index += 1
+allow-hotplug {main_interface}
+iface {main_interface} inet static
+    address {ipv4_address}
+    dns-nameservers {bootstrap_dns}
 
-    # Egress IPs (host-owned only)
-    if not is_border_routed:
-        for eip in egress_ips:
-            if eip not in reserved and eip not in listener_ips:
-                lo_lines.extend([
-                    f"# Egress IP (host-owned)",
-                    f"auto lo:dc{alias_index}",
-                    f"iface lo:dc{alias_index} inet static",
-                    f"    address {eip}",
-                    f"    netmask 255.255.255.255",
-                    "",
-                ])
-                alias_index += 1
-
-    # VIPs (when local)
-    needs_local_vip = deployment_mode in ("pseudo-anycast-local", "vip-local-dummy", "anycast-frr-ospf")
-    if needs_local_vip:
-        for vip in service_vips:
-            if not isinstance(vip, dict):
-                continue
-            vip_ip = str(vip.get("ipv4", "")).strip()
-            if vip_ip:
-                lo_lines.extend([
-                    f"# VIP: {vip.get('description', vip_ip)}",
-                    f"auto lo:dc{alias_index}",
-                    f"iface lo:dc{alias_index} inet static",
-                    f"    address {vip_ip}",
-                    f"    netmask 255.255.255.255",
-                    "",
-                ])
-                alias_index += 1
-
-    for vip in intercepted_vips:
-        if not isinstance(vip, dict):
-            continue
-        vip_ip = str(vip.get("vipIp", "")).strip()
-        capture_mode = str(vip.get("captureMode", "")).strip()
-        if vip_ip and capture_mode == "bind":
-            lo_lines.extend([
-                f"# Intercepted VIP: {vip.get('description', vip_ip)} [bind]",
-                f"auto lo:dc{alias_index}",
-                f"iface lo:dc{alias_index} inet static",
-                f"    address {vip_ip}",
-                f"    netmask 255.255.255.255",
-                "",
-            ])
-            alias_index += 1
+post-up /etc/network/post-up.sh
+"""
 
     files.append({
-        "path": "/etc/network/interfaces.d/dns-control-loopback",
-        "content": "\n".join(lo_lines),
+        "path": "/etc/network/interfaces",
+        "content": interfaces_content,
         "permissions": "0644",
         "owner": "root:root",
     })
 
-    # ── Post-up script ──
+    # ── /etc/network/post-up.sh ──
     post_up_lines = [
         "#!/bin/sh",
         "# DNS Control — Network post-up script",
@@ -151,85 +84,75 @@ def generate_network_config(payload: dict[str, Any]) -> list[dict]:
         "",
     ]
 
-    # Listener IPs — ALWAYS add to loopback
-    if listener_ips:
-        post_up_lines.append("# === Listener IPs (MUST exist locally for Unbound interface: binding) ===")
-        for lip in listener_ips:
-            post_up_lines.append(f'  /usr/sbin/ip -4 addr replace {lip}/32 dev lo')
+    # Egress IPs on loopback (host-owned only)
+    if egress_ips and not is_border_routed:
+        post_up_lines.append("     # Egress IPv4 (outgoing-interface sources)")
+        for eip in egress_ips:
+            post_up_lines.append(f"     /usr/sbin/ip -4 addr add {eip}/32 dev lo 2>/dev/null || true")
         post_up_lines.append("")
 
-    if public_listener_ips:
-        post_up_lines.append("# === Public listener IPs ===")
-        for plip in public_listener_ips:
-            post_up_lines.append(f'  /usr/sbin/ip -4 addr replace {plip}/32 dev lo')
+    # IPv4 default gateway
+    if ipv4_gateway:
+        post_up_lines.append(f"     /usr/sbin/ip -4 route add default via {ipv4_gateway} 2>/dev/null || true")
         post_up_lines.append("")
 
-    # IPv6 listener IPs
-    if listener_ipv6:
-        post_up_lines.append("# === Listener IPv6 IPs ===")
-        for lip6 in listener_ipv6:
-            post_up_lines.append(f'  /usr/sbin/ip addr replace {lip6}/128 dev lo')
+    # IPv6 address on main interface + gateway
+    if enable_ipv6 and ipv6_address:
+        post_up_lines.append(f"     /usr/sbin/ip -6 addr add {ipv6_address} dev {main_interface} 2>/dev/null || true")
+        if ipv6_gateway:
+            post_up_lines.append(f"     /usr/sbin/ip -6 route add default via {ipv6_gateway} 2>/dev/null || true")
         post_up_lines.append("")
 
-    # Egress IPs
-    if egress_ips:
-        if is_border_routed:
-            post_up_lines.append("# === Egress IPs (border-routed: NOT added to host interfaces) ===")
-            for inst in instances:
-                eip = str(inst.get("exitIp", "") or inst.get("egressIpv4", "")).strip()
-                name = inst.get("name", "unbound")
-                if eip:
-                    post_up_lines.append(f'  # outgoing-interface: {eip} ({name}) — routed at border')
-        else:
-            post_up_lines.append("# === Egress IPs (host-owned: added to loopback) ===")
-            for eip in egress_ips:
-                post_up_lines.append(f'  /usr/sbin/ip -4 addr replace {eip}/32 dev lo')
-        post_up_lines.append("")
-
-    # IPv6 egress IPs (only host-owned)
+    # IPv6 egress IPs on loopback (host-owned)
     if egress_ipv6 and not is_border_routed:
-        post_up_lines.append("# === Egress IPv6 IPs ===")
+        post_up_lines.append("     # Egress IPv6 (outgoing-interface sources)")
         for eip6 in egress_ipv6:
-            post_up_lines.append(f'  /usr/sbin/ip addr replace {eip6}/128 dev lo')
+            post_up_lines.append(f"     /usr/sbin/ip addr add {eip6}/128 dev lo 2>/dev/null || true")
         post_up_lines.append("")
 
-    # VIP anycast IPs
+    # Listener IPv4 IPs on loopback
+    if listener_ips:
+        post_up_lines.append("     # Listener IPv4 (Unbound bind addresses)")
+        for lip in listener_ips:
+            post_up_lines.append(f"     /usr/sbin/ip addr add {lip}/32 dev lo 2>/dev/null || true")
+        post_up_lines.append("")
+
+    # Listener IPv6 IPs on loopback
+    if listener_ipv6:
+        post_up_lines.append("     # Listener IPv6 (Unbound bind addresses)")
+        for lip6 in listener_ipv6:
+            post_up_lines.append(f"     /usr/sbin/ip addr add {lip6}/128 dev lo 2>/dev/null || true")
+        post_up_lines.append("")
+
+    # Service VIPs on loopback (anycast public, commented by default)
     if service_vips:
-        if needs_local_vip:
-            post_up_lines.append("# === VIPs de serviço (local) ===")
-        else:
-            post_up_lines.append("# === VIPs de serviço (borda — descomentar se necessário) ===")
+        post_up_lines.append("     # Anycast publico, descomentar ao final do deploy")
         for vip in service_vips:
             if not isinstance(vip, dict):
                 continue
             vip_ip = str(vip.get("ipv4", "")).strip()
             if vip_ip:
-                prefix = "" if needs_local_vip else "  #"
-                post_up_lines.append(f'{prefix}  /usr/sbin/ip addr replace {vip_ip}/32 dev lo')
+                post_up_lines.append(f"     #/usr/sbin/ip addr add {vip_ip}/32 dev lo")
             vip_ipv6 = str(vip.get("ipv6", "")).strip()
             if vip_ipv6 and enable_ipv6:
-                prefix = "" if needs_local_vip else "  #"
-                post_up_lines.append(f'{prefix}  /usr/sbin/ip addr replace {vip_ipv6}/128 dev lo')
+                post_up_lines.append(f"     #/usr/sbin/ip addr add {vip_ipv6}/128 dev lo")
         post_up_lines.append("")
 
+    # Intercepted VIPs on loopback (commented by default, uncomment to activate interception)
     if intercepted_vips:
-        post_up_lines.append("# === Intercepted VIPs (DNS VIP Interception) ===")
+        post_up_lines.append("     # Anycast publico interceptado, descomentar para ativar")
         for vip in intercepted_vips:
             if not isinstance(vip, dict):
                 continue
             vip_ip = str(vip.get("vipIp", "")).strip()
-            capture_mode = str(vip.get("captureMode", "")).strip()
-            if not vip_ip:
-                continue
-            if capture_mode == "bind":
-                post_up_lines.append(f'  /usr/sbin/ip -4 addr replace {vip_ip}/32 dev lo')
-            else:
-                post_up_lines.append(f'  /usr/sbin/ip -4 route replace {vip_ip}/32 dev lo')
+            if vip_ip:
+                post_up_lines.append(f"     #/usr/sbin/ip addr add {vip_ip}/32 dev lo")
+            vip_ipv6 = str(vip.get("vipIpv6", "")).strip()
+            if vip_ipv6 and enable_ipv6:
+                post_up_lines.append(f"     #/usr/sbin/ip addr add {vip_ipv6}/128 dev lo")
         post_up_lines.append("")
 
-    post_up_lines.extend([
-        "  exit 0",
-    ])
+    post_up_lines.append("exit 0")
 
     post_up_content = "\n".join(post_up_lines)
 
@@ -240,6 +163,7 @@ def generate_network_config(payload: dict[str, Any]) -> list[dict]:
         "owner": "root:root",
     })
 
+    # Also place in post-up.d for ifupdown2 compatibility
     files.append({
         "path": "/etc/network/post-up.d/dns-control",
         "content": post_up_content,

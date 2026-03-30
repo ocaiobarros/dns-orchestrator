@@ -178,7 +178,7 @@ export function generateSystemdUnit(_config: WizardConfig, instanceIndex: number
   if (!inst) return '# Error: Instance not found';
 
   return `[Unit]
-Description=Unbound DNS server — ${inst.name}
+Description=Unbound DNS server (${inst.name})
 Documentation=man:unbound(8)
 After=network.target
 Before=nss-lookup.target
@@ -190,7 +190,6 @@ Restart=always
 EnvironmentFile=-/etc/default/unbound
 ExecStartPre=-/usr/lib/unbound/package-helper chroot_setup
 ExecStartPre=-/usr/lib/unbound/package-helper root_trust_anchor_update
-ExecStartPre=/usr/sbin/unbound-checkconf /etc/unbound/${inst.name}.conf
 ExecStart=/usr/sbin/unbound -c /etc/unbound/${inst.name}.conf -d -p $DAEMON_OPTS
 ExecStopPost=-/usr/lib/unbound/package-helper chroot_teardown
 ExecReload=+/bin/kill -HUP $MAINPID
@@ -204,113 +203,103 @@ WantedBy=multi-user.target
 
 export function generatePostUpScript(config: WizardConfig): string {
   const lines: string[] = [
-    '#!/bin/bash',
+    '#!/bin/sh',
     '# DNS Control — Network post-up script',
     `# Generated for: ${config.hostname || 'dns-control'}`,
     `# Instances: ${config.instances.map(i => i.name).join(', ')}`,
     `# Architecture: ${config.instances.length} resolvers · ${config.serviceVips.length} VIPs · ${config.egressDeliveryMode} egress`,
     '',
-    'set -e',
-    '',
-    '# Idempotent: uses "replace" to avoid duplicate addresses',
-    '',
   ];
 
   const isBorderRouted = config.egressDeliveryMode === 'border-routed';
 
-  // Listener IPs FIRST — MUST exist locally for Unbound bind + health checks
-  if (config.instances.some(i => i.bindIp)) {
-    lines.push('# ═══ Listener IPs (MUST exist locally for Unbound interface: binding) ═══');
+  // Egress IPs FIRST (outgoing-interface sources) — host-owned only
+  if (config.instances.some(i => i.egressIpv4) && !isBorderRouted) {
+    lines.push('     # Egress IPv4 (outgoing-interface sources)');
     config.instances.forEach(inst => {
-      if (inst.bindIp) {
-        lines.push(`ip -4 addr replace ${inst.bindIp}/32 dev lo 2>/dev/null || true  # ${inst.name} listener`);
+      if (inst.egressIpv4) {
+        lines.push(`     /usr/sbin/ip -4 addr add ${inst.egressIpv4}/32 dev lo 2>/dev/null || true`);
       }
     });
     lines.push('');
   }
 
-  // IPv6 listener IPs
-  if (config.enableIpv6) {
-    const ipv6Listeners = config.instances.filter(i => i.bindIpv6);
-    if (ipv6Listeners.length > 0) {
-      lines.push('# ═══ Listener IPv6 IPs ═══');
-      ipv6Listeners.forEach(inst => {
-        lines.push(`ip -6 addr replace ${inst.bindIpv6}/128 dev lo 2>/dev/null || true  # ${inst.name} listener v6`);
-      });
-      lines.push('');
-    }
+  // IPv4 default gateway
+  if (config.ipv4Gateway) {
+    lines.push(`     /usr/sbin/ip -4 route add default via ${config.ipv4Gateway} 2>/dev/null || true`);
+    lines.push('');
   }
 
-  // Egress IPs — conditional on delivery mode
-  if (config.instances.some(i => i.egressIpv4)) {
-    if (isBorderRouted) {
-      lines.push('# ═══ Egress IPs (border-routed: NOT added to host interfaces) ═══');
-      lines.push('# In border-routed mode, egress IPs are logical identities.');
-      lines.push('# Upstream routing must return traffic for these IPs to this host.');
-      config.instances.forEach(inst => {
-        if (inst.egressIpv4) {
-          lines.push(`# outgoing-interface: ${inst.egressIpv4} (${inst.name}) — routed at border`);
-        }
-      });
-    } else {
-      lines.push('# ═══ Egress IPs (host-owned: added to loopback for outgoing-interface binding) ═══');
-      config.instances.forEach(inst => {
-        if (inst.egressIpv4) {
-          lines.push(`ip -4 addr replace ${inst.egressIpv4}/32 dev lo 2>/dev/null || true  # ${inst.name} egress`);
-        }
-      });
+  // IPv6 address on main interface + gateway
+  if (config.enableIpv6 && config.ipv6Address) {
+    lines.push(`     /usr/sbin/ip -6 addr add ${config.ipv6Address} dev ${config.mainInterface} 2>/dev/null || true`);
+    if (config.ipv6Gateway) {
+      lines.push(`     /usr/sbin/ip -6 route add default via ${config.ipv6Gateway} 2>/dev/null || true`);
     }
     lines.push('');
   }
 
-  // IPv6 egress IPs (only host-owned)
+  // IPv6 egress IPs on loopback (host-owned only)
   if (config.enableIpv6 && !isBorderRouted) {
     const ipv6Egress = config.instances.filter(i => i.egressIpv6);
     if (ipv6Egress.length > 0) {
-      lines.push('# ═══ IPv6 egress IPs on loopback ═══');
+      lines.push('     # Egress IPv6 (outgoing-interface sources)');
       ipv6Egress.forEach(inst => {
-        lines.push(`ip -6 addr replace ${inst.egressIpv6}/128 dev lo 2>/dev/null || true  # ${inst.name} egress v6`);
+        lines.push(`     /usr/sbin/ip addr add ${inst.egressIpv6}/128 dev lo 2>/dev/null || true`);
       });
       lines.push('');
     }
   }
 
-  // VIP anycast IPs on loopback
-  if (config.serviceVips.length > 0) {
-    const needsLocalVip = ['pseudo-anycast-local', 'vip-local-dummy', 'anycast-frr-ospf'].includes(config.deploymentMode);
-    lines.push('# ═══ VIPs de serviço (Anycast) ═══');
-    if (!needsLocalVip) {
-      lines.push('# VIPs ficam no equipamento de borda — descomentar apenas se necessário');
-    }
-    config.serviceVips.forEach((vip, i) => {
-      const prefix = needsLocalVip ? '' : '#';
-      lines.push(`${prefix}ip -4 addr replace ${vip.ipv4}/32 dev lo 2>/dev/null || true  # VIP ${i + 1}: ${vip.description || vip.ipv4}`);
-      if (config.enableIpv6 && vip.ipv6) {
-        lines.push(`${prefix}ip -6 addr replace ${vip.ipv6}/128 dev lo 2>/dev/null || true  # VIP ${i + 1} v6`);
+  // Listener IPv4 IPs on loopback
+  if (config.instances.some(i => i.bindIp)) {
+    lines.push('     # Listener IPv4 (Unbound bind addresses)');
+    config.instances.forEach(inst => {
+      if (inst.bindIp) {
+        lines.push(`     /usr/sbin/ip addr add ${inst.bindIp}/32 dev lo 2>/dev/null || true`);
       }
     });
     lines.push('');
   }
 
-  // ═══ Intercepted VIP routes/addresses ═══
+  // Listener IPv6 IPs on loopback
+  if (config.enableIpv6) {
+    const ipv6Listeners = config.instances.filter(i => i.bindIpv6);
+    if (ipv6Listeners.length > 0) {
+      lines.push('     # Listener IPv6 (Unbound bind addresses)');
+      ipv6Listeners.forEach(inst => {
+        lines.push(`     /usr/sbin/ip addr add ${inst.bindIpv6}/128 dev lo 2>/dev/null || true`);
+      });
+      lines.push('');
+    }
+  }
+
+  // Service VIPs — commented by default, uncomment at end of deploy
+  if (config.serviceVips.length > 0) {
+    lines.push('     # Anycast publico, descomentar ao final do deploy');
+    config.serviceVips.forEach(vip => {
+      lines.push(`     #/usr/sbin/ip addr add ${vip.ipv4}/32 dev lo`);
+      if (config.enableIpv6 && vip.ipv6) {
+        lines.push(`     #/usr/sbin/ip addr add ${vip.ipv6}/128 dev lo`);
+      }
+    });
+    lines.push('');
+  }
+
+  // Intercepted VIPs — commented by default
   if (config.interceptedVips && config.interceptedVips.length > 0) {
-    lines.push('# ═══ Intercepted VIPs (DNS Seizure) ═══');
+    lines.push('     # Anycast publico interceptado, descomentar para ativar');
     config.interceptedVips.forEach(vip => {
       if (!vip.vipIp) return;
-      if (vip.captureMode === 'bind' || vip.captureMode === 'route') {
-        // Bind/route mode: add VIP IP on loopback so it's locally reachable
-        lines.push(`ip -4 addr replace ${vip.vipIp}/32 dev lo 2>/dev/null || true  # Intercepted VIP: ${vip.description || vip.vipIp} [${vip.captureMode}]`);
-      } else if (vip.captureMode === 'dnat') {
-        // DNAT mode: add /32 route to attract traffic, but no local bind needed
-        lines.push(`ip -4 route replace ${vip.vipIp}/32 dev lo 2>/dev/null || true  # Intercepted VIP route: ${vip.vipIp} → ${vip.backendInstance} [dnat]`);
+      lines.push(`     #/usr/sbin/ip addr add ${vip.vipIp}/32 dev lo`);
+      if (config.enableIpv6 && vip.vipIpv6) {
+        lines.push(`     #/usr/sbin/ip addr add ${vip.vipIpv6}/128 dev lo`);
       }
     });
     lines.push('');
   }
 
-  lines.push('# ═══ Verification ═══');
-  lines.push('echo "DNS Control: Network addresses applied"');
-  lines.push('ip addr show lo');
+  lines.push('exit 0');
   return lines.join('\n');
 }
 
@@ -464,22 +453,31 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     });
   }
 
-  // VIP definitions
-  if (config.serviceVips.length > 0) {
-    const vipIpv4s = config.serviceVips.map(v => v.ipv4).filter(Boolean).join(',\n    ');
+  // VIP definitions — merge service VIPs + intercepted VIPs into one define
+  const allVipIpv4s: string[] = [];
+  const allVipIpv6s: string[] = [];
+  config.serviceVips.forEach(v => {
+    if (v.ipv4 && !allVipIpv4s.includes(v.ipv4)) allVipIpv4s.push(v.ipv4);
+    if (v.ipv6 && !allVipIpv6s.includes(v.ipv6)) allVipIpv6s.push(v.ipv6);
+  });
+  if (config.interceptedVips) {
+    config.interceptedVips.forEach(v => {
+      if (v.vipIp && !allVipIpv4s.includes(v.vipIp)) allVipIpv4s.push(v.vipIp);
+      if (v.vipIpv6 && !allVipIpv6s.includes(v.vipIpv6)) allVipIpv6s.push(v.vipIpv6);
+    });
+  }
+
+  if (allVipIpv4s.length > 0) {
     files.push({
       path: '/etc/nftables.d/5100-nat-define-anyaddr-ipv4.nft',
-      content: `define DNS_ANYCAST_IPV4 = {\n    ${vipIpv4s}\n}`,
+      content: `define DNS_ANYCAST_IPV4 = {\n    ${allVipIpv4s.join(',\n    ')}\n}`,
     });
 
-    if (config.enableIpv6) {
-      const vipIpv6s = config.serviceVips.filter(v => v.ipv6).map(v => v.ipv6).join(',\n    ');
-      if (vipIpv6s) {
-        files.push({
-          path: '/etc/nftables.d/5200-nat-define-anyaddr-ipv6.nft',
-          content: `define DNS_ANYCAST_IPV6 = {\n    ${vipIpv6s}\n}`,
-        });
-      }
+    if (config.enableIpv6 && allVipIpv6s.length > 0) {
+      files.push({
+        path: '/etc/nftables.d/5200-nat-define-anyaddr-ipv6.nft',
+        content: `define DNS_ANYCAST_IPV6 = {\n    ${allVipIpv6s.join(',\n    ')}\n}`,
+      });
     }
   }
 
@@ -640,41 +638,8 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     }
   }
 
-  // ═══ Intercepted VIP DNAT rules (per-VIP, not external probes) ═══
-  if (config.interceptedVips?.length > 0) {
-    const dnatVips = config.interceptedVips.filter(v => v.captureMode === 'dnat' && v.vipIp && v.backendTargetIp);
-    if (dnatVips.length > 0) {
-      ruleid = 8001;
-      dnatVips.forEach(vip => {
-        const safeVip = vip.vipIp.replace(/\./g, '_');
-        for (const proto of ['udp', 'tcp']) {
-          if (vip.protocol !== 'udp+tcp' && vip.protocol !== proto) continue;
-          const chainName = `intercepted_${proto}_${safeVip}`;
-          // Chain
-          files.push({
-            path: `/etc/nftables.d/${ruleid}-nat-chain-${chainName}.nft`,
-            content: `add chain ip nat ${chainName}`,
-          });
-          // Entry counter + DNAT rule
-          files.push({
-            path: `/etc/nftables.d/${ruleid}-nat-rule-${chainName}.nft`,
-            content: [
-              `# Intercepted VIP: ${vip.vipIp} → ${vip.backendInstance} (${vip.backendTargetIp})`,
-              `# Capture mode: DNAT — clients believe they use ${vip.vipIp} (public DNS)`,
-              `# but traffic is intercepted locally by ${vip.backendInstance}`,
-              `add rule ip nat ${chainName} counter dnat to ${vip.backendTargetIp}:${vip.port || 53}`,
-            ].join('\n'),
-          });
-          // PREROUTING jump
-          files.push({
-            path: `/etc/nftables.d/${ruleid}-nat-preroute-${chainName}.nft`,
-            content: `add rule ip nat PREROUTING ip daddr ${vip.vipIp} ${proto} dport ${vip.port || 53} counter packets 0 bytes 0 jump ${chainName}`,
-          });
-          ruleid++;
-        }
-      });
-    }
-  }
+  // Intercepted VIPs are merged into DNS_ANYCAST_IPV4 and balanced
+  // across ALL backends via sticky+nth. No 1:1 per-VIP chains needed.
 
   return files;
 }
