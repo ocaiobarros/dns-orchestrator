@@ -5,6 +5,7 @@ Anti-flap cooldown, safe backend rotation with structured logging.
 
 import json
 import logging
+import re
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 
