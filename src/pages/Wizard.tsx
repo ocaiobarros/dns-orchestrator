@@ -619,6 +619,52 @@ export default function Wizard() {
               </div>
             )}
 
+            {/* ═══ IP Blocking (blackhole routes) ═══ */}
+            <div className="flex gap-4 flex-wrap">
+              <Toggle checked={config.enableIpBlocking} onChange={v => set('enableIpBlocking', v)} label="AnaBlock IP Blocking (rotas blackhole)" />
+            </div>
+
+            {config.enableIpBlocking && (
+              <div className="p-4 rounded bg-secondary/50 border border-border space-y-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Route size={14} />
+                  Bloqueio de IPs — Rotas Blackhole
+                </div>
+                <InfoBox>
+                  Sincroniza IPs bloqueados judicialmente via rotas blackhole (ip route add blackhole).
+                  NÃO usa nftables — nftables permanece exclusivo para DNAT/load balancing.
+                  Suporta IPv4{config.enableIpv6 ? ' e IPv6' : ''}, diff incremental e rollback automático.
+                </InfoBox>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FieldGroup label="URL base da API AnaBlock *" hint="HTTPS obrigatório">
+                    <Input value={config.ipBlockingApiUrl} onChange={v => set('ipBlockingApiUrl', v)} placeholder="https://api.anablock.net.br" />
+                  </FieldGroup>
+                  <FieldGroup label="Intervalo de sincronização (horas)">
+                    <Input type="number" value={config.ipBlockingSyncIntervalHours} onChange={v => set('ipBlockingSyncIntervalHours', parseInt(v) || 1)} />
+                  </FieldGroup>
+                </div>
+
+                <div className="flex gap-4 flex-wrap">
+                  <Toggle checked={config.ipBlockingAutoSync} onChange={v => set('ipBlockingAutoSync', v)} label="Sincronização automática (timer)" />
+                </div>
+
+                <div className="p-3 rounded bg-muted/50 border border-border space-y-1">
+                  <p className="text-xs text-muted-foreground font-mono">
+                    Endpoint IPv4: {(config.ipBlockingApiUrl || 'https://api.anablock.net.br').replace(/\/$/, '')}/ipv4/block
+                  </p>
+                  {config.enableIpv6 && (
+                    <p className="text-xs text-muted-foreground font-mono">
+                      Endpoint IPv6: {(config.ipBlockingApiUrl || 'https://api.anablock.net.br').replace(/\/$/, '')}/ipv6/block
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Script: /usr/local/bin/anablock-ip-sync.sh · Método: ip -batch (blackhole)
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="border-t border-border pt-4">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm font-medium">Instâncias ({config.instances.length})</span>
