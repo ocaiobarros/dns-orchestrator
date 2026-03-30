@@ -502,16 +502,18 @@ import type { InstanceHealthReport } from './types';
 
 export function mockInstanceHealth(): InstanceHealthReport {
   return {
-    healthy: 2,
-    total: 2,
+    healthy: 4,
+    total: 4,
     all_healthy: true,
     degraded: false,
     down: false,
     instances: [
-      { instance: 'unbound01', bind_ip: '100.127.255.101', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 3 + Math.round(Math.random() * 5), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
-      { instance: 'unbound02', bind_ip: '100.127.255.102', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 4 + Math.round(Math.random() * 5), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
+      { instance: 'unbound01', bind_ip: '100.127.255.101', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 2 + Math.round(Math.random() * 3), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
+      { instance: 'unbound02', bind_ip: '100.127.255.102', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 2 + Math.round(Math.random() * 3), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
+      { instance: 'unbound03', bind_ip: '100.127.255.103', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 2 + Math.round(Math.random() * 3), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
+      { instance: 'unbound04', bind_ip: '100.127.255.104', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 2 + Math.round(Math.random() * 3), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
     ],
-    vip: { instance: 'VIP-Intercepted', bind_ip: '4.2.2.5', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 2 + Math.round(Math.random() * 3), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
+    vip: { instance: 'VIP-Anycast', bind_ip: '4.2.2.5', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 1 + Math.round(Math.random() * 2), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
     timestamp: Date.now() / 1000,
   };
 }
@@ -522,13 +524,13 @@ import type { V2Event, V2MetricEntry, V2Instance, V2Action } from './types';
 
 export function mockV2Events(): { items: V2Event[]; total: number } {
   const events: V2Event[] = [
-    { id: 'ev-001', event_type: 'instance_recovered', severity: 'info', instance_id: 'inst-03', message: 'unbound03 recovered after 3 successful checks', details_json: null, created_at: '2026-03-11T08:10:00Z' },
-    { id: 'ev-002', event_type: 'backend_removed_from_dnat', severity: 'critical', instance_id: 'inst-03', message: 'Backend unbound03 (100.126.255.103) removed from DNAT rotation', details_json: null, created_at: '2026-03-11T07:55:00Z' },
-    { id: 'ev-003', event_type: 'instance_failed', severity: 'critical', instance_id: 'inst-03', message: 'unbound03 FAILED after 3 consecutive failures', details_json: null, created_at: '2026-03-11T07:54:30Z' },
-    { id: 'ev-004', event_type: 'instance_degraded', severity: 'warning', instance_id: 'inst-03', message: 'unbound03 is degraded', details_json: null, created_at: '2026-03-11T07:54:00Z' },
-    { id: 'ev-005', event_type: 'backend_restored_to_dnat', severity: 'info', instance_id: 'inst-03', message: 'Backend unbound03 (100.126.255.103) restored to DNAT rotation', details_json: null, created_at: '2026-03-11T08:10:30Z' },
-    { id: 'ev-006', event_type: 'health_check_timeout', severity: 'warning', instance_id: 'inst-02', message: 'Health check for unbound02 timed out (dig)', details_json: null, created_at: '2026-03-11T06:30:00Z' },
-    { id: 'ev-007', event_type: 'instance_recovered', severity: 'info', instance_id: 'inst-02', message: 'unbound02 recovered after 3 successful checks', details_json: null, created_at: '2026-03-11T06:31:00Z' },
+    { id: 'ev-001', event_type: 'instance_recovered', severity: 'info', instance_id: 'inst-03', message: 'unbound03 recovered after 3 successful checks', details_json: null, created_at: '2026-03-29T08:10:00Z' },
+    { id: 'ev-002', event_type: 'backend_removed_from_dnat', severity: 'critical', instance_id: 'inst-03', message: 'Backend unbound03 (100.127.255.103) removed from DNAT rotation', details_json: null, created_at: '2026-03-29T07:55:00Z' },
+    { id: 'ev-003', event_type: 'instance_failed', severity: 'critical', instance_id: 'inst-03', message: 'unbound03 FAILED after 3 consecutive failures', details_json: null, created_at: '2026-03-29T07:54:30Z' },
+    { id: 'ev-004', event_type: 'instance_degraded', severity: 'warning', instance_id: 'inst-03', message: 'unbound03 is degraded', details_json: null, created_at: '2026-03-29T07:54:00Z' },
+    { id: 'ev-005', event_type: 'backend_restored_to_dnat', severity: 'info', instance_id: 'inst-03', message: 'Backend unbound03 (100.127.255.103) restored to DNAT rotation', details_json: null, created_at: '2026-03-29T08:10:30Z' },
+    { id: 'ev-006', event_type: 'health_check_timeout', severity: 'warning', instance_id: 'inst-02', message: 'Health check for unbound02 timed out (dig)', details_json: null, created_at: '2026-03-29T06:30:00Z' },
+    { id: 'ev-007', event_type: 'instance_recovered', severity: 'info', instance_id: 'inst-02', message: 'unbound02 recovered after 3 successful checks', details_json: null, created_at: '2026-03-29T06:31:00Z' },
   ];
   return { items: events, total: events.length };
 }
@@ -546,13 +548,25 @@ export function mockV2Metrics(): V2MetricEntry[] {
     { instance_id: 'inst-02', instance_name: 'unbound02', metric_name: 'dns_latency_ms', metric_value: 2.3, collected_at: now },
     { instance_id: 'inst-02', instance_name: 'unbound02', metric_name: 'dns_servfail_total', metric_value: 8, collected_at: now },
     { instance_id: 'inst-02', instance_name: 'unbound02', metric_name: 'dns_nxdomain_total', metric_value: 3190, collected_at: now },
+    { instance_id: 'inst-03', instance_name: 'unbound03', metric_name: 'dns_queries_total', metric_value: 1281045, collected_at: now },
+    { instance_id: 'inst-03', instance_name: 'unbound03', metric_name: 'dns_cache_hit_ratio', metric_value: 0.871, collected_at: now },
+    { instance_id: 'inst-03', instance_name: 'unbound03', metric_name: 'dns_latency_ms', metric_value: 2.0, collected_at: now },
+    { instance_id: 'inst-03', instance_name: 'unbound03', metric_name: 'dns_servfail_total', metric_value: 10, collected_at: now },
+    { instance_id: 'inst-03', instance_name: 'unbound03', metric_name: 'dns_nxdomain_total', metric_value: 3050, collected_at: now },
+    { instance_id: 'inst-04', instance_name: 'unbound04', metric_name: 'dns_queries_total', metric_value: 1280112, collected_at: now },
+    { instance_id: 'inst-04', instance_name: 'unbound04', metric_name: 'dns_cache_hit_ratio', metric_value: 0.865, collected_at: now },
+    { instance_id: 'inst-04', instance_name: 'unbound04', metric_name: 'dns_latency_ms', metric_value: 2.4, collected_at: now },
+    { instance_id: 'inst-04', instance_name: 'unbound04', metric_name: 'dns_servfail_total', metric_value: 9, collected_at: now },
+    { instance_id: 'inst-04', instance_name: 'unbound04', metric_name: 'dns_nxdomain_total', metric_value: 3100, collected_at: now },
   ];
 }
 
 export function mockV2Instances(): V2Instance[] {
   return [
-    { id: 'inst-01', instance_name: 'unbound01', bind_ip: '100.127.255.101', bind_port: 53, outgoing_ip: '191.243.128.205', control_port: 8953, current_status: 'healthy', in_rotation: true, consecutive_failures: 0, consecutive_successes: 142, last_success_at: new Date().toISOString(), last_failure_at: null, last_transition_at: '2026-03-10T14:30:00Z', reason: null, cooldown_remaining: 0, last_reconciliation_at: null },
-    { id: 'inst-02', instance_name: 'unbound02', bind_ip: '100.127.255.102', bind_port: 53, outgoing_ip: '191.243.128.206', control_port: 8954, current_status: 'healthy', in_rotation: true, consecutive_failures: 0, consecutive_successes: 140, last_success_at: new Date().toISOString(), last_failure_at: '2026-03-11T06:30:00Z', last_transition_at: '2026-03-11T06:31:00Z', reason: 'Recovery: passed consecutive health checks', cooldown_remaining: 0, last_reconciliation_at: '2026-03-11T06:31:00Z' },
+    { id: 'inst-01', instance_name: 'unbound01', bind_ip: '100.127.255.101', bind_port: 53, outgoing_ip: '45.232.215.20', control_port: 8953, current_status: 'healthy', in_rotation: true, consecutive_failures: 0, consecutive_successes: 142, last_success_at: new Date().toISOString(), last_failure_at: null, last_transition_at: '2026-03-28T10:00:00Z', reason: null, cooldown_remaining: 0, last_reconciliation_at: null },
+    { id: 'inst-02', instance_name: 'unbound02', bind_ip: '100.127.255.102', bind_port: 53, outgoing_ip: '45.232.215.21', control_port: 8953, current_status: 'healthy', in_rotation: true, consecutive_failures: 0, consecutive_successes: 140, last_success_at: new Date().toISOString(), last_failure_at: '2026-03-29T06:30:00Z', last_transition_at: '2026-03-29T06:31:00Z', reason: 'Recovery: passed consecutive health checks', cooldown_remaining: 0, last_reconciliation_at: '2026-03-29T06:31:00Z' },
+    { id: 'inst-03', instance_name: 'unbound03', bind_ip: '100.127.255.103', bind_port: 53, outgoing_ip: '45.232.215.22', control_port: 8953, current_status: 'healthy', in_rotation: true, consecutive_failures: 0, consecutive_successes: 138, last_success_at: new Date().toISOString(), last_failure_at: '2026-03-29T07:54:30Z', last_transition_at: '2026-03-29T08:10:00Z', reason: 'Recovery: passed consecutive health checks', cooldown_remaining: 0, last_reconciliation_at: '2026-03-29T08:10:00Z' },
+    { id: 'inst-04', instance_name: 'unbound04', bind_ip: '100.127.255.104', bind_port: 53, outgoing_ip: '45.232.215.23', control_port: 8953, current_status: 'healthy', in_rotation: true, consecutive_failures: 0, consecutive_successes: 142, last_success_at: new Date().toISOString(), last_failure_at: null, last_transition_at: '2026-03-28T10:00:00Z', reason: null, cooldown_remaining: 0, last_reconciliation_at: null },
   ];
 }
 
