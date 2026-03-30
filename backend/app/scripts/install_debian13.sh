@@ -255,9 +255,13 @@ mkdir -p "${DATA_DIR}/staging"
 mkdir -p "${DATA_DIR}/deployments"
 mkdir -p "${LOG_DIR}"
 mkdir -p "${ENV_DIR}"
-# Create unbound placeholder dirs so deploy never fails on missing includes
+# Create ALL directories referenced by the systemd unit file ReadWritePaths
+# Without these, ProtectSystem=strict causes status=226/NAMESPACE failures
 mkdir -p "/etc/unbound"
-ok "Directories created"
+mkdir -p "/etc/nftables.d"
+mkdir -p "/etc/network"
+mkdir -p "/etc/systemd/system"
+ok "Directories created (including unit file ReadWritePaths)"
 
 # ═══ Step 4: Copy application files ═══
 echo "[4/${TOTAL_STEPS}] Staging application files..."
@@ -445,6 +449,19 @@ BACKEND_SWAPPED=true
 VENV_DIR="${INSTALL_DIR}/backend/venv"
 ok "Staged backend activated"
 
+# ── Validate venv binaries exist and are executable ──
+if [[ ! -x "${VENV_DIR}/bin/python" ]]; then
+    fail "venv python missing or not executable: ${VENV_DIR}/bin/python"
+    ERRORS=$((ERRORS+1))
+    exit 1
+fi
+if [[ ! -x "${VENV_DIR}/bin/uvicorn" ]]; then
+    fail "venv uvicorn missing or not executable: ${VENV_DIR}/bin/uvicorn"
+    ERRORS=$((ERRORS+1))
+    exit 1
+fi
+ok "venv binaries validated (python + uvicorn)"
+
 if (cd "${INSTALL_DIR}/backend" && "${VENV_DIR}/bin/python" -c "
 from app.core.database import init_db
 init_db()
@@ -458,11 +475,13 @@ fi
 # ═══ Step 8: Permissions & Sudoers ═══
 echo "[8/${TOTAL_STEPS}] Setting permissions and sudoers..."
 
-chown -R "${SERVICE_USER}:${SERVICE_USER}" "${DATA_DIR}"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "${DATA_DIR}"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${LOG_DIR}"
+chown "${SERVICE_USER}:${SERVICE_USER}" "/etc/nftables.d" 2>/dev/null || true
 chmod 600 "${DB_PATH}" 2>/dev/null || true
 chmod 700 "${ENV_DIR}"
+ok "Permissions set on install dir, data dir, and log dir"
 
 # Create comprehensive sudoers policy
 cat > /etc/sudoers.d/dns-control << 'SUDOEOF'
@@ -572,6 +591,7 @@ StandardError=journal
 SyslogIdentifier=dns-control-api
 
 # Security hardening
+# All ReadWritePaths directories are created by this installer in Step 3.
 NoNewPrivileges=false
 ProtectSystem=strict
 ReadWritePaths=/var/lib/dns-control /var/log/dns-control /etc/unbound /etc/nftables.d /etc/network /etc/systemd/system
@@ -602,7 +622,11 @@ if ${API_UP}; then
     ok "API is running and healthy"
 else
     fail "API did not respond within 15 seconds"
-    info "Check: journalctl -u dns-control-api --no-pager -n 30"
+    echo ""
+    echo "  ── journalctl -u dns-control-api (last 50 lines) ──"
+    journalctl -u dns-control-api --no-pager -n 50 2>/dev/null || true
+    echo "  ── end of journal ──"
+    echo ""
     ERRORS=$((ERRORS+1))
 fi
 
