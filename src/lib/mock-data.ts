@@ -342,54 +342,57 @@ unbound (pid 1234) is running...`,
   'health-full': {
     commandId: 'health-full', exitCode: 0, durationMs: 3200, timestamp: new Date().toISOString(), stderr: '',
     stdout: `=== DNS Control Health Check ===
-[OK] System: Debian 13 (Trixie), kernel 6.12.6
-[OK] Uptime: 5 days, 12 hours
+[OK] System: Debian 13 (trixie), kernel 6.12.73+deb13-amd64
+[OK] Uptime: 3 days, 21 hours
 [OK] CPU: 8 cores, load avg 0.45
 [OK] Memory: 4200/16384 MB (25.6%)
-[OK] Interface enp6s18: UP, 172.28.22.6/30
-[OK] Interface lo0: UP, 9 addresses configured
-[OK] Gateway 172.28.22.5: reachable (0.3ms)
-[OK] VIP 4.2.2.5: configured on lo0
-[OK] unbound01 (pid 1234): running, 128MB, port 53 listening
-[OK] unbound02 (pid 1235): running, 134MB, port 53 listening
-[OK] unbound03 (pid 1236): running, 121MB, port 53 listening
-[OK] unbound04 (pid 1237): running, 118MB, port 53 listening
-[OK] dig @4.2.2.5 google.com: NOERROR (12ms)
-[OK] dig @100.126.255.101 google.com: NOERROR (8ms)
-[OK] dig @100.126.255.102 google.com: NOERROR (9ms)
-[OK] dig @100.126.255.103 google.com: NOERROR (7ms)
-[OK] dig @100.126.255.104 google.com: NOERROR (11ms)
-[OK] nftables: ruleset loaded, 4 DNAT rules active
-[OK] FRR/OSPF: running, 2 neighbors Full
-[OK] OSPF redistribution: 9 connected routes announced
+[OK] Interface ens192: UP, 172.29.22.6/30
+[OK] Loopback: UP, 12 IPv4 + 11 IPv6 addresses configured
+[OK] Gateway 172.29.22.5: reachable (0.3ms)
+[OK] VIP 4.2.2.5: configured on lo, DNAT active
+[OK] VIP 4.2.2.6: configured on lo, DNAT active
+[OK] unbound01 (pid 1234): running, 512MB, 100.127.255.101:53 listening
+[OK] unbound02 (pid 1235): running, 512MB, 100.127.255.102:53 listening
+[OK] unbound03 (pid 1236): running, 512MB, 100.127.255.103:53 listening
+[OK] unbound04 (pid 1237): running, 512MB, 100.127.255.104:53 listening
+[OK] dig @4.2.2.5 google.com: NOERROR (2ms — local intercept)
+[OK] dig @4.2.2.6 google.com: NOERROR (2ms — local intercept)
+[OK] dig @100.127.255.101 google.com: NOERROR (2ms)
+[OK] dig @100.127.255.102 google.com: NOERROR (3ms)
+[OK] dig @100.127.255.103 google.com: NOERROR (2ms)
+[OK] dig @100.127.255.104 google.com: NOERROR (3ms)
+[OK] nftables: ruleset loaded, 4 backends in DNAT rotation
+[OK] Sticky sets: ipv4_users_unbound01..04 active (timeout 20m)
+[OK] FRR/OSPF: running, 1 neighbor Full
+[OK] OSPF redistribution: 12 connected routes announced
 
-Result: ALL CHECKS PASSED (16/16)`,
+Result: ALL CHECKS PASSED (20/20)`,
   },
   'svc-status': {
     commandId: 'svc-status', exitCode: 0, durationMs: 80, timestamp: new Date().toISOString(), stderr: '',
-    stdout: `● unbound01.service - Unbound DNS resolver (unbound01)
-     Loaded: loaded (/etc/systemd/system/unbound01.service; enabled)
-     Active: active (running) since Tue 2026-03-05 19:57:00 UTC; 5 days ago
+    stdout: `● unbound01.service - Unbound DNS resolver — unbound01
+     Loaded: loaded (/etc/systemd/system/unbound01.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2026-03-26 17:00:00 UTC; 3 days ago
    Main PID: 1234 (unbound)
-     Memory: 128.0M
+     Memory: 512.0M
         CPU: 2h 15min
-● unbound02.service - Unbound DNS resolver (unbound02)
-     Loaded: loaded (/etc/systemd/system/unbound02.service; enabled)
-     Active: active (running) since Tue 2026-03-05 19:57:00 UTC; 5 days ago
+● unbound02.service - Unbound DNS resolver — unbound02
+     Loaded: loaded (/etc/systemd/system/unbound02.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2026-03-26 17:00:00 UTC; 3 days ago
    Main PID: 1235 (unbound)
-     Memory: 134.0M
+     Memory: 512.0M
         CPU: 1h 48min
-● unbound03.service - Unbound DNS resolver (unbound03)
-     Loaded: loaded (/etc/systemd/system/unbound03.service; enabled)
-     Active: active (running) since Sun 2026-03-09 00:05:00 UTC; 2 days ago
+● unbound03.service - Unbound DNS resolver — unbound03
+     Loaded: loaded (/etc/systemd/system/unbound03.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2026-03-26 17:00:00 UTC; 3 days ago
    Main PID: 1236 (unbound)
-     Memory: 121.0M
+     Memory: 512.0M
         CPU: 52min
-● unbound04.service - Unbound DNS resolver (unbound04)
-     Loaded: loaded (/etc/systemd/system/unbound04.service; enabled)
-     Active: active (running) since Tue 2026-03-05 19:57:00 UTC; 5 days ago
+● unbound04.service - Unbound DNS resolver — unbound04
+     Loaded: loaded (/etc/systemd/system/unbound04.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2026-03-26 17:00:00 UTC; 3 days ago
    Main PID: 1237 (unbound)
-     Memory: 118.0M
+     Memory: 512.0M
         CPU: 1h 30min`,
   },
 };
