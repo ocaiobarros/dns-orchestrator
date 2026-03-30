@@ -339,7 +339,7 @@ if curl -sf --max-time 30 "\$BLOCK_V6_URL" -o "\$NEW_V6"; then
             logger -t anablock-ip-sync "ERRO: falha ao aplicar batch IPv6 — rollback"
             [ -f "\$LIST_V6_BAK" ] && cp "\$LIST_V6_BAK" "\$LIST_V6"
             rm -f "\$NEW_V6" "\$BATCH_V6"
-            ERRORS=$((ERRORS + 1))
+            ERRORS=\$((ERRORS + 1))
         fi
     else
         logger -t anablock-ip-sync "IPv6: sem alterações"
