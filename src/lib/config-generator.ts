@@ -1097,13 +1097,16 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
     });
   });
 
-  // Blocklist — generate both include targets when enabled
+  // Blocklist / AnaBlock — generate include targets + sync infrastructure when enabled
   if (config.enableBlocklist) {
     files.push({ path: '/etc/unbound/unbound-block-domains.conf', content: generateBlocklistConf() });
-    files.push({ path: '/etc/unbound/anablock.conf', content: `# DNS Control — Anablock integration
-# This file is included by Unbound when blocklist is enabled.
-# Populate with RPZ or local-zone directives as needed.
+    files.push({ path: '/etc/unbound/anablock.conf', content: `# DNS Control — AnaBlock placeholder
+# Este arquivo será populado automaticamente pelo script de sincronização.
+# Primeira execução: systemctl start dns-control-anablock.service
 ` });
+    files.push({ path: '/opt/dns-control/scripts/anablock-sync.sh', content: generateAnablockSyncScript(config) });
+    files.push({ path: '/etc/systemd/system/dns-control-anablock.service', content: generateAnablockService() });
+    files.push({ path: '/etc/systemd/system/dns-control-anablock.timer', content: generateAnablockTimer(config) });
   }
 
   // nftables (modular)
