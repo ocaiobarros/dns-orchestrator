@@ -162,13 +162,129 @@ server:
 ` : ''}`;
 }
 
-// ═══ BLOCKLIST ═══
+// ═══ BLOCKLIST / ANABLOCK ═══
+
+function buildAnablockApiUrl(config: WizardConfig): string {
+  const base = (config.blocklistApiUrl || 'https://api.anablock.net.br').replace(/\/$/, '');
+  let url = `${base}/domains/all?output=unbound`;
+  if (config.blocklistMode === 'cname' && config.blocklistCnameTarget) {
+    url += `&cname=${config.blocklistCnameTarget}`;
+  } else if (config.blocklistMode === 'redirect-ip' && config.blocklistRedirectIpv4) {
+    url += `&ipv4=${config.blocklistRedirectIpv4}`;
+    if (config.enableIpv6 && config.blocklistRedirectIpv6) {
+      url += `&ipv6=${config.blocklistRedirectIpv6}`;
+    }
+  }
+  return url;
+}
 
 export function generateBlocklistConf(): string {
-  return `# DNS Control — Domain Blocklist
-# Add domains to block here, one per line:
+  return `# DNS Control — Domain Blocklist (local/custom)
+# Add custom local-zone directives here, one per line:
 # local-zone: "example-ads.com" always_refuse
 # local-zone: "tracking.example.com" always_refuse
+`;
+}
+
+export function generateAnablockSyncScript(config: WizardConfig): string {
+  const apiUrl = buildAnablockApiUrl(config);
+  return `#!/bin/bash
+# DNS Control — AnaBlock Sync Script
+# Sincroniza domínios bloqueados judicialmente via API AnaBlock
+# Modo: ${config.blocklistMode}
+# Gerado automaticamente — não editar manualmente
+
+set -euo pipefail
+
+APIURL="${apiUrl}"
+CONF="/etc/unbound/anablock.conf"
+CONF_TMP="/tmp/anablock-sync-\$\$.conf"
+VERSION_URL="${(config.blocklistApiUrl || 'https://api.anablock.net.br').replace(/\/$/, '')}/api/version"
+VERSION_FILE="/var/lib/dns-control/anablock-version"
+
+# Verificar se houve atualização na base
+REMOTE_VERSION=$(curl -sf --max-time 10 "\$VERSION_URL" 2>/dev/null || echo "0")
+LOCAL_VERSION=$(cat "\$VERSION_FILE" 2>/dev/null || echo "0")
+
+if [ "\$REMOTE_VERSION" = "\$LOCAL_VERSION" ] && [ -f "\$CONF" ]; then
+    logger -t anablock-sync "AnaBlock: sem alterações (versão \$LOCAL_VERSION)"
+    exit 0
+fi
+
+logger -t anablock-sync "AnaBlock: atualizando \$LOCAL_VERSION → \$REMOTE_VERSION"
+
+# Baixar nova configuração
+if ! curl -sf --max-time 30 "\$APIURL" -o "\$CONF_TMP"; then
+    logger -t anablock-sync "ERRO: falha ao baixar configuração AnaBlock"
+    rm -f "\$CONF_TMP"
+    exit 1
+fi
+
+# Validar configuração antes de aplicar
+UNBOUND_TEST="/tmp/unbound-anablock-test-\$\$.conf"
+(
+    cat /etc/unbound/unbound.conf
+    echo "server:"
+    cat "\$CONF_TMP"
+) > "\$UNBOUND_TEST"
+
+if ! unbound-checkconf "\$UNBOUND_TEST" >/dev/null 2>&1; then
+    logger -t anablock-sync "ERRO: configuração AnaBlock inválida — rejeitada"
+    rm -f "\$CONF_TMP" "\$UNBOUND_TEST"
+    exit 1
+fi
+rm -f "\$UNBOUND_TEST"
+
+# Aplicar: mover atomicamente e recarregar
+mv "\$CONF_TMP" "\$CONF"
+chown root:unbound "\$CONF"
+chmod 0644 "\$CONF"
+
+# Recarregar todas as instâncias Unbound
+for UNIT in /etc/systemd/system/unbound*.service; do
+    UNIT_NAME=$(basename "\$UNIT" .service)
+    if systemctl is-active --quiet "\$UNIT_NAME" 2>/dev/null; then
+        unbound-control -c /etc/unbound/"\$UNIT_NAME".conf reload 2>/dev/null || true
+        logger -t anablock-sync "AnaBlock: reload \$UNIT_NAME OK"
+    fi
+done
+
+# Salvar versão
+echo "\$REMOTE_VERSION" > "\$VERSION_FILE"
+logger -t anablock-sync "AnaBlock: atualização concluída (versão \$REMOTE_VERSION)"
+`;
+}
+
+export function generateAnablockTimer(config: WizardConfig): string {
+  const hours = config.blocklistSyncIntervalHours || 6;
+  return `[Unit]
+Description=AnaBlock judicial blocklist sync timer
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=${hours}h
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+`;
+}
+
+export function generateAnablockService(): string {
+  return `[Unit]
+Description=AnaBlock judicial blocklist sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/dns-control/scripts/anablock-sync.sh
+TimeoutSec=120
+User=root
+
+[Install]
+WantedBy=multi-user.target
 `;
 }
 
@@ -981,13 +1097,16 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
     });
   });
 
-  // Blocklist — generate both include targets when enabled
+  // Blocklist / AnaBlock — generate include targets + sync infrastructure when enabled
   if (config.enableBlocklist) {
     files.push({ path: '/etc/unbound/unbound-block-domains.conf', content: generateBlocklistConf() });
-    files.push({ path: '/etc/unbound/anablock.conf', content: `# DNS Control — Anablock integration
-# This file is included by Unbound when blocklist is enabled.
-# Populate with RPZ or local-zone directives as needed.
+    files.push({ path: '/etc/unbound/anablock.conf', content: `# DNS Control — AnaBlock placeholder
+# Este arquivo será populado automaticamente pelo script de sincronização.
+# Primeira execução: systemctl start dns-control-anablock.service
 ` });
+    files.push({ path: '/opt/dns-control/scripts/anablock-sync.sh', content: generateAnablockSyncScript(config) });
+    files.push({ path: '/etc/systemd/system/dns-control-anablock.service', content: generateAnablockService() });
+    files.push({ path: '/etc/systemd/system/dns-control-anablock.timer', content: generateAnablockTimer(config) });
   }
 
   // nftables (modular)

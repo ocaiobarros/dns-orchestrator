@@ -232,22 +232,154 @@ server:
     if enable_blocklist:
         files.append({
             "path": "/etc/unbound/unbound-block-domains.conf",
-            "content": """# DNS Control — Domain Blocklist
-# Add domains to block here, one per line:
-# local-zone: "example-ads.com" always_refuse
-# local-zone: "tracking.example.com" always_refuse
-""",
+            "content": "# DNS Control — Domain Blocklist (local/custom)\n"
+                       "# Add custom local-zone directives here, one per line:\n"
+                       "# local-zone: \"example-ads.com\" always_refuse\n"
+                       "# local-zone: \"tracking.example.com\" always_refuse\n",
             "permissions": "0644",
             "owner": "root:unbound",
         })
         files.append({
             "path": "/etc/unbound/anablock.conf",
-            "content": """# DNS Control — Anablock integration
-# This file is included by Unbound when blocklist is enabled.
-# Populate with RPZ or local-zone directives as needed.
-""",
+            "content": "# DNS Control — AnaBlock placeholder\n"
+                       "# Este arquivo será populado automaticamente pelo script de sincronização.\n"
+                       "# Primeira execução: systemctl start dns-control-anablock.service\n",
             "permissions": "0644",
             "owner": "root:unbound",
+        })
+
+        # ═══ AnaBlock sync script ═══
+        blocklist_cfg = payload.get("_wizardConfig", {}) or {}
+        api_url = _safe_str(
+            payload.get("blocklistApiUrl") or blocklist_cfg.get("blocklistApiUrl"),
+            "https://api.anablock.net.br",
+        ).rstrip("/")
+        blocklist_mode = _safe_str(
+            payload.get("blocklistMode") or blocklist_cfg.get("blocklistMode"),
+            "nxdomain",
+        )
+        cname_target = _safe_str(payload.get("blocklistCnameTarget") or blocklist_cfg.get("blocklistCnameTarget"), "anatel.gov.br")
+        redirect_ipv4 = _safe_str(payload.get("blocklistRedirectIpv4") or blocklist_cfg.get("blocklistRedirectIpv4"), "")
+        redirect_ipv6 = _safe_str(payload.get("blocklistRedirectIpv6") or blocklist_cfg.get("blocklistRedirectIpv6"), "")
+        sync_hours = _safe_int(payload.get("blocklistSyncIntervalHours") or blocklist_cfg.get("blocklistSyncIntervalHours"), 6)
+
+        # Build API URL with output params
+        domain_url = f"{api_url}/domains/all?output=unbound"
+        if blocklist_mode == "cname" and cname_target:
+            domain_url += f"&cname={cname_target}"
+        elif blocklist_mode == "redirect-ip" and redirect_ipv4:
+            domain_url += f"&ipv4={redirect_ipv4}"
+            if enable_ipv6 and redirect_ipv6:
+                domain_url += f"&ipv6={redirect_ipv6}"
+
+        sync_script = f"""#!/bin/bash
+# DNS Control — AnaBlock Sync Script
+# Sincroniza domínios bloqueados judicialmente via API AnaBlock
+# Modo: {blocklist_mode}
+# Gerado automaticamente — não editar manualmente
+
+set -euo pipefail
+
+APIURL="{domain_url}"
+CONF="/etc/unbound/anablock.conf"
+CONF_TMP="/tmp/anablock-sync-$$.conf"
+VERSION_URL="{api_url}/api/version"
+VERSION_FILE="/var/lib/dns-control/anablock-version"
+
+# Verificar se houve atualização na base
+REMOTE_VERSION=$(curl -sf --max-time 10 "$VERSION_URL" 2>/dev/null || echo "0")
+LOCAL_VERSION=$(cat "$VERSION_FILE" 2>/dev/null || echo "0")
+
+if [ "$REMOTE_VERSION" = "$LOCAL_VERSION" ] && [ -f "$CONF" ]; then
+    logger -t anablock-sync "AnaBlock: sem alterações (versão $LOCAL_VERSION)"
+    exit 0
+fi
+
+logger -t anablock-sync "AnaBlock: atualizando $LOCAL_VERSION → $REMOTE_VERSION"
+
+# Baixar nova configuração
+if ! curl -sf --max-time 30 "$APIURL" -o "$CONF_TMP"; then
+    logger -t anablock-sync "ERRO: falha ao baixar configuração AnaBlock"
+    rm -f "$CONF_TMP"
+    exit 1
+fi
+
+# Validar configuração antes de aplicar
+UNBOUND_TEST="/tmp/unbound-anablock-test-$$.conf"
+(
+    cat /etc/unbound/unbound.conf
+    echo "server:"
+    cat "$CONF_TMP"
+) > "$UNBOUND_TEST"
+
+if ! unbound-checkconf "$UNBOUND_TEST" >/dev/null 2>&1; then
+    logger -t anablock-sync "ERRO: configuração AnaBlock inválida — rejeitada"
+    rm -f "$CONF_TMP" "$UNBOUND_TEST"
+    exit 1
+fi
+rm -f "$UNBOUND_TEST"
+
+# Aplicar: mover atomicamente e recarregar
+mv "$CONF_TMP" "$CONF"
+chown root:unbound "$CONF"
+chmod 0644 "$CONF"
+
+# Recarregar todas as instâncias Unbound
+for UNIT in /etc/systemd/system/unbound*.service; do
+    UNIT_NAME=$(basename "$UNIT" .service)
+    if systemctl is-active --quiet "$UNIT_NAME" 2>/dev/null; then
+        unbound-control -c /etc/unbound/"$UNIT_NAME".conf reload 2>/dev/null || true
+        logger -t anablock-sync "AnaBlock: reload $UNIT_NAME OK"
+    fi
+done
+
+# Salvar versão
+echo "$REMOTE_VERSION" > "$VERSION_FILE"
+logger -t anablock-sync "AnaBlock: atualização concluída (versão $REMOTE_VERSION)"
+"""
+        files.append({
+            "path": "/opt/dns-control/scripts/anablock-sync.sh",
+            "content": sync_script,
+            "permissions": "0755",
+            "owner": "root:root",
+        })
+
+        # ═══ Systemd timer + service ═══
+        files.append({
+            "path": "/etc/systemd/system/dns-control-anablock.service",
+            "content": """[Unit]
+Description=AnaBlock judicial blocklist sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/dns-control/scripts/anablock-sync.sh
+TimeoutSec=120
+User=root
+
+[Install]
+WantedBy=multi-user.target
+""",
+            "permissions": "0644",
+            "owner": "root:root",
+        })
+        files.append({
+            "path": "/etc/systemd/system/dns-control-anablock.timer",
+            "content": f"""[Unit]
+Description=AnaBlock judicial blocklist sync timer
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec={sync_hours}h
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+""",
+            "permissions": "0644",
+            "owner": "root:root",
         })
 
     return files
