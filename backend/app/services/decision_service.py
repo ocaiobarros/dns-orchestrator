@@ -65,9 +65,20 @@ def reconcile(db: Session) -> dict:
 
 
 def _remove_backend(db: Session, instance: DnsInstance, state: InstanceState):
-    """Remove a failed backend from nftables DNAT."""
+    """Remove a failed backend from nftables DNAT.
+
+    Strategy: delete all rules that DNAT to this backend's bind_ip from the
+    dispatch chains (ipv4_tcp_dns, ipv4_udp_dns). This removes both the
+    memorized-source jump rules and the nth-balancing jump rules for this
+    instance, so no new traffic is sent to the dead backend.
+
+    The per-instance sticky set (ipv4_users_{name}) is flushed so stale
+    client affinities don't survive a future restore.
+    """
     now = datetime.now(timezone.utc)
-    logger.warning(f"Removing failed backend {instance.instance_name} ({instance.bind_ip}) from DNAT")
+    name = instance.instance_name
+    bind_ip = instance.bind_ip
+    logger.warning(f"Removing failed backend {name} ({bind_ip}) from DNAT")
 
     action = OperationalAction(
         action_type="remove_backend",
@@ -79,20 +90,32 @@ def _remove_backend(db: Session, instance: DnsInstance, state: InstanceState):
     db.add(action)
     db.flush()
 
-    # Get current nftables ruleset to find and remove the backend
-    result = run_command("nft", ["list", "ruleset"], timeout=10)
-    if result["exit_code"] != 0:
-        action.status = "failed"
-        action.stderr_log = result["stderr"]
-        action.exit_code = result["exit_code"]
-        action.finished_at = now
-        return
+    errors: list[str] = []
+    commands_run: list[str] = []
 
-    delete_result = run_command(
-        "nft",
-        ["delete", "element", "ip", "nat", "dns_backends", f"{{ {instance.bind_ip} }}"],
-        timeout=10,
-    )
+    # 1. Delete jump rules from dispatch chains that reference this backend's chains
+    for proto in ("tcp", "udp"):
+        dispatch_chain = f"ipv4_{proto}_dns"
+        backend_chain = f"ipv4_dns_{proto}_{name}"
+
+        # Get handles of rules jumping to this backend's chain
+        handles = _get_rule_handles_for_jump(dispatch_chain, backend_chain)
+        for handle in handles:
+            cmd_args = ["delete", "rule", "ip", "nat", dispatch_chain, "handle", str(handle)]
+            commands_run.append(f"nft {' '.join(cmd_args)}")
+            result = run_command("nft", cmd_args, timeout=10, use_privilege=True)
+            if result["exit_code"] != 0:
+                errors.append(f"delete rule handle {handle} from {dispatch_chain}: {result['stderr'][:200]}")
+
+    # 2. Flush the sticky set so stale affinities are cleared
+    for proto in ("tcp", "udp"):
+        set_name = f"ipv4_users_{name}"
+        cmd_args = ["flush", "set", "ip", "nat", set_name]
+        commands_run.append(f"nft {' '.join(cmd_args)}")
+        result = run_command("nft", cmd_args, timeout=10, use_privilege=True)
+        if result["exit_code"] != 0:
+            # Non-fatal: set might already be empty
+            logger.warning(f"Failed to flush set {set_name}: {result['stderr'][:200]}")
 
     state.in_rotation = False
     state.current_status = "withdrawn"
@@ -100,16 +123,18 @@ def _remove_backend(db: Session, instance: DnsInstance, state: InstanceState):
     state.last_reconciliation_at = now
     state.reason = f"Removed from DNAT: {state.consecutive_failures} consecutive failures"
 
-    action.status = "success" if delete_result["exit_code"] == 0 else "failed"
-    action.stdout_log = delete_result["stdout"]
-    action.stderr_log = delete_result["stderr"]
-    action.exit_code = delete_result["exit_code"]
+    action.status = "failed" if errors else "success"
+    action.stdout_log = "; ".join(commands_run)
+    action.stderr_log = "; ".join(errors) if errors else ""
+    action.exit_code = 1 if errors else 0
     action.finished_at = now
 
     _emit_event(db, "backend_removed_from_dnat", "warning", instance.id,
-                f"Backend {instance.instance_name} ({instance.bind_ip}) removed from DNAT rotation",
+                f"Backend {name} ({bind_ip}) removed from DNAT rotation — "
+                f"deleted {len(commands_run)} rules/sets",
                 {"action_source": "reconciliation_engine", "reason": "health check failure",
-                 "consecutive_failures": state.consecutive_failures})
+                 "consecutive_failures": state.consecutive_failures,
+                 "commands": commands_run})
 
 
 def _restore_backend(db: Session, instance: DnsInstance, state: InstanceState):
