@@ -256,32 +256,70 @@ server:
         ).rstrip("/")
         blocklist_mode = _safe_str(
             payload.get("blocklistMode") or blocklist_cfg.get("blocklistMode"),
-            "nxdomain",
+            "always_nxdomain",
         )
-        cname_target = _safe_str(payload.get("blocklistCnameTarget") or blocklist_cfg.get("blocklistCnameTarget"), "anatel.gov.br")
+        cname_target = _safe_str(payload.get("blocklistCnameTarget") or blocklist_cfg.get("blocklistCnameTarget"), "")
         redirect_ipv4 = _safe_str(payload.get("blocklistRedirectIpv4") or blocklist_cfg.get("blocklistRedirectIpv4"), "")
         redirect_ipv6 = _safe_str(payload.get("blocklistRedirectIpv6") or blocklist_cfg.get("blocklistRedirectIpv6"), "")
         sync_hours = _safe_int(payload.get("blocklistSyncIntervalHours") or blocklist_cfg.get("blocklistSyncIntervalHours"), 6)
+        auto_sync = payload.get("blocklistAutoSync") if payload.get("blocklistAutoSync") is not None else blocklist_cfg.get("blocklistAutoSync", True)
+        validate_before = payload.get("blocklistValidateBeforeReload") if payload.get("blocklistValidateBeforeReload") is not None else blocklist_cfg.get("blocklistValidateBeforeReload", True)
+        auto_reload = payload.get("blocklistAutoReload") if payload.get("blocklistAutoReload") is not None else blocklist_cfg.get("blocklistAutoReload", True)
 
         # Build API URL with output params
         domain_url = f"{api_url}/domains/all?output=unbound"
-        if blocklist_mode == "cname" and cname_target:
+        if blocklist_mode == "redirect_cname" and cname_target:
             domain_url += f"&cname={cname_target}"
-        elif blocklist_mode == "redirect-ip" and redirect_ipv4:
+        elif blocklist_mode == "redirect_ip" and redirect_ipv4:
             domain_url += f"&ipv4={redirect_ipv4}"
-            if enable_ipv6 and redirect_ipv6:
+        elif blocklist_mode == "redirect_ip_dualstack" and redirect_ipv4:
+            domain_url += f"&ipv4={redirect_ipv4}"
+            if redirect_ipv6:
                 domain_url += f"&ipv6={redirect_ipv6}"
+
+        # Validation block
+        validate_block = """
+# Validar configuração antes de aplicar
+UNBOUND_TEST="/tmp/unbound-anablock-test-$$.conf"
+(
+    cat /etc/unbound/unbound.conf
+    echo "server:"
+    cat "$CONF_TMP"
+) > "$UNBOUND_TEST"
+
+if ! unbound-checkconf "$UNBOUND_TEST" >/dev/null 2>&1; then
+    logger -t anablock-sync "ERRO: configuração AnaBlock inválida — rejeitada"
+    rm -f "$CONF_TMP" "$UNBOUND_TEST"
+    exit 1
+fi
+rm -f "$UNBOUND_TEST"
+""" if validate_before else "# Validação desativada pelo operador"
+
+        # Reload block
+        reload_block = """
+# Recarregar todas as instâncias Unbound
+for UNIT in /usr/lib/systemd/system/unbound*.service; do
+    UNIT_NAME=$(basename "$UNIT" .service)
+    if systemctl is-active --quiet "$UNIT_NAME" 2>/dev/null; then
+        unbound-control -c /etc/unbound/"$UNIT_NAME".conf reload 2>/dev/null || true
+        logger -t anablock-sync "AnaBlock: reload $UNIT_NAME OK"
+    fi
+done
+""" if auto_reload else "# Reload automático desativado pelo operador — reload manual necessário"
 
         sync_script = f"""#!/bin/bash
 # DNS Control — AnaBlock Sync Script
 # Sincroniza domínios bloqueados judicialmente via API AnaBlock
 # Modo: {blocklist_mode}
+# Validação: {"ativa" if validate_before else "desativada"}
+# Auto-reload: {"ativo" if auto_reload else "desativado"}
 # Gerado automaticamente — não editar manualmente
 
 set -euo pipefail
 
 APIURL="{domain_url}"
 CONF="/etc/unbound/anablock.conf"
+CONF_BAK="/etc/unbound/anablock.conf.bak"
 CONF_TMP="/tmp/anablock-sync-$$.conf"
 VERSION_URL="{api_url}/api/version"
 VERSION_FILE="/var/lib/dns-control/anablock-version"
@@ -303,36 +341,17 @@ if ! curl -sf --max-time 30 "$APIURL" -o "$CONF_TMP"; then
     rm -f "$CONF_TMP"
     exit 1
 fi
-
-# Validar configuração antes de aplicar
-UNBOUND_TEST="/tmp/unbound-anablock-test-$$.conf"
-(
-    cat /etc/unbound/unbound.conf
-    echo "server:"
-    cat "$CONF_TMP"
-) > "$UNBOUND_TEST"
-
-if ! unbound-checkconf "$UNBOUND_TEST" >/dev/null 2>&1; then
-    logger -t anablock-sync "ERRO: configuração AnaBlock inválida — rejeitada"
-    rm -f "$CONF_TMP" "$UNBOUND_TEST"
-    exit 1
+{validate_block}
+# Backup da versão anterior
+if [ -f "$CONF" ]; then
+    cp "$CONF" "$CONF_BAK"
 fi
-rm -f "$UNBOUND_TEST"
 
-# Aplicar: mover atomicamente e recarregar
+# Aplicar: mover atomicamente
 mv "$CONF_TMP" "$CONF"
 chown root:unbound "$CONF"
 chmod 0644 "$CONF"
-
-# Recarregar todas as instâncias Unbound
-for UNIT in /etc/systemd/system/unbound*.service; do
-    UNIT_NAME=$(basename "$UNIT" .service)
-    if systemctl is-active --quiet "$UNIT_NAME" 2>/dev/null; then
-        unbound-control -c /etc/unbound/"$UNIT_NAME".conf reload 2>/dev/null || true
-        logger -t anablock-sync "AnaBlock: reload $UNIT_NAME OK"
-    fi
-done
-
+{reload_block}
 # Salvar versão
 echo "$REMOTE_VERSION" > "$VERSION_FILE"
 logger -t anablock-sync "AnaBlock: atualização concluída (versão $REMOTE_VERSION)"
@@ -344,9 +363,9 @@ logger -t anablock-sync "AnaBlock: atualização concluída (versão $REMOTE_VER
             "owner": "root:root",
         })
 
-        # ═══ Systemd timer + service ═══
+        # ═══ Systemd service (always generated) ═══
         files.append({
-            "path": "/etc/systemd/system/dns-control-anablock.service",
+            "path": "/etc/systemd/system/anablock-sync.service",
             "content": """[Unit]
 Description=AnaBlock judicial blocklist sync
 After=network-online.target
@@ -364,9 +383,12 @@ WantedBy=multi-user.target
             "permissions": "0644",
             "owner": "root:root",
         })
-        files.append({
-            "path": "/etc/systemd/system/dns-control-anablock.timer",
-            "content": f"""[Unit]
+
+        # ═══ Systemd timer (only if autoSync enabled) ═══
+        if auto_sync:
+            files.append({
+                "path": "/etc/systemd/system/anablock-sync.timer",
+                "content": f"""[Unit]
 Description=AnaBlock judicial blocklist sync timer
 
 [Timer]
@@ -378,8 +400,8 @@ Persistent=true
 [Install]
 WantedBy=timers.target
 """,
-            "permissions": "0644",
-            "owner": "root:root",
-        })
+                "permissions": "0644",
+                "owner": "root:root",
+            })
 
     return files

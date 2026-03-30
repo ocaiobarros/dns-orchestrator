@@ -149,11 +149,14 @@ export interface WizardConfig {
   enableDetailedLogs: boolean;
   enableBlocklist: boolean;
   blocklistApiUrl: string;
-  blocklistMode: 'nxdomain' | 'cname' | 'redirect-ip';
+  blocklistMode: 'always_nxdomain' | 'redirect_cname' | 'redirect_ip' | 'redirect_ip_dualstack';
   blocklistCnameTarget: string;
   blocklistRedirectIpv4: string;
   blocklistRedirectIpv6: string;
   blocklistSyncIntervalHours: number;
+  blocklistAutoSync: boolean;
+  blocklistValidateBeforeReload: boolean;
+  blocklistAutoReload: boolean;
   dnsIdentity: string;
   dnsVersion: string;
 
@@ -666,11 +669,14 @@ export const DEFAULT_CONFIG: WizardConfig = {
   enableDetailedLogs: false,
   enableBlocklist: false,
   blocklistApiUrl: 'https://api.anablock.net.br',
-  blocklistMode: 'nxdomain' as const,
-  blocklistCnameTarget: 'anatel.gov.br',
+  blocklistMode: 'always_nxdomain' as const,
+  blocklistCnameTarget: '',
   blocklistRedirectIpv4: '',
   blocklistRedirectIpv6: '',
   blocklistSyncIntervalHours: 6,
+  blocklistAutoSync: true,
+  blocklistValidateBeforeReload: true,
+  blocklistAutoReload: true,
   dnsIdentity: '',
   dnsVersion: '1.0',
 
