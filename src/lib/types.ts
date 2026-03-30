@@ -149,11 +149,14 @@ export interface WizardConfig {
   enableDetailedLogs: boolean;
   enableBlocklist: boolean;
   blocklistApiUrl: string;
-  blocklistMode: 'nxdomain' | 'cname' | 'redirect-ip';
+  blocklistMode: 'always_nxdomain' | 'redirect_cname' | 'redirect_ip' | 'redirect_ip_dualstack';
   blocklistCnameTarget: string;
   blocklistRedirectIpv4: string;
   blocklistRedirectIpv6: string;
   blocklistSyncIntervalHours: number;
+  blocklistAutoSync: boolean;
+  blocklistValidateBeforeReload: boolean;
+  blocklistAutoReload: boolean;
   dnsIdentity: string;
   dnsVersion: string;
 
