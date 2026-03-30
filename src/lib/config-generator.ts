@@ -441,7 +441,7 @@ fi
 }
 
 export function generateIpBlockingService(): string {
-  return \`[Unit]
+  return `[Unit]
 Description=AnaBlock IP blocking sync (blackhole routes)
 After=network-online.target
 Wants=network-online.target
@@ -454,7 +454,7 @@ User=root
 
 [Install]
 WantedBy=multi-user.target
-\`;
+`;
 }
 
 export function generateIpBlockingTimer(config: WizardConfig): string {
