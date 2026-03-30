@@ -591,6 +591,7 @@ StandardError=journal
 SyslogIdentifier=dns-control-api
 
 # Security hardening
+# All ReadWritePaths directories are created by this installer in Step 3.
 NoNewPrivileges=false
 ProtectSystem=strict
 ReadWritePaths=/var/lib/dns-control /var/log/dns-control /etc/unbound /etc/nftables.d /etc/network /etc/systemd/system
