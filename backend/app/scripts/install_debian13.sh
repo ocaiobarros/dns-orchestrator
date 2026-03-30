@@ -621,7 +621,11 @@ if ${API_UP}; then
     ok "API is running and healthy"
 else
     fail "API did not respond within 15 seconds"
-    info "Check: journalctl -u dns-control-api --no-pager -n 30"
+    echo ""
+    echo "  ── journalctl -u dns-control-api (last 50 lines) ──"
+    journalctl -u dns-control-api --no-pager -n 50 2>/dev/null || true
+    echo "  ── end of journal ──"
+    echo ""
     ERRORS=$((ERRORS+1))
 fi
 

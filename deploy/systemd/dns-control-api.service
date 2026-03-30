@@ -17,6 +17,9 @@ StandardError=journal
 SyslogIdentifier=dns-control-api
 
 # Security hardening
+# NOTE: All paths in ReadWritePaths MUST be created by the installer
+# before this unit starts, or ProtectSystem=strict causes status=226/NAMESPACE.
+# The installer (install_debian13.sh) creates these in Step 3.
 NoNewPrivileges=false
 ProtectSystem=strict
 ReadWritePaths=/var/lib/dns-control /var/log/dns-control /etc/unbound /etc/nftables.d /etc/network /etc/systemd/system
