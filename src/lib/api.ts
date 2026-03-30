@@ -12,7 +12,7 @@ import type {
   ApplyRequest, ApplyResult, DiagCommand, DiagResult,
   ConfigProfile, ConfigDiff, GeneratedFile, PaginatedResponse,
   InstanceHealthReport, DeployState, RollbackResult, PostDeployCheck,
-  V2Event, V2MetricEntry, V2Instance, V2Action, ReconcileSummary,
+  V2Event, V2MetricEntry, V2Instance, V2Action, ReconcileSummary, SystemSelfTestResult,
 } from './types';
 
 export interface AuthUserRecord {
@@ -231,6 +231,10 @@ export const api = {
   updateSettings: (settings: Record<string, string>) =>
     apiCall<{ success: boolean }>('PATCH', '/settings', { settings }),
 
+  // System
+  runSystemSelfTest: (credentials?: { username?: string; password?: string }) =>
+    apiCall<SystemSelfTestResult>('POST', '/system/self-test', credentials || {}),
+
   // Reports
   generateReport: () => apiCall<{ downloadUrl: string; html: string }>('POST', '/dashboard/summary'),
 
@@ -403,6 +407,22 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path === '/api/actions' && method === 'GET') return mockV2Actions();
   if (path.match(/\/api\/actions\/(remove|restore)-backend/)) return { success: true };
   if (path === '/api/actions/reconcile-now' && method === 'POST') return { instances_checked: 4, instances_failed: 0, backends_removed: 0, backends_restored: 0 };
+
+  // System
+  if (path === '/api/system/self-test' && method === 'POST') {
+    return {
+      overall: 'ok',
+      passed: 4,
+      warned: 0,
+      failed: 0,
+      checks: [
+        { name: 'systemd_active', status: 'pass', detail: 'dns-control-api.service ativo', duration_ms: 18 },
+        { name: 'api_health', status: 'pass', detail: 'status=ok', duration_ms: 24 },
+        { name: 'database_access', status: 'pass', detail: 'users=1', duration_ms: 7 },
+        { name: 'login_functional', status: 'pass', detail: 'login OK para admin', duration_ms: 49 },
+      ],
+    };
+  }
 
   return {};
 }

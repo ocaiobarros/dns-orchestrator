@@ -806,6 +806,21 @@ export interface ReconcileSummary {
   backends_restored: number;
 }
 
+export interface SystemSelfTestCheck {
+  name: string;
+  status: 'pass' | 'warn' | 'fail';
+  detail: string;
+  duration_ms: number;
+}
+
+export interface SystemSelfTestResult {
+  overall: 'ok' | 'failed';
+  passed: number;
+  warned: number;
+  failed: number;
+  checks: SystemSelfTestCheck[];
+}
+
 // ---- Helpers for normalizing real API data ----
 
 function toSafeNumber(value: unknown, fallback = 0): number {
