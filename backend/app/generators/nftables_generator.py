@@ -317,14 +317,13 @@ def _generate_monolithic_validation(
             lines.append(f"        {proto} dport 53 counter dnat to {bind_ip}:53")
             lines.append("    }")
 
-    # Dispatch chains
+    # Dispatch chains with vmap
     for proto in ("tcp", "udp"):
         lines.append(f"    chain ipv4_{proto}_dns {{")
-        rand_num = len(backends)
-        for backend in backends:
-            subchain = f"ipv4_dns_{proto}_{backend['name']}"
-            lines.append(f"        numgen inc mod {rand_num} 0 counter jump {subchain}")
-            rand_num -= 1
+        vmap_entries = ", ".join(
+            f"{i} : jump ipv4_dns_{proto}_{b['name']}" for i, b in enumerate(backends)
+        )
+        lines.append(f"        numgen inc mod {len(backends)} vmap {{ {vmap_entries} }}")
         lines.append("    }")
 
     lines.append("}")
