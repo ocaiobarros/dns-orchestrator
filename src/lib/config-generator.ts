@@ -459,18 +459,18 @@ WantedBy=multi-user.target
 
 export function generateIpBlockingTimer(config: WizardConfig): string {
   const hours = config.ipBlockingSyncIntervalHours || 6;
-  return \`[Unit]
+  return `[Unit]
 Description=AnaBlock IP blocking sync timer
 
 [Timer]
 OnBootSec=3min
-OnUnitActiveSec=\${hours}h
+OnUnitActiveSec=${hours}h
 RandomizedDelaySec=300
 Persistent=true
 
 [Install]
 WantedBy=timers.target
-\`;
+`;
 }
 
 // ═══ SYSTEMD UNIT ═══
