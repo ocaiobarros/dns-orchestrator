@@ -665,6 +665,12 @@ export const DEFAULT_CONFIG: WizardConfig = {
   rootHintsPath: '/etc/unbound/named.cache',
   enableDetailedLogs: false,
   enableBlocklist: false,
+  blocklistApiUrl: 'https://api.anablock.net.br',
+  blocklistMode: 'nxdomain' as const,
+  blocklistCnameTarget: 'anatel.gov.br',
+  blocklistRedirectIpv4: '',
+  blocklistRedirectIpv6: '',
+  blocklistSyncIntervalHours: 6,
   dnsIdentity: '',
   dnsVersion: '1.0',
 
