@@ -245,27 +245,36 @@ def _execute_deploy_locked(
         if not staging_dir:
             return {"status": "failed", "output": "Staging directory missing"}
 
-        # ═══ Pre-validate: check that all include targets exist in staging ═══
+        # ═══ Pre-validate: check include targets and auto-create placeholders ═══
         import re
         include_pattern = re.compile(r'^\s*include:\s*["\']?([^"\'#\s]+)', re.MULTILINE)
+        # Known placeholder files that are populated at runtime (sync scripts)
+        _RUNTIME_INCLUDES = {"anablock.conf", "unbound-block-domains.conf"}
         for f in files:
             if "/unbound/" in f["path"] and f["path"].endswith(".conf"):
                 matches = include_pattern.findall(f.get("content", ""))
                 for inc_path in matches:
-                    # Resolve wildcard includes — skip validation for globs
                     if "*" in inc_path:
                         continue
                     staged_inc = os.path.join(staging_dir, inc_path.lstrip("/"))
+                    basename = os.path.basename(inc_path)
                     if not os.path.exists(staged_inc):
-                        err = {
-                            "category": "unbound-include-missing",
-                            "command": None,
-                            "file": f["path"],
-                            "stderr": f"Missing generated include target: {inc_path} (referenced in {f['path']})",
-                            "remediation": "Blocklist disabled but include still emitted, or include target file was not generated. Check enableBlocklist toggle.",
-                        }
-                        validation_errors.append(err)
-                        _add_validation_result("unbound", "fail", f["path"], None, err["stderr"], err["remediation"])
+                        # Auto-create placeholder for known runtime files
+                        if basename in _RUNTIME_INCLUDES:
+                            os.makedirs(os.path.dirname(staged_inc), exist_ok=True)
+                            with open(staged_inc, "w") as ph:
+                                ph.write("# auto-placeholder — populated by sync scripts\n")
+                            logger.info(f"Auto-created runtime placeholder: {inc_path}")
+                        else:
+                            err = {
+                                "category": "unbound-include-missing",
+                                "command": None,
+                                "file": f["path"],
+                                "stderr": f"Missing generated include target: {inc_path} (referenced in {f['path']})",
+                                "remediation": "Blocklist disabled but include still emitted, or include target file was not generated. Check enableBlocklist toggle.",
+                            }
+                            validation_errors.append(err)
+                            _add_validation_result("unbound", "fail", f["path"], None, err["stderr"], err["remediation"])
 
         # ═══ Create empty placeholders for missing include targets in staging ═══
         # Blocklist/anablock files may not be generated but are referenced via include:
