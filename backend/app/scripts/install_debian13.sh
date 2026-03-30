@@ -217,10 +217,24 @@ else
     cp -a "${SOURCE_ROOT}/backend/." "${BACKEND_STAGING_DIR}/"
 fi
 
-if [[ -f "${BACKEND_STAGING_DIR}/requirements.txt" ]] && [[ -f "${BACKEND_STAGING_DIR}/app/main.py" ]]; then
-    ok "Backend files staged"
+# Determine requirements file path relative to staging
+STAGING_REQUIREMENTS=""
+if [[ -f "${BACKEND_STAGING_DIR}/requirements.txt" ]]; then
+    STAGING_REQUIREMENTS="${BACKEND_STAGING_DIR}/requirements.txt"
+elif [[ -f "${UPGRADE_STAGING_DIR}/requirements.txt" ]]; then
+    STAGING_REQUIREMENTS="${UPGRADE_STAGING_DIR}/requirements.txt"
+elif [[ -f "${REQUIREMENTS_FILE}" ]]; then
+    # Copy from detected source location into staging
+    cp "${REQUIREMENTS_FILE}" "${BACKEND_STAGING_DIR}/requirements.txt"
+    STAGING_REQUIREMENTS="${BACKEND_STAGING_DIR}/requirements.txt"
+fi
+
+if [[ -n "${STAGING_REQUIREMENTS}" ]] && [[ -f "${BACKEND_STAGING_DIR}/app/main.py" ]]; then
+    ok "Backend files staged (requirements: $(basename ${STAGING_REQUIREMENTS}))"
 else
-    fail "Staged backend is incomplete (missing requirements.txt or app/main.py)"
+    fail "Staged backend is incomplete"
+    [[ ! -f "${BACKEND_STAGING_DIR}/app/main.py" ]] && fail "  Missing: app/main.py"
+    [[ -z "${STAGING_REQUIREMENTS}" ]] && fail "  Missing: requirements.txt"
     ERRORS=$((ERRORS+1))
     exit 1
 fi
