@@ -338,6 +338,23 @@ def _execute_deploy_locked(
                 else:
                     _add_validation_result("network", "pass", network_path, cmd)
 
+                # bash -n syntax validation for shell scripts
+                bash_cmd = f"bash -n {staged_network_path}"
+                bash_result = run_command("bash", ["-n", staged_network_path], timeout=10)
+                if bash_result["exit_code"] != 0:
+                    bash_stderr = (bash_result.get("stderr") or bash_result.get("stdout") or "Erro de sintaxe bash").strip()
+                    err = {
+                        "category": "bash-syntax-validation",
+                        "command": bash_cmd,
+                        "file": network_path,
+                        "stderr": bash_stderr,
+                        "remediation": "Corrija erros de sintaxe no script shell antes de aplicar.",
+                    }
+                    validation_errors.append(err)
+                    _add_validation_result("network", "fail", network_path, bash_cmd, bash_stderr, err["remediation"])
+                else:
+                    _add_validation_result("network", "pass", network_path, bash_cmd, "", "", "bash -n OK")
+
         if not found_network_artifact:
             _add_validation_result(
                 "network",
