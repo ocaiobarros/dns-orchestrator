@@ -268,15 +268,26 @@ if [[ ! -d "${SOURCE_ROOT}/backend" ]]; then
     exit 1
 fi
 
+# Detect in-place install (SOURCE_ROOT == INSTALL_DIR)
+IN_PLACE=false
+if [[ "$(realpath "${SOURCE_ROOT}")" == "$(realpath "${INSTALL_DIR}")" ]]; then
+    IN_PLACE=true
+    info "In-place install detected (source == install dir) — skipping self-copies"
+fi
+
 cleanup_upgrade_artifacts
 mkdir -p "${UPGRADE_STAGING_DIR}"
 
 # Copy backend to staging first (never delete active backend before staging is valid)
-if command -v rsync &>/dev/null; then
-    rsync -a --delete "${SOURCE_ROOT}/backend/" "${BACKEND_STAGING_DIR}/"
+if [[ "${IN_PLACE}" == true ]] && [[ "$(realpath "${SOURCE_ROOT}/backend")" == "$(realpath "${BACKEND_STAGING_DIR}" 2>/dev/null || echo __none__)" ]]; then
+    info "Backend already at staging target — skipping copy"
 else
-    mkdir -p "${BACKEND_STAGING_DIR}"
-    cp -a "${SOURCE_ROOT}/backend/." "${BACKEND_STAGING_DIR}/"
+    if command -v rsync &>/dev/null; then
+        rsync -a --delete "${SOURCE_ROOT}/backend/" "${BACKEND_STAGING_DIR}/"
+    else
+        mkdir -p "${BACKEND_STAGING_DIR}"
+        cp -a "${SOURCE_ROOT}/backend/." "${BACKEND_STAGING_DIR}/"
+    fi
 fi
 
 # Determine requirements file path relative to staging
@@ -303,9 +314,13 @@ fi
 
 # Copy or build frontend dist
 if [[ -d "${SOURCE_ROOT}/dist" ]]; then
-    mkdir -p "${INSTALL_DIR}/dist"
-    cp -a "${SOURCE_ROOT}/dist/." "${INSTALL_DIR}/dist/"
-    ok "Frontend build copied from existing dist/"
+    if [[ "${IN_PLACE}" == true ]]; then
+        ok "Frontend dist/ already in place — skipping copy"
+    else
+        mkdir -p "${INSTALL_DIR}/dist"
+        cp -a "${SOURCE_ROOT}/dist/." "${INSTALL_DIR}/dist/"
+        ok "Frontend build copied from existing dist/"
+    fi
 else
     info "dist/ not found — attempting automatic frontend build..."
     if [[ -f "${SOURCE_ROOT}/package.json" ]]; then
@@ -325,9 +340,7 @@ else
             info "Running npm run build..."
             if (cd "${SOURCE_ROOT}" && npm run build 2>>"${INSTALL_LOG}"); then
                 if [[ -d "${SOURCE_ROOT}/dist" ]]; then
-                    mkdir -p "${INSTALL_DIR}/dist"
-                    cp -a "${SOURCE_ROOT}/dist/." "${INSTALL_DIR}/dist/"
-                    ok "Frontend built and copied successfully"
+                    ok "Frontend built successfully (dist/ created in place)"
                 else
                     fail "npm run build succeeded but dist/ was not created"
                     WARNINGS=$((WARNINGS+1))
@@ -345,9 +358,13 @@ fi
 
 # Copy deploy configs (optional — not all installations use nginx proxy)
 if [[ -d "${SOURCE_ROOT}/deploy" ]]; then
-    rm -rf "${INSTALL_DIR}/deploy"
-    cp -a "${SOURCE_ROOT}/deploy" "${INSTALL_DIR}/"
-    ok "Deploy configs copied (nginx, systemd templates)"
+    if [[ "${IN_PLACE}" == true ]]; then
+        ok "Deploy configs already in place — skipping copy"
+    else
+        rm -rf "${INSTALL_DIR}/deploy"
+        cp -a "${SOURCE_ROOT}/deploy" "${INSTALL_DIR}/"
+        ok "Deploy configs copied (nginx, systemd templates)"
+    fi
 else
     info "deploy/ directory not found — skipping (optional: nginx/systemd templates)"
     info "  The API will run standalone on port 8000 without reverse proxy"
