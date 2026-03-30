@@ -1,6 +1,7 @@
 """
 DNS Control — Deploy Service
 Full production deployment lifecycle: validate → generate → stage → validate-staged → backup → apply → reload → verify.
+Includes global deploy lock, bash -n validation, and version manifest tracking.
 """
 
 import json
@@ -18,6 +19,8 @@ from app.services.config_service import validate_config, generate_preview
 from app.services.payload_normalizer import normalize_payload
 from app.generators.nftables_generator import generate_nftables_config
 from app.executors.command_runner import run_command
+from app.services.deploy_lock import deploy_lock
+from app.services.drift_service import write_version_manifest
 
 logger = logging.getLogger("dns-control.deploy")
 
