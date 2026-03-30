@@ -289,6 +289,30 @@ def set_cooldown(db: Session, instance_id: str, cooldown_seconds: int):
         state.cooldown_until = datetime.now(timezone.utc) + timedelta(seconds=cooldown_seconds)
 
 
+def _get_rule_handles_for_jump(dispatch_chain: str, target_chain: str) -> list[int]:
+    """Get nftables rule handles in dispatch_chain that jump to target_chain.
+
+    Parses `nft -a list chain ip nat <chain>` output to find handles of rules
+    containing `jump <target_chain>`.
+    """
+    result = run_command(
+        "nft", ["-a", "list", "chain", "ip", "nat", dispatch_chain],
+        timeout=10, use_privilege=True,
+    )
+    if result["exit_code"] != 0:
+        logger.warning(f"Failed to list chain {dispatch_chain}: {result['stderr'][:200]}")
+        return []
+
+    handles: list[int] = []
+    for line in result["stdout"].splitlines():
+        if f"jump {target_chain}" in line:
+            # nft -a outputs lines ending with "# handle N"
+            match = re.search(r"#\s*handle\s+(\d+)", line)
+            if match:
+                handles.append(int(match.group(1)))
+    return handles
+
+
 def _emit_event(db: Session, event_type: str, severity: str, instance_id: str, message: str, details: dict | None = None):
     ev = OperationalEvent(
         event_type=event_type,
