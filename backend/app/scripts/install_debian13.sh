@@ -124,6 +124,7 @@ if ! find_requirements "${SOURCE_ROOT}"; then
 fi
 
 echo "  Source root:  ${SOURCE_ROOT}"
+echo "  Dependencies: ${REQUIREMENTS_FILE}"
 echo ""
 
 mkdir -p /var/lock
