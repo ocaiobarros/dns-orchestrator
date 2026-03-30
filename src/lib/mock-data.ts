@@ -228,15 +228,16 @@ export const mockLogs: LogEntry[] = [
 
 export const mockDiagCommands: DiagCommand[] = [
   { id: 'svc-status', label: 'systemctl status unbound*', command: 'systemctl status unbound01 unbound02 unbound03 unbound04', category: 'services', dangerous: false },
-  { id: 'ss-dns', label: 'ss -lunp | grep :53', command: 'ss -lunp | grep :53', category: 'network', dangerous: false },
-  { id: 'ip-addr-lo0', label: 'ip addr show lo0', command: 'ip addr show lo0', category: 'network', dangerous: false },
+  { id: 'ss-dns', label: 'ss -tulpn | grep :53', command: 'ss -tulpn | grep :53', category: 'network', dangerous: false },
+  { id: 'ip-addr-lo', label: 'ip addr show lo', command: 'ip addr show lo', category: 'network', dangerous: false },
   { id: 'ip-route', label: 'ip route', command: 'ip route', category: 'network', dangerous: false },
-  { id: 'ub-status', label: 'unbound-control status', command: 'unbound-control -c /etc/unbound/unbound01.conf status', category: 'dns', dangerous: false },
-  { id: 'dig-vip', label: 'dig @VIP google.com', command: 'dig @4.2.2.5 google.com +short', category: 'dns', dangerous: false },
-  { id: 'dig-ub01', label: 'dig @unbound01', command: 'dig @100.126.255.101 google.com +short', category: 'dns', dangerous: false },
-  { id: 'dig-ub02', label: 'dig @unbound02', command: 'dig @100.126.255.102 google.com +short', category: 'dns', dangerous: false },
-  { id: 'dig-ub03', label: 'dig @unbound03', command: 'dig @100.126.255.103 google.com +short', category: 'dns', dangerous: false },
-  { id: 'dig-ub04', label: 'dig @unbound04', command: 'dig @100.126.255.104 google.com +short', category: 'dns', dangerous: false },
+  { id: 'ub-status', label: 'unbound-control status', command: 'unbound-control -s 127.0.0.11@8953 status', category: 'dns', dangerous: false },
+  { id: 'dig-vip1', label: 'dig @4.2.2.5 google.com', command: 'dig @4.2.2.5 google.com +short', category: 'dns', dangerous: false },
+  { id: 'dig-vip2', label: 'dig @4.2.2.6 google.com', command: 'dig @4.2.2.6 google.com +short', category: 'dns', dangerous: false },
+  { id: 'dig-ub01', label: 'dig @unbound01', command: 'dig @100.127.255.101 google.com +short', category: 'dns', dangerous: false },
+  { id: 'dig-ub02', label: 'dig @unbound02', command: 'dig @100.127.255.102 google.com +short', category: 'dns', dangerous: false },
+  { id: 'dig-ub03', label: 'dig @unbound03', command: 'dig @100.127.255.103 google.com +short', category: 'dns', dangerous: false },
+  { id: 'dig-ub04', label: 'dig @unbound04', command: 'dig @100.127.255.104 google.com +short', category: 'dns', dangerous: false },
   { id: 'nft-list', label: 'nft list ruleset', command: 'nft list ruleset', category: 'nat', dangerous: false },
   { id: 'nft-counters', label: 'nft list counters', command: 'nft list counters', category: 'nat', dangerous: false },
   { id: 'vtysh-run', label: 'vtysh show running', command: 'vtysh -c "show running-config"', category: 'frr', dangerous: false },
@@ -248,78 +249,95 @@ export const mockDiagCommands: DiagCommand[] = [
 export const mockDiagOutputs: Record<string, DiagResult> = {
   'ss-dns': {
     commandId: 'ss-dns', exitCode: 0, durationMs: 45, timestamp: new Date().toISOString(), stderr: '',
-    stdout: `udp  UNCONN  0  0  100.126.255.101:53  0.0.0.0:*  users:(("unbound",pid=1234,fd=5))
-udp  UNCONN  0  0  100.126.255.102:53  0.0.0.0:*  users:(("unbound",pid=1235,fd=5))
-udp  UNCONN  0  0  100.126.255.103:53  0.0.0.0:*  users:(("unbound",pid=1236,fd=5))
-udp  UNCONN  0  0  100.126.255.104:53  0.0.0.0:*  users:(("unbound",pid=1237,fd=5))
-tcp  LISTEN  0  256  100.126.255.101:53  0.0.0.0:*  users:(("unbound",pid=1234,fd=6))
-tcp  LISTEN  0  256  100.126.255.102:53  0.0.0.0:*  users:(("unbound",pid=1235,fd=6))
-tcp  LISTEN  0  256  100.126.255.103:53  0.0.0.0:*  users:(("unbound",pid=1236,fd=6))
-tcp  LISTEN  0  256  100.126.255.104:53  0.0.0.0:*  users:(("unbound",pid=1237,fd=6))`,
+    stdout: `udp  UNCONN  0  0  100.127.255.101:53  0.0.0.0:*  users:(("unbound",pid=1234,fd=5))
+udp  UNCONN  0  0  100.127.255.102:53  0.0.0.0:*  users:(("unbound",pid=1235,fd=5))
+udp  UNCONN  0  0  100.127.255.103:53  0.0.0.0:*  users:(("unbound",pid=1236,fd=5))
+udp  UNCONN  0  0  100.127.255.104:53  0.0.0.0:*  users:(("unbound",pid=1237,fd=5))
+tcp  LISTEN  0  256  100.127.255.101:53  0.0.0.0:*  users:(("unbound",pid=1234,fd=6))
+tcp  LISTEN  0  256  100.127.255.102:53  0.0.0.0:*  users:(("unbound",pid=1235,fd=6))
+tcp  LISTEN  0  256  100.127.255.103:53  0.0.0.0:*  users:(("unbound",pid=1236,fd=6))
+tcp  LISTEN  0  256  100.127.255.104:53  0.0.0.0:*  users:(("unbound",pid=1237,fd=6))`,
   },
-  'dig-vip': {
-    commandId: 'dig-vip', exitCode: 0, durationMs: 12, timestamp: new Date().toISOString(), stderr: '',
+  'dig-vip1': {
+    commandId: 'dig-vip1', exitCode: 0, durationMs: 2, timestamp: new Date().toISOString(), stderr: '',
+    stdout: '142.250.79.46',
+  },
+  'dig-vip2': {
+    commandId: 'dig-vip2', exitCode: 0, durationMs: 3, timestamp: new Date().toISOString(), stderr: '',
     stdout: '142.250.79.46',
   },
   'dig-ub01': {
-    commandId: 'dig-ub01', exitCode: 0, durationMs: 8, timestamp: new Date().toISOString(), stderr: '',
+    commandId: 'dig-ub01', exitCode: 0, durationMs: 2, timestamp: new Date().toISOString(), stderr: '',
     stdout: '142.250.79.46',
   },
   'dig-ub02': {
-    commandId: 'dig-ub02', exitCode: 0, durationMs: 9, timestamp: new Date().toISOString(), stderr: '',
+    commandId: 'dig-ub02', exitCode: 0, durationMs: 3, timestamp: new Date().toISOString(), stderr: '',
     stdout: '142.250.79.46',
   },
   'dig-ub03': {
-    commandId: 'dig-ub03', exitCode: 0, durationMs: 7, timestamp: new Date().toISOString(), stderr: '',
+    commandId: 'dig-ub03', exitCode: 0, durationMs: 2, timestamp: new Date().toISOString(), stderr: '',
     stdout: '142.250.79.46',
   },
   'dig-ub04': {
-    commandId: 'dig-ub04', exitCode: 0, durationMs: 11, timestamp: new Date().toISOString(), stderr: '',
+    commandId: 'dig-ub04', exitCode: 0, durationMs: 3, timestamp: new Date().toISOString(), stderr: '',
     stdout: '142.250.79.46',
   },
   'ip-route': {
     commandId: 'ip-route', exitCode: 0, durationMs: 15, timestamp: new Date().toISOString(), stderr: '',
-    stdout: `default via 172.28.22.5 dev enp6s18 proto static metric 100
-172.28.22.4/30 dev enp6s18 proto kernel scope link src 172.28.22.6
-4.2.2.5 dev lo0 proto kernel scope host src 4.2.2.5
-100.126.255.101 dev lo0 proto kernel scope host
-100.126.255.102 dev lo0 proto kernel scope host
-100.126.255.103 dev lo0 proto kernel scope host
-100.126.255.104 dev lo0 proto kernel scope host
-45.232.215.16 dev lo0 proto kernel scope host
-45.232.215.17 dev lo0 proto kernel scope host
-45.232.215.18 dev lo0 proto kernel scope host
-45.232.215.19 dev lo0 proto kernel scope host`,
+    stdout: `default via 172.29.22.5 dev ens192 proto static metric 100
+172.29.22.4/30 dev ens192 proto kernel scope link src 172.29.22.6
+4.2.2.5 dev lo proto kernel scope host src 4.2.2.5
+4.2.2.6 dev lo proto kernel scope host src 4.2.2.6
+45.232.215.20 dev lo proto kernel scope host
+45.232.215.21 dev lo proto kernel scope host
+45.232.215.22 dev lo proto kernel scope host
+45.232.215.23 dev lo proto kernel scope host
+100.127.255.101 dev lo proto kernel scope host
+100.127.255.102 dev lo proto kernel scope host
+100.127.255.103 dev lo proto kernel scope host
+100.127.255.104 dev lo proto kernel scope host`,
   },
   'ub-status': {
     commandId: 'ub-status', exitCode: 0, durationMs: 30, timestamp: new Date().toISOString(), stderr: '',
-    stdout: `version: 1.21.1
+    stdout: `version: 1.22.0
 verbosity: 1
 threads: 4
-modules: 3 [ validator iterator respip ]
-uptime: 468798 seconds
+modules: 2 [ iterator ]
+uptime: 335100 seconds
 options: reuseport control
 unbound (pid 1234) is running...`,
   },
-  'ip-addr-lo0': {
-    commandId: 'ip-addr-lo0', exitCode: 0, durationMs: 10, timestamp: new Date().toISOString(), stderr: '',
-    stdout: `3: lo0: <BROADCAST,NOARP,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
-    link/ether 00:00:00:00:00:00 brd ff:ff:ff:ff:ff:ff
-    inet 4.2.2.5/32 scope global lo0
-    inet 100.126.255.101/32 scope global lo0
-    inet 100.126.255.102/32 scope global lo0
-    inet 100.126.255.103/32 scope global lo0
-    inet 100.126.255.104/32 scope global lo0
-    inet 45.232.215.16/32 scope global lo0
-    inet 45.232.215.17/32 scope global lo0
-    inet 45.232.215.18/32 scope global lo0
-    inet 45.232.215.19/32 scope global lo0`,
+  'ip-addr-lo': {
+    commandId: 'ip-addr-lo', exitCode: 0, durationMs: 10, timestamp: new Date().toISOString(), stderr: '',
+    stdout: `1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+    inet 45.232.215.20/32 scope global lo
+    inet 45.232.215.21/32 scope global lo
+    inet 45.232.215.22/32 scope global lo
+    inet 45.232.215.23/32 scope global lo
+    inet 100.127.255.101/32 scope global lo
+    inet 100.127.255.102/32 scope global lo
+    inet 100.127.255.103/32 scope global lo
+    inet 100.127.255.104/32 scope global lo
+    inet 4.2.2.5/32 scope global lo
+    inet 4.2.2.6/32 scope global lo
+    inet6 2804:4afc:8888::1000/128 scope global
+    inet6 2804:4afc:8888::1001/128 scope global
+    inet6 2804:4afc:8888::1002/128 scope global
+    inet6 2804:4afc:8888::1003/128 scope global
+    inet6 2001:db8:ffff:ffff:100:127:255:101/128 scope global
+    inet6 2001:db8:ffff:ffff:100:127:255:102/128 scope global
+    inet6 2001:db8:ffff:ffff:100:127:255:103/128 scope global
+    inet6 2001:db8:ffff:ffff:100:127:255:104/128 scope global
+    inet6 2620:119:35::35/128 scope global
+    inet6 2620:119:53::53/128 scope global
+    inet6 ::1/128 scope host`,
   },
   'vtysh-ospf': {
     commandId: 'vtysh-ospf', exitCode: 0, durationMs: 50, timestamp: new Date().toISOString(), stderr: '',
     stdout: `Neighbor ID     Pri State           Dead Time Address         Interface
-172.28.22.1       1 Full/DR         00:00:35  172.28.22.5     enp6s18:172.28.22.6
-172.28.22.2       1 Full/Backup     00:00:38  172.28.22.9     enp6s18:172.28.22.6`,
+172.29.22.1       1 Full/DR         00:00:35  172.29.22.5     ens192:172.29.22.6`,
   },
   'health-full': {
     commandId: 'health-full', exitCode: 0, durationMs: 3200, timestamp: new Date().toISOString(), stderr: '',
