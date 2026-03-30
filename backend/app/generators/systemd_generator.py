@@ -1,6 +1,8 @@
 """
 DNS Control — Systemd Unit File Generator
 Generates per-instance service units for Unbound and the DNS Control API.
+Units placed in /usr/lib/systemd/system/ matching Debian production layout.
+Uses package-helper scripts for chroot setup and root trust anchor updates.
 Config path: /etc/unbound/{name}.conf
 """
 
@@ -14,7 +16,7 @@ def generate_systemd_units(payload: dict[str, Any]) -> list[dict]:
     for inst in instances:
         name = inst.get("name", "unbound")
         unit = f"""[Unit]
-Description=Unbound DNS resolver — {name}
+Description=Unbound DNS server ({name})
 Documentation=man:unbound(8)
 After=network.target
 Before=nss-lookup.target
@@ -22,17 +24,19 @@ Wants=nss-lookup.target
 
 [Service]
 Type=notify
-Restart=on-failure
-RestartSec=5
-ExecStartPre=/usr/sbin/unbound-checkconf /etc/unbound/{name}.conf
-ExecStart=/usr/sbin/unbound -d -c /etc/unbound/{name}.conf
-ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+EnvironmentFile=-/etc/default/unbound
+ExecStartPre=-/usr/lib/unbound/package-helper chroot_setup
+ExecStartPre=-/usr/lib/unbound/package-helper root_trust_anchor_update
+ExecStart=/usr/sbin/unbound -c /etc/unbound/{name}.conf -d -p $DAEMON_OPTS
+ExecStopPost=-/usr/lib/unbound/package-helper chroot_teardown
+ExecReload=+/bin/kill -HUP $MAINPID
 
 [Install]
 WantedBy=multi-user.target
 """
         files.append({
-            "path": f"/etc/systemd/system/{name}.service",
+            "path": f"/usr/lib/systemd/system/{name}.service",
             "content": unit,
             "permissions": "0644",
             "owner": "root:root",

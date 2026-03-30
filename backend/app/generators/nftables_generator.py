@@ -1,7 +1,11 @@
 """
 DNS Control — nftables Configuration Generator
-Generates modular /etc/nftables.d/*.nft snippets matching production vdns-01 model.
+Generates modular /etc/nftables.d/*.nft snippets matching production tutorial model.
 Supports IPv4+IPv6, per-instance sticky sets, nth balancing, DNAT.
+
+Architecture: ALL service VIPs (including intercepted/anycast VIPs) are defined in
+DNS_ANYCAST_IPV4/IPV6 and balanced across ALL backends via sticky source affinity
++ nth balancing. There are NO 1:1 VIP-to-backend chains.
 """
 
 from typing import Any
@@ -31,59 +35,47 @@ def _collect_backends(instances: list[dict[str, Any]]) -> list[dict[str, str]]:
     return backends
 
 
-def _collect_egress_ips(instances: list[dict[str, Any]]) -> list[str]:
-    return _dedupe([
-        str(inst.get("exitIp", "")).strip() or str(inst.get("egressIpv4", "")).strip()
-        for inst in instances
-        if inst.get("exitIp") or inst.get("egressIpv4")
-    ])
+def _collect_all_vip_ips(payload: dict[str, Any], nat: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Collect ALL VIP IPv4 and IPv6 addresses from serviceVips AND interceptedVips.
+    In the production model, intercepted VIPs (e.g. 4.2.2.5, 4.2.2.6) are treated
+    identically to service VIPs — they all go into DNS_ANYCAST_IPV4/IPV6 and are
+    balanced across all backends.
+    """
+    ipv4s: list[str] = []
+    ipv6s: list[str] = []
 
-
-def _collect_service_vips(payload: dict[str, Any], nat: dict[str, Any]) -> list[dict[str, Any]]:
+    # Service VIPs
     raw_vips = nat.get("serviceVips") or payload.get("serviceVips") or []
-    vips: list[dict[str, Any]] = []
     for vip in raw_vips:
         if not isinstance(vip, dict):
             continue
         ipv4 = str(vip.get("ipv4", "")).strip()
-        if not ipv4:
-            continue
-        vips.append({
-            "ipv4": ipv4,
-            "ipv6": str(vip.get("ipv6", "")).strip(),
-            "protocol": str(vip.get("protocol", "udp+tcp")).strip() or "udp+tcp",
-            "port": int(vip.get("port", 53) or 53),
-        })
+        if ipv4:
+            ipv4s.append(ipv4)
+        ipv6 = str(vip.get("ipv6", "")).strip()
+        if ipv6:
+            ipv6s.append(ipv6)
 
-    if vips:
-        return vips
-
-    primary_vip = str(payload.get("loopback", {}).get("vip", "")).strip()
-    if primary_vip:
-        return [{"ipv4": primary_vip, "ipv6": "", "protocol": "udp+tcp", "port": 53}]
-    return []
-
-
-def _collect_intercepted_vips(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    # Intercepted VIPs — merged into the same pool
     wizard_cfg = payload.get("_wizardConfig", {}) or {}
-    raw_vips = payload.get("interceptedVips") or wizard_cfg.get("interceptedVips") or []
-    vips: list[dict[str, Any]] = []
-    for vip in raw_vips:
+    intercepted = payload.get("interceptedVips") or wizard_cfg.get("interceptedVips") or []
+    for vip in intercepted:
         if not isinstance(vip, dict):
             continue
         vip_ip = str(vip.get("vipIp", "")).strip()
-        backend_target_ip = str(vip.get("backendTargetIp", "")).strip()
-        if not vip_ip or not backend_target_ip:
-            continue
-        vips.append({
-            "vipIp": vip_ip,
-            "backendTargetIp": backend_target_ip,
-            "backendInstance": str(vip.get("backendInstance", "")).strip(),
-            "captureMode": str(vip.get("captureMode", "dnat")).strip() or "dnat",
-            "protocol": str(vip.get("protocol", "udp+tcp")).strip() or "udp+tcp",
-            "port": int(vip.get("port", 53) or 53),
-        })
-    return vips
+        if vip_ip and vip_ip not in ipv4s:
+            ipv4s.append(vip_ip)
+        vip_ipv6 = str(vip.get("vipIpv6", "")).strip()
+        if vip_ipv6 and vip_ipv6 not in ipv6s:
+            ipv6s.append(vip_ipv6)
+
+    # Fallback: loopback VIP
+    if not ipv4s:
+        primary_vip = str(payload.get("loopback", {}).get("vip", "")).strip()
+        if primary_vip:
+            ipv4s.append(primary_vip)
+
+    return _dedupe(ipv4s), _dedupe(ipv6s)
 
 
 def generate_nftables_config(payload: dict[str, Any], validation_mode: bool = False) -> list[dict]:
@@ -96,31 +88,29 @@ def generate_nftables_config(payload: dict[str, Any], validation_mode: bool = Fa
     wizard_cfg = payload.get("_wizardConfig", {}) or {}
     enable_ipv6 = payload.get("enableIpv6") or wizard_cfg.get("enableIpv6", False)
 
-    distribution_policy = str(nat.get("distributionPolicy") or payload.get("distributionPolicy") or "round-robin")
     sticky_timeout_seconds = int(nat.get("stickyTimeout") or payload.get("stickyTimeout") or 1200)
     sticky_timeout_seconds = max(60, sticky_timeout_seconds)
     sticky_timeout_min = max(1, sticky_timeout_seconds // 60)
 
-    service_vips = _collect_service_vips(payload, nat)
-    intercepted_vips = _collect_intercepted_vips(payload)
+    vip_ipv4s, vip_ipv6s = _collect_all_vip_ips(payload, nat)
     backends = _collect_backends(instances)
 
     if validation_mode:
-        return _generate_monolithic_validation(payload, service_vips, backends, enable_ipv6, distribution_policy, sticky_timeout_min)
+        return _generate_monolithic_validation(vip_ipv4s, backends, enable_ipv6, sticky_timeout_min)
 
-    return _generate_modular(service_vips, backends, enable_ipv6, distribution_policy, sticky_timeout_min, payload, intercepted_vips)
+    return _generate_modular(vip_ipv4s, vip_ipv6s, backends, enable_ipv6, sticky_timeout_min)
 
 
 def _generate_modular(
-    service_vips: list[dict],
+    vip_ipv4s: list[str],
+    vip_ipv6s: list[str],
     backends: list[dict],
     enable_ipv6: bool,
-    distribution_policy: str,
     sticky_timeout_min: int,
-    payload: dict,
-    intercepted_vips: list[dict],
 ) -> list[dict]:
-    """Generate /etc/nftables.d/*.nft modular snippets matching vdns-01 production layout."""
+    """Generate /etc/nftables.d/*.nft modular snippets matching production layout.
+    ALL VIPs are balanced across ALL backends via sticky source + nth.
+    """
     files: list[dict] = []
 
     def _file(path: str, content: str):
@@ -141,25 +131,24 @@ def _generate_modular(
         _file("/etc/nftables.d/0052-hook-ipv6-prerouting.nft",
               "    create chain ip6 nat PREROUTING {\n        type nat hook prerouting priority dstnat;\n        policy accept;\n    }")
 
-    # VIP definitions
-    if service_vips:
-        vip_ipv4s = ",\n    ".join(v["ipv4"] for v in service_vips if v.get("ipv4"))
+    # VIP definitions — ALL VIPs (service + intercepted) in one define
+    if vip_ipv4s:
+        vip_list = ",\n    ".join(vip_ipv4s)
         _file("/etc/nftables.d/5100-nat-define-anyaddr-ipv4.nft",
-              f"define DNS_ANYCAST_IPV4 = {{\n    {vip_ipv4s}\n}}")
+              f"define DNS_ANYCAST_IPV4 = {{\n    {vip_list}\n}}")
 
-        if enable_ipv6:
-            vip_ipv6s = [v["ipv6"] for v in service_vips if v.get("ipv6")]
-            if vip_ipv6s:
-                _file("/etc/nftables.d/5200-nat-define-anyaddr-ipv6.nft",
-                      f"define DNS_ANYCAST_IPV6 = {{\n    {','.join(vip_ipv6s)}\n}}")
+    if enable_ipv6 and vip_ipv6s:
+        vip6_list = ",\n    ".join(vip_ipv6s)
+        _file("/etc/nftables.d/5200-nat-define-anyaddr-ipv6.nft",
+              f"define DNS_ANYCAST_IPV6 = {{\n    {vip6_list}\n}}")
 
-    # DNS dispatch chains
+    # DNS dispatch chains (IPv4)
     for proto in ("tcp", "udp"):
         suffix = "2" if proto == "tcp" else "3"
         _file(f"/etc/nftables.d/510{suffix}-nat-chain-ipv4_{proto}_dns.nft",
               f"add chain ip  nat ipv4_{proto}_dns")
 
-    # PREROUTING capture rules
+    # PREROUTING capture rules (IPv4)
     for proto in ("tcp", "udp"):
         suffix = "1" if proto == "tcp" else "2"
         _file(f"/etc/nftables.d/511{suffix}-nat-rule-ipv4_{proto}_dns.nft",
@@ -218,7 +207,7 @@ def _generate_modular(
                 f"add rule ip nat {subchain} set update ip saddr timeout 0s @{subusers} counter",
                 f"add rule ip nat {subchain} {proto} dport 53 counter dnat to {bind_ip}:53",
             ])
-            _file(f"/etc/nftables.d/{ruleid}-nat-rule-action-ipv4_dns_{proto}_{name}.nft", content)
+            _file(f"/etc/nftables.d/{ruleid}-nat-rule-action-{subchain}.nft", content)
             ruleid += 1
 
     # Action rules: add to set + update + DNAT (IPv6)
@@ -235,9 +224,9 @@ def _generate_modular(
                 content = "\n".join([
                     f"add rule ip6 nat {subchain} add @{subusers} {{ ip6 saddr }} counter",
                     f"add rule ip6 nat {subchain} set update ip6 saddr timeout 0s @{subusers} counter",
-                    f"add rule ip6 nat {subchain} {proto} dport 53 counter dnat to {bind_ipv6}:53",
+                    f"add rule ip6 nat {subchain} {proto} dport 53 counter dnat to [{bind_ipv6}]:53",
                 ])
-                _file(f"/etc/nftables.d/{ruleid}-nat-rule-action-ipv6_dns_{proto}_{name}.nft", content)
+                _file(f"/etc/nftables.d/{ruleid}-nat-rule-action-{subchain}.nft", content)
                 ruleid += 1
 
     # Memorized source rules (IPv4): sticky clients jump to their assigned backend
@@ -248,7 +237,7 @@ def _generate_modular(
             topchain = f"ipv4_{proto}_dns"
             subchain = f"ipv4_dns_{proto}_{name}"
             subusers = f"ipv4_users_{name}"
-            _file(f"/etc/nftables.d/{ruleid}-nat-rule-memorized-ipv4_dns_{proto}_{name}.nft",
+            _file(f"/etc/nftables.d/{ruleid}-nat-rule-memorized-{subchain}.nft",
                   f"add rule ip nat {topchain} ip saddr @{subusers} counter jump {subchain}")
             ruleid += 1
 
@@ -263,7 +252,7 @@ def _generate_modular(
                 topchain = f"ipv6_{proto}_dns"
                 subchain = f"ipv6_dns_{proto}_{name}"
                 subusers = f"ipv6_users_{name}"
-                _file(f"/etc/nftables.d/{ruleid}-nat-rule-memorized-ipv6_dns_{proto}_{name}.nft",
+                _file(f"/etc/nftables.d/{ruleid}-nat-rule-memorized-{subchain}.nft",
                       f"add rule ip6 nat {topchain} ip6 saddr @{subusers} counter jump {subchain}")
                 ruleid += 1
 
@@ -275,7 +264,7 @@ def _generate_modular(
             name = backend["name"]
             topchain = f"ipv4_{proto}_dns"
             subchain = f"ipv4_dns_{proto}_{name}"
-            _file(f"/etc/nftables.d/{ruleid}-nat-rule-memorized-ipv4_dns_{proto}_{name}.nft",
+            _file(f"/etc/nftables.d/{ruleid}-nat-rule-nth-{subchain}.nft",
                   f"add rule ip nat {topchain} numgen inc mod {rand_num} 0 counter jump {subchain}")
             ruleid += 1
             rand_num -= 1
@@ -290,46 +279,18 @@ def _generate_modular(
                 name = backend["name"]
                 topchain = f"ipv6_{proto}_dns"
                 subchain = f"ipv6_dns_{proto}_{name}"
-                _file(f"/etc/nftables.d/{ruleid}-nat-rule-memorized-ipv6_dns_{proto}_{name}.nft",
+                _file(f"/etc/nftables.d/{ruleid}-nat-rule-nth-{subchain}.nft",
                       f"add rule ip6 nat {topchain} numgen inc mod {rand_num} 0 counter jump {subchain}")
                 ruleid += 1
                 rand_num -= 1
-
-    ruleid = 8001
-    for vip in intercepted_vips:
-        if vip.get("captureMode") != "dnat":
-            continue
-        vip_ip = vip.get("vipIp", "")
-        backend_target = vip.get("backendTargetIp", "")
-        protocol = vip.get("protocol", "udp+tcp")
-        if not vip_ip or not backend_target:
-            continue
-        chain_suffix = vip_ip.replace(".", "_")
-        protos = ("udp", "tcp") if protocol == "udp+tcp" else (protocol,)
-        for proto in protos:
-            chain_name = f"intercepted_{proto}_{chain_suffix}"
-            _file(f"/etc/nftables.d/{ruleid}-nat-chain-{chain_name}.nft", f"add chain ip nat {chain_name}")
-            ruleid += 1
-            _file(
-                f"/etc/nftables.d/{ruleid}-nat-rule-prerouting-{chain_name}.nft",
-                f"add rule ip nat PREROUTING ip daddr {vip_ip} {proto} dport 53 counter jump {chain_name}",
-            )
-            ruleid += 1
-            _file(
-                f"/etc/nftables.d/{ruleid}-nat-rule-action-{chain_name}.nft",
-                f"add rule ip nat {chain_name} {proto} dport 53 counter dnat to {backend_target}:53",
-            )
-            ruleid += 1
 
     return files
 
 
 def _generate_monolithic_validation(
-    payload: dict[str, Any],
-    service_vips: list[dict],
+    vip_ipv4s: list[str],
     backends: list[dict],
     enable_ipv6: bool,
-    distribution_policy: str,
     sticky_timeout_min: int,
 ) -> list[dict]:
     """Generate single monolithic file for nft -c -f validation (no flush ruleset)."""
