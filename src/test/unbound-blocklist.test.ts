@@ -87,13 +87,51 @@ describe('Unbound blocklist conditional includes', () => {
       }
     });
 
-    it('generateAllFiles MUST produce both blocklist files', () => {
-      const config = baseConfig({ enableBlocklist: true });
+    it('generateAllFiles MUST produce blocklist files + sync infrastructure', () => {
+      const config = baseConfig({ enableBlocklist: true, blocklistAutoSync: true } as any);
       const files = generateAllFiles(config);
       const paths = files.map(f => f.path);
       
       expect(paths).toContain('/etc/unbound/unbound-block-domains.conf');
       expect(paths).toContain('/etc/unbound/anablock.conf');
+      expect(paths).toContain('/opt/dns-control/scripts/anablock-sync.sh');
+      expect(paths).toContain('/etc/systemd/system/anablock-sync.service');
+      expect(paths).toContain('/etc/systemd/system/anablock-sync.timer');
+    });
+
+    it('sync script URL must match blocklist mode', () => {
+      const config = baseConfig({
+        enableBlocklist: true,
+        blocklistMode: 'redirect_cname',
+        blocklistCnameTarget: 'anatel.gov.br',
+        blocklistApiUrl: 'https://api.anablock.net.br',
+      } as any);
+      const files = generateAllFiles(config);
+      const syncScript = files.find(f => f.path.includes('anablock-sync.sh'));
+      expect(syncScript?.content).toContain('&cname=anatel.gov.br');
+    });
+
+    it('redirect_ip_dualstack must include both ipv4 and ipv6', () => {
+      const config = baseConfig({
+        enableBlocklist: true,
+        blocklistMode: 'redirect_ip_dualstack',
+        blocklistRedirectIpv4: '10.255.128.2',
+        blocklistRedirectIpv6: '2001:db8::1',
+        blocklistApiUrl: 'https://api.anablock.net.br',
+      } as any);
+      const files = generateAllFiles(config);
+      const syncScript = files.find(f => f.path.includes('anablock-sync.sh'));
+      expect(syncScript?.content).toContain('&ipv4=10.255.128.2');
+      expect(syncScript?.content).toContain('&ipv6=2001:db8::1');
+    });
+
+    it('timer must NOT be generated when autoSync is false', () => {
+      const config = baseConfig({ enableBlocklist: true, blocklistAutoSync: false } as any);
+      const files = generateAllFiles(config);
+      const paths = files.map(f => f.path);
+      
+      expect(paths).toContain('/etc/systemd/system/anablock-sync.service');
+      expect(paths).not.toContain('/etc/systemd/system/anablock-sync.timer');
     });
   });
 });
