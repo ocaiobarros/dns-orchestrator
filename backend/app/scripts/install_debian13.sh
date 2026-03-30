@@ -20,13 +20,58 @@ fail() { echo -e "  ${RED}✗${NC} $1"; }
 info() { echo -e "  ${BLUE}ℹ${NC} $1"; }
 
 # ── Path constants (must be defined before any use) ──
-INSTALL_DIR="/opt/dns-control"
-DATA_DIR="/var/lib/dns-control"
-DB_PATH="${DATA_DIR}/dns-control.db"
-LOCK_FILE="/var/lock/dns-control-install.lock"
-STAGING_DIR="${INSTALL_DIR}/.upgrade-staging"
-BACKUP_DIR="${INSTALL_DIR}/.upgrade-backup"
-TOTAL_STEPS=7
+INSTALL_DIR="${INSTALL_DIR:-/opt/dns-control}"
+DATA_DIR="${DATA_DIR:-/var/lib/dns-control}"
+DB_PATH="${DB_PATH:-${DATA_DIR}/dns-control.db}"
+LOCK_FILE="${LOCK_FILE:-/var/lock/dns-control-install.lock}"
+TOTAL_STEPS="${TOTAL_STEPS:-10}"
+
+# ── Runtime/config defaults (set -u safe) ──
+SERVICE_USER="${SERVICE_USER:-dns-control}"
+ENV_DIR="${ENV_DIR:-/etc/dns-control}"
+ENV_FILE="${ENV_FILE:-${ENV_DIR}/env}"
+LOG_DIR="${LOG_DIR:-/var/log/dns-control}"
+INSTALL_LOG="${INSTALL_LOG:-${LOG_DIR}/install.log}"
+
+# ── Upgrade state (must exist before traps) ──
+UPGRADE_STAGING_DIR="${UPGRADE_STAGING_DIR:-${INSTALL_DIR}/.upgrade-staging}"
+BACKEND_STAGING_DIR="${BACKEND_STAGING_DIR:-${UPGRADE_STAGING_DIR}/backend}"
+PREVIOUS_BACKEND_DIR=""
+BACKEND_SWAPPED=false
+ROLLBACK_PERFORMED=false
+ERRORS=0
+WARNINGS=0
+LOCK_DIR_FALLBACK="${LOCK_FILE}.d"
+
+cleanup_upgrade_artifacts() {
+    rm -rf "${UPGRADE_STAGING_DIR}" 2>/dev/null || true
+    if [[ -d "${LOCK_DIR_FALLBACK}" ]]; then
+        rmdir "${LOCK_DIR_FALLBACK}" 2>/dev/null || true
+    fi
+}
+
+rollback_backend_if_needed() {
+    if [[ "${ROLLBACK_PERFORMED}" == "true" ]]; then
+        return 0
+    fi
+
+    if [[ "${BACKEND_SWAPPED}" == "true" ]] && [[ -n "${PREVIOUS_BACKEND_DIR}" ]] && [[ -d "${PREVIOUS_BACKEND_DIR}" ]]; then
+        rm -rf "${INSTALL_DIR}/backend" 2>/dev/null || true
+        mv "${PREVIOUS_BACKEND_DIR}" "${INSTALL_DIR}/backend"
+        ROLLBACK_PERFORMED=true
+        warn "Rollback aplicado: backend anterior restaurado"
+    fi
+
+    cleanup_upgrade_artifacts
+}
+
+on_error() {
+    local line="$1"
+    local cmd="$2"
+    fail "Erro na linha ${line}: ${cmd}"
+    ERRORS=$((ERRORS+1))
+    rollback_backend_if_needed
+}
 
 # ── Auto-detect source root (supports reinstall/upgrade) ──
 # Strategy: find repo root first (via multiple markers), then locate deps file separately.
@@ -137,10 +182,18 @@ echo "  Dependencies: ${REQUIREMENTS_FILE}"
 echo ""
 
 mkdir -p /var/lock
-exec 9>"${LOCK_FILE}"
-if ! flock -n 9; then
-    echo -e "${RED}ERROR: Another install/upgrade is already running.${NC}"
-    exit 1
+if command -v flock >/dev/null 2>&1; then
+    exec 9>"${LOCK_FILE}"
+    if ! flock -n 9; then
+        echo -e "${RED}ERROR: Another install/upgrade is already running.${NC}"
+        exit 1
+    fi
+else
+    warn "flock not found; using mkdir lock fallback"
+    if ! mkdir "${LOCK_DIR_FALLBACK}" 2>/dev/null; then
+        echo -e "${RED}ERROR: Another install/upgrade is already running (lock dir exists).${NC}"
+        exit 1
+    fi
 fi
 
 trap 'on_error "${LINENO}" "${BASH_COMMAND}"' ERR
