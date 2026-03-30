@@ -255,9 +255,13 @@ mkdir -p "${DATA_DIR}/staging"
 mkdir -p "${DATA_DIR}/deployments"
 mkdir -p "${LOG_DIR}"
 mkdir -p "${ENV_DIR}"
-# Create unbound placeholder dirs so deploy never fails on missing includes
+# Create ALL directories referenced by the systemd unit file ReadWritePaths
+# Without these, ProtectSystem=strict causes status=226/NAMESPACE failures
 mkdir -p "/etc/unbound"
-ok "Directories created"
+mkdir -p "/etc/nftables.d"
+mkdir -p "/etc/network"
+mkdir -p "/etc/systemd/system"
+ok "Directories created (including unit file ReadWritePaths)"
 
 # ═══ Step 4: Copy application files ═══
 echo "[4/${TOTAL_STEPS}] Staging application files..."
