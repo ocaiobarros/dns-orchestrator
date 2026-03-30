@@ -1122,8 +1122,18 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
     files.push({ path: '/opt/dns-control/scripts/anablock-sync.sh', content: generateAnablockSyncScript(config) });
     files.push({ path: '/etc/systemd/system/anablock-sync.service', content: generateAnablockService() });
     if (config.blocklistAutoSync) {
-      files.push({ path: '/etc/systemd/system/anablock-sync.timer', content: generateAnablockTimer(config) });
+    files.push({ path: '/etc/systemd/system/anablock-sync.timer', content: generateAnablockTimer(config) });
     }
+  }
+
+  // IP Blocking (blackhole routes — NOT nftables)
+  if (config.enableIpBlocking) {
+    files.push({ path: '/usr/local/bin/anablock-ip-sync.sh', content: generateIpBlockingSyncScript(config) });
+    files.push({ path: '/etc/systemd/system/anablock-ip-sync.service', content: generateIpBlockingService() });
+    if (config.ipBlockingAutoSync) {
+      files.push({ path: '/etc/systemd/system/anablock-ip-sync.timer', content: generateIpBlockingTimer(config) });
+    }
+  }
   }
 
   // nftables (modular)
