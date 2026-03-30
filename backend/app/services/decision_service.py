@@ -138,9 +138,22 @@ def _remove_backend(db: Session, instance: DnsInstance, state: InstanceState):
 
 
 def _restore_backend(db: Session, instance: DnsInstance, state: InstanceState):
-    """Restore a recovered backend to nftables DNAT (after cooldown)."""
+    """Restore a recovered backend to nftables DNAT (after cooldown).
+
+    Strategy: re-add the memorized-source jump rules and nth-balancing jump
+    rules for this instance back into the dispatch chains. The per-instance
+    backend chains (ipv4_dns_{tcp,udp}_{name}) and sticky sets still exist
+    in the ruleset — we only removed the jump rules during removal.
+
+    Note: nth balancing mod values are NOT recalculated here. The restored
+    instance is added at the end of the chain, which means it will receive
+    traffic from new flows via the existing nth distribution. This is safe
+    because sticky clients will be re-memorized naturally.
+    """
     now = datetime.now(timezone.utc)
-    logger.info(f"Restoring recovered backend {instance.instance_name} ({instance.bind_ip}) to DNAT")
+    name = instance.instance_name
+    bind_ip = instance.bind_ip
+    logger.info(f"Restoring recovered backend {name} ({bind_ip}) to DNAT")
 
     action = OperationalAction(
         action_type="restore_backend",
@@ -152,27 +165,48 @@ def _restore_backend(db: Session, instance: DnsInstance, state: InstanceState):
     db.add(action)
     db.flush()
 
-    restore_result = run_command(
-        "nft",
-        ["add", "element", "ip", "nat", "dns_backends", f"{{ {instance.bind_ip} }}"],
-        timeout=10,
-    )
+    errors: list[str] = []
+    commands_run: list[str] = []
+
+    # Re-add jump rules: memorized-source + nth balancing
+    for proto in ("tcp", "udp"):
+        dispatch_chain = f"ipv4_{proto}_dns"
+        backend_chain = f"ipv4_dns_{proto}_{name}"
+        set_name = f"ipv4_users_{name}"
+
+        # Memorized-source rule (sticky clients jump to their backend)
+        cmd_args = ["add", "rule", "ip", "nat", dispatch_chain,
+                    "ip", "saddr", f"@{set_name}", "counter", "jump", backend_chain]
+        commands_run.append(f"nft {' '.join(cmd_args)}")
+        result = run_command("nft", cmd_args, timeout=10, use_privilege=True)
+        if result["exit_code"] != 0:
+            errors.append(f"add memorized rule for {backend_chain}: {result['stderr'][:200]}")
+
+        # Nth balancing rule (new flows)
+        cmd_args = ["add", "rule", "ip", "nat", dispatch_chain,
+                    "numgen", "inc", "mod", "1", "0", "counter", "jump", backend_chain]
+        commands_run.append(f"nft {' '.join(cmd_args)}")
+        result = run_command("nft", cmd_args, timeout=10, use_privilege=True)
+        if result["exit_code"] != 0:
+            errors.append(f"add nth rule for {backend_chain}: {result['stderr'][:200]}")
 
     state.in_rotation = True
     state.last_transition_at = now
     state.last_reconciliation_at = now
-    state.cooldown_until = None  # Clear cooldown
+    state.cooldown_until = None
     state.reason = "Restored to DNAT after recovery (cooldown elapsed)"
 
-    action.status = "success" if restore_result["exit_code"] == 0 else "failed"
-    action.stdout_log = restore_result["stdout"]
-    action.stderr_log = restore_result["stderr"]
-    action.exit_code = restore_result["exit_code"]
+    action.status = "failed" if errors else "success"
+    action.stdout_log = "; ".join(commands_run)
+    action.stderr_log = "; ".join(errors) if errors else ""
+    action.exit_code = 1 if errors else 0
     action.finished_at = now
 
     _emit_event(db, "backend_restored_to_dnat", "info", instance.id,
-                f"Backend {instance.instance_name} ({instance.bind_ip}) restored to DNAT rotation",
-                {"action_source": "reconciliation_engine", "reason": "recovery confirmed after cooldown"})
+                f"Backend {name} ({bind_ip}) restored to DNAT rotation — "
+                f"added {len(commands_run)} rules",
+                {"action_source": "reconciliation_engine", "reason": "recovery confirmed after cooldown",
+                 "commands": commands_run})
 
 
 def manual_remove_backend(db: Session, instance_id: str) -> dict:
