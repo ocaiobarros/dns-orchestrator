@@ -268,15 +268,26 @@ if [[ ! -d "${SOURCE_ROOT}/backend" ]]; then
     exit 1
 fi
 
+# Detect in-place install (SOURCE_ROOT == INSTALL_DIR)
+IN_PLACE=false
+if [[ "$(realpath "${SOURCE_ROOT}")" == "$(realpath "${INSTALL_DIR}")" ]]; then
+    IN_PLACE=true
+    info "In-place install detected (source == install dir) — skipping self-copies"
+fi
+
 cleanup_upgrade_artifacts
 mkdir -p "${UPGRADE_STAGING_DIR}"
 
 # Copy backend to staging first (never delete active backend before staging is valid)
-if command -v rsync &>/dev/null; then
-    rsync -a --delete "${SOURCE_ROOT}/backend/" "${BACKEND_STAGING_DIR}/"
+if [[ "${IN_PLACE}" == true ]] && [[ "$(realpath "${SOURCE_ROOT}/backend")" == "$(realpath "${BACKEND_STAGING_DIR}" 2>/dev/null || echo __none__)" ]]; then
+    info "Backend already at staging target — skipping copy"
 else
-    mkdir -p "${BACKEND_STAGING_DIR}"
-    cp -a "${SOURCE_ROOT}/backend/." "${BACKEND_STAGING_DIR}/"
+    if command -v rsync &>/dev/null; then
+        rsync -a --delete "${SOURCE_ROOT}/backend/" "${BACKEND_STAGING_DIR}/"
+    else
+        mkdir -p "${BACKEND_STAGING_DIR}"
+        cp -a "${SOURCE_ROOT}/backend/." "${BACKEND_STAGING_DIR}/"
+    fi
 fi
 
 # Determine requirements file path relative to staging
