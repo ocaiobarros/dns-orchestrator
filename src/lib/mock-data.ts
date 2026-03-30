@@ -14,17 +14,17 @@ import type {
 // ---- System ----
 
 export const mockSystemInfo: SystemInfo = {
-  hostname: 'dns-rec-01.example.com',
-  os: 'Debian 13 (Trixie)',
-  kernel: '6.12.6-amd64',
-  uptime: '5d 12h 33m',
-  unboundVersion: '1.21.1',
-  frrVersion: '10.2',
-  nftablesVersion: '1.1.0',
-  mainInterface: 'enp6s18',
-  vipAnycast: '4.2.2.5/32',
-  lastApply: '2026-03-10T14:30:00Z',
-  configVersion: 'v3',
+  hostname: 'dnscontrol',
+  os: 'Debian GNU/Linux 13 (trixie)',
+  kernel: '6.12.73+deb13-amd64',
+  uptime: 'up 3 days, 21 hours, 25 minutes',
+  unboundVersion: 'Unbound 1.22.0-2+deb13u1',
+  frrVersion: 'FRRouting 10.3 (dnscontrol)',
+  nftablesVersion: 'nftables v1.1.3',
+  mainInterface: 'ens192',
+  vipAnycast: '4.2.2.5/32, 4.2.2.6/32',
+  lastApply: '2026-03-28T10:00:00Z',
+  configVersion: 'v4',
   cpuCount: 8,
   memoryTotalMb: 16384,
   memoryUsedMb: 4200,
@@ -33,61 +33,74 @@ export const mockSystemInfo: SystemInfo = {
 // ---- Services ----
 
 export const mockServices: ServiceStatus[] = [
-  { name: 'unbound01', status: 'running', pid: 1234, memoryBytes: 134217728, cpuPercent: 2.3, restartCount: 0, uptime: '5d 12h 33m', lastLog: 'start of service (unbound 1.21.1)', unitFile: '/etc/systemd/system/unbound01.service' },
-  { name: 'unbound02', status: 'running', pid: 1235, memoryBytes: 140509184, cpuPercent: 1.8, restartCount: 0, uptime: '5d 12h 33m', lastLog: 'start of service (unbound 1.21.1)', unitFile: '/etc/systemd/system/unbound02.service' },
-  { name: 'frr', status: 'running', pid: 890, memoryBytes: 47185920, cpuPercent: 0.3, restartCount: 0, uptime: '5d 12h 34m', lastLog: 'ospfd[890]: Neighbor Full', unitFile: '/lib/systemd/system/frr.service' },
-  { name: 'nftables', status: 'running', pid: null, memoryBytes: null, cpuPercent: null, restartCount: 0, uptime: '5d 12h 35m', lastLog: 'ruleset loaded', unitFile: '/lib/systemd/system/nftables.service' },
-  { name: 'dns-control', status: 'running', pid: 2001, memoryBytes: 67108864, cpuPercent: 0.8, restartCount: 0, uptime: '5d 12h 30m', lastLog: 'API started on 0.0.0.0:8443', unitFile: '/etc/systemd/system/dns-control.service' },
+  { name: 'unbound01', status: 'running', pid: 1234, memoryBytes: 536870912, cpuPercent: 2.3, restartCount: 0, uptime: '3d 21h', lastLog: 'start of service (unbound 1.22.0)', unitFile: '/etc/systemd/system/unbound01.service' },
+  { name: 'unbound02', status: 'running', pid: 1235, memoryBytes: 536870912, cpuPercent: 1.8, restartCount: 0, uptime: '3d 21h', lastLog: 'start of service (unbound 1.22.0)', unitFile: '/etc/systemd/system/unbound02.service' },
+  { name: 'unbound03', status: 'running', pid: 1236, memoryBytes: 536870912, cpuPercent: 1.5, restartCount: 0, uptime: '3d 21h', lastLog: 'start of service (unbound 1.22.0)', unitFile: '/etc/systemd/system/unbound03.service' },
+  { name: 'unbound04', status: 'running', pid: 1237, memoryBytes: 536870912, cpuPercent: 1.9, restartCount: 0, uptime: '3d 21h', lastLog: 'start of service (unbound 1.22.0)', unitFile: '/etc/systemd/system/unbound04.service' },
+  { name: 'frr', status: 'running', pid: 890, memoryBytes: 47185920, cpuPercent: 0.3, restartCount: 0, uptime: '3d 21h', lastLog: 'ospfd[890]: Neighbor Full', unitFile: '/lib/systemd/system/frr.service' },
+  { name: 'nftables', status: 'running', pid: null, memoryBytes: null, cpuPercent: null, restartCount: 0, uptime: '3d 21h', lastLog: 'ruleset loaded', unitFile: '/lib/systemd/system/nftables.service' },
+  { name: 'dns-control', status: 'running', pid: 2001, memoryBytes: 67108864, cpuPercent: 0.8, restartCount: 0, uptime: '3d 21h', lastLog: 'API started on 0.0.0.0:8443', unitFile: '/etc/systemd/system/dns-control.service' },
 ];
 
 // ---- Network ----
 
 export const mockInterfaces: NetworkInterface[] = [
   {
-    name: 'enp6s18', type: 'physical', state: 'UP', mtu: 1500,
-    macAddress: '52:54:00:ab:cd:ef',
-    ipv4Addresses: ['172.28.22.6/30'],
-    ipv6Addresses: [],
+    name: 'ens192', type: 'physical', state: 'UP', mtu: 1500,
+    macAddress: '00:50:56:ab:cd:ef',
+    ipv4Addresses: ['172.29.22.6/30'],
+    ipv6Addresses: ['2804:4AFC:8844::2/64'],
     rxBytes: 89234567890, txBytes: 45123456789,
     rxPackets: 123456789, txPackets: 98765432,
   },
   {
-    name: 'lo0', type: 'dummy', state: 'UP', mtu: 65536,
-    macAddress: '00:00:00:00:00:00',
-    ipv4Addresses: ['4.2.2.5/32', '4.2.2.6/32', '100.127.255.101/32', '100.127.255.102/32', '191.243.128.205/32', '191.243.128.206/32'],
-    ipv6Addresses: [],
-    rxBytes: 0, txBytes: 0,
-    rxPackets: 0, txPackets: 0,
-  },
-  {
     name: 'lo', type: 'loopback', state: 'UP', mtu: 65536,
     macAddress: '00:00:00:00:00:00',
-    ipv4Addresses: ['127.0.0.1/8'],
-    ipv6Addresses: ['::1/128'],
+    ipv4Addresses: [
+      '127.0.0.1/8',
+      '45.232.215.20/32', '45.232.215.21/32', '45.232.215.22/32', '45.232.215.23/32',
+      '100.127.255.101/32', '100.127.255.102/32', '100.127.255.103/32', '100.127.255.104/32',
+      '4.2.2.5/32', '4.2.2.6/32',
+    ],
+    ipv6Addresses: [
+      '::1/128',
+      '2804:4afc:8888::1000/128', '2804:4afc:8888::1001/128', '2804:4afc:8888::1002/128', '2804:4afc:8888::1003/128',
+      '2001:db8:ffff:ffff:100:127:255:101/128', '2001:db8:ffff:ffff:100:127:255:102/128',
+      '2001:db8:ffff:ffff:100:127:255:103/128', '2001:db8:ffff:ffff:100:127:255:104/128',
+      '2620:119:35::35/128', '2620:119:53::53/128',
+    ],
     rxBytes: 1234567, txBytes: 1234567,
     rxPackets: 12345, txPackets: 12345,
   },
 ];
 
 export const mockRoutes: Route[] = [
-  { destination: 'default', via: '172.28.22.5', device: 'enp6s18', protocol: 'static', scope: 'global', metric: 100 },
-  { destination: '172.28.22.4/30', via: null, device: 'enp6s18', protocol: 'kernel', scope: 'link', metric: 0 },
-  { destination: '4.2.2.5', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
-  { destination: '4.2.2.6', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
-  { destination: '100.127.255.101', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
-  { destination: '100.127.255.102', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
-  { destination: '191.243.128.205', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
-  { destination: '191.243.128.206', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: 'default', via: '172.29.22.5', device: 'ens192', protocol: 'static', scope: 'global', metric: 100 },
+  { destination: '172.29.22.4/30', via: null, device: 'ens192', protocol: 'kernel', scope: 'link', metric: 0 },
+  { destination: '4.2.2.5', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '4.2.2.6', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '45.232.215.20', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '45.232.215.21', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '45.232.215.22', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '45.232.215.23', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '100.127.255.101', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '100.127.255.102', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '100.127.255.103', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '100.127.255.104', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
 ];
 
 export const mockReachability: ReachabilityResult[] = [
-  { target: '172.28.22.5', label: 'Gateway', reachable: true, latencyMs: 0.3, error: null },
-  { target: '4.2.2.5', label: 'VIP Intercepted (Level3 Primário)', reachable: true, latencyMs: 0.1, error: null },
-  { target: '4.2.2.6', label: 'VIP Intercepted (Level3 Secundário)', reachable: true, latencyMs: 0.1, error: null },
-  { target: '100.127.255.101', label: 'Unbound 01 (private)', reachable: true, latencyMs: 0.1, error: null },
-  { target: '100.127.255.102', label: 'Unbound 02 (private)', reachable: true, latencyMs: 0.1, error: null },
-  { target: '191.243.128.205', label: 'Unbound 01 (public)', reachable: true, latencyMs: 0.1, error: null },
-  { target: '191.243.128.206', label: 'Unbound 02 (public)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '172.29.22.5', label: 'Gateway', reachable: true, latencyMs: 0.3, error: null },
+  { target: '4.2.2.5', label: 'VIP Anycast (Level3 Primário)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '4.2.2.6', label: 'VIP Anycast (Level3 Secundário)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '100.127.255.101', label: 'unbound01 (listener)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '100.127.255.102', label: 'unbound02 (listener)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '100.127.255.103', label: 'unbound03 (listener)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '100.127.255.104', label: 'unbound04 (listener)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '45.232.215.20', label: 'unbound01 (egress)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '45.232.215.21', label: 'unbound02 (egress)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '45.232.215.22', label: 'unbound03 (egress)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '45.232.215.23', label: 'unbound04 (egress)', reachable: true, latencyMs: 0.1, error: null },
 ];
 
 // ---- DNS Metrics ----
