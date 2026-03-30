@@ -1134,7 +1134,6 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
       files.push({ path: '/etc/systemd/system/anablock-ip-sync.timer', content: generateIpBlockingTimer(config) });
     }
   }
-  }
 
   // nftables (modular)
   files.push(...generateNftablesModular(config));
