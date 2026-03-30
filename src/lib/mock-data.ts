@@ -185,17 +185,20 @@ export const mockStickyEntries: NftStickyEntry[] = [
 // ---- OSPF ----
 
 export const mockOspfNeighbors: OspfNeighbor[] = [
-  { neighborId: '172.28.22.1', priority: 1, state: 'Full', deadTime: '00:00:35', address: '172.28.22.5', interfaceName: 'enp6s18', area: '0.0.0.0' },
-  { neighborId: '172.28.22.2', priority: 1, state: 'Full', deadTime: '00:00:38', address: '172.28.22.9', interfaceName: 'enp6s18', area: '0.0.0.0' },
+  { neighborId: '172.29.22.1', priority: 1, state: 'Full', deadTime: '00:00:35', address: '172.29.22.5', interfaceName: 'ens192', area: '0.0.0.0' },
 ];
 
 export const mockOspfRoutes: OspfRoute[] = [
-  { prefix: '4.2.2.5/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
-  { prefix: '4.2.2.6/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
-  { prefix: '100.127.255.101/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
-  { prefix: '100.127.255.102/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
-  { prefix: '191.243.128.205/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
-  { prefix: '191.243.128.206/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '4.2.2.5/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '4.2.2.6/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '100.127.255.101/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '100.127.255.102/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '100.127.255.103/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '100.127.255.104/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '45.232.215.20/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '45.232.215.21/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '45.232.215.22/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '45.232.215.23/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
 ];
 
 // ---- Logs ----
