@@ -551,44 +551,71 @@ export default function Wizard() {
               <div className="p-4 rounded bg-secondary/50 border border-border space-y-4">
                 <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                   <Shield size={14} />
-                  Configuração AnaBlock
+                  Configuração AnaBlock — Blocklist Judicial
                 </div>
                 <InfoBox>
                   O AnaBlock sincroniza automaticamente domínios bloqueados por ordem judicial (Anatel/Judiciário).
-                  Um timer systemd será gerado para manter o arquivo atualizado.
+                  Artefatos gerados: script de sync, service e timer systemd.
                 </InfoBox>
+
+                <FieldGroup label="Modo de bloqueio *">
+                  <Select value={config.blocklistMode} onChange={v => set('blocklistMode', v as 'always_nxdomain' | 'redirect_cname' | 'redirect_ip' | 'redirect_ip_dualstack')} options={[
+                    { value: 'always_nxdomain', label: 'always_nxdomain — domínio retorna NXDOMAIN' },
+                    { value: 'redirect_cname', label: 'redirect_cname — redireciona para FQDN (ex: anatel.gov.br)' },
+                    { value: 'redirect_ip', label: 'redirect_ip — redireciona para IPv4 específico' },
+                    { value: 'redirect_ip_dualstack', label: 'redirect_ip_dualstack — redireciona para IPv4 + IPv6' },
+                  ]} />
+                </FieldGroup>
+
+                {config.blocklistMode === 'redirect_cname' && (
+                  <FieldGroup label="CNAME de redirecionamento *" hint="FQDN válido — não aceita IP">
+                    <Input value={config.blocklistCnameTarget} onChange={v => set('blocklistCnameTarget', v)} placeholder="anatel.gov.br" />
+                  </FieldGroup>
+                )}
+
+                {(config.blocklistMode === 'redirect_ip' || config.blocklistMode === 'redirect_ip_dualstack') && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FieldGroup label="IPv4 de redirecionamento *" hint="Ex: 10.255.128.2">
+                      <Input value={config.blocklistRedirectIpv4} onChange={v => set('blocklistRedirectIpv4', v)} placeholder="10.255.128.2" />
+                    </FieldGroup>
+                    {config.blocklistMode === 'redirect_ip_dualstack' && (
+                      <FieldGroup label="IPv6 de redirecionamento *" hint="Ex: 2001:db8::1">
+                        <Input value={config.blocklistRedirectIpv6} onChange={v => set('blocklistRedirectIpv6', v)} placeholder="2001:db8::1" />
+                      </FieldGroup>
+                    )}
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FieldGroup label="URL da API AnaBlock" hint="Endpoint base da API">
+                  <FieldGroup label="URL base da API AnaBlock *" hint="HTTPS obrigatório">
                     <Input value={config.blocklistApiUrl} onChange={v => set('blocklistApiUrl', v)} placeholder="https://api.anablock.net.br" />
                   </FieldGroup>
                   <FieldGroup label="Intervalo de sincronização (horas)">
                     <Input type="number" value={config.blocklistSyncIntervalHours} onChange={v => set('blocklistSyncIntervalHours', parseInt(v) || 1)} />
                   </FieldGroup>
                 </div>
-                <FieldGroup label="Modo de bloqueio">
-                  <Select value={config.blocklistMode} onChange={v => set('blocklistMode', v as 'nxdomain' | 'cname' | 'redirect-ip')} options={[
-                    { value: 'nxdomain', label: 'NXDOMAIN — domínio não existe (padrão)' },
-                    { value: 'cname', label: 'CNAME — redireciona para domínio (ex: anatel.gov.br)' },
-                    { value: 'redirect-ip', label: 'Redirect IP — redireciona para IP específico' },
-                  ]} />
-                </FieldGroup>
-                {config.blocklistMode === 'cname' && (
-                  <FieldGroup label="Domínio de redirecionamento CNAME" hint="Ex: anatel.gov.br">
-                    <Input value={config.blocklistCnameTarget} onChange={v => set('blocklistCnameTarget', v)} placeholder="anatel.gov.br" />
-                  </FieldGroup>
-                )}
-                {config.blocklistMode === 'redirect-ip' && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FieldGroup label="IPv4 de redirecionamento *" hint="Ex: 10.255.128.2">
-                      <Input value={config.blocklistRedirectIpv4} onChange={v => set('blocklistRedirectIpv4', v)} placeholder="10.255.128.2" />
-                    </FieldGroup>
-                    {config.enableIpv6 && (
-                      <FieldGroup label="IPv6 de redirecionamento" hint="Ex: 2001:db8::1">
-                        <Input value={config.blocklistRedirectIpv6} onChange={v => set('blocklistRedirectIpv6', v)} placeholder="2001:db8::1" />
-                      </FieldGroup>
-                    )}
-                  </div>
-                )}
+
+                <div className="flex gap-4 flex-wrap">
+                  <Toggle checked={config.blocklistAutoSync} onChange={v => set('blocklistAutoSync', v)} label="Sincronização automática (timer)" />
+                  <Toggle checked={config.blocklistValidateBeforeReload} onChange={v => set('blocklistValidateBeforeReload', v)} label="Validar config antes de reload" />
+                  <Toggle checked={config.blocklistAutoReload} onChange={v => set('blocklistAutoReload', v)} label="Reload automático do Unbound" />
+                </div>
+
+                <div className="p-3 rounded bg-muted/50 border border-border">
+                  <p className="text-xs text-muted-foreground font-mono">
+                    URL final: {(() => {
+                      const base = (config.blocklistApiUrl || 'https://api.anablock.net.br').replace(/\/$/, '');
+                      let url = `${base}/domains/all?output=unbound`;
+                      if (config.blocklistMode === 'redirect_cname' && config.blocklistCnameTarget) url += `&cname=${config.blocklistCnameTarget}`;
+                      else if (config.blocklistMode === 'redirect_ip' && config.blocklistRedirectIpv4) url += `&ipv4=${config.blocklistRedirectIpv4}`;
+                      else if (config.blocklistMode === 'redirect_ip_dualstack' && config.blocklistRedirectIpv4) {
+                        url += `&ipv4=${config.blocklistRedirectIpv4}`;
+                        if (config.blocklistRedirectIpv6) url += `&ipv6=${config.blocklistRedirectIpv6}`;
+                      }
+                      return url;
+                    })()}
+                  </p>
+                </div>
               </div>
             )}
 

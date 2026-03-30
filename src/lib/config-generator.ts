@@ -167,11 +167,13 @@ server:
 function buildAnablockApiUrl(config: WizardConfig): string {
   const base = (config.blocklistApiUrl || 'https://api.anablock.net.br').replace(/\/$/, '');
   let url = `${base}/domains/all?output=unbound`;
-  if (config.blocklistMode === 'cname' && config.blocklistCnameTarget) {
+  if (config.blocklistMode === 'redirect_cname' && config.blocklistCnameTarget) {
     url += `&cname=${config.blocklistCnameTarget}`;
-  } else if (config.blocklistMode === 'redirect-ip' && config.blocklistRedirectIpv4) {
+  } else if (config.blocklistMode === 'redirect_ip' && config.blocklistRedirectIpv4) {
     url += `&ipv4=${config.blocklistRedirectIpv4}`;
-    if (config.enableIpv6 && config.blocklistRedirectIpv6) {
+  } else if (config.blocklistMode === 'redirect_ip_dualstack' && config.blocklistRedirectIpv4) {
+    url += `&ipv4=${config.blocklistRedirectIpv4}`;
+    if (config.blocklistRedirectIpv6) {
       url += `&ipv6=${config.blocklistRedirectIpv6}`;
     }
   }
