@@ -148,6 +148,12 @@ export interface WizardConfig {
   rootHintsPath: string;
   enableDetailedLogs: boolean;
   enableBlocklist: boolean;
+  blocklistApiUrl: string;
+  blocklistMode: 'nxdomain' | 'cname' | 'redirect-ip';
+  blocklistCnameTarget: string;
+  blocklistRedirectIpv4: string;
+  blocklistRedirectIpv6: string;
+  blocklistSyncIntervalHours: number;
   dnsIdentity: string;
   dnsVersion: string;
 
