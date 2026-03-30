@@ -277,21 +277,20 @@ def _execute_deploy_locked(
                     # are in staging dir. Create a temp copy with rewritten paths.
                     original_content = open(staged_path).read()
 
-                    # Rewrite all include paths (/etc/unbound/...) to staging equivalents
-                    def _rewrite_include(m):
-                        inc_path = m.group(1)
-                        staged_inc = os.path.join(staging_dir, inc_path.lstrip("/"))
-                        return m.group(0).replace(inc_path, staged_inc)
+                    # Rewrite ALL /etc/unbound/ include paths to staging equivalents
+                    def _rewrite_inc(match):
+                        inc = match.group(1)
+                        return match.group(0).replace(inc, os.path.join(staging_dir, inc.lstrip("/")))
 
-                    rewritten = include_pattern.sub(_rewrite_include, original_content)
+                    rewritten = include_pattern.sub(_rewrite_inc, original_content)
 
-                    checkconf_path = staged_path
-                    if rewritten != original_content:
-                        checkconf_path = staged_path + ".checkconf"
-                        with open(checkconf_path, "w") as tmp:
-                            tmp.write(rewritten)
+                    # Always use a .checkconf copy to avoid mutating the staged file
+                    checkconf_path = staged_path + ".checkconf"
+                    with open(checkconf_path, "w") as tmp:
+                        tmp.write(rewritten)
 
-                    cmd = f"unbound-checkconf {checkconf_path}"
+                    logger.debug(f"Checkconf rewrite for {f['path']}: {'paths rewritten' if rewritten != original_content else 'no includes found'}")
+
                     r = run_command("unbound-checkconf", [checkconf_path], timeout=10)
 
                     # Cleanup temp file
