@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateUnboundConf, generateAllConfigs } from '../lib/config-generator';
+import { generateUnboundConf, generateAllFiles } from '../lib/config-generator';
 import type { WizardConfig } from '../lib/types';
 
 function baseConfig(overrides: Partial<WizardConfig> = {}): WizardConfig {
