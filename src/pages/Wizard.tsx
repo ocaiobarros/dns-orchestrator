@@ -565,8 +565,7 @@ export default function Wizard() {
                     <Input type="number" value={config.blocklistSyncIntervalHours} onChange={v => set('blocklistSyncIntervalHours', parseInt(v) || 1)} />
                   </FieldGroup>
                 </div>
-                <FieldGroup label="Modo de bloqueio">
-                  <Select value={config.blocklistMode} onChange={v => set('blocklistMode', v)} options={[
+                  <Select value={config.blocklistMode} onChange={v => set('blocklistMode', v as 'nxdomain' | 'cname' | 'redirect-ip')} options={[
                     { value: 'nxdomain', label: 'NXDOMAIN — domínio não existe (padrão)' },
                     { value: 'cname', label: 'CNAME — redireciona para domínio (ex: anatel.gov.br)' },
                     { value: 'redirect-ip', label: 'Redirect IP — redireciona para IP específico' },
