@@ -14,17 +14,17 @@ import type {
 // ---- System ----
 
 export const mockSystemInfo: SystemInfo = {
-  hostname: 'dns-rec-01.example.com',
-  os: 'Debian 13 (Trixie)',
-  kernel: '6.12.6-amd64',
-  uptime: '5d 12h 33m',
-  unboundVersion: '1.21.1',
-  frrVersion: '10.2',
-  nftablesVersion: '1.1.0',
-  mainInterface: 'enp6s18',
-  vipAnycast: '4.2.2.5/32',
-  lastApply: '2026-03-10T14:30:00Z',
-  configVersion: 'v3',
+  hostname: 'dnscontrol',
+  os: 'Debian GNU/Linux 13 (trixie)',
+  kernel: '6.12.73+deb13-amd64',
+  uptime: 'up 3 days, 21 hours, 25 minutes',
+  unboundVersion: 'Unbound 1.22.0-2+deb13u1',
+  frrVersion: 'FRRouting 10.3 (dnscontrol)',
+  nftablesVersion: 'nftables v1.1.3',
+  mainInterface: 'ens192',
+  vipAnycast: '4.2.2.5/32, 4.2.2.6/32',
+  lastApply: '2026-03-28T10:00:00Z',
+  configVersion: 'v4',
   cpuCount: 8,
   memoryTotalMb: 16384,
   memoryUsedMb: 4200,
@@ -33,68 +33,81 @@ export const mockSystemInfo: SystemInfo = {
 // ---- Services ----
 
 export const mockServices: ServiceStatus[] = [
-  { name: 'unbound01', status: 'running', pid: 1234, memoryBytes: 134217728, cpuPercent: 2.3, restartCount: 0, uptime: '5d 12h 33m', lastLog: 'start of service (unbound 1.21.1)', unitFile: '/etc/systemd/system/unbound01.service' },
-  { name: 'unbound02', status: 'running', pid: 1235, memoryBytes: 140509184, cpuPercent: 1.8, restartCount: 0, uptime: '5d 12h 33m', lastLog: 'start of service (unbound 1.21.1)', unitFile: '/etc/systemd/system/unbound02.service' },
-  { name: 'frr', status: 'running', pid: 890, memoryBytes: 47185920, cpuPercent: 0.3, restartCount: 0, uptime: '5d 12h 34m', lastLog: 'ospfd[890]: Neighbor Full', unitFile: '/lib/systemd/system/frr.service' },
-  { name: 'nftables', status: 'running', pid: null, memoryBytes: null, cpuPercent: null, restartCount: 0, uptime: '5d 12h 35m', lastLog: 'ruleset loaded', unitFile: '/lib/systemd/system/nftables.service' },
-  { name: 'dns-control', status: 'running', pid: 2001, memoryBytes: 67108864, cpuPercent: 0.8, restartCount: 0, uptime: '5d 12h 30m', lastLog: 'API started on 0.0.0.0:8443', unitFile: '/etc/systemd/system/dns-control.service' },
+  { name: 'unbound01', status: 'running', pid: 1234, memoryBytes: 536870912, cpuPercent: 2.3, restartCount: 0, uptime: '3d 21h', lastLog: 'start of service (unbound 1.22.0)', unitFile: '/etc/systemd/system/unbound01.service' },
+  { name: 'unbound02', status: 'running', pid: 1235, memoryBytes: 536870912, cpuPercent: 1.8, restartCount: 0, uptime: '3d 21h', lastLog: 'start of service (unbound 1.22.0)', unitFile: '/etc/systemd/system/unbound02.service' },
+  { name: 'unbound03', status: 'running', pid: 1236, memoryBytes: 536870912, cpuPercent: 1.5, restartCount: 0, uptime: '3d 21h', lastLog: 'start of service (unbound 1.22.0)', unitFile: '/etc/systemd/system/unbound03.service' },
+  { name: 'unbound04', status: 'running', pid: 1237, memoryBytes: 536870912, cpuPercent: 1.9, restartCount: 0, uptime: '3d 21h', lastLog: 'start of service (unbound 1.22.0)', unitFile: '/etc/systemd/system/unbound04.service' },
+  { name: 'frr', status: 'running', pid: 890, memoryBytes: 47185920, cpuPercent: 0.3, restartCount: 0, uptime: '3d 21h', lastLog: 'ospfd[890]: Neighbor Full', unitFile: '/lib/systemd/system/frr.service' },
+  { name: 'nftables', status: 'running', pid: null, memoryBytes: null, cpuPercent: null, restartCount: 0, uptime: '3d 21h', lastLog: 'ruleset loaded', unitFile: '/lib/systemd/system/nftables.service' },
+  { name: 'dns-control', status: 'running', pid: 2001, memoryBytes: 67108864, cpuPercent: 0.8, restartCount: 0, uptime: '3d 21h', lastLog: 'API started on 0.0.0.0:8443', unitFile: '/etc/systemd/system/dns-control.service' },
 ];
 
 // ---- Network ----
 
 export const mockInterfaces: NetworkInterface[] = [
   {
-    name: 'enp6s18', type: 'physical', state: 'UP', mtu: 1500,
-    macAddress: '52:54:00:ab:cd:ef',
-    ipv4Addresses: ['172.28.22.6/30'],
-    ipv6Addresses: [],
+    name: 'ens192', type: 'physical', state: 'UP', mtu: 1500,
+    macAddress: '00:50:56:ab:cd:ef',
+    ipv4Addresses: ['172.29.22.6/30'],
+    ipv6Addresses: ['2804:4AFC:8844::2/64'],
     rxBytes: 89234567890, txBytes: 45123456789,
     rxPackets: 123456789, txPackets: 98765432,
   },
   {
-    name: 'lo0', type: 'dummy', state: 'UP', mtu: 65536,
-    macAddress: '00:00:00:00:00:00',
-    ipv4Addresses: ['4.2.2.5/32', '4.2.2.6/32', '100.127.255.101/32', '100.127.255.102/32', '191.243.128.205/32', '191.243.128.206/32'],
-    ipv6Addresses: [],
-    rxBytes: 0, txBytes: 0,
-    rxPackets: 0, txPackets: 0,
-  },
-  {
     name: 'lo', type: 'loopback', state: 'UP', mtu: 65536,
     macAddress: '00:00:00:00:00:00',
-    ipv4Addresses: ['127.0.0.1/8'],
-    ipv6Addresses: ['::1/128'],
+    ipv4Addresses: [
+      '127.0.0.1/8',
+      '45.232.215.20/32', '45.232.215.21/32', '45.232.215.22/32', '45.232.215.23/32',
+      '100.127.255.101/32', '100.127.255.102/32', '100.127.255.103/32', '100.127.255.104/32',
+      '4.2.2.5/32', '4.2.2.6/32',
+    ],
+    ipv6Addresses: [
+      '::1/128',
+      '2804:4afc:8888::1000/128', '2804:4afc:8888::1001/128', '2804:4afc:8888::1002/128', '2804:4afc:8888::1003/128',
+      '2001:db8:ffff:ffff:100:127:255:101/128', '2001:db8:ffff:ffff:100:127:255:102/128',
+      '2001:db8:ffff:ffff:100:127:255:103/128', '2001:db8:ffff:ffff:100:127:255:104/128',
+      '2620:119:35::35/128', '2620:119:53::53/128',
+    ],
     rxBytes: 1234567, txBytes: 1234567,
     rxPackets: 12345, txPackets: 12345,
   },
 ];
 
 export const mockRoutes: Route[] = [
-  { destination: 'default', via: '172.28.22.5', device: 'enp6s18', protocol: 'static', scope: 'global', metric: 100 },
-  { destination: '172.28.22.4/30', via: null, device: 'enp6s18', protocol: 'kernel', scope: 'link', metric: 0 },
-  { destination: '4.2.2.5', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
-  { destination: '4.2.2.6', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
-  { destination: '100.127.255.101', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
-  { destination: '100.127.255.102', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
-  { destination: '191.243.128.205', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
-  { destination: '191.243.128.206', via: null, device: 'lo0', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: 'default', via: '172.29.22.5', device: 'ens192', protocol: 'static', scope: 'global', metric: 100 },
+  { destination: '172.29.22.4/30', via: null, device: 'ens192', protocol: 'kernel', scope: 'link', metric: 0 },
+  { destination: '4.2.2.5', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '4.2.2.6', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '45.232.215.20', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '45.232.215.21', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '45.232.215.22', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '45.232.215.23', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '100.127.255.101', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '100.127.255.102', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '100.127.255.103', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
+  { destination: '100.127.255.104', via: null, device: 'lo', protocol: 'kernel', scope: 'host', metric: 0 },
 ];
 
 export const mockReachability: ReachabilityResult[] = [
-  { target: '172.28.22.5', label: 'Gateway', reachable: true, latencyMs: 0.3, error: null },
-  { target: '4.2.2.5', label: 'VIP Intercepted (Level3 Primário)', reachable: true, latencyMs: 0.1, error: null },
-  { target: '4.2.2.6', label: 'VIP Intercepted (Level3 Secundário)', reachable: true, latencyMs: 0.1, error: null },
-  { target: '100.127.255.101', label: 'Unbound 01 (private)', reachable: true, latencyMs: 0.1, error: null },
-  { target: '100.127.255.102', label: 'Unbound 02 (private)', reachable: true, latencyMs: 0.1, error: null },
-  { target: '191.243.128.205', label: 'Unbound 01 (public)', reachable: true, latencyMs: 0.1, error: null },
-  { target: '191.243.128.206', label: 'Unbound 02 (public)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '172.29.22.5', label: 'Gateway', reachable: true, latencyMs: 0.3, error: null },
+  { target: '4.2.2.5', label: 'VIP Anycast (Level3 Primário)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '4.2.2.6', label: 'VIP Anycast (Level3 Secundário)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '100.127.255.101', label: 'unbound01 (listener)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '100.127.255.102', label: 'unbound02 (listener)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '100.127.255.103', label: 'unbound03 (listener)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '100.127.255.104', label: 'unbound04 (listener)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '45.232.215.20', label: 'unbound01 (egress)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '45.232.215.21', label: 'unbound02 (egress)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '45.232.215.22', label: 'unbound03 (egress)', reachable: true, latencyMs: 0.1, error: null },
+  { target: '45.232.215.23', label: 'unbound04 (egress)', reachable: true, latencyMs: 0.1, error: null },
 ];
 
 // ---- DNS Metrics ----
 
 export function generateDnsMetrics(hours: number = 24): DnsMetrics[] {
   const metrics: DnsMetrics[] = [];
-  const instances = ['unbound01', 'unbound02'];
+  const instances = ['unbound01', 'unbound02', 'unbound03', 'unbound04'];
   const now = Date.now();
 
   for (let i = hours * 60; i >= 0; i -= 5) {
@@ -134,39 +147,58 @@ export const mockTopDomains: DnsTopDomain[] = [
 ];
 
 export const mockInstanceStats: DnsInstanceStats[] = [
-  { instance: 'unbound01', totalQueries: 1284532, cacheHitRatio: 87.3, avgLatencyMs: 2.1, uptime: '5d 12h', threads: 4, currentConnections: 342 },
-  { instance: 'unbound02', totalQueries: 1283891, cacheHitRatio: 86.8, avgLatencyMs: 2.3, uptime: '5d 12h', threads: 4, currentConnections: 338 },
+  { instance: 'unbound01', totalQueries: 1284532, cacheHitRatio: 87.3, avgLatencyMs: 2.1, uptime: '3d 21h', threads: 4, currentConnections: 342 },
+  { instance: 'unbound02', totalQueries: 1283891, cacheHitRatio: 86.8, avgLatencyMs: 2.3, uptime: '3d 21h', threads: 4, currentConnections: 338 },
+  { instance: 'unbound03', totalQueries: 1281045, cacheHitRatio: 87.1, avgLatencyMs: 2.0, uptime: '3d 21h', threads: 4, currentConnections: 335 },
+  { instance: 'unbound04', totalQueries: 1280112, cacheHitRatio: 86.5, avgLatencyMs: 2.4, uptime: '3d 21h', threads: 4, currentConnections: 330 },
 ];
 
 // ---- NAT ----
+// Chain names match real nftables architecture: ipv4_{proto}_dns dispatch chains
+// with per-backend subchains ipv4_dns_{proto}_{name}
 
 export const mockNftCounters: NftCounter[] = [
-  { chain: 'intercepted_udp_4_2_2_5', rule: 'dnat to 100.127.255.101 (intercepted VIP 4.2.2.5)', packets: 1284532, bytes: 98234123, backend: '100.127.255.101' },
-  { chain: 'intercepted_tcp_4_2_2_5', rule: 'dnat to 100.127.255.101 (intercepted VIP 4.2.2.5)', packets: 45890, bytes: 3423456, backend: '100.127.255.101' },
-  { chain: 'intercepted_udp_4_2_2_6', rule: 'dnat to 100.127.255.102 (intercepted VIP 4.2.2.6)', packets: 1283891, bytes: 98112344, backend: '100.127.255.102' },
-  { chain: 'intercepted_tcp_4_2_2_6', rule: 'dnat to 100.127.255.102 (intercepted VIP 4.2.2.6)', packets: 43780, bytes: 3267890, backend: '100.127.255.102' },
+  // PREROUTING entry counters (all VIP traffic)
+  { chain: 'ipv4_udp_dns', rule: 'ip daddr $DNS_ANYCAST_IPV4 udp dport 53 jump ipv4_udp_dns', packets: 5134110, bytes: 369655920, backend: '' },
+  { chain: 'ipv4_tcp_dns', rule: 'ip daddr $DNS_ANYCAST_IPV4 tcp dport 53 jump ipv4_tcp_dns', packets: 179340, bytes: 12912480, backend: '' },
+  // Per-backend DNAT counters (UDP)
+  { chain: 'ipv4_dns_udp_unbound01', rule: 'udp dport 53 dnat to 100.127.255.101:53', packets: 1284532, bytes: 92486304, backend: '100.127.255.101' },
+  { chain: 'ipv4_dns_udp_unbound02', rule: 'udp dport 53 dnat to 100.127.255.102:53', packets: 1283891, bytes: 92440152, backend: '100.127.255.102' },
+  { chain: 'ipv4_dns_udp_unbound03', rule: 'udp dport 53 dnat to 100.127.255.103:53', packets: 1281045, bytes: 92235240, backend: '100.127.255.103' },
+  { chain: 'ipv4_dns_udp_unbound04', rule: 'udp dport 53 dnat to 100.127.255.104:53', packets: 1284642, bytes: 92494224, backend: '100.127.255.104' },
+  // Per-backend DNAT counters (TCP)
+  { chain: 'ipv4_dns_tcp_unbound01', rule: 'tcp dport 53 dnat to 100.127.255.101:53', packets: 45890, bytes: 3304080, backend: '100.127.255.101' },
+  { chain: 'ipv4_dns_tcp_unbound02', rule: 'tcp dport 53 dnat to 100.127.255.102:53', packets: 43780, bytes: 3152160, backend: '100.127.255.102' },
+  { chain: 'ipv4_dns_tcp_unbound03', rule: 'tcp dport 53 dnat to 100.127.255.103:53', packets: 44890, bytes: 3232080, backend: '100.127.255.103' },
+  { chain: 'ipv4_dns_tcp_unbound04', rule: 'tcp dport 53 dnat to 100.127.255.104:53', packets: 44780, bytes: 3224160, backend: '100.127.255.104' },
 ];
 
 export const mockStickyEntries: NftStickyEntry[] = [
-  { sourceIp: '10.0.1.15', backend: '100.127.255.101', expires: 245, packets: 42 },
-  { sourceIp: '10.0.2.30', backend: '100.127.255.102', expires: 189, packets: 28 },
-  { sourceIp: '192.168.1.50', backend: '100.127.255.101', expires: 280, packets: 33 },
+  { sourceIp: '10.0.1.15', backend: '100.127.255.101', expires: 1200, packets: 42 },
+  { sourceIp: '10.0.2.30', backend: '100.127.255.102', expires: 1140, packets: 28 },
+  { sourceIp: '192.168.1.50', backend: '100.127.255.103', expires: 1180, packets: 33 },
+  { sourceIp: '172.16.5.22', backend: '100.127.255.104', expires: 1100, packets: 19 },
+  { sourceIp: '10.10.10.1', backend: '100.127.255.101', expires: 900, packets: 55 },
+  { sourceIp: '192.168.5.100', backend: '100.127.255.102', expires: 850, packets: 31 },
 ];
 
 // ---- OSPF ----
 
 export const mockOspfNeighbors: OspfNeighbor[] = [
-  { neighborId: '172.28.22.1', priority: 1, state: 'Full', deadTime: '00:00:35', address: '172.28.22.5', interfaceName: 'enp6s18', area: '0.0.0.0' },
-  { neighborId: '172.28.22.2', priority: 1, state: 'Full', deadTime: '00:00:38', address: '172.28.22.9', interfaceName: 'enp6s18', area: '0.0.0.0' },
+  { neighborId: '172.29.22.1', priority: 1, state: 'Full', deadTime: '00:00:35', address: '172.29.22.5', interfaceName: 'ens192', area: '0.0.0.0' },
 ];
 
 export const mockOspfRoutes: OspfRoute[] = [
-  { prefix: '4.2.2.5/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
-  { prefix: '4.2.2.6/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
-  { prefix: '100.127.255.101/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
-  { prefix: '100.127.255.102/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
-  { prefix: '191.243.128.205/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
-  { prefix: '191.243.128.206/32', nextHop: '0.0.0.0', device: 'lo0', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '4.2.2.5/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '4.2.2.6/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '100.127.255.101/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '100.127.255.102/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '100.127.255.103/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '100.127.255.104/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '45.232.215.20/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '45.232.215.21/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '45.232.215.22/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
+  { prefix: '45.232.215.23/32', nextHop: '0.0.0.0', device: 'lo', cost: 0, area: '0.0.0.0', type: 'connected' },
 ];
 
 // ---- Logs ----
@@ -196,15 +228,16 @@ export const mockLogs: LogEntry[] = [
 
 export const mockDiagCommands: DiagCommand[] = [
   { id: 'svc-status', label: 'systemctl status unbound*', command: 'systemctl status unbound01 unbound02 unbound03 unbound04', category: 'services', dangerous: false },
-  { id: 'ss-dns', label: 'ss -lunp | grep :53', command: 'ss -lunp | grep :53', category: 'network', dangerous: false },
-  { id: 'ip-addr-lo0', label: 'ip addr show lo0', command: 'ip addr show lo0', category: 'network', dangerous: false },
+  { id: 'ss-dns', label: 'ss -tulpn | grep :53', command: 'ss -tulpn | grep :53', category: 'network', dangerous: false },
+  { id: 'ip-addr-lo', label: 'ip addr show lo', command: 'ip addr show lo', category: 'network', dangerous: false },
   { id: 'ip-route', label: 'ip route', command: 'ip route', category: 'network', dangerous: false },
-  { id: 'ub-status', label: 'unbound-control status', command: 'unbound-control -c /etc/unbound/unbound01.conf status', category: 'dns', dangerous: false },
-  { id: 'dig-vip', label: 'dig @VIP google.com', command: 'dig @4.2.2.5 google.com +short', category: 'dns', dangerous: false },
-  { id: 'dig-ub01', label: 'dig @unbound01', command: 'dig @100.126.255.101 google.com +short', category: 'dns', dangerous: false },
-  { id: 'dig-ub02', label: 'dig @unbound02', command: 'dig @100.126.255.102 google.com +short', category: 'dns', dangerous: false },
-  { id: 'dig-ub03', label: 'dig @unbound03', command: 'dig @100.126.255.103 google.com +short', category: 'dns', dangerous: false },
-  { id: 'dig-ub04', label: 'dig @unbound04', command: 'dig @100.126.255.104 google.com +short', category: 'dns', dangerous: false },
+  { id: 'ub-status', label: 'unbound-control status', command: 'unbound-control -s 127.0.0.11@8953 status', category: 'dns', dangerous: false },
+  { id: 'dig-vip1', label: 'dig @4.2.2.5 google.com', command: 'dig @4.2.2.5 google.com +short', category: 'dns', dangerous: false },
+  { id: 'dig-vip2', label: 'dig @4.2.2.6 google.com', command: 'dig @4.2.2.6 google.com +short', category: 'dns', dangerous: false },
+  { id: 'dig-ub01', label: 'dig @unbound01', command: 'dig @100.127.255.101 google.com +short', category: 'dns', dangerous: false },
+  { id: 'dig-ub02', label: 'dig @unbound02', command: 'dig @100.127.255.102 google.com +short', category: 'dns', dangerous: false },
+  { id: 'dig-ub03', label: 'dig @unbound03', command: 'dig @100.127.255.103 google.com +short', category: 'dns', dangerous: false },
+  { id: 'dig-ub04', label: 'dig @unbound04', command: 'dig @100.127.255.104 google.com +short', category: 'dns', dangerous: false },
   { id: 'nft-list', label: 'nft list ruleset', command: 'nft list ruleset', category: 'nat', dangerous: false },
   { id: 'nft-counters', label: 'nft list counters', command: 'nft list counters', category: 'nat', dangerous: false },
   { id: 'vtysh-run', label: 'vtysh show running', command: 'vtysh -c "show running-config"', category: 'frr', dangerous: false },
@@ -216,130 +249,150 @@ export const mockDiagCommands: DiagCommand[] = [
 export const mockDiagOutputs: Record<string, DiagResult> = {
   'ss-dns': {
     commandId: 'ss-dns', exitCode: 0, durationMs: 45, timestamp: new Date().toISOString(), stderr: '',
-    stdout: `udp  UNCONN  0  0  100.126.255.101:53  0.0.0.0:*  users:(("unbound",pid=1234,fd=5))
-udp  UNCONN  0  0  100.126.255.102:53  0.0.0.0:*  users:(("unbound",pid=1235,fd=5))
-udp  UNCONN  0  0  100.126.255.103:53  0.0.0.0:*  users:(("unbound",pid=1236,fd=5))
-udp  UNCONN  0  0  100.126.255.104:53  0.0.0.0:*  users:(("unbound",pid=1237,fd=5))
-tcp  LISTEN  0  256  100.126.255.101:53  0.0.0.0:*  users:(("unbound",pid=1234,fd=6))
-tcp  LISTEN  0  256  100.126.255.102:53  0.0.0.0:*  users:(("unbound",pid=1235,fd=6))
-tcp  LISTEN  0  256  100.126.255.103:53  0.0.0.0:*  users:(("unbound",pid=1236,fd=6))
-tcp  LISTEN  0  256  100.126.255.104:53  0.0.0.0:*  users:(("unbound",pid=1237,fd=6))`,
+    stdout: `udp  UNCONN  0  0  100.127.255.101:53  0.0.0.0:*  users:(("unbound",pid=1234,fd=5))
+udp  UNCONN  0  0  100.127.255.102:53  0.0.0.0:*  users:(("unbound",pid=1235,fd=5))
+udp  UNCONN  0  0  100.127.255.103:53  0.0.0.0:*  users:(("unbound",pid=1236,fd=5))
+udp  UNCONN  0  0  100.127.255.104:53  0.0.0.0:*  users:(("unbound",pid=1237,fd=5))
+tcp  LISTEN  0  256  100.127.255.101:53  0.0.0.0:*  users:(("unbound",pid=1234,fd=6))
+tcp  LISTEN  0  256  100.127.255.102:53  0.0.0.0:*  users:(("unbound",pid=1235,fd=6))
+tcp  LISTEN  0  256  100.127.255.103:53  0.0.0.0:*  users:(("unbound",pid=1236,fd=6))
+tcp  LISTEN  0  256  100.127.255.104:53  0.0.0.0:*  users:(("unbound",pid=1237,fd=6))`,
   },
-  'dig-vip': {
-    commandId: 'dig-vip', exitCode: 0, durationMs: 12, timestamp: new Date().toISOString(), stderr: '',
+  'dig-vip1': {
+    commandId: 'dig-vip1', exitCode: 0, durationMs: 2, timestamp: new Date().toISOString(), stderr: '',
+    stdout: '142.250.79.46',
+  },
+  'dig-vip2': {
+    commandId: 'dig-vip2', exitCode: 0, durationMs: 3, timestamp: new Date().toISOString(), stderr: '',
     stdout: '142.250.79.46',
   },
   'dig-ub01': {
-    commandId: 'dig-ub01', exitCode: 0, durationMs: 8, timestamp: new Date().toISOString(), stderr: '',
+    commandId: 'dig-ub01', exitCode: 0, durationMs: 2, timestamp: new Date().toISOString(), stderr: '',
     stdout: '142.250.79.46',
   },
   'dig-ub02': {
-    commandId: 'dig-ub02', exitCode: 0, durationMs: 9, timestamp: new Date().toISOString(), stderr: '',
+    commandId: 'dig-ub02', exitCode: 0, durationMs: 3, timestamp: new Date().toISOString(), stderr: '',
     stdout: '142.250.79.46',
   },
   'dig-ub03': {
-    commandId: 'dig-ub03', exitCode: 0, durationMs: 7, timestamp: new Date().toISOString(), stderr: '',
+    commandId: 'dig-ub03', exitCode: 0, durationMs: 2, timestamp: new Date().toISOString(), stderr: '',
     stdout: '142.250.79.46',
   },
   'dig-ub04': {
-    commandId: 'dig-ub04', exitCode: 0, durationMs: 11, timestamp: new Date().toISOString(), stderr: '',
+    commandId: 'dig-ub04', exitCode: 0, durationMs: 3, timestamp: new Date().toISOString(), stderr: '',
     stdout: '142.250.79.46',
   },
   'ip-route': {
     commandId: 'ip-route', exitCode: 0, durationMs: 15, timestamp: new Date().toISOString(), stderr: '',
-    stdout: `default via 172.28.22.5 dev enp6s18 proto static metric 100
-172.28.22.4/30 dev enp6s18 proto kernel scope link src 172.28.22.6
-4.2.2.5 dev lo0 proto kernel scope host src 4.2.2.5
-100.126.255.101 dev lo0 proto kernel scope host
-100.126.255.102 dev lo0 proto kernel scope host
-100.126.255.103 dev lo0 proto kernel scope host
-100.126.255.104 dev lo0 proto kernel scope host
-45.232.215.16 dev lo0 proto kernel scope host
-45.232.215.17 dev lo0 proto kernel scope host
-45.232.215.18 dev lo0 proto kernel scope host
-45.232.215.19 dev lo0 proto kernel scope host`,
+    stdout: `default via 172.29.22.5 dev ens192 proto static metric 100
+172.29.22.4/30 dev ens192 proto kernel scope link src 172.29.22.6
+4.2.2.5 dev lo proto kernel scope host src 4.2.2.5
+4.2.2.6 dev lo proto kernel scope host src 4.2.2.6
+45.232.215.20 dev lo proto kernel scope host
+45.232.215.21 dev lo proto kernel scope host
+45.232.215.22 dev lo proto kernel scope host
+45.232.215.23 dev lo proto kernel scope host
+100.127.255.101 dev lo proto kernel scope host
+100.127.255.102 dev lo proto kernel scope host
+100.127.255.103 dev lo proto kernel scope host
+100.127.255.104 dev lo proto kernel scope host`,
   },
   'ub-status': {
     commandId: 'ub-status', exitCode: 0, durationMs: 30, timestamp: new Date().toISOString(), stderr: '',
-    stdout: `version: 1.21.1
+    stdout: `version: 1.22.0
 verbosity: 1
 threads: 4
-modules: 3 [ validator iterator respip ]
-uptime: 468798 seconds
+modules: 2 [ iterator ]
+uptime: 335100 seconds
 options: reuseport control
 unbound (pid 1234) is running...`,
   },
-  'ip-addr-lo0': {
-    commandId: 'ip-addr-lo0', exitCode: 0, durationMs: 10, timestamp: new Date().toISOString(), stderr: '',
-    stdout: `3: lo0: <BROADCAST,NOARP,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
-    link/ether 00:00:00:00:00:00 brd ff:ff:ff:ff:ff:ff
-    inet 4.2.2.5/32 scope global lo0
-    inet 100.126.255.101/32 scope global lo0
-    inet 100.126.255.102/32 scope global lo0
-    inet 100.126.255.103/32 scope global lo0
-    inet 100.126.255.104/32 scope global lo0
-    inet 45.232.215.16/32 scope global lo0
-    inet 45.232.215.17/32 scope global lo0
-    inet 45.232.215.18/32 scope global lo0
-    inet 45.232.215.19/32 scope global lo0`,
+  'ip-addr-lo': {
+    commandId: 'ip-addr-lo', exitCode: 0, durationMs: 10, timestamp: new Date().toISOString(), stderr: '',
+    stdout: `1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+    inet 45.232.215.20/32 scope global lo
+    inet 45.232.215.21/32 scope global lo
+    inet 45.232.215.22/32 scope global lo
+    inet 45.232.215.23/32 scope global lo
+    inet 100.127.255.101/32 scope global lo
+    inet 100.127.255.102/32 scope global lo
+    inet 100.127.255.103/32 scope global lo
+    inet 100.127.255.104/32 scope global lo
+    inet 4.2.2.5/32 scope global lo
+    inet 4.2.2.6/32 scope global lo
+    inet6 2804:4afc:8888::1000/128 scope global
+    inet6 2804:4afc:8888::1001/128 scope global
+    inet6 2804:4afc:8888::1002/128 scope global
+    inet6 2804:4afc:8888::1003/128 scope global
+    inet6 2001:db8:ffff:ffff:100:127:255:101/128 scope global
+    inet6 2001:db8:ffff:ffff:100:127:255:102/128 scope global
+    inet6 2001:db8:ffff:ffff:100:127:255:103/128 scope global
+    inet6 2001:db8:ffff:ffff:100:127:255:104/128 scope global
+    inet6 2620:119:35::35/128 scope global
+    inet6 2620:119:53::53/128 scope global
+    inet6 ::1/128 scope host`,
   },
   'vtysh-ospf': {
     commandId: 'vtysh-ospf', exitCode: 0, durationMs: 50, timestamp: new Date().toISOString(), stderr: '',
     stdout: `Neighbor ID     Pri State           Dead Time Address         Interface
-172.28.22.1       1 Full/DR         00:00:35  172.28.22.5     enp6s18:172.28.22.6
-172.28.22.2       1 Full/Backup     00:00:38  172.28.22.9     enp6s18:172.28.22.6`,
+172.29.22.1       1 Full/DR         00:00:35  172.29.22.5     ens192:172.29.22.6`,
   },
   'health-full': {
     commandId: 'health-full', exitCode: 0, durationMs: 3200, timestamp: new Date().toISOString(), stderr: '',
     stdout: `=== DNS Control Health Check ===
-[OK] System: Debian 13 (Trixie), kernel 6.12.6
-[OK] Uptime: 5 days, 12 hours
+[OK] System: Debian 13 (trixie), kernel 6.12.73+deb13-amd64
+[OK] Uptime: 3 days, 21 hours
 [OK] CPU: 8 cores, load avg 0.45
 [OK] Memory: 4200/16384 MB (25.6%)
-[OK] Interface enp6s18: UP, 172.28.22.6/30
-[OK] Interface lo0: UP, 9 addresses configured
-[OK] Gateway 172.28.22.5: reachable (0.3ms)
-[OK] VIP 4.2.2.5: configured on lo0
-[OK] unbound01 (pid 1234): running, 128MB, port 53 listening
-[OK] unbound02 (pid 1235): running, 134MB, port 53 listening
-[OK] unbound03 (pid 1236): running, 121MB, port 53 listening
-[OK] unbound04 (pid 1237): running, 118MB, port 53 listening
-[OK] dig @4.2.2.5 google.com: NOERROR (12ms)
-[OK] dig @100.126.255.101 google.com: NOERROR (8ms)
-[OK] dig @100.126.255.102 google.com: NOERROR (9ms)
-[OK] dig @100.126.255.103 google.com: NOERROR (7ms)
-[OK] dig @100.126.255.104 google.com: NOERROR (11ms)
-[OK] nftables: ruleset loaded, 4 DNAT rules active
-[OK] FRR/OSPF: running, 2 neighbors Full
-[OK] OSPF redistribution: 9 connected routes announced
+[OK] Interface ens192: UP, 172.29.22.6/30
+[OK] Loopback: UP, 12 IPv4 + 11 IPv6 addresses configured
+[OK] Gateway 172.29.22.5: reachable (0.3ms)
+[OK] VIP 4.2.2.5: configured on lo, DNAT active
+[OK] VIP 4.2.2.6: configured on lo, DNAT active
+[OK] unbound01 (pid 1234): running, 512MB, 100.127.255.101:53 listening
+[OK] unbound02 (pid 1235): running, 512MB, 100.127.255.102:53 listening
+[OK] unbound03 (pid 1236): running, 512MB, 100.127.255.103:53 listening
+[OK] unbound04 (pid 1237): running, 512MB, 100.127.255.104:53 listening
+[OK] dig @4.2.2.5 google.com: NOERROR (2ms — local intercept)
+[OK] dig @4.2.2.6 google.com: NOERROR (2ms — local intercept)
+[OK] dig @100.127.255.101 google.com: NOERROR (2ms)
+[OK] dig @100.127.255.102 google.com: NOERROR (3ms)
+[OK] dig @100.127.255.103 google.com: NOERROR (2ms)
+[OK] dig @100.127.255.104 google.com: NOERROR (3ms)
+[OK] nftables: ruleset loaded, 4 backends in DNAT rotation
+[OK] Sticky sets: ipv4_users_unbound01..04 active (timeout 20m)
+[OK] FRR/OSPF: running, 1 neighbor Full
+[OK] OSPF redistribution: 12 connected routes announced
 
-Result: ALL CHECKS PASSED (16/16)`,
+Result: ALL CHECKS PASSED (20/20)`,
   },
   'svc-status': {
     commandId: 'svc-status', exitCode: 0, durationMs: 80, timestamp: new Date().toISOString(), stderr: '',
-    stdout: `● unbound01.service - Unbound DNS resolver (unbound01)
-     Loaded: loaded (/etc/systemd/system/unbound01.service; enabled)
-     Active: active (running) since Tue 2026-03-05 19:57:00 UTC; 5 days ago
+    stdout: `● unbound01.service - Unbound DNS resolver — unbound01
+     Loaded: loaded (/etc/systemd/system/unbound01.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2026-03-26 17:00:00 UTC; 3 days ago
    Main PID: 1234 (unbound)
-     Memory: 128.0M
+     Memory: 512.0M
         CPU: 2h 15min
-● unbound02.service - Unbound DNS resolver (unbound02)
-     Loaded: loaded (/etc/systemd/system/unbound02.service; enabled)
-     Active: active (running) since Tue 2026-03-05 19:57:00 UTC; 5 days ago
+● unbound02.service - Unbound DNS resolver — unbound02
+     Loaded: loaded (/etc/systemd/system/unbound02.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2026-03-26 17:00:00 UTC; 3 days ago
    Main PID: 1235 (unbound)
-     Memory: 134.0M
+     Memory: 512.0M
         CPU: 1h 48min
-● unbound03.service - Unbound DNS resolver (unbound03)
-     Loaded: loaded (/etc/systemd/system/unbound03.service; enabled)
-     Active: active (running) since Sun 2026-03-09 00:05:00 UTC; 2 days ago
+● unbound03.service - Unbound DNS resolver — unbound03
+     Loaded: loaded (/etc/systemd/system/unbound03.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2026-03-26 17:00:00 UTC; 3 days ago
    Main PID: 1236 (unbound)
-     Memory: 121.0M
+     Memory: 512.0M
         CPU: 52min
-● unbound04.service - Unbound DNS resolver (unbound04)
-     Loaded: loaded (/etc/systemd/system/unbound04.service; enabled)
-     Active: active (running) since Tue 2026-03-05 19:57:00 UTC; 5 days ago
+● unbound04.service - Unbound DNS resolver — unbound04
+     Loaded: loaded (/etc/systemd/system/unbound04.service; enabled; preset: enabled)
+     Active: active (running) since Wed 2026-03-26 17:00:00 UTC; 3 days ago
    Main PID: 1237 (unbound)
-     Memory: 118.0M
+     Memory: 512.0M
         CPU: 1h 30min`,
   },
 };
@@ -449,16 +502,18 @@ import type { InstanceHealthReport } from './types';
 
 export function mockInstanceHealth(): InstanceHealthReport {
   return {
-    healthy: 2,
-    total: 2,
+    healthy: 4,
+    total: 4,
     all_healthy: true,
     degraded: false,
     down: false,
     instances: [
-      { instance: 'unbound01', bind_ip: '100.127.255.101', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 3 + Math.round(Math.random() * 5), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
-      { instance: 'unbound02', bind_ip: '100.127.255.102', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 4 + Math.round(Math.random() * 5), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
+      { instance: 'unbound01', bind_ip: '100.127.255.101', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 2 + Math.round(Math.random() * 3), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
+      { instance: 'unbound02', bind_ip: '100.127.255.102', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 2 + Math.round(Math.random() * 3), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
+      { instance: 'unbound03', bind_ip: '100.127.255.103', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 2 + Math.round(Math.random() * 3), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
+      { instance: 'unbound04', bind_ip: '100.127.255.104', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 2 + Math.round(Math.random() * 3), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
     ],
-    vip: { instance: 'VIP-Intercepted', bind_ip: '4.2.2.5', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 2 + Math.round(Math.random() * 3), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
+    vip: { instance: 'VIP-Anycast', bind_ip: '4.2.2.5', port: 53, healthy: true, resolved_ip: '142.250.79.46', latency_ms: 1 + Math.round(Math.random() * 2), probe_domain: 'google.com', error: null, timestamp: Date.now() / 1000 },
     timestamp: Date.now() / 1000,
   };
 }
@@ -469,13 +524,13 @@ import type { V2Event, V2MetricEntry, V2Instance, V2Action } from './types';
 
 export function mockV2Events(): { items: V2Event[]; total: number } {
   const events: V2Event[] = [
-    { id: 'ev-001', event_type: 'instance_recovered', severity: 'info', instance_id: 'inst-03', message: 'unbound03 recovered after 3 successful checks', details_json: null, created_at: '2026-03-11T08:10:00Z' },
-    { id: 'ev-002', event_type: 'backend_removed_from_dnat', severity: 'critical', instance_id: 'inst-03', message: 'Backend unbound03 (100.126.255.103) removed from DNAT rotation', details_json: null, created_at: '2026-03-11T07:55:00Z' },
-    { id: 'ev-003', event_type: 'instance_failed', severity: 'critical', instance_id: 'inst-03', message: 'unbound03 FAILED after 3 consecutive failures', details_json: null, created_at: '2026-03-11T07:54:30Z' },
-    { id: 'ev-004', event_type: 'instance_degraded', severity: 'warning', instance_id: 'inst-03', message: 'unbound03 is degraded', details_json: null, created_at: '2026-03-11T07:54:00Z' },
-    { id: 'ev-005', event_type: 'backend_restored_to_dnat', severity: 'info', instance_id: 'inst-03', message: 'Backend unbound03 (100.126.255.103) restored to DNAT rotation', details_json: null, created_at: '2026-03-11T08:10:30Z' },
-    { id: 'ev-006', event_type: 'health_check_timeout', severity: 'warning', instance_id: 'inst-02', message: 'Health check for unbound02 timed out (dig)', details_json: null, created_at: '2026-03-11T06:30:00Z' },
-    { id: 'ev-007', event_type: 'instance_recovered', severity: 'info', instance_id: 'inst-02', message: 'unbound02 recovered after 3 successful checks', details_json: null, created_at: '2026-03-11T06:31:00Z' },
+    { id: 'ev-001', event_type: 'instance_recovered', severity: 'info', instance_id: 'inst-03', message: 'unbound03 recovered after 3 successful checks', details_json: null, created_at: '2026-03-29T08:10:00Z' },
+    { id: 'ev-002', event_type: 'backend_removed_from_dnat', severity: 'critical', instance_id: 'inst-03', message: 'Backend unbound03 (100.127.255.103) removed from DNAT rotation', details_json: null, created_at: '2026-03-29T07:55:00Z' },
+    { id: 'ev-003', event_type: 'instance_failed', severity: 'critical', instance_id: 'inst-03', message: 'unbound03 FAILED after 3 consecutive failures', details_json: null, created_at: '2026-03-29T07:54:30Z' },
+    { id: 'ev-004', event_type: 'instance_degraded', severity: 'warning', instance_id: 'inst-03', message: 'unbound03 is degraded', details_json: null, created_at: '2026-03-29T07:54:00Z' },
+    { id: 'ev-005', event_type: 'backend_restored_to_dnat', severity: 'info', instance_id: 'inst-03', message: 'Backend unbound03 (100.127.255.103) restored to DNAT rotation', details_json: null, created_at: '2026-03-29T08:10:30Z' },
+    { id: 'ev-006', event_type: 'health_check_timeout', severity: 'warning', instance_id: 'inst-02', message: 'Health check for unbound02 timed out (dig)', details_json: null, created_at: '2026-03-29T06:30:00Z' },
+    { id: 'ev-007', event_type: 'instance_recovered', severity: 'info', instance_id: 'inst-02', message: 'unbound02 recovered after 3 successful checks', details_json: null, created_at: '2026-03-29T06:31:00Z' },
   ];
   return { items: events, total: events.length };
 }
@@ -493,13 +548,25 @@ export function mockV2Metrics(): V2MetricEntry[] {
     { instance_id: 'inst-02', instance_name: 'unbound02', metric_name: 'dns_latency_ms', metric_value: 2.3, collected_at: now },
     { instance_id: 'inst-02', instance_name: 'unbound02', metric_name: 'dns_servfail_total', metric_value: 8, collected_at: now },
     { instance_id: 'inst-02', instance_name: 'unbound02', metric_name: 'dns_nxdomain_total', metric_value: 3190, collected_at: now },
+    { instance_id: 'inst-03', instance_name: 'unbound03', metric_name: 'dns_queries_total', metric_value: 1281045, collected_at: now },
+    { instance_id: 'inst-03', instance_name: 'unbound03', metric_name: 'dns_cache_hit_ratio', metric_value: 0.871, collected_at: now },
+    { instance_id: 'inst-03', instance_name: 'unbound03', metric_name: 'dns_latency_ms', metric_value: 2.0, collected_at: now },
+    { instance_id: 'inst-03', instance_name: 'unbound03', metric_name: 'dns_servfail_total', metric_value: 10, collected_at: now },
+    { instance_id: 'inst-03', instance_name: 'unbound03', metric_name: 'dns_nxdomain_total', metric_value: 3050, collected_at: now },
+    { instance_id: 'inst-04', instance_name: 'unbound04', metric_name: 'dns_queries_total', metric_value: 1280112, collected_at: now },
+    { instance_id: 'inst-04', instance_name: 'unbound04', metric_name: 'dns_cache_hit_ratio', metric_value: 0.865, collected_at: now },
+    { instance_id: 'inst-04', instance_name: 'unbound04', metric_name: 'dns_latency_ms', metric_value: 2.4, collected_at: now },
+    { instance_id: 'inst-04', instance_name: 'unbound04', metric_name: 'dns_servfail_total', metric_value: 9, collected_at: now },
+    { instance_id: 'inst-04', instance_name: 'unbound04', metric_name: 'dns_nxdomain_total', metric_value: 3100, collected_at: now },
   ];
 }
 
 export function mockV2Instances(): V2Instance[] {
   return [
-    { id: 'inst-01', instance_name: 'unbound01', bind_ip: '100.127.255.101', bind_port: 53, outgoing_ip: '191.243.128.205', control_port: 8953, current_status: 'healthy', in_rotation: true, consecutive_failures: 0, consecutive_successes: 142, last_success_at: new Date().toISOString(), last_failure_at: null, last_transition_at: '2026-03-10T14:30:00Z', reason: null, cooldown_remaining: 0, last_reconciliation_at: null },
-    { id: 'inst-02', instance_name: 'unbound02', bind_ip: '100.127.255.102', bind_port: 53, outgoing_ip: '191.243.128.206', control_port: 8954, current_status: 'healthy', in_rotation: true, consecutive_failures: 0, consecutive_successes: 140, last_success_at: new Date().toISOString(), last_failure_at: '2026-03-11T06:30:00Z', last_transition_at: '2026-03-11T06:31:00Z', reason: 'Recovery: passed consecutive health checks', cooldown_remaining: 0, last_reconciliation_at: '2026-03-11T06:31:00Z' },
+    { id: 'inst-01', instance_name: 'unbound01', bind_ip: '100.127.255.101', bind_port: 53, outgoing_ip: '45.232.215.20', control_port: 8953, current_status: 'healthy', in_rotation: true, consecutive_failures: 0, consecutive_successes: 142, last_success_at: new Date().toISOString(), last_failure_at: null, last_transition_at: '2026-03-28T10:00:00Z', reason: null, cooldown_remaining: 0, last_reconciliation_at: null },
+    { id: 'inst-02', instance_name: 'unbound02', bind_ip: '100.127.255.102', bind_port: 53, outgoing_ip: '45.232.215.21', control_port: 8953, current_status: 'healthy', in_rotation: true, consecutive_failures: 0, consecutive_successes: 140, last_success_at: new Date().toISOString(), last_failure_at: '2026-03-29T06:30:00Z', last_transition_at: '2026-03-29T06:31:00Z', reason: 'Recovery: passed consecutive health checks', cooldown_remaining: 0, last_reconciliation_at: '2026-03-29T06:31:00Z' },
+    { id: 'inst-03', instance_name: 'unbound03', bind_ip: '100.127.255.103', bind_port: 53, outgoing_ip: '45.232.215.22', control_port: 8953, current_status: 'healthy', in_rotation: true, consecutive_failures: 0, consecutive_successes: 138, last_success_at: new Date().toISOString(), last_failure_at: '2026-03-29T07:54:30Z', last_transition_at: '2026-03-29T08:10:00Z', reason: 'Recovery: passed consecutive health checks', cooldown_remaining: 0, last_reconciliation_at: '2026-03-29T08:10:00Z' },
+    { id: 'inst-04', instance_name: 'unbound04', bind_ip: '100.127.255.104', bind_port: 53, outgoing_ip: '45.232.215.23', control_port: 8953, current_status: 'healthy', in_rotation: true, consecutive_failures: 0, consecutive_successes: 142, last_success_at: new Date().toISOString(), last_failure_at: null, last_transition_at: '2026-03-28T10:00:00Z', reason: null, cooldown_remaining: 0, last_reconciliation_at: null },
   ];
 }
 
@@ -511,7 +578,7 @@ export function mockV2Actions(): V2Action[] {
 }
 
 export function mockVipDiagnostics() {
-  const mkBackend = (ip: string, udpPkts: number, tcpPkts: number, latency: number, resolves = true) => {
+  const mkBackend = (ip: string, name: string, udpPkts: number, tcpPkts: number, latency: number, resolves = true) => {
     const total = udpPkts + tcpPkts;
     const status = !resolves && total === 0 ? 'DEAD'
       : resolves && total === 0 ? 'NEVER_SELECTED'
@@ -525,7 +592,7 @@ export function mockVipDiagnostics() {
       : status === 'UNHEALTHY' ? 'DNS_PROBE_FAILURE'
       : 'VIP_HEALTHY';
     return {
-      ip, status, reason, reason_code,
+      ip, name, status, reason, reason_code,
       packets: total, bytes: total * 72,
       udp: { packets: udpPkts, bytes: udpPkts * 72 },
       tcp: { packets: tcpPkts, bytes: tcpPkts * 72 },
@@ -543,34 +610,39 @@ export function mockVipDiagnostics() {
     packets: pkts, bytes: pkts * 72, chain, data_source: 'chain_rule',
   });
 
-  // Real model: 4.2.2.5 → unbound01 (100.127.255.101), 4.2.2.6 → unbound02 (100.127.255.102)
-  const vip1Backends = [
-    mkBackend('100.127.255.101', 1284532, 45890, 0.9),
+  // Real architecture: Both VIPs are balanced across ALL 4 backends via sticky+nth
+  // Traffic distribution is approximately 25% per backend
+  const allBackends = [
+    mkBackend('100.127.255.101', 'unbound01', 1284532, 45890, 0.9),
+    mkBackend('100.127.255.102', 'unbound02', 1283891, 43780, 1.1),
+    mkBackend('100.127.255.103', 'unbound03', 1281045, 44890, 0.8),
+    mkBackend('100.127.255.104', 'unbound04', 1284642, 44780, 1.0),
   ];
-  const vip1Total = vip1Backends.reduce((a, b) => a + b.packets, 0);
-  vip1Backends.forEach(b => { b.traffic_pct = 100; });
-  const vip1Udp = vip1Backends.reduce((a, b) => a + b.udp.packets, 0);
-  const vip1Tcp = vip1Backends.reduce((a, b) => a + b.tcp.packets, 0);
+  const totalPkts = allBackends.reduce((a, b) => a + b.packets, 0);
+  allBackends.forEach(b => { b.traffic_pct = Math.round(b.packets / totalPkts * 1000) / 10; });
+  const totalUdp = allBackends.reduce((a, b) => a + b.udp.packets, 0);
+  const totalTcp = allBackends.reduce((a, b) => a + b.tcp.packets, 0);
 
-  const vip2Backends = [
-    mkBackend('100.127.255.102', 1283891, 43780, 1.1),
+  const allPaths = [
+    mkPath('100.127.255.101', 'udp', 1284532, 'ipv4_dns_udp_unbound01'),
+    mkPath('100.127.255.101', 'tcp', 45890, 'ipv4_dns_tcp_unbound01'),
+    mkPath('100.127.255.102', 'udp', 1283891, 'ipv4_dns_udp_unbound02'),
+    mkPath('100.127.255.102', 'tcp', 43780, 'ipv4_dns_tcp_unbound02'),
+    mkPath('100.127.255.103', 'udp', 1281045, 'ipv4_dns_udp_unbound03'),
+    mkPath('100.127.255.103', 'tcp', 44890, 'ipv4_dns_tcp_unbound03'),
+    mkPath('100.127.255.104', 'udp', 1284642, 'ipv4_dns_udp_unbound04'),
+    mkPath('100.127.255.104', 'tcp', 44780, 'ipv4_dns_tcp_unbound04'),
   ];
-  const vip2Total = vip2Backends.reduce((a, b) => a + b.packets, 0);
-  vip2Backends.forEach(b => { b.traffic_pct = 100; });
-  const vip2Udp = vip2Backends.reduce((a, b) => a + b.udp.packets, 0);
-  const vip2Tcp = vip2Backends.reduce((a, b) => a + b.tcp.packets, 0);
 
   const mkVip = (
-    ip: string, ipv6: string, desc: string, backends: ReturnType<typeof mkBackend>[],
-    udpTotal: number, tcpTotal: number, total: number,
-    paths: ReturnType<typeof mkPath>[], backendInst: string, publicIp: string, status = 'HEALTHY',
+    ip: string, ipv6: string, desc: string, status = 'HEALTHY',
   ) => ({
     ip, ipv6, description: desc,
-    vip_type: 'intercepted' as const,
+    vip_type: 'anycast-balanced' as const,
     capture_mode: 'dnat' as const,
-    backend_instance: backendInst,
-    backend_target_ip: backends[0]?.ip || '',
-    public_listener_ip: publicIp,
+    backend_instance: 'all (sticky+nth)',
+    backend_target_ip: '',
+    public_listener_ip: '',
     status,
     reason: status !== 'HEALTHY' ? `VIP ${ip} status is ${status}` : null,
     reason_code: status !== 'HEALTHY' ? `VIP_${status}` : 'VIP_HEALTHY',
@@ -580,64 +652,55 @@ export function mockVipDiagnostics() {
     counter_mismatch: false,
     validation_layers: {
       configuration_present: true,
-      traffic_observed: total > 0,
+      traffic_observed: totalPkts > 0,
       resolution_functional: true,
       health_inferred: status === 'HEALTHY',
     },
     interception_evidence: {
-      local_latency_ms: ip === '4.2.2.5' ? 0.3 : 0.4,
+      local_latency_ms: 0.3,
       internet_latency_expected_ms: 45,
       is_local: true,
       leaking_to_internet: false,
     },
     dns_probe: { resolves: true, resolved_ip: '142.250.219.14', latency_ms: ip === '4.2.2.5' ? 1.8 : 2.1, error: null },
-    local_bind: { bound: false, required: false, interface: null },
-    route: { present: true, type: 'host /32' },
-    dnat: { active: true, rule_count: paths.length },
+    local_bind: { bound: true, required: true, interface: 'lo' },
+    route: { present: true, type: 'addr /32 on lo' },
+    dnat: { active: true, rule_count: allPaths.length },
     entry_counters: {
-      udp: { packets: udpTotal, bytes: udpTotal * 72 },
-      tcp: { packets: tcpTotal, bytes: tcpTotal * 72 },
+      udp: { packets: totalUdp, bytes: totalUdp * 72 },
+      tcp: { packets: totalTcp, bytes: totalTcp * 72 },
       unknown: { packets: 0, bytes: 0 },
     },
     traffic: {
-      packets: total, bytes: total * 72,
-      udp: { packets: udpTotal, bytes: udpTotal * 72 },
-      tcp: { packets: tcpTotal, bytes: tcpTotal * 72 },
+      packets: totalPkts, bytes: totalPkts * 72,
+      udp: { packets: totalUdp, bytes: totalUdp * 72 },
+      tcp: { packets: totalTcp, bytes: totalTcp * 72 },
     },
-    qps: { qps: Math.round(total / 300), window_seconds: 10, delta_packets: Math.round(total / 30) },
+    qps: { qps: Math.round(totalPkts / 300), window_seconds: 10, delta_packets: Math.round(totalPkts / 30) },
     counter_history: Array.from({ length: 10 }, (_, i) => ({
       ts: Date.now() / 1000 - (10 - i) * 10,
       iso: new Date(Date.now() - (10 - i) * 10000).toISOString(),
-      entry_packets: Math.round(total * (0.9 + i * 0.01)),
-      entry_bytes: Math.round(total * 72 * (0.9 + i * 0.01)),
-      qps: Math.round(total / 300 + (Math.random() - 0.5) * 100),
+      entry_packets: Math.round(totalPkts * (0.9 + i * 0.01)),
+      entry_bytes: Math.round(totalPkts * 72 * (0.9 + i * 0.01)),
+      qps: Math.round(totalPkts / 300 + (Math.random() - 0.5) * 100),
     })),
     cross_validation: {
-      entry_total_packets: total,
-      paths_total_packets: total,
+      entry_total_packets: totalPkts,
+      paths_total_packets: totalPkts,
       delta: 0,
       mismatch: false,
       tolerance: 'max(3 pkts, 2%)',
     },
-    backend_paths: paths,
-    backends,
+    backend_paths: allPaths,
+    backends: allBackends,
   });
-
-  const vip1Paths = [
-    mkPath('100.127.255.101', 'udp', 1284532, 'intercepted_udp_4_2_2_5'),
-    mkPath('100.127.255.101', 'tcp', 45890, 'intercepted_tcp_4_2_2_5'),
-  ];
-  const vip2Paths = [
-    mkPath('100.127.255.102', 'udp', 1283891, 'intercepted_udp_4_2_2_6'),
-    mkPath('100.127.255.102', 'tcp', 43780, 'intercepted_tcp_4_2_2_6'),
-  ];
 
   const now = new Date().toISOString();
 
   return {
     vip_diagnostics: [
-      mkVip('4.2.2.5', '2620:119:35::35', 'Level3 DNS Primário — intercepted locally by unbound01', vip1Backends, vip1Udp, vip1Tcp, vip1Total, vip1Paths, 'unbound01', '191.243.128.205'),
-      mkVip('4.2.2.6', '2620:119:53::53', 'Level3 DNS Secundário — intercepted locally by unbound02', vip2Backends, vip2Udp, vip2Tcp, vip2Total, vip2Paths, 'unbound02', '191.243.128.206'),
+      mkVip('4.2.2.5', '2620:119:35::35', 'Level3 DNS Primário — intercepted locally, balanced across 4 backends'),
+      mkVip('4.2.2.6', '2620:119:53::53', 'Level3 DNS Secundário — intercepted locally, balanced across 4 backends'),
     ],
     root_recursion: {
       trace: { status: 'ok', latency_ms: 320.5, reached_root: true, output_lines: 47, error: null },
