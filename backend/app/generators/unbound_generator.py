@@ -3,7 +3,8 @@ DNS Control — Unbound Configuration Generator
 Generates per-instance unbound configs at /etc/unbound/{name}.conf
 Each systemd unit references its own config file directly.
 Aligned with vdns-01 production model: standalone instances, IPv4+IPv6,
-statistics, outgoing-range, local-zones, anablock, named.cache.
+statistics, outgoing-range, local-zones, conditional blocklist, named.cache.
+DNSSEC via auto-trust-anchor-file only (no inline trust-anchor).
 """
 
 from typing import Any
@@ -54,6 +55,7 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     # Global settings from payload or wizard config
     wizard_cfg = payload.get("_wizardConfig", {}) or {}
     enable_ipv6 = payload.get("enableIpv6") or wizard_cfg.get("enableIpv6", False)
+    enable_blocklist = payload.get("enableBlocklist") or wizard_cfg.get("enableBlocklist", False)
     threads = _safe_int(payload.get("threads") or wizard_cfg.get("threads"), 4)
     msg_cache_size = _safe_str(payload.get("msgCacheSize") or wizard_cfg.get("msgCacheSize"), "512m")
     rrset_cache_size = _safe_str(payload.get("rrsetCacheSize") or wizard_cfg.get("rrsetCacheSize"), "32m")
@@ -170,6 +172,7 @@ server:
     use-syslog: no
     pidfile: "/var/run/{name}.pid"
     root-hints: "{root_hints_path}"
+    auto-trust-anchor-file: "/var/lib/unbound/root.key"
 
     identity: "{dns_identity}"
     version: "{dns_version}"
@@ -179,7 +182,7 @@ server:
     harden-dnssec-stripped: yes
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
-    module-config: "iterator"
+    module-config: "validator iterator"
 
     #zone localhost
     local-zone: "localhost." static
@@ -191,9 +194,14 @@ server:
     local-data: "127.in-addr.arpa. 10800 IN NS localhost."
     local-data: "127.in-addr.arpa. 10800 IN SOA localhost. nobody.invalid. 2 3600 1200 604800 10800"
     local-data: "1.0.0.127.in-addr.arpa. 10800 IN PTR localhost."
+"""
 
-    include: /etc/unbound/unbound-block-domains.conf
+        # ═══ Conditional blocklist includes ═══
+        if enable_blocklist:
+            config += "\n    include: /etc/unbound/unbound-block-domains.conf\n"
+            config += "\n"
 
+        config += f"""
 #forward-zone:
 #    name: "."
 #    forward-addr: 8.8.8.8
@@ -204,7 +212,11 @@ remote-control:
     control-interface: {control_interface}
     control-port: {control_port}
     control-use-cert: "no"
+"""
 
+        # ═══ Conditional anablock include ═══
+        if enable_blocklist:
+            config += """
 server:
     include: /etc/unbound/anablock.conf
 """

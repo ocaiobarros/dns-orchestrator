@@ -119,8 +119,9 @@ ${aclIpv6Lines}
     directory: "/etc/unbound"
     logfile: ""
     use-syslog: no
-    pidfile: "/var/run/unbound.pid"
+    pidfile: "/var/run/${inst.name}.pid"
     root-hints: "${config.rootHintsPath}"
+    auto-trust-anchor-file: "/var/lib/unbound/root.key"
 
     identity: "${config.dnsIdentity || config.hostname}"
     version: "${config.dnsVersion}"
@@ -130,7 +131,7 @@ ${aclIpv6Lines}
     harden-dnssec-stripped: yes
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
-    module-config: "iterator"
+    module-config: "validator iterator"
 
     #zone localhost
     local-zone: "localhost." static
@@ -142,9 +143,9 @@ ${aclIpv6Lines}
     local-data: "127.in-addr.arpa. 10800 IN NS localhost."
     local-data: "127.in-addr.arpa. 10800 IN SOA localhost. nobody.invalid. 2 3600 1200 604800 10800"
     local-data: "1.0.0.127.in-addr.arpa. 10800 IN PTR localhost."
-
+${config.enableBlocklist ? `
     include: /etc/unbound/unbound-block-domains.conf
-
+` : ''}
 #forward-zone:
 #    name: "."
 #    forward-addr: 8.8.8.8
@@ -155,10 +156,10 @@ remote-control:
     control-interface: ${inst.controlInterface}
     control-port: ${inst.controlPort}
     control-use-cert: "no"
-
+${config.enableBlocklist ? `
 server:
     include: /etc/unbound/anablock.conf
-`;
+` : ''}`;
 }
 
 // ═══ BLOCKLIST ═══
