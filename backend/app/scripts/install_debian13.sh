@@ -19,18 +19,29 @@ warn() { echo -e "  ${YELLOW}⚠${NC} $1"; }
 fail() { echo -e "  ${RED}✗${NC} $1"; }
 info() { echo -e "  ${BLUE}ℹ${NC} $1"; }
 
-# ── Auto-detect repo root ──
+# ── Auto-detect source root (supports reinstall/upgrade) ──
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Script lives in backend/app/scripts/ — repo root is 3 levels up
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+# Script usually lives in backend/app/scripts/ — source root is 3 levels up
+REPO_ROOT_GUESS="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+SOURCE_ROOT=""
 
-# Validate we found the right place
-if [[ ! -f "${REPO_ROOT}/backend/requirements.txt" ]] || [[ ! -f "${REPO_ROOT}/backend/app/main.py" ]]; then
-    echo -e "${RED}ERROR: Cannot locate repository root.${NC}"
-    echo "  Expected backend/requirements.txt at: ${REPO_ROOT}"
-    echo "  Run this script from the repository, or ensure it's in backend/app/scripts/"
-    exit 1
-fi
+detect_source_root() {
+    local candidates=(
+        "${REPO_ROOT_GUESS}"
+        "$(pwd)"
+        "/opt/dns-control"
+    )
+
+    local candidate
+    for candidate in "${candidates[@]}"; do
+        if [[ -f "${candidate}/backend/requirements.txt" ]] && [[ -f "${candidate}/backend/app/main.py" ]]; then
+            SOURCE_ROOT="${candidate}"
+            return 0
+        fi
+    done
+
+    return 1
+}
 
 # ── Configuration ──
 INSTALL_DIR="/opt/dns-control"
@@ -42,6 +53,37 @@ ENV_DIR="/etc/dns-control"
 ENV_FILE="${ENV_DIR}/env"
 LOG_DIR="/var/log/dns-control"
 INSTALL_LOG="${LOG_DIR}/install.log"
+LOCK_FILE="/var/lock/dns-control-install.lock"
+
+UPGRADE_STAGING_DIR="${INSTALL_DIR}/.upgrade-staging"
+BACKEND_STAGING_DIR="${UPGRADE_STAGING_DIR}/backend"
+PREVIOUS_BACKEND_DIR=""
+BACKEND_SWAPPED=false
+ROLLBACK_PERFORMED=false
+
+cleanup_upgrade_artifacts() {
+    rm -rf "${UPGRADE_STAGING_DIR}" 2>/dev/null || true
+}
+
+rollback_backend_if_needed() {
+    if [[ "${BACKEND_SWAPPED}" == "true" ]] && [[ -n "${PREVIOUS_BACKEND_DIR}" ]] && [[ -d "${PREVIOUS_BACKEND_DIR}" ]]; then
+        warn "Falha detectada — iniciando rollback automático do backend"
+        rm -rf "${INSTALL_DIR}/backend" 2>/dev/null || true
+        mv "${PREVIOUS_BACKEND_DIR}" "${INSTALL_DIR}/backend"
+        systemctl daemon-reload 2>/dev/null || true
+        systemctl restart dns-control-api 2>/dev/null || true
+        ROLLBACK_PERFORMED=true
+        BACKEND_SWAPPED=false
+    fi
+    cleanup_upgrade_artifacts
+}
+
+on_error() {
+    local line="$1"
+    local cmd="$2"
+    fail "Erro inesperado na linha ${line}: ${cmd}"
+    rollback_backend_if_needed
+}
 
 TOTAL_STEPS=10
 ERRORS=0
@@ -53,7 +95,6 @@ echo "  DNS Control v2.1 — Debian 13 Installer"
 echo "  Zero-Config · Auto-Detect · Self-Verify"
 echo "============================================"
 echo ""
-echo "  Repo root:    ${REPO_ROOT}"
 echo "  Install dir:  ${INSTALL_DIR}"
 echo "  Data dir:     ${DATA_DIR}"
 echo ""
@@ -64,6 +105,25 @@ if [[ "$(id -u)" -ne 0 ]]; then
     echo "  Usage: sudo bash ${BASH_SOURCE[0]}"
     exit 1
 fi
+
+if ! detect_source_root; then
+    echo -e "${RED}ERROR: Cannot locate source repository root with backend/requirements.txt.${NC}"
+    echo "  Checked candidates: ${REPO_ROOT_GUESS}, $(pwd), /opt/dns-control"
+    echo "  Re-run from a full source checkout containing backend/."
+    exit 1
+fi
+
+echo "  Source root:  ${SOURCE_ROOT}"
+echo ""
+
+mkdir -p /var/lock
+exec 9>"${LOCK_FILE}"
+if ! flock -n 9; then
+    echo -e "${RED}ERROR: Another install/upgrade is already running.${NC}"
+    exit 1
+fi
+
+trap 'on_error "${LINENO}" "${BASH_COMMAND}"' ERR
 
 # ── Pre-flight checks ──
 echo "[0/${TOTAL_STEPS}] Pre-flight checks..."
@@ -127,27 +187,37 @@ mkdir -p "/etc/unbound"
 ok "Directories created"
 
 # ═══ Step 4: Copy application files ═══
-echo "[4/${TOTAL_STEPS}] Copying application files..."
+echo "[4/${TOTAL_STEPS}] Staging application files..."
 
-# Copy backend
-if [[ -d "${REPO_ROOT}/backend" ]]; then
-    # Use rsync if available, else cp
-    if command -v rsync &>/dev/null; then
-        rsync -a --delete "${REPO_ROOT}/backend/" "${INSTALL_DIR}/backend/"
-    else
-        rm -rf "${INSTALL_DIR}/backend"
-        cp -r "${REPO_ROOT}/backend" "${INSTALL_DIR}/"
-    fi
-    ok "Backend files copied"
-else
-    fail "Backend directory not found at ${REPO_ROOT}/backend"
+if [[ ! -d "${SOURCE_ROOT}/backend" ]]; then
+    fail "Backend source directory not found at ${SOURCE_ROOT}/backend"
     ERRORS=$((ERRORS+1))
+    exit 1
+fi
+
+cleanup_upgrade_artifacts
+mkdir -p "${UPGRADE_STAGING_DIR}"
+
+# Copy backend to staging first (never delete active backend before staging is valid)
+if command -v rsync &>/dev/null; then
+    rsync -a --delete "${SOURCE_ROOT}/backend/" "${BACKEND_STAGING_DIR}/"
+else
+    mkdir -p "${BACKEND_STAGING_DIR}"
+    cp -a "${SOURCE_ROOT}/backend/." "${BACKEND_STAGING_DIR}/"
+fi
+
+if [[ -f "${BACKEND_STAGING_DIR}/requirements.txt" ]] && [[ -f "${BACKEND_STAGING_DIR}/app/main.py" ]]; then
+    ok "Backend files staged"
+else
+    fail "Staged backend is incomplete (missing requirements.txt or app/main.py)"
+    ERRORS=$((ERRORS+1))
+    exit 1
 fi
 
 # Copy frontend dist if exists
-if [[ -d "${REPO_ROOT}/dist" ]]; then
+if [[ -d "${SOURCE_ROOT}/dist" ]]; then
     mkdir -p "${INSTALL_DIR}/dist"
-    cp -r "${REPO_ROOT}/dist/"* "${INSTALL_DIR}/dist/"
+    cp -a "${SOURCE_ROOT}/dist/." "${INSTALL_DIR}/dist/"
     ok "Frontend build copied"
 else
     warn "Frontend dist/ not found — build with 'npm run build' first"
@@ -155,29 +225,27 @@ else
 fi
 
 # Copy deploy configs
-if [[ -d "${REPO_ROOT}/deploy" ]]; then
-    cp -r "${REPO_ROOT}/deploy" "${INSTALL_DIR}/"
+if [[ -d "${SOURCE_ROOT}/deploy" ]]; then
+    rm -rf "${INSTALL_DIR}/deploy"
+    cp -a "${SOURCE_ROOT}/deploy" "${INSTALL_DIR}/"
     ok "Deploy configs copied"
 fi
 
 # ═══ Step 5: Python virtualenv ═══
 echo "[5/${TOTAL_STEPS}] Setting up Python environment..."
-python3 -m venv "${VENV_DIR}" 2>>"${INSTALL_LOG}"
-"${VENV_DIR}/bin/pip" install --upgrade pip wheel -q 2>>"${INSTALL_LOG}"
-"${VENV_DIR}/bin/pip" install -r "${INSTALL_DIR}/backend/requirements.txt" -q 2>>"${INSTALL_LOG}"
+STAGING_VENV_DIR="${BACKEND_STAGING_DIR}/venv"
+python3 -m venv --clear "${STAGING_VENV_DIR}" 2>>"${INSTALL_LOG}"
+"${STAGING_VENV_DIR}/bin/pip" install --upgrade pip wheel -q 2>>"${INSTALL_LOG}"
+"${STAGING_VENV_DIR}/bin/pip" install -r "${BACKEND_STAGING_DIR}/requirements.txt" -q 2>>"${INSTALL_LOG}"
 ok "Python dependencies installed"
 
 # Verify critical imports
-if "${VENV_DIR}/bin/python" -c "from app.main import app; print('ok')" 2>/dev/null; then
+if (cd "${BACKEND_STAGING_DIR}" && "${STAGING_VENV_DIR}/bin/python" -c "from app.main import app; print('ok')" 2>/dev/null); then
     ok "FastAPI application loads correctly"
 else
-    # Try from backend dir
-    if (cd "${INSTALL_DIR}/backend" && "${VENV_DIR}/bin/python" -c "from app.main import app; print('ok')" 2>/dev/null); then
-        ok "FastAPI application loads correctly"
-    else
-        fail "FastAPI application failed to load — check requirements"
-        ERRORS=$((ERRORS+1))
-    fi
+    fail "FastAPI application failed to load from staged backend — aborting before swap"
+    ERRORS=$((ERRORS+1))
+    exit 1
 fi
 
 # ═══ Step 6: Environment configuration ═══
@@ -222,14 +290,26 @@ else
 fi
 
 # ═══ Step 7: Initialize database ═══
-echo "[7/${TOTAL_STEPS}] Initializing database..."
+echo "[7/${TOTAL_STEPS}] Activating backend and initializing database..."
 set -a; source "${ENV_FILE}"; set +a
 
-cd "${INSTALL_DIR}/backend"
-if "${VENV_DIR}/bin/python" -c "
+# Atomic backend swap (only after staged backend is fully validated)
+if [[ -d "${INSTALL_DIR}/backend" ]]; then
+    PREVIOUS_BACKEND_DIR="${INSTALL_DIR}/backend.previous.$(date +%s)"
+    mv "${INSTALL_DIR}/backend" "${PREVIOUS_BACKEND_DIR}"
+    BACKEND_SWAPPED=true
+    ok "Previous backend moved to ${PREVIOUS_BACKEND_DIR}"
+fi
+
+mv "${BACKEND_STAGING_DIR}" "${INSTALL_DIR}/backend"
+BACKEND_SWAPPED=true
+VENV_DIR="${INSTALL_DIR}/backend/venv"
+ok "Staged backend activated"
+
+if (cd "${INSTALL_DIR}/backend" && "${VENV_DIR}/bin/python" -c "
 from app.core.database import init_db
 init_db()
-" 2>>"${INSTALL_LOG}"; then
+" 2>>"${INSTALL_LOG}"); then
     ok "Database initialized at ${DB_PATH}"
 else
     fail "Database initialization failed"
@@ -450,26 +530,49 @@ else
 fi
 
 # Check 7: Login works
-LOGIN_RESULT=$(curl -sf -X POST http://127.0.0.1:8000/api/auth/login \
+LOGIN_CHECK_FILE="/tmp/dns-control-login-check.json"
+LOGIN_HTTP_CODE=$(curl -sS -o "${LOGIN_CHECK_FILE}" -w "%{http_code}" -X POST http://127.0.0.1:8000/api/auth/login \
     -H "Content-Type: application/json" \
-    -d "{\"username\":\"admin\",\"password\":\"${DNS_CONTROL_INITIAL_ADMIN_PASSWORD:-admin}\"}" 2>/dev/null || echo "FAIL")
-if echo "${LOGIN_RESULT}" | grep -q "token\|access_token\|session"; then
-    ok "Admin login functional"
+    -d "{\"username\":\"${DNS_CONTROL_INITIAL_ADMIN_USERNAME:-admin}\",\"password\":\"${DNS_CONTROL_INITIAL_ADMIN_PASSWORD:-admin}\"}" 2>>"${INSTALL_LOG}" || echo "000")
+
+if [[ "${LOGIN_HTTP_CODE}" == "200" ]]; then
+    ok "Admin login functional (credentials validated)"
     CHECKS_PASS=$((CHECKS_PASS+1))
+elif [[ "${LOGIN_HTTP_CODE}" == "401" ]]; then
+    warn "Login endpoint funcional, mas credenciais em ENV não bateram (senha pode ter sido alterada)"
+    CHECKS_PASS=$((CHECKS_PASS+1))
+elif [[ "${LOGIN_HTTP_CODE}" == "500" ]]; then
+    fail "Login endpoint retornou 500"
+    CHECKS_FAIL=$((CHECKS_FAIL+1))
 else
-    warn "Admin login test inconclusive"
+    fail "Login endpoint inválido (HTTP ${LOGIN_HTTP_CODE})"
+    CHECKS_FAIL=$((CHECKS_FAIL+1))
+fi
+rm -f "${LOGIN_CHECK_FILE}" 2>/dev/null || true
+
+if [[ ${ERRORS} -gt 0 ]] || [[ ${CHECKS_FAIL} -gt 0 ]]; then
+    warn "Falha em validações críticas — executando rollback automático"
+    rollback_backend_if_needed
 fi
 
 # ═══ Summary ═══
 echo ""
 echo "============================================"
 if [[ ${ERRORS} -eq 0 ]] && [[ ${CHECKS_FAIL} -eq 0 ]]; then
+    if [[ -n "${PREVIOUS_BACKEND_DIR}" ]] && [[ -d "${PREVIOUS_BACKEND_DIR}" ]]; then
+        rm -rf "${PREVIOUS_BACKEND_DIR}" 2>/dev/null || true
+    fi
+    cleanup_upgrade_artifacts
+    trap - ERR
     echo -e "  ${GREEN}DNS Control v2.1 — Installation Complete${NC}"
     echo -e "  ${GREEN}All checks passed (${CHECKS_PASS}/${CHECKS_PASS})${NC}"
 else
     echo -e "  ${YELLOW}DNS Control v2.1 — Installation Complete (with issues)${NC}"
     echo -e "  Checks: ${GREEN}${CHECKS_PASS} passed${NC}, ${RED}${CHECKS_FAIL} failed${NC}"
     echo -e "  Errors: ${ERRORS} · Warnings: ${WARNINGS}"
+fi
+if [[ "${ROLLBACK_PERFORMED}" == "true" ]]; then
+    echo -e "  ${YELLOW}Rollback automático aplicado para preservar serviço/autenticação.${NC}"
 fi
 echo "============================================"
 echo ""
