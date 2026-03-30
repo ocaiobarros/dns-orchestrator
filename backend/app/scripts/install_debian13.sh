@@ -449,6 +449,19 @@ BACKEND_SWAPPED=true
 VENV_DIR="${INSTALL_DIR}/backend/venv"
 ok "Staged backend activated"
 
+# ── Validate venv binaries exist and are executable ──
+if [[ ! -x "${VENV_DIR}/bin/python" ]]; then
+    fail "venv python missing or not executable: ${VENV_DIR}/bin/python"
+    ERRORS=$((ERRORS+1))
+    exit 1
+fi
+if [[ ! -x "${VENV_DIR}/bin/uvicorn" ]]; then
+    fail "venv uvicorn missing or not executable: ${VENV_DIR}/bin/uvicorn"
+    ERRORS=$((ERRORS+1))
+    exit 1
+fi
+ok "venv binaries validated (python + uvicorn)"
+
 if (cd "${INSTALL_DIR}/backend" && "${VENV_DIR}/bin/python" -c "
 from app.core.database import init_db
 init_db()
