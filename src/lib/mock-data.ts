@@ -107,7 +107,7 @@ export const mockReachability: ReachabilityResult[] = [
 
 export function generateDnsMetrics(hours: number = 24): DnsMetrics[] {
   const metrics: DnsMetrics[] = [];
-  const instances = ['unbound01', 'unbound02'];
+  const instances = ['unbound01', 'unbound02', 'unbound03', 'unbound04'];
   const now = Date.now();
 
   for (let i = hours * 60; i >= 0; i -= 5) {
