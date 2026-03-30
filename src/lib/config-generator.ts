@@ -190,18 +190,48 @@ export function generateBlocklistConf(): string {
 
 export function generateAnablockSyncScript(config: WizardConfig): string {
   const apiUrl = buildAnablockApiUrl(config);
+  const baseUrl = (config.blocklistApiUrl || 'https://api.anablock.net.br').replace(/\/$/, '');
+  const validateBlock = config.blocklistValidateBeforeReload ? `
+# Validar configuração antes de aplicar
+UNBOUND_TEST="/tmp/unbound-anablock-test-\$\$.conf"
+(
+    cat /etc/unbound/unbound.conf
+    echo "server:"
+    cat "\$CONF_TMP"
+) > "\$UNBOUND_TEST"
+
+if ! unbound-checkconf "\$UNBOUND_TEST" >/dev/null 2>&1; then
+    logger -t anablock-sync "ERRO: configuração AnaBlock inválida — rejeitada"
+    rm -f "\$CONF_TMP" "\$UNBOUND_TEST"
+    exit 1
+fi
+rm -f "\$UNBOUND_TEST"` : '# Validação desativada pelo operador';
+
+  const reloadBlock = config.blocklistAutoReload ? `
+# Recarregar todas as instâncias Unbound
+for UNIT in /usr/lib/systemd/system/unbound*.service; do
+    UNIT_NAME=$(basename "\$UNIT" .service)
+    if systemctl is-active --quiet "\$UNIT_NAME" 2>/dev/null; then
+        unbound-control -c /etc/unbound/"\$UNIT_NAME".conf reload 2>/dev/null || true
+        logger -t anablock-sync "AnaBlock: reload \$UNIT_NAME OK"
+    fi
+done` : '# Reload automático desativado pelo operador — reload manual necessário';
+
   return `#!/bin/bash
 # DNS Control — AnaBlock Sync Script
 # Sincroniza domínios bloqueados judicialmente via API AnaBlock
 # Modo: ${config.blocklistMode}
+# Validação: ${config.blocklistValidateBeforeReload ? 'ativa' : 'desativada'}
+# Auto-reload: ${config.blocklistAutoReload ? 'ativo' : 'desativado'}
 # Gerado automaticamente — não editar manualmente
 
 set -euo pipefail
 
 APIURL="${apiUrl}"
 CONF="/etc/unbound/anablock.conf"
+CONF_BAK="/etc/unbound/anablock.conf.bak"
 CONF_TMP="/tmp/anablock-sync-\$\$.conf"
-VERSION_URL="${(config.blocklistApiUrl || 'https://api.anablock.net.br').replace(/\/$/, '')}/api/version"
+VERSION_URL="${baseUrl}/api/version"
 VERSION_FILE="/var/lib/dns-control/anablock-version"
 
 # Verificar se houve atualização na base
@@ -221,35 +251,18 @@ if ! curl -sf --max-time 30 "\$APIURL" -o "\$CONF_TMP"; then
     rm -f "\$CONF_TMP"
     exit 1
 fi
+${validateBlock}
 
-# Validar configuração antes de aplicar
-UNBOUND_TEST="/tmp/unbound-anablock-test-\$\$.conf"
-(
-    cat /etc/unbound/unbound.conf
-    echo "server:"
-    cat "\$CONF_TMP"
-) > "\$UNBOUND_TEST"
-
-if ! unbound-checkconf "\$UNBOUND_TEST" >/dev/null 2>&1; then
-    logger -t anablock-sync "ERRO: configuração AnaBlock inválida — rejeitada"
-    rm -f "\$CONF_TMP" "\$UNBOUND_TEST"
-    exit 1
+# Backup da versão anterior
+if [ -f "\$CONF" ]; then
+    cp "\$CONF" "\$CONF_BAK"
 fi
-rm -f "\$UNBOUND_TEST"
 
-# Aplicar: mover atomicamente e recarregar
+# Aplicar: mover atomicamente
 mv "\$CONF_TMP" "\$CONF"
 chown root:unbound "\$CONF"
 chmod 0644 "\$CONF"
-
-# Recarregar todas as instâncias Unbound
-for UNIT in /etc/systemd/system/unbound*.service; do
-    UNIT_NAME=$(basename "\$UNIT" .service)
-    if systemctl is-active --quiet "\$UNIT_NAME" 2>/dev/null; then
-        unbound-control -c /etc/unbound/"\$UNIT_NAME".conf reload 2>/dev/null || true
-        logger -t anablock-sync "AnaBlock: reload \$UNIT_NAME OK"
-    fi
-done
+${reloadBlock}
 
 # Salvar versão
 echo "\$REMOTE_VERSION" > "\$VERSION_FILE"
