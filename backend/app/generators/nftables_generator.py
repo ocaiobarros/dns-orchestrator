@@ -267,20 +267,18 @@ def _generate_modular(
               f"add rule ip nat {topchain} numgen inc mod {len(backends)} vmap {{ {vmap_entries} }}")
         ruleid += 1
 
-    # Nth balancing fallback (IPv6)
+    # Nth balancing fallback (IPv6): numgen inc mod N vmap for uniform distribution
     if enable_ipv6:
         ruleid = 7301
         ipv6_backends = [b for b in backends if b.get("ipv6")]
         for proto in ("tcp", "udp"):
-            rand_num = len(ipv6_backends)
-            for backend in ipv6_backends:
-                name = backend["name"]
-                topchain = f"ipv6_{proto}_dns"
-                subchain = f"ipv6_dns_{proto}_{name}"
-                _file(f"/etc/nftables.d/{ruleid}-nat-rule-nth-{subchain}.nft",
-                      f"add rule ip6 nat {topchain} numgen inc mod {rand_num} 0 counter jump {subchain}")
-                ruleid += 1
-                rand_num -= 1
+            topchain = f"ipv6_{proto}_dns"
+            vmap_entries = ", ".join(
+                f"{i} : jump ipv6_dns_{proto}_{b['name']}" for i, b in enumerate(ipv6_backends)
+            )
+            _file(f"/etc/nftables.d/{ruleid}-nat-rule-nth-ipv6_{proto}_dns.nft",
+                  f"add rule ip6 nat {topchain} numgen inc mod {len(ipv6_backends)} vmap {{ {vmap_entries} }}")
+            ruleid += 1
 
     return files
 
