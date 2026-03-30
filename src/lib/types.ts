@@ -684,6 +684,10 @@ export const DEFAULT_CONFIG: WizardConfig = {
   blocklistAutoSync: true,
   blocklistValidateBeforeReload: true,
   blocklistAutoReload: true,
+  enableIpBlocking: false,
+  ipBlockingApiUrl: 'https://api.anablock.net.br',
+  ipBlockingSyncIntervalHours: 6,
+  ipBlockingAutoSync: true,
   dnsIdentity: '',
   dnsVersion: '1.0',
 
