@@ -1,6 +1,7 @@
 [Unit]
-Description=DNS Control API
+Description=DNS Control API v2.1
 After=network.target
+Documentation=https://github.com/ocaiobarros/dns-orchestrator
 
 [Service]
 Type=simple
@@ -11,6 +12,16 @@ EnvironmentFile=/etc/dns-control/env
 ExecStart=/opt/dns-control/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dns-control-api
+
+# Security hardening
+NoNewPrivileges=false
+ProtectSystem=strict
+ReadWritePaths=/var/lib/dns-control /var/log/dns-control /etc/unbound /etc/nftables.d /etc/network /etc/systemd/system
+ProtectHome=true
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
