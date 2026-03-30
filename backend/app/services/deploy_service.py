@@ -267,24 +267,36 @@ def _execute_deploy_locked(
                         validation_errors.append(err)
                         _add_validation_result("unbound", "fail", f["path"], None, err["stderr"], err["remediation"])
 
+        # ═══ Create empty placeholders for missing include targets in staging ═══
+        # Blocklist/anablock files may not be generated but are referenced via include:
+        # Create empty stubs so unbound-checkconf doesn't fail on missing files.
+        for f in files:
+            if "/unbound/" in f["path"] and f["path"].endswith(".conf"):
+                matches = include_pattern.findall(f.get("content", ""))
+                for inc_path in matches:
+                    if "*" in inc_path:
+                        continue
+                    staged_inc = os.path.join(staging_dir, inc_path.lstrip("/"))
+                    if not os.path.exists(staged_inc):
+                        os.makedirs(os.path.dirname(staged_inc), exist_ok=True)
+                        with open(staged_inc, "w") as ph:
+                            ph.write("# placeholder for validation\n")
+                        logger.debug(f"Created placeholder for include: {inc_path}")
+
         # Validate unbound configs (skip blocklist placeholder files)
         for f in files:
             if "/unbound/" in f["path"] and f["path"].endswith(".conf") and "block" not in f["path"] and "anablock" not in f["path"]:
                 staged_path = os.path.join(staging_dir, f["path"].lstrip("/"))
                 if os.path.exists(staged_path):
                     # ═══ Rewrite absolute include paths to staging paths for checkconf ═══
-                    # unbound-checkconf resolves include: as absolute paths, but files
-                    # are in staging dir. Create a temp copy with rewritten paths.
                     original_content = open(staged_path).read()
 
-                    # Rewrite ALL /etc/unbound/ include paths to staging equivalents
                     def _rewrite_inc(match):
                         inc = match.group(1)
                         return match.group(0).replace(inc, os.path.join(staging_dir, inc.lstrip("/")))
 
                     rewritten = include_pattern.sub(_rewrite_inc, original_content)
 
-                    # Always use a .checkconf copy to avoid mutating the staged file
                     checkconf_path = staged_path + ".checkconf"
                     with open(checkconf_path, "w") as tmp:
                         tmp.write(rewritten)
