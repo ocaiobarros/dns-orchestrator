@@ -983,9 +983,13 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
     });
   });
 
-  // Blocklist
+  // Blocklist — generate both include targets when enabled
   if (config.enableBlocklist) {
     files.push({ path: '/etc/unbound/unbound-block-domains.conf', content: generateBlocklistConf() });
+    files.push({ path: '/etc/unbound/anablock.conf', content: `# DNS Control — Anablock integration
+# This file is included by Unbound when blocklist is enabled.
+# Populate with RPZ or local-zone directives as needed.
+` });
   }
 
   // nftables (modular)

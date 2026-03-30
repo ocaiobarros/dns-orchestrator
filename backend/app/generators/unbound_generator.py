@@ -228,4 +228,26 @@ server:
             "owner": "root:unbound",
         })
 
+    # ═══ Generate blocklist placeholder files when enabled ═══
+    if enable_blocklist:
+        files.append({
+            "path": "/etc/unbound/unbound-block-domains.conf",
+            "content": """# DNS Control — Domain Blocklist
+# Add domains to block here, one per line:
+# local-zone: "example-ads.com" always_refuse
+# local-zone: "tracking.example.com" always_refuse
+""",
+            "permissions": "0644",
+            "owner": "root:unbound",
+        })
+        files.append({
+            "path": "/etc/unbound/anablock.conf",
+            "content": """# DNS Control — Anablock integration
+# This file is included by Unbound when blocklist is enabled.
+# Populate with RPZ or local-zone directives as needed.
+""",
+            "permissions": "0644",
+            "owner": "root:unbound",
+        })
+
     return files
