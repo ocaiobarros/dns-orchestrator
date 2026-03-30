@@ -475,11 +475,13 @@ fi
 # ═══ Step 8: Permissions & Sudoers ═══
 echo "[8/${TOTAL_STEPS}] Setting permissions and sudoers..."
 
-chown -R "${SERVICE_USER}:${SERVICE_USER}" "${DATA_DIR}"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "${DATA_DIR}"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${LOG_DIR}"
+chown "${SERVICE_USER}:${SERVICE_USER}" "/etc/nftables.d" 2>/dev/null || true
 chmod 600 "${DB_PATH}" 2>/dev/null || true
 chmod 700 "${ENV_DIR}"
+ok "Permissions set on install dir, data dir, and log dir"
 
 # Create comprehensive sudoers policy
 cat > /etc/sudoers.d/dns-control << 'SUDOEOF'
