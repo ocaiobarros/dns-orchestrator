@@ -11,3 +11,5 @@ httpx==0.28.1
 aiosqlite==0.20.0
 alembic==1.14.0
 apscheduler==3.10.4
+anyio>=4.8.0
+starlette>=0.41.0
