@@ -544,8 +544,53 @@ export default function Wizard() {
             </div>
             <div className="flex gap-4 flex-wrap">
               <Toggle checked={config.enableDetailedLogs} onChange={v => set('enableDetailedLogs', v)} label="Logs detalhados" />
-              <Toggle checked={config.enableBlocklist} onChange={v => set('enableBlocklist', v)} label="Blocklist" />
+              <Toggle checked={config.enableBlocklist} onChange={v => set('enableBlocklist', v)} label="AnaBlock (Blocklist Judicial)" />
             </div>
+
+            {config.enableBlocklist && (
+              <div className="p-4 rounded bg-secondary/50 border border-border space-y-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Shield size={14} />
+                  Configuração AnaBlock
+                </div>
+                <InfoBox>
+                  O AnaBlock sincroniza automaticamente domínios bloqueados por ordem judicial (Anatel/Judiciário).
+                  Um timer systemd será gerado para manter o arquivo atualizado.
+                </InfoBox>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FieldGroup label="URL da API AnaBlock" hint="Endpoint base da API">
+                    <Input value={config.blocklistApiUrl} onChange={v => set('blocklistApiUrl', v)} placeholder="https://api.anablock.net.br" />
+                  </FieldGroup>
+                  <FieldGroup label="Intervalo de sincronização (horas)">
+                    <Input type="number" value={config.blocklistSyncIntervalHours} onChange={v => set('blocklistSyncIntervalHours', parseInt(v) || 1)} />
+                  </FieldGroup>
+                </div>
+                <FieldGroup label="Modo de bloqueio">
+                  <Select value={config.blocklistMode} onChange={v => set('blocklistMode', v)} options={[
+                    { value: 'nxdomain', label: 'NXDOMAIN — domínio não existe (padrão)' },
+                    { value: 'cname', label: 'CNAME — redireciona para domínio (ex: anatel.gov.br)' },
+                    { value: 'redirect-ip', label: 'Redirect IP — redireciona para IP específico' },
+                  ]} />
+                </FieldGroup>
+                {config.blocklistMode === 'cname' && (
+                  <FieldGroup label="Domínio de redirecionamento CNAME" hint="Ex: anatel.gov.br">
+                    <Input value={config.blocklistCnameTarget} onChange={v => set('blocklistCnameTarget', v)} placeholder="anatel.gov.br" />
+                  </FieldGroup>
+                )}
+                {config.blocklistMode === 'redirect-ip' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FieldGroup label="IPv4 de redirecionamento *" hint="Ex: 10.255.128.2">
+                      <Input value={config.blocklistRedirectIpv4} onChange={v => set('blocklistRedirectIpv4', v)} placeholder="10.255.128.2" />
+                    </FieldGroup>
+                    {config.enableIpv6 && (
+                      <FieldGroup label="IPv6 de redirecionamento" hint="Ex: 2001:db8::1">
+                        <Input value={config.blocklistRedirectIpv6} onChange={v => set('blocklistRedirectIpv6', v)} placeholder="2001:db8::1" />
+                      </FieldGroup>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="border-t border-border pt-4">
               <div className="flex items-center justify-between mb-3">
