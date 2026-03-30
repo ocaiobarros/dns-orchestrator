@@ -8,622 +8,647 @@ O Wizard de Configuração do DNS Control é composto por **11 etapas** sequenci
 
 ---
 
-## Pré-requisitos Obrigatórios
+## Cenário de Referência
 
-Antes de abrir o Wizard, garanta que o host atende a estes requisitos:
+| Camada | IP | Descrição |
+|---|---|---|
+| Host privado | `172.29.22.6/30` | Interface física `ens192` |
+| Gateway | `172.29.22.5` | Gateway do host |
+| VIP de Serviço 1 | `45.160.10.1` | IP DNS que clientes configuram |
+| VIP de Serviço 2 | `45.160.10.2` | IP DNS secundário |
+| VIP Interceptado 1 | `4.2.2.5` | DNS Level3 sequestrado |
+| VIP Interceptado 2 | `4.2.2.6` | DNS Level3 sequestrado |
+| Listener 01 | `100.127.255.1` | unbound01 bind (loopback) |
+| Listener 02 | `100.127.255.2` | unbound02 bind (loopback) |
+| Listener 03 | `100.127.255.3` | unbound03 bind (loopback) |
+| Listener 04 | `100.127.255.4` | unbound04 bind (loopback) |
+| Egress 01 | `191.243.128.205` | IP público de saída (borda) |
+| Egress 02 | `191.243.128.206` | IP público de saída (borda) |
+| Egress 03 | `191.243.128.207` | IP público de saída (borda) |
+| Egress 04 | `191.243.128.208` | IP público de saída (borda) |
+| Control 01 | `127.0.0.11:8953` | unbound-control |
+| Control 02 | `127.0.0.12:8953` | unbound-control |
+| Control 03 | `127.0.0.13:8953` | unbound-control |
+| Control 04 | `127.0.0.14:8953` | unbound-control |
 
-### 1. Sistema Operacional
-- **Debian 13 (Trixie)** com systemd
-- Modelo de rede: `ifupdown` (`/etc/network/interfaces`)
+---
 
-### 2. Pacotes Instalados
-```bash
-apt-get install -y \
-  unbound nftables iproute2 curl wget dnsutils bind9-utils \
-  net-tools tcpdump rsync vim psmisc htop frr
+## ETAPA 1 — Topologia do Host
+
+**Tela no wizard:** `Topologia do Host`
+
+### Campos e valores:
+
+| Campo na UI | Valor exemplo | Obrigatório | Formato/Validação | Arquivo gerado | Diretiva |
+|---|---|---|---|---|---|
+| **Hostname** | `dns-rec-01.example.com` | ✅ | FQDN (regex hostname) | metadados | — |
+| **Organização** | `MinhaOperadora` | ✅ | Texto livre | metadados | — |
+| **Interface principal** | `ens192` | ✅ | `^[a-zA-Z][a-zA-Z0-9\-_\.]*$` | `/etc/network/interfaces` | `iface ens192 inet static` |
+| **Endereço IPv4 (CIDR)** | `172.29.22.6/30` | ✅ | `x.x.x.x/y` (0-32) | `/etc/network/interfaces` | `address 172.29.22.6/30` |
+| **Gateway IPv4** | `172.29.22.5` | ✅ | IPv4 válido | `/etc/network/interfaces` | `gateway 172.29.22.5` |
+| **VLAN Tag** | _(vazio)_ | ❌ | Numérico | Sufixo interface | — |
+| **Habilitar IPv6** | `Desligado` | ❌ | Toggle | Habilita campos IPv6 | — |
+| **Host atrás de firewall** | `Ligado` | ❌ | Toggle | Flag informativo | — |
+| **Projeto** | `DNS Recursivo Produção` | ❌ | Texto livre | metadados | — |
+| **Timezone** | `America/Sao_Paulo` | ❌ | — | metadados | — |
+
+### Arquivo gerado — `/etc/network/interfaces`:
+
+```ini
+source /etc/network/interfaces.d/*
+
+auto lo
+iface lo inet loopback
+
+allow-hotplug ens192
+iface ens192 inet static
+    address 172.29.22.6/30
+    gateway 172.29.22.5
+    dns-nameservers 8.8.8.8
+
+post-up /etc/network/post-up.sh
 ```
 
-### 3. Serviço Unbound Legado Desativado
-```bash
-systemctl disable unbound
-systemctl stop unbound
-systemctl mask unbound.service
+> ⚠️ **CRÍTICO:** Sem o campo `gateway`, o host perde a rota default após reboot e fica inacessível remotamente.
+
+---
+
+## ETAPA 2 — Publicação DNS
+
+**Tela no wizard:** `Publicação DNS`
+
+### Modos disponíveis:
+
+| Modo | Descrição | Usar quando |
+|---|---|---|
+| DNS Recursivo Interno | Sem VIP público | LAN only |
+| DNS Público Controlado | IPs públicos diretos | Sem NAT |
+| **VIP Roteado via Borda / Firewall** | VIPs no firewall, tráfego via rota/NAT | **ISP — recomendado** |
+| VIP Local em Dummy Interface | VIPs em dummy local | Host autônomo |
+| Anycast com FRR / OSPF | VIPs via OSPF | Multi-site |
+
+**Valor recomendado:** `VIP Roteado via Borda / Firewall`
+
+**Impacto:** Determina que VIPs de serviço são alcançados via DNAT no nftables. O `post-up.sh` NÃO materializa VIPs localmente (ficam no equipamento de borda).
+
+---
+
+## ETAPA 3 — VIPs de Serviço
+
+**Tela no wizard:** `VIPs de Serviço`
+
+Clique **"Adicionar VIP"** duas vezes.
+
+### VIP 1:
+
+| Campo | Valor | Validação |
+|---|---|---|
+| **IPv4** | `45.160.10.1` | IPv4 válido, único entre VIPs, ≠ listeners, ≠ IP do host |
+| **Porta** | `53` | 1-65535 |
+| **Protocolo** | `UDP + TCP` | — |
+| **Descrição** | `DNS Público Primário` | Texto livre |
+| **Modo de Entrega** | `Entregue via Firewall` | — |
+| **Health check ativo** | `Ligado` | — |
+| **Domínio de probe** | `google.com` | FQDN |
+| **Intervalo (s)** | `30` | Numérico |
+
+### VIP 2:
+
+| Campo | Valor |
+|---|---|
+| **IPv4** | `45.160.10.2` |
+| **Descrição** | `DNS Público Secundário` |
+| _(demais idênticos ao VIP 1)_ | |
+
+### nftables gerado:
+
+```nft
+# /etc/nftables.d/5100-nat-define-anyaddr-ipv4.nft
+define DNS_ANYCAST_IPV4 = {
+    45.160.10.1,
+    45.160.10.2,
+    4.2.2.5,
+    4.2.2.6
+}
+
+# PREROUTING captura
+add rule ip nat PREROUTING ip daddr $DNS_ANYCAST_IPV4 udp dport 53 counter packets 0 bytes 0 jump ipv4_udp_dns
+add rule ip nat PREROUTING ip daddr $DNS_ANYCAST_IPV4 tcp dport 53 counter packets 0 bytes 0 jump ipv4_tcp_dns
 ```
 
-### 4. Root Hints Baixado
-```bash
-wget -4 -O /etc/unbound/named.cache https://www.internic.net/domain/named.root
+### Regras de validação:
+- ❌ VIP IPv4 duplicado entre VIPs
+- ❌ VIP = listener de instância
+- ❌ VIP = IP privado do host (`172.29.22.6`)
+
+---
+
+## ETAPA 4 — Instâncias Resolver
+
+**Tela no wizard:** `Instâncias Resolver`
+
+### Configurações globais (topo da tela):
+
+| Campo | Valor | Diretiva Unbound |
+|---|---|---|
+| **Threads por instância** | `4` | `num-threads: 4` |
+| **Msg Cache** | `512m` | `msg-cache-size: 512m` |
+| **RRset Cache** | `32m` | `rrset-cache-size: 32m` |
+| **Max TTL** | `7200` | `cache-max-ttl: 7200` |
+| **Root Hints** | `/etc/unbound/named.cache` | `root-hints: /etc/unbound/named.cache` |
+| **DNS Identity** | `67-DNS` | `identity: "67-DNS"` |
+| **Logs detalhados** | Desligado | `log-queries: no` |
+| **Blocklist** | Desligado | Omite includes blocklist |
+
+### Instâncias (clique "Adicionar instância" até ter 4):
+
+| # | Nome * | Listener Privado * | Listener Público | Control Interface * | Control Port |
+|---|---|---|---|---|---|
+| 1 | `unbound01` | `100.127.255.1` | _(vazio)_ | `127.0.0.11` | `8953` |
+| 2 | `unbound02` | `100.127.255.2` | _(vazio)_ | `127.0.0.12` | `8953` |
+| 3 | `unbound03` | `100.127.255.3` | _(vazio)_ | `127.0.0.13` | `8953` |
+| 4 | `unbound04` | `100.127.255.4` | _(vazio)_ | `127.0.0.14` | `8953` |
+
+> **Listener Público** fica vazio em modo border-routed — as instâncias não fazem bind em IPs públicos.
+
+### Arquivo gerado — `/etc/unbound/unbound01.conf` (exemplo):
+
+```yaml
+# DNS Control — Unbound instance: unbound01
+server:
+    pidfile: "/var/run/unbound01.pid"
+    interface: 100.127.255.1
+    port: 53
+    num-threads: 4
+    msg-cache-size: 512m
+    rrset-cache-size: 32m
+    cache-max-ttl: 7200
+    root-hints: /etc/unbound/named.cache
+    identity: "67-DNS"
+
+    # outgoing-interface: 191.243.128.205  # SUPPRESSED — border-routed mode
+    # Egress identity enforced at border device
+
+    access-control: 127.0.0.0/8 allow
+
+remote-control:
+    control-enable: yes
+    control-interface: 127.0.0.11
+    control-port: 8953
 ```
 
-### 5. Diretórios Criados
+> ⚠️ Cada instância tem `pidfile: "/var/run/{name}.pid"` único. Sem isso, conflito de PID impede inicialização simultânea.
+
+### Arquivo gerado — `/etc/network/post-up.sh` (materialização):
+
 ```bash
-mkdir -p /etc/nftables.d
-mkdir -p /var/lib/dns-control/{backups,staging,deployments}
-mkdir -p /var/log/dns-control
+#!/bin/bash
+# DNS Control — Network Post-Up (IP materialization)
+
+# ── Listener IPs (bind) ──
+ip addr add 100.127.255.1/32 dev lo 2>/dev/null || true
+ip addr add 100.127.255.2/32 dev lo 2>/dev/null || true
+ip addr add 100.127.255.3/32 dev lo 2>/dev/null || true
+ip addr add 100.127.255.4/32 dev lo 2>/dev/null || true
+
+# ── Egress IPs (border-routed — comentados) ──
+# ip addr add 191.243.128.205/32 dev lo 2>/dev/null || true
+# ip addr add 191.243.128.206/32 dev lo 2>/dev/null || true
+# ip addr add 191.243.128.207/32 dev lo 2>/dev/null || true
+# ip addr add 191.243.128.208/32 dev lo 2>/dev/null || true
 ```
 
-### 6. Informações Necessárias (levante antes)
-```bash
-ip -br addr          # Interface, IP e máscara
-ip route             # Gateway padrão
-ip -6 route          # Gateway IPv6 (se aplicável)
-hostname -f          # FQDN do host
+### Relação bind ↔ post-up.sh:
+
+O IP `100.127.255.1` (listener de `unbound01`) DEVE existir na interface `lo` ANTES de `systemctl restart unbound01`. O `post-up.sh` garante isso via `ip addr add X/32 dev lo 2>/dev/null || true`.
+
+Se o IP não existir no kernel → `unbound-checkconf` **passa** (validação sintática), mas `systemctl restart unbound01` **falha** com:
+```
+bind: Cannot assign requested address
 ```
 
+### Regras de validação:
+- ❌ Nome de instância duplicado
+- ❌ Listener IP duplicado entre instâncias
+- ❌ Control Interface:Port duplicado
+- ❌ Listener IP = IP privado do host
+- ❌ Listener IP = VIP de serviço
+
 ---
 
-## Etapa 1 — Topologia do Host
+## ETAPA 5 — VIP Interception / DNS Seizure
 
-**Objetivo:** Identificar o host na rede — IP privado, interface física, gateway.
+**Tela no wizard:** `VIP Interception`
 
-| Campo | Obrigatório | Formato | Exemplo Produção | Descrição |
-|-------|:-----------:|---------|-------------------|-----------|
-| **Hostname** | ✅ | FQDN alfanumérico | `dnscontrol` | Nome do servidor. Aceita pontos e hífens. |
-| **Organização** | ✅ | Texto livre | `MinhaOperadora` | Nome da empresa/operadora. |
-| **Interface principal** | ✅ | Nome de NIC Linux | `ens192` | Obtido via `ip -br addr`. Exemplos: `ens192`, `enp6s18`, `eth0`. |
-| **VLAN Tag** | ❌ | Número inteiro | *(vazio)* | Preencha apenas se a interface usa 802.1Q (ex: `100` gera `ens192.100`). |
-| **Endereço IPv4 (CIDR)** | ✅ | `x.x.x.x/y` | `172.29.22.6/30` | IP privado do host **com máscara**. Obtido via `ip -br addr`. |
-| **Gateway IPv4** | ✅ | `x.x.x.x` | `172.29.22.5` | Obtido via `ip route` (campo `default via`). |
-| **Habilitar dual-stack IPv6** | ❌ | Toggle | `Habilitado` | Ative se o host possui conectividade IPv6. |
-| **Endereço IPv6 (CIDR)** | Se IPv6 | `xxxx::x/y` | `2804:4AFC:8844::2/64` | IP IPv6 com prefixo. |
-| **Gateway IPv6** | Se IPv6 | `xxxx::x` | `2804:4AFC:8844::1` | Gateway IPv6 padrão. |
-| **Host atrás de firewall** | ❌ | Toggle | `Habilitado` | Marque se os IPs públicos são gerenciados por um equipamento de borda. |
-| **Projeto** | ❌ | Texto livre | `DNS Recursivo Produção` | Nome descritivo do projeto. |
-| **Timezone** | ❌ | Timezone IANA | `America/Sao_Paulo` | Já vem preenchido. |
+> Esta é a **feature principal** do DNS Control. Permite "sequestrar" DNS públicos conhecidos para resolução local.
 
-### Validações da Etapa 1
-- ❌ Hostname vazio → erro
-- ❌ Organização vazia → erro
-- ❌ Interface com caracteres inválidos → erro
-- ❌ IPv4 sem máscara CIDR (`172.29.22.6` sem `/30`) → erro
-- ❌ Gateway IPv4 inválido → erro
-- ❌ IPv6 habilitado sem endereço/gateway → erro
+Clique **"Adicionar VIP Interceptado"** duas vezes.
 
-### Verificação
-```bash
-# Confirme que os valores conferem com o host real:
-ip -br addr show ens192
-# Esperado: ens192  UP  172.29.22.6/30 ...
-ip route show default
-# Esperado: default via 172.29.22.5 dev ens192
+### VIP Interceptado 1:
+
+| Campo | Valor | Descrição |
+|---|---|---|
+| **VIP IP** | `4.2.2.5` | DNS público a ser sequestrado |
+| **Tipo** | `Intercepted (sequestrado)` | Não é IP próprio |
+| **Modo de Captura** | `DNAT (nftables)` | Via PREROUTING |
+| **Backend Instance** | `unbound01` | Seletor — escolher instância |
+| **Backend Target IP** | `100.127.255.1` | Auto-preenchido ao selecionar backend |
+| **Protocolo** | `UDP + TCP` | — |
+| **Latência esperada** | `1` | < 1ms = local |
+| **Validação** | `Strict` | Todas as camadas verificadas |
+| **Descrição** | `DNS Level3 sequestrado` | — |
+
+### VIP Interceptado 2:
+
+| Campo | Valor |
+|---|---|
+| **VIP IP** | `4.2.2.6` |
+| **Backend Instance** | `unbound02` |
+| **Backend Target IP** | `100.127.255.2` |
+
+### Impacto no nftables:
+
+IPs interceptados são **mesclados** com VIPs de serviço em `DNS_ANYCAST_IPV4`:
+```nft
+define DNS_ANYCAST_IPV4 = {
+    45.160.10.1,
+    45.160.10.2,
+    4.2.2.5,      ← interceptado
+    4.2.2.6       ← interceptado
+}
 ```
 
----
+Resultado: todo tráfego DNS (porta 53) para **qualquer** desses 4 IPs é capturado via PREROUTING e distribuído entre as 4 instâncias via sticky + nth.
 
-## Etapa 2 — Publicação DNS (Deployment Mode)
-
-**Objetivo:** Definir como os clientes alcançam o serviço DNS.
-
-| Modo | Quando Usar | Requer nftables | Requer FRR |
-|------|-------------|:---------------:|:----------:|
-| **DNS Recursivo Interno** | Resolvers acessíveis apenas na rede interna | Não | Não |
-| **DNS Público Controlado** | IPs públicos atribuídos diretamente ao host | Não | Não |
-| **Pseudo-Anycast com VIP Local** | VIP em dummy/loopback, DNAT via nftables | ✅ | Não |
-| **VIP Roteado via Borda** ⭐ | VIP no firewall/router, host recebe via rota/NAT. **Recomendado para ISP** | ✅ | Não |
-| **VIP Local em Dummy Interface** | VIP diretamente no host | ✅ | Não |
-| **Anycast com FRR / OSPF** | VIPs anunciados via OSPF | ✅ | ✅ |
-
-**Para o cenário de produção do tutorial:** Selecione **"VIP Roteado via Borda / Firewall"**.
-
-### Validações
-- ⚠️ Modos FRR com roteamento estático → warning
-- Nenhum campo de preenchimento nesta etapa — apenas seleção.
+### Validações:
+- ❌ VIP interceptado duplicado
+- ❌ VIP IP vazio
+- ❌ Backend instance vazio
+- ❌ Backend target IP inválido
 
 ---
 
-## Etapa 3 — VIPs de Serviço
+## ETAPA 6 — Egress Público
 
-**Objetivo:** Configurar os IPs que os clientes usarão como servidor DNS.
+**Tela no wizard:** `Egress Público`
 
-Para cada VIP, preencha:
+### Modo de Entrega do Egress:
 
-| Campo | Obrigatório | Formato | Exemplo | Descrição |
-|-------|:-----------:|---------|---------|-----------|
-| **IPv4** | ✅ | `x.x.x.x` | `4.2.2.5` | IP público do serviço DNS. |
-| **IPv6** | Se ativado | `xxxx::x` | `2620:119:35::35` | IPv6 do VIP. Ative "VIPs IPv6" primeiro. |
-| **Porta** | ❌ | Número | `53` | Sempre 53, exceto cenários especiais. |
-| **Protocolo** | ❌ | Seleção | `UDP + TCP` | Padrão: ambos. |
-| **Descrição** | ❌ | Texto | `DNS Público Level3` | Identificação humana. |
-| **Modo de Entrega** | ❌ | Seleção | `Entregue via Firewall` | Como o tráfego chega ao host. |
-| **Health Check** | ❌ | Toggle + config | `google.com / 30s` | Probe DNS ativo para monitorar o VIP. |
+| Opção | Selecionar | Descrição |
+|---|---|---|
+| Host-Owned (IP Local) | ❌ | IP configurado localmente, Unbound emite `outgoing-interface` |
+| **Border-Routed (Lógico)** | ✅ | IP NÃO configurado no host, sem `outgoing-interface` |
 
-### Exemplo Produção — 2 VIPs
+> **Border-Routed:** O Unbound usa o IP padrão do host para queries recursivas. A identidade pública é imposta pelo equipamento de borda (SNAT/policy routing).
 
-| # | IPv4 | IPv6 | Descrição | Entrega |
-|---|------|------|-----------|---------|
-| VIP 1 | `4.2.2.5` | `2620:119:35::35` | DNS Público Level3 #1 | Entregue via Firewall |
-| VIP 2 | `4.2.2.6` | `2620:119:53::53` | DNS Público Level3 #2 | Entregue via Firewall |
+### Modo de Alocação:
 
-### Validações
-- ❌ IPv4 do VIP vazio ou inválido → erro
-- ❌ VIP duplicado → erro
-- ❌ VIP igual ao listener de alguma instância → erro
-- ❌ VIP igual ao IP privado do host → erro
+| Opção | Selecionar |
+|---|---|
+| **Fixo por Instância** | ✅ |
+| Pool Compartilhado | ❌ |
+| Randomizado | ❌ |
+
+### Egress por instância:
+
+| Instância | Egress IPv4 |
+|---|---|
+| `unbound01` | `191.243.128.205` |
+| `unbound02` | `191.243.128.206` |
+| `unbound03` | `191.243.128.207` |
+| `unbound04` | `191.243.128.208` |
+
+### Validações:
+- ❌ Egress IPv4 vazio
+- ❌ Egress = Listener (devem ser distintos)
+- ❌ Egress = VIP de serviço
+- ❌ Egress duplicado com identidade fixa
+- ⚠️ Warning informativo: "border-routed: IP não estará no host"
 
 ---
 
-## Etapa 4 — Instâncias Resolver
+## ETAPA 7 — Mapeamento VIP → Instância
 
-**Objetivo:** Criar os processos Unbound individuais com listeners e controle independentes.
+**Tela no wizard:** `Mapeamento VIP→Instância`
 
-### Parâmetros Globais (aplicados a todas as instâncias)
+### Política de distribuição:
 
-| Campo | Default | Exemplo | Descrição |
-|-------|---------|---------|-----------|
-| **Threads por instância** | `4` | `4` | Número de threads do Unbound. |
-| **Msg Cache** | `512m` | `512m` | Cache de mensagens. |
-| **RRset Cache** | `32m` | `32m` | Cache de RRsets. |
-| **Max TTL** | `7200` | `7200` | TTL máximo em cache (segundos). |
-| **Root Hints** | `/etc/unbound/named.cache` | `/etc/unbound/named.cache` | Caminho do arquivo root hints. |
-| **DNS Identity** | *(vazio)* | `67-DNS` | Valor do campo `identity` no Unbound. |
-| **Logs detalhados** | Off | Off | `verbosity: 2` se ativado. |
-| **Blocklist** | Off | Off | Habilita `unbound-block-domains.conf`. |
+| Opção | Selecionar | Descrição |
+|---|---|---|
+| Mapeamento Fixo | ❌ | 1 VIP → 1 instância |
+| Round Robin | ❌ | numgen sequencial |
+| **Sticky por Origem (Recomendado)** | ✅ | Memoriza origem + nth fallback |
+| Nth Balancing | ❌ | Apenas nth |
+| Ativo/Passivo | ❌ | 1 primário + standby |
 
-### Campos por Instância
+### Sticky Timeout:
 
-| Campo | Obrigatório | Formato | Descrição |
-|-------|:-----------:|---------|-----------|
-| **Nome** | ✅ | Alfanumérico | Identificador único (ex: `unbound01`). Define o nome do systemd unit e do `.conf`. |
-| **Listener Privado** | ✅ | IPv4 | IP interno no loopback onde o Unbound escuta (ex: `100.127.255.101`). |
-| **Listener Público** | ❌ | IPv4 | IP público da instância para identidade (ex: `191.243.128.205`). |
-| **Listener IPv6** | Se IPv6 | IPv6 | IP IPv6 de escuta (ex: `2001:db8:ffff:ffff:100:127:255:101`). |
-| **Control Interface** | ✅ | IPv4 (127.x) | IP local para `unbound-control` (ex: `127.0.0.11`). |
-| **Control Port** | ❌ | 1024-65535 | Porta do remote-control. Default: `8953`. |
+| Campo | Valor |
+|---|---|
+| **Sticky Timeout (minutos)** | `20` |
 
-### Exemplo Produção — 4 Instâncias
+> Armazenado como 1200 segundos. Cada query renova o timer. Após 20 min sem tráfego, afinidade expira.
 
-| # | Nome | Listener Privado | Listener IPv6 | Control Interface | Control Port |
-|---|------|-----------------|---------------|-------------------|:------------:|
-| 1 | `unbound01` | `100.127.255.101` | `2001:db8:ffff:ffff:100:127:255:101` | `127.0.0.11` | `8953` |
-| 2 | `unbound02` | `100.127.255.102` | `2001:db8:ffff:ffff:100:127:255:102` | `127.0.0.12` | `8953` |
-| 3 | `unbound03` | `100.127.255.103` | `2001:db8:ffff:ffff:100:127:255:103` | `127.0.0.13` | `8953` |
-| 4 | `unbound04` | `100.127.255.104` | `2001:db8:ffff:ffff:100:127:255:104` | `127.0.0.14` | `8953` |
+### nftables gerado:
 
-**Clique em "+ Adicionar instância" para criar as instâncias 3 e 4** (o wizard inicia com 2).
+```nft
+# Sets dinâmicos (afinidade por origem)
+add set ip nat ipv4_users_unbound01 { type ipv4_addr; counter; size 8192; flags dynamic, timeout; timeout 20m; }
+add set ip nat ipv4_users_unbound02 { ... timeout 20m; }
+add set ip nat ipv4_users_unbound03 { ... timeout 20m; }
+add set ip nat ipv4_users_unbound04 { ... timeout 20m; }
 
-### Validações
-- ❌ Nome vazio ou duplicado → erro
-- ❌ Listener IPv4 vazio ou inválido → erro
-- ❌ Listener duplicado entre instâncias → erro
-- ❌ Control Interface vazia ou inválida → erro
-- ❌ Control Interface:Port duplicada → erro
-- ❌ Listener igual ao IP privado do host → erro
-- ❌ Threads < 1 ou > 64 → erro
-- ❌ Max TTL < Min TTL → erro
+# Regras memorized-source (clientes conhecidos)
+add rule ip nat ipv4_udp_dns ip saddr @ipv4_users_unbound01 counter jump ipv4_dns_udp_unbound01
+add rule ip nat ipv4_udp_dns ip saddr @ipv4_users_unbound02 counter jump ipv4_dns_udp_unbound02
+add rule ip nat ipv4_udp_dns ip saddr @ipv4_users_unbound03 counter jump ipv4_dns_udp_unbound03
+add rule ip nat ipv4_udp_dns ip saddr @ipv4_users_unbound04 counter jump ipv4_dns_udp_unbound04
 
-### Verificação Pós-Deploy
-```bash
-# Confirme que os IPs estão no loopback:
-ip addr show lo | grep 100.127.255
-
-# Confirme que o Unbound aceita o config:
-unbound-checkconf /etc/unbound/unbound01.conf
-unbound-checkconf /etc/unbound/unbound02.conf
-unbound-checkconf /etc/unbound/unbound03.conf
-unbound-checkconf /etc/unbound/unbound04.conf
+# Fallback nth (novos clientes — mod decrescente)
+add rule ip nat ipv4_udp_dns numgen inc mod 4 0 counter jump ipv4_dns_udp_unbound01
+add rule ip nat ipv4_udp_dns numgen inc mod 3 0 counter jump ipv4_dns_udp_unbound02
+add rule ip nat ipv4_udp_dns numgen inc mod 2 0 counter jump ipv4_dns_udp_unbound03
+add rule ip nat ipv4_udp_dns numgen inc mod 1 0 counter jump ipv4_dns_udp_unbound04
 ```
 
----
-
-## Etapa 5 — VIP Interception / DNS Seizure
-
-**Objetivo:** Configurar o sequestro de IPs DNS públicos conhecidos para resolução local.
-
-> **Esta é a feature principal do DNS Control.** Clientes pensam usar o DNS público (ex: 4.2.2.5), mas a resolução é feita localmente.
-
-| Campo | Obrigatório | Formato | Exemplo | Descrição |
-|-------|:-----------:|---------|---------|-----------|
-| **VIP IP** | ✅ | IPv4 | `4.2.2.5` | IP DNS público a ser sequestrado. |
-| **Tipo** | ❌ | Seleção | `Intercepted (sequestrado)` | `Intercepted` = IP que não é seu. `Owned` = IP que você controla. |
-| **Modo de Captura** | ❌ | Seleção | `DNAT (nftables)` | Como o tráfego é capturado. **DNAT é o recomendado.** |
-| **Backend Instance** | ✅ | Seleção | `unbound01` | Instância que atende **como ponto de entrada**. No modo sticky+nth, TODOS os backends atendem. |
-| **Backend Target IP** | ✅ | IPv4 | `100.127.255.101` | Preenchido automaticamente ao selecionar a instância. |
-| **Protocolo** | ❌ | Seleção | `UDP + TCP` | Sempre UDP + TCP para DNS. |
-| **Latência esperada** | ❌ | Número (ms) | `1` | Threshold para health check. < 1ms = resolução local. |
-| **Validação** | ❌ | Seleção | `Strict` | `Strict` = valida DNAT + rota + binding + DNS probe. |
-| **Descrição** | ❌ | Texto | `Level3 DNS sequestrado` | Identificação humana. |
-
-### Exemplo Produção — 2 VIPs Interceptados
-
-> **Nota importante:** No modo **sticky-source + nth balancing** (Etapa 7), os VIPs interceptados são **balanceados entre TODOS os backends automaticamente**. O campo "Backend Instance" é apenas referência — não cria mapeamento 1:1.
-
-| # | VIP IP | Tipo | Captura | Backend Ref | Descrição |
-|---|--------|------|---------|-------------|-----------|
-| 1 | `4.2.2.5` | Intercepted | DNAT | `unbound01` | Level3 DNS #1 sequestrado |
-| 2 | `4.2.2.6` | Intercepted | DNAT | `unbound02` | Level3 DNS #2 sequestrado |
-
-### Validações
-- ❌ VIP IP vazio ou inválido → erro
-- ❌ VIP duplicado → erro
-- ❌ Backend Instance não selecionado → erro
-- ❌ Backend Target IP vazio ou inválido → erro
+### Fluxo de decisão:
+1. Query de `10.0.0.1` chega no VIP (`45.160.10.1`)
+2. PREROUTING → `jump ipv4_udp_dns`
+3. Dispatch chain verifica: `10.0.0.1` está em algum `ipv4_users_*`?
+   - **Sim** → jump para backend memorizado
+   - **Não** → `numgen inc mod 4` seleciona backend
+4. Backend chain (ex: `ipv4_dns_udp_unbound02`):
+   - `add @ipv4_users_unbound02 { ip saddr }` — memoriza
+   - `set update ip saddr timeout 0s @ipv4_users_unbound02` — renova timer
+   - `dnat to 100.127.255.2:53` — redireciona
 
 ---
 
-## Etapa 6 — Egress Público
+## ETAPA 8 — Roteamento
 
-**Objetivo:** Definir o IP público de saída (outgoing-interface) que os servidores autoritativos verão.
+**Tela no wizard:** `Roteamento`
 
-### Modo de Entrega do Egress
+| Modo | Selecionar |
+|---|---|
+| **Sem Roteamento Dinâmico** | ✅ |
+| FRR / OSPF | ❌ (usar se multi-site) |
 
-| Modo | Quando Usar | outgoing-interface no Unbound | IP no host |
-|------|-------------|:-----------------------------:|:----------:|
-| **Host-Owned (IP Local)** ⭐ | IP público pertence ao host e está no loopback | ✅ Emitido | ✅ Presente |
-| **Border-Routed (Lógico)** | IP público é imposto pelo equipamento de borda via SNAT | ❌ Suprimido | ❌ Ausente |
-
-**Para o cenário do tutorial:** Selecione **"Host-Owned (IP Local)"** — os IPs de egress `45.232.215.20-23` estão materializados no loopback.
-
-### Modo de Alocação
-
-| Modo | Descrição |
-|------|-----------|
-| **Fixo por Instância** ⭐ | Cada instância usa 1 IP público fixo. Melhor rastreabilidade. |
-| **Pool Compartilhado** | Todas compartilham um pool de IPs. |
-| **Randomizado** | IP selecionado aleatoriamente por query. |
-
-### Campos por Instância (modo Fixo)
-
-| Campo | Obrigatório | Formato | Exemplo | Descrição |
-|-------|:-----------:|---------|---------|-----------|
-| **Egress IPv4** | ✅ | `x.x.x.x` | `45.232.215.20` | IP público de saída dedicado. |
-| **Egress IPv6** | Se IPv6 | `xxxx::x` | `2804:4afc:8888::1000` | IPv6 de saída. |
-
-### Exemplo Produção — 4 Instâncias
-
-| Instância | Egress IPv4 | Egress IPv6 |
-|-----------|-------------|-------------|
-| `unbound01` | `45.232.215.20` | `2804:4afc:8888::1000` |
-| `unbound02` | `45.232.215.21` | `2804:4afc:8888::1001` |
-| `unbound03` | `45.232.215.22` | `2804:4afc:8888::1002` |
-| `unbound04` | `45.232.215.23` | `2804:4afc:8888::1003` |
-
-### Validações
-- ❌ Egress IPv4 vazio ou inválido → erro
-- ❌ Egress duplicado com identidade fixa → erro
-- ❌ Egress igual ao listener da mesma instância → erro
-- ❌ Egress igual a um VIP de serviço → erro
-- ⚠️ Border-routed: "IP público não estará no host" → warning (esperado)
-
-### Verificação Pós-Deploy (Host-Owned)
-```bash
-# Confirme os IPs de egress no loopback:
-ip addr show lo | grep 45.232.215
-
-# Teste que o Unbound sai pelo IP correto:
-# (De outro host, capture o source IP das queries recursivas)
-```
+VIPs alcançáveis via rotas estáticas configuradas nos roteadores de borda.
 
 ---
 
-## Etapa 7 — Mapeamento VIP → Instância
+## ETAPA 9 — Segurança
 
-**Objetivo:** Definir como o tráfego DNS é distribuído entre as instâncias.
+**Tela no wizard:** `Segurança`
 
-| Política | Descrição | nftables gerado |
-|----------|-----------|:---------------:|
-| **Mapeamento Fixo** | Cada VIP associado a 1 instância específica | Chains 1:1 |
-| **Round Robin (numgen)** | Distribuição sequencial | `numgen inc mod N` |
-| **Sticky por Origem** ⭐ | Memoriza resolver por IP do cliente. Fallback nth. **Recomendado.** | Sets dinâmicos + nth |
-| **Nth Balancing** | Balanceamento nth com decrementação progressiva | `numgen inc mod N` decrescente |
-| **Ativo / Passivo** | Primário + standby | Requer ≥ 2 instâncias |
-
-**Para o cenário do tutorial:** Selecione **"Sticky por Origem (Recomendado)"**.
-
-### Campo Adicional — Sticky Timeout
-
-| Campo | Default | Exemplo | Descrição |
-|-------|---------|---------|-----------|
-| **Sticky Timeout (minutos)** | `20` | `20` | Tempo que a associação cliente→backend é mantida no set nftables. |
-
-O tutorial original usa `timeout 20m` nos sets — mantenha 20 minutos.
-
-### Validações
-- ⚠️ Mapeamento fixo sem associações → warning
-- ❌ Ativo/passivo com < 2 instâncias → erro
-
-### Como Funciona na Prática
-1. Cliente novo envia query DNS para VIP `4.2.2.5`
-2. nftables PREROUTING captura o pacote
-3. Verifica se IP do cliente já está em algum set `ipv4_users_unboundXX`
-4. Se sim → encaminha para o backend memorizado (sticky)
-5. Se não → `numgen inc mod N` distribui para o próximo backend (nth)
-6. Backend adiciona IP do cliente ao seu set com timeout de 20min
-
----
-
-## Etapa 8 — Roteamento
-
-**Objetivo:** Definir como os VIPs são alcançáveis na rede.
-
-| Modo | Quando Usar |
-|------|-------------|
-| **Sem Roteamento Dinâmico** ⭐ | VIPs alcançáveis via rotas estáticas no router de borda. |
-| **FRR / OSPF** | VIPs anunciados via OSPF. Requer FRR instalado. |
-| **FRR / BGP** | Em desenvolvimento. |
-
-**Para o cenário do tutorial:** Selecione **"Sem Roteamento Dinâmico"** — as rotas estáticas são feitas no equipamento de borda.
-
-### Se usar FRR / OSPF
-
-| Campo | Obrigatório | Formato | Exemplo |
-|-------|:-----------:|---------|---------|
-| **Router ID** | ✅ | IPv4 | `172.29.22.6` |
-| **Área OSPF** | ✅ | IPv4 (dotted) | `0.0.0.0` |
-| **Custo OSPF** | ❌ | 1-65535 | `10` |
-| **Network Type** | ❌ | Seleção | `Point-to-Point` |
-| **Redistribuir connected** | ❌ | Toggle | Habilitado |
-| **Interfaces OSPF** | ✅ | Lista | `lo`, `ens192` |
-
----
-
-## Etapa 9 — Segurança
-
-**Objetivo:** Controlar quem pode consultar o DNS e configurar o painel de gerenciamento.
-
-### ACLs IPv4 (access-control do Unbound)
-
-Adicione redes que podem fazer queries. Cada entrada possui:
-
-| Campo | Formato | Exemplo | Descrição |
-|-------|---------|---------|-----------|
-| **Rede** | CIDR | `0.0.0.0/0` | Bloco de rede permitido/bloqueado. |
-| **Ação** | Seleção | `allow` | `allow`, `refuse`, `deny`, `allow_snoop`. |
-| **Label** | Texto | `Todos (open resolver)` | Identificação. |
-
-### Exemplo Produção — Open Resolver (ISP)
+### ACLs IPv4 obrigatórias:
 
 | # | Rede | Ação | Label |
-|---|------|------|-------|
-| 1 | `127.0.0.0/8` | allow | Loopback |
-| 2 | `0.0.0.0/0` | allow | Todos (open resolver) |
+|---|---|---|---|
+| 1 | `127.0.0.0/8` | `allow` | Loopback |
+| 2 | `100.127.0.0/16` | `allow` | Listeners internos |
+| 3 | `172.16.0.0/12` | `allow` | Rede privada |
+| 4 | `10.0.0.0/8` | `allow` | Clientes internos |
+| 5 | `0.0.0.0/0` | `allow` | Todos _(se open resolver)_ |
 
-> ⚠️ **Open Resolver:** Se incluir `0.0.0.0/0` com `allow`, o wizard exige **confirmação explícita** ("Confirmo que quero operar como open resolver"). ISPs que sequestram DNS público geralmente operam como open resolver para seus clientes.
+> Se usar `0.0.0.0/0 allow`, deve marcar **"Confirmo que quero operar como open resolver"**.
 
-### Proteção
+### Painel de Controle:
 
-| Toggle | Descrição | Recomendação |
-|--------|-----------|:------------:|
-| **Rate limiting via nftables** | Limita UDP 100/s e TCP 50/s | ✅ Ativar |
-| **Anti-amplificação DNS** | Proteção contra ataques de amplificação | ✅ Ativar |
-| **Recursão permitida** | Permite queries recursivas | ✅ Ativar |
+| Campo | Valor |
+|---|---|
+| **Usuário Admin** | `admin` |
+| **Senha Inicial** | _(vazio — definida no primeiro acesso)_ |
+| **Bind do Painel** | `127.0.0.1 (local only)` |
+| **Porta** | `8443` |
 
-### Painel de Controle
+### Proteção (toggles):
 
-| Campo | Default | Exemplo | Descrição |
-|-------|---------|---------|-----------|
-| **Usuário Admin** | `admin` | `admin` | Usuário do painel DNS Control. |
-| **Senha Inicial** | *(vazio)* | *(definir)* | Senha inicial — será alterada no primeiro login. |
-| **Bind do Painel** | `127.0.0.1` | `127.0.0.1` | `127.0.0.1` = local only (Nginx faz proxy). `0.0.0.0` = todas as interfaces. |
-| **Porta** | `8443` | `8443` | Porta da API do painel. |
-| **IPs Permitidos** | *(vazio)* | *(opcional)* | Restrição adicional de IPs para acesso ao painel. |
-
-### Validações
-- ❌ Nenhuma ACL → erro
-- ❌ CIDR inválido → erro
-- ❌ Open resolver sem confirmação → erro
-- ⚠️ Open resolver → warning
-- ⚠️ ACLs muito amplas (< /8) → warning
-- ⚠️ Painel em 0.0.0.0 sem restrição de IPs → warning
-- ❌ Usuário admin vazio → erro
+| Toggle | Valor |
+|---|---|
+| Rate limiting via nftables | ✅ |
+| Anti-amplificação DNS | ✅ |
+| Recursão permitida | ✅ |
 
 ---
 
-## Etapa 10 — Observabilidade
+## ETAPA 10 — Observabilidade
 
-**Objetivo:** Selecionar métricas e sinais operacionais a serem coletados.
+**Tela no wizard:** `Observabilidade`
 
-Todos os toggles são opcionais e vêm ativados por padrão. **Recomendação: manter todos ativados.**
+Todos os toggles **ligados** (padrão recomendado):
 
-### Métricas de Tráfego
-| Toggle | Descrição |
-|--------|-----------|
-| Métricas por VIP de serviço | Contadores de pacotes/bytes por VIP |
-| Métricas por instância resolver | Queries, cache, latência por instância |
-| Métricas por IP de saída (egress) | Rastreamento de tráfego por IP de egress |
-| Counters nftables | Contadores de pacotes/bytes nas chains nftables |
-
-### Saúde & Status
-| Toggle | Descrição |
-|--------|-----------|
-| Status systemd por instância | Monitora `systemctl status unboundXX` |
-| Health checks ativos | DNS probes periódicos nos VIPs/instâncias |
-
-### Performance DNS
-| Toggle | Descrição |
-|--------|-----------|
-| Latência média de resolução | Avg latency via `unbound-control stats` |
-| Cache hit ratio | Taxa de acerto do cache |
-| Recursion time | Tempo médio/mediana de recursão |
-
-### Eventos
-| Toggle | Descrição |
-|--------|-----------|
-| Eventos operacionais | Log de eventos de deploy, restart, falhas |
-
-Sem validações bloqueantes nesta etapa.
+| Métrica | Ativo |
+|---|---|
+| Métricas por VIP | ✅ |
+| Métricas por instância | ✅ |
+| Métricas por egress | ✅ |
+| Counters nftables | ✅ |
+| Status systemd | ✅ |
+| Health checks ativos | ✅ |
+| Latência de resolução | ✅ |
+| Cache hit ratio | ✅ |
+| Recursion time | ✅ |
+| Eventos operacionais | ✅ |
 
 ---
 
-## Etapa 11 — Revisão & Deploy
+## ETAPA 11 — Revisão & Deploy
 
-**Objetivo:** Auditar os artefatos gerados, executar dry-run e aplicar.
+**Tela no wizard:** `Revisão & Deploy`
 
-### Painel de Resumo
+### Ações disponíveis:
 
-O wizard mostra:
-1. **Sumário de Validação** — erros (bloqueantes) e warnings por etapa
-2. **Topologia Visual** — diagrama das camadas (VIPs → nftables → Instâncias → Egress)
-3. **Arquivos Gerados** — agrupados por categoria:
-   - **Unbound:** `unbound01.conf` ... `unbound04.conf` + blocklist
-   - **Systemd:** `unbound01.service` ... `unbound04.service` + `dns-control-api.service`
-   - **Network:** `interfaces`, `post-up.sh`, `dns-control-lo.conf`
-   - **NFTables:** `nftables.conf` + ~30-50 arquivos modulares em `/etc/nftables.d/`
-   - **Sysctl:** ~20 arquivos em `/etc/sysctl.d/`
-   - **FRR:** `frr.conf` (se OSPF ativado)
+| Botão | Função |
+|---|---|
+| **Testar conectividade** | `GET /api/deploy/state` — verifica API acessível |
+| **Preview arquivos** | Mostra todos os arquivos que serão gerados |
+| **Copiar payload** | Copia JSON do wizard para clipboard |
+| **Dry-Run** | Valida sem aplicar (staging + validações) |
+| **Deploy** | Aplica configuração completa |
 
-### Ações Disponíveis
+### Validações executadas automaticamente (Staging):
 
-| Botão | O que faz |
-|-------|-----------|
-| **Dry Run** | Envia config para o backend, gera artefatos em staging, executa `unbound-checkconf` e `nft -c -f` sem aplicar. |
-| **Aplicar (Deploy)** | Executa o pipeline completo: backup → staging → validação → apply → restart serviços → health checks. |
-| **Exportar JSON** | Baixa a configuração completa como arquivo `.json` para versionamento. |
-| **Ver Arquivos** | Expande a preview de todos os artefatos gerados. |
+| # | Validação | Comando | Bloqueia deploy |
+|---|---|---|---|
+| 1 | Sintaxe Unbound | `unbound-checkconf <staged_file>` | ✅ se falhar |
+| 2 | Sintaxe nftables | `nft -c -f <nftables.validate.conf>` | ✅ se falhar |
+| 3 | Estrutura network | Verificação estática (iface/address/gateway) | ✅ se falhar |
+| 4 | **Sintaxe bash** | `bash -n <post-up.sh>` | ✅ se falhar |
+| 5 | Colisão de IPs | Cruzamento entre todas as camadas | ✅ se colisão |
 
-### Painel de Diagnóstico (se erro)
+### Pipeline de execução:
 
-| Botão | O que faz |
-|-------|-----------|
-| **Testar Conectividade** | `GET /api/deploy/state` — verifica se a API responde. |
-| **Copiar Payload JSON** | Copia o JSON completo para debug manual via `curl`. |
-| **Forçar Dry-Run** | Executa dry-run mesmo com warnings (bypass validação). |
+```
+ 1. Validar modelo ─────────────────── bloqueia se inválido
+ 2. Gerar arquivos ─────────────────── unbound, nftables, network, systemd
+ 3. Gravar em staging ──────────────── /var/lib/dns-control/staging/
+ 4. Validar staging ────────────────── unbound-checkconf + nft -c + bash -n
+ 5. Backup configuração atual ──────── /var/lib/dns-control/backups/
+ 6. Aplicar arquivos ───────────────── staging → produção (sudo install)
+ 7. systemctl daemon-reload
+ 8. sysctl (se aplicável)
+ 9. post-up.sh ←────────────────────── materializa IPs PRIMEIRO
+10. nft -f /etc/nftables.conf ←─────── carrega DNAT depois dos IPs
+11. systemctl restart unbound01..04 ── bind nos IPs já existentes
+12. systemctl restart frr (se OSPF)
+13. Verificação pós-deploy ─────────── dig, ss, systemctl, nft counters
+```
+
+> ⚠️ **Ordem 9→10→11 é INVIOLÁVEL.** Se Unbound iniciar antes do `post-up.sh` → falha de bind. Se nftables carregar antes dos IPs → regras DNAT pendentes.
 
 ---
 
-## Checklist Final — Antes de Clicar "Aplicar"
+## VALIDAÇÃO PÓS-DEPLOY — Checklist Obrigatório
 
-### No Wizard
-- [ ] Etapa 1: Hostname, interface e IP conferem com `ip -br addr`
-- [ ] Etapa 2: Modo de publicação correto para a arquitetura
-- [ ] Etapa 3: VIPs de serviço preenchidos (ex: `4.2.2.5`, `4.2.2.6`)
-- [ ] Etapa 4: 4 instâncias com listeners, controls únicos e sem colisões
-- [ ] Etapa 5: VIPs interceptados configurados com modo DNAT
-- [ ] Etapa 6: Egress IPv4 de cada instância preenchido (ex: `45.232.215.20-23`)
-- [ ] Etapa 7: Sticky por origem selecionado com timeout 20min
-- [ ] Etapa 8: Roteamento estático (ou OSPF se aplicável)
-- [ ] Etapa 9: ACLs corretas + open resolver confirmado (se ISP)
-- [ ] Etapa 10: Observabilidade toda ativada
-- [ ] Etapa 11: Dry-run executado com sucesso
+### 1. IPs materializados no loopback
 
-### No Host (antes do deploy)
-- [ ] `unbound.service` desativado e mascarado
-- [ ] `/etc/unbound/named.cache` baixado
-- [ ] `/etc/nftables.d/` existe
-- [ ] Pacotes `unbound`, `nftables`, `iproute2` instalados
-- [ ] API DNS Control rodando e acessível
-
-### Após o Deploy
 ```bash
-# 1. Verificar IPs no loopback
-ip addr show lo | grep -E '100.127|45.232'
+ip addr show dev lo | grep "100.127.255"
+```
 
-# 2. Verificar Unbound configs
-unbound-checkconf /etc/unbound/unbound01.conf
-unbound-checkconf /etc/unbound/unbound02.conf
-unbound-checkconf /etc/unbound/unbound03.conf
-unbound-checkconf /etc/unbound/unbound04.conf
+Esperado:
+```
+    inet 100.127.255.1/32 scope global lo
+    inet 100.127.255.2/32 scope global lo
+    inet 100.127.255.3/32 scope global lo
+    inet 100.127.255.4/32 scope global lo
+```
 
-# 3. Verificar nftables
-nft -c -f /etc/nftables.conf
+### 2. Instâncias Unbound ativas
 
-# 4. Iniciar serviços
-systemctl daemon-reload
-systemctl start unbound01 unbound02 unbound03 unbound04
-systemctl restart nftables
+```bash
+systemctl status unbound01 unbound02 unbound03 unbound04
+```
 
-# 5. Verificar escuta na porta 53
-ss -lntup | grep ':53'
+Esperado: todas `active (running)`
 
-# 6. Testar DNS nos listeners
-dig @100.127.255.101 google.com A +short
-dig @100.127.255.102 google.com A +short
-dig @100.127.255.103 google.com A +short
-dig @100.127.255.104 google.com A +short
+### 3. Portas DNS abertas (8 linhas)
 
-# 7. Testar DNS nos VIPs (após descomentar no post-up.sh e aplicar)
+```bash
+ss -lntup | grep :53
+```
+
+Esperado (4 instâncias × 2 protocolos = 8 linhas):
+```
+udp  UNCONN  0  0  100.127.255.1:53   *:*  users:(("unbound",pid=...))
+tcp  LISTEN  0  0  100.127.255.1:53   *:*  users:(("unbound",pid=...))
+udp  UNCONN  0  0  100.127.255.2:53   *:*  ...
+tcp  LISTEN  0  0  100.127.255.2:53   *:*  ...
+udp  UNCONN  0  0  100.127.255.3:53   *:*  ...
+tcp  LISTEN  0  0  100.127.255.3:53   *:*  ...
+udp  UNCONN  0  0  100.127.255.4:53   *:*  ...
+tcp  LISTEN  0  0  100.127.255.4:53   *:*  ...
+```
+
+### 4. nftables ruleset carregado
+
+```bash
+nft list ruleset | head -50
+```
+
+Verificar:
+- ✅ `define DNS_ANYCAST_IPV4` com 4 IPs (2 VIPs + 2 interceptados)
+- ✅ Chains `ipv4_udp_dns` e `ipv4_tcp_dns`
+- ✅ Sets `ipv4_users_unbound01..04`
+- ✅ Backend chains com DNAT para `100.127.255.X:53`
+- ✅ Regras memorized-source e nth balancing
+
+### 5. DNS direto por instância
+
+```bash
+dig @100.127.255.1 google.com A +short
+dig @100.127.255.2 google.com A +short
+dig @100.127.255.3 google.com A +short
+dig @100.127.255.4 google.com A +short
+```
+
+Esperado: cada instância retorna IP válido (ex: `142.250.79.46`)
+
+### 6. DNS via VIP de serviço
+
+```bash
+dig @45.160.10.1 google.com A +short
+dig @45.160.10.2 google.com A +short
+```
+
+Esperado: resposta DNS — tráfego capturado por PREROUTING e redirecionado via sticky/nth
+
+### 7. DNS via VIP interceptado
+
+```bash
 dig @4.2.2.5 google.com A +short
 dig @4.2.2.6 google.com A +short
+```
 
-# 8. Verificar counters nftables
-nft list counters
+Esperado: resposta local (latência < 1ms) — prova que o sequestro DNS funciona
+
+### 8. Distribuição entre backends
+
+```bash
+for i in $(seq 1 100); do dig @45.160.10.1 example$i.com A +short > /dev/null 2>&1; done
+nft list chain ip nat ipv4_udp_dns
+```
+
+Verificar: counters distribuídos entre as 4 backend chains
+
+### 9. Teste de resiliência (auto-healing)
+
+```bash
+# Parar uma instância
+systemctl stop unbound03
+
+# Aguardar 35s (3 ciclos de health check × 10s + margem)
+sleep 35
+
+# DNS continua respondendo via VIP
+dig @45.160.10.1 google.com A +short
+
+# Dispatch chains reconstruídas sem unbound03
+nft list chain ip nat ipv4_udp_dns | grep -c "jump"
+# Esperado: 6 (3 memorized + 3 nth — sem unbound03)
+
+# Restaurar instância
+systemctl start unbound03
+
+# Aguardar cooldown (120s) + health checks
+sleep 150
+
+# Verificar reintegração
+nft list chain ip nat ipv4_udp_dns | grep -c "jump"
+# Esperado: 8 (4 memorized + 4 nth — unbound03 de volta)
 ```
 
 ---
 
-## Troubleshooting
+## REGRAS CRÍTICAS — O QUE NUNCA PODE ACONTECER
 
-### Erro: "Hostname é obrigatório"
-**Causa:** Campo hostname vazio na Etapa 1.
-**Solução:** Preencha com o FQDN do servidor (ex: `dnscontrol`).
-
-### Erro: "Endereço IPv4/CIDR inválido"
-**Causa:** IP sem máscara (ex: `172.29.22.6` em vez de `172.29.22.6/30`).
-**Solução:** Sempre inclua a máscara CIDR no endereço.
-
-### Erro: "Listener IPs duplicados"
-**Causa:** Duas instâncias com o mesmo IP de bind.
-**Solução:** Cada instância precisa de um IP de listener único.
-
-### Erro: "VIP conflita com listener da instância"
-**Causa:** VIP de serviço (ex: `4.2.2.5`) é igual ao listener de uma instância.
-**Solução:** VIPs de serviço e listeners devem ser IPs distintos. VIPs são os endereços de entrada; listeners são os IPs internos de bind.
-
-### Erro: "Open resolver requer confirmação explícita"
-**Causa:** ACL `0.0.0.0/0 allow` sem toggle de confirmação.
-**Solução:** Na Etapa 9, marque "Confirmo que quero operar como open resolver".
-
-### Erro: "Deploy bloqueado: N erro(s) de validação"
-**Causa:** Há erros bloqueantes em alguma etapa.
-**Solução:** Clique nas etapas com indicador vermelho no stepper e corrija os campos destacados.
-
-### Erro: "API inacessível"
-**Causa:** Backend DNS Control não está rodando ou Nginx não está fazendo proxy.
-**Solução:**
-```bash
-systemctl status dns-control-api
-curl -s http://127.0.0.1:8000/api/health
-```
-
-### Problema: "unbound-checkconf invalid option -- 'c'"
-**Causa:** O binário espera o arquivo como argumento posicional.
-**Solução:** Use `unbound-checkconf /etc/unbound/unbound01.conf` (sem `-c`).
-
-### Problema: DNS não responde no VIP anycast
-**Checklist:**
-```bash
-ip -br addr                          # IPs presentes?
-ss -lntup | grep ':53'               # Unbound escutando?
-nft list ruleset | grep DNAT         # Regras de DNAT existem?
-nft list counters                    # Counters incrementando?
-journalctl -u unbound01 -n 50       # Erros no log?
-```
-
-### Problema: Ping no VIP com latência > 100ms
-**Causa:** O VIP não está materializado no loopback do host — o tráfego está indo para a internet.
-**Solução:**
-```bash
-# Descomente as linhas no post-up.sh:
-vim /etc/network/post-up.sh
-# Remova o # das linhas com /usr/sbin/ip addr add 4.2.2.5/32 dev lo
-# Execute:
-/etc/network/post-up.sh
-# Verifique:
-ip addr show lo | grep 4.2.2
-```
+| Violação | Consequência |
+|---|---|
+| Listener IP duplicado entre instâncias | Apenas uma instância sobe; demais falham com `bind error` |
+| Listener IP não presente no loopback | `systemctl restart` falha: `Cannot assign requested address` |
+| `outgoing-interface` em border-routed | Unbound falha no priming: `SERVFAIL` para todas as queries |
+| Gateway ausente em `/etc/network/interfaces` | Host perde rota default no próximo reboot |
+| VIP não incluído em `DNS_ANYCAST_IPV4` | Tráfego para esse VIP não é capturado pelo nftables |
+| Control interface:port duplicado | `unbound-control` retorna dados da instância errada |
+| Egress IP = Listener IP | Conflito de identidade — resolução pode falhar |
+| `nft -f` com erro de sintaxe | Ruleset inteiro falha — DNS para de funcionar |
+| PID file compartilhado | Instâncias sobrescrevem PID — `systemctl stop` mata instância errada |
+| `bash -n post-up.sh` com erro | Script de materialização falha — IPs não aparecem |
 
 ---
 
-## Referência Rápida — Valores do Cenário de Produção
+## CRITÉRIO FINAL DE SUCESSO
 
-| Parâmetro | Valor |
-|-----------|-------|
-| Hostname | `dnscontrol` |
-| Interface | `ens192` |
-| IP Privado | `172.29.22.6/30` |
-| Gateway | `172.29.22.5` |
-| IPv6 | `2804:4AFC:8844::2/64` → gw `2804:4AFC:8844::1` |
-| Deployment Mode | VIP Roteado via Borda |
-| VIPs Serviço | `4.2.2.5`, `4.2.2.6` |
-| VIPs IPv6 | `2620:119:35::35`, `2620:119:53::53` |
-| Instâncias | 4 (`unbound01`..`unbound04`) |
-| Listeners | `100.127.255.101`..`.104` |
-| Egress IPv4 | `45.232.215.20`..`.23` |
-| Egress IPv6 | `2804:4afc:8888::1000`..`::1003` |
-| Controls | `127.0.0.11`..`.14` porta `8953` |
-| Distribuição | Sticky por origem (20min timeout) |
-| Egress Mode | Host-Owned |
-| Roteamento | Estático |
-| ACL | `0.0.0.0/0 allow` (open resolver confirmado) |
-| DNS Identity | `67-DNS` |
-| Threads | 4 |
-| Cache | `512m` msg / `32m` rrset |
+O wizard está corretamente preenchido **se e somente se**:
+
+- [ ] `ip addr show dev lo` → 4 IPs listener presentes
+- [ ] `ss -lntup | grep :53` → 8 linhas (4 × UDP + TCP)
+- [ ] `systemctl status unbound01..04` → todos `active (running)`
+- [ ] `nft list ruleset` → `DNS_ANYCAST_IPV4` com 4 IPs
+- [ ] `dig @<VIP> google.com` → responde
+- [ ] `dig @<VIP_interceptado> google.com` → responde com latência local
+- [ ] `dig @<Listener> google.com` → cada instância responde
+- [ ] Counters nftables mostram distribuição entre backends
+- [ ] Parar uma instância → DNS continua respondendo
+- [ ] Instância volta → reintegrada automaticamente após cooldown (120s)
