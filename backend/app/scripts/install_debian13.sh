@@ -613,6 +613,8 @@ cat > /etc/systemd/system/dns-control-api.service << 'SERVICEEOF'
 Description=DNS Control API v2.1
 After=network.target
 Documentation=https://github.com/ocaiobarros/dns-orchestrator
+ConditionPathIsDirectory=/etc/nftables.d
+ConditionPathExists=/opt/dns-control/backend/venv/bin/uvicorn
 
 [Service]
 Type=simple
@@ -620,6 +622,8 @@ User=dns-control
 Group=dns-control
 WorkingDirectory=/opt/dns-control/backend
 EnvironmentFile=/etc/dns-control/env
+ExecStartPre=/usr/bin/test -d /etc/nftables.d
+ExecStartPre=/usr/bin/test -x /opt/dns-control/backend/venv/bin/uvicorn
 ExecStart=/opt/dns-control/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5
