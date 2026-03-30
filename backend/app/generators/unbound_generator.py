@@ -172,6 +172,7 @@ server:
     use-syslog: no
     pidfile: "/var/run/{name}.pid"
     root-hints: "{root_hints_path}"
+    auto-trust-anchor-file: "/var/lib/unbound/root.key"
 
     identity: "{dns_identity}"
     version: "{dns_version}"
@@ -181,7 +182,7 @@ server:
     harden-dnssec-stripped: yes
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
-    module-config: "iterator"
+    module-config: "validator iterator"
 
     #zone localhost
     local-zone: "localhost." static
@@ -193,9 +194,14 @@ server:
     local-data: "127.in-addr.arpa. 10800 IN NS localhost."
     local-data: "127.in-addr.arpa. 10800 IN SOA localhost. nobody.invalid. 2 3600 1200 604800 10800"
     local-data: "1.0.0.127.in-addr.arpa. 10800 IN PTR localhost."
+"""
 
-    include: /etc/unbound/unbound-block-domains.conf
+        # ═══ Conditional blocklist includes ═══
+        if enable_blocklist:
+            config += "\n    include: /etc/unbound/unbound-block-domains.conf\n"
+            config += "\n"
 
+        config += f"""
 #forward-zone:
 #    name: "."
 #    forward-addr: 8.8.8.8
@@ -206,7 +212,11 @@ remote-control:
     control-interface: {control_interface}
     control-port: {control_port}
     control-use-cert: "no"
+"""
 
+        # ═══ Conditional anablock include ═══
+        if enable_blocklist:
+            config += """
 server:
     include: /etc/unbound/anablock.conf
 """
