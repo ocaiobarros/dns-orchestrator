@@ -20,22 +20,70 @@ fail() { echo -e "  ${RED}✗${NC} $1"; }
 info() { echo -e "  ${BLUE}ℹ${NC} $1"; }
 
 # ── Auto-detect source root (supports reinstall/upgrade) ──
+# Strategy: find repo root first (via multiple markers), then locate deps file separately.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Script usually lives in backend/app/scripts/ — source root is 3 levels up
-REPO_ROOT_GUESS="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+# Script lives in backend/app/scripts/ — source root is 3 levels up
+REPO_ROOT_GUESS="$(cd "${SCRIPT_DIR}/../../.." 2>/dev/null && pwd || echo "")"
 SOURCE_ROOT=""
+REQUIREMENTS_FILE=""
+
+is_repo_root() {
+    local dir="$1"
+    [[ -z "${dir}" ]] && return 1
+    [[ ! -d "${dir}" ]] && return 1
+    # Accept if ANY of these markers exist — not all repos have all of them
+    [[ -d "${dir}/.git" ]] && return 0
+    [[ -f "${dir}/backend/app/main.py" ]] && return 0
+    [[ -f "${dir}/backend/app/scripts/install_debian13.sh" ]] && return 0
+    [[ -d "${dir}/src" ]] && [[ -f "${dir}/package.json" ]] && return 0
+    return 1
+}
+
+find_requirements() {
+    local root="$1"
+    # Check all possible locations for Python dependency manifests
+    local candidates=(
+        "${root}/backend/requirements.txt"
+        "${root}/requirements.txt"
+        "${root}/backend/pyproject.toml"
+        "${root}/pyproject.toml"
+    )
+    for f in "${candidates[@]}"; do
+        if [[ -f "${f}" ]]; then
+            REQUIREMENTS_FILE="${f}"
+            return 0
+        fi
+    done
+    return 1
+}
 
 detect_source_root() {
     local candidates=(
         "${REPO_ROOT_GUESS}"
         "$(pwd)"
         "/opt/dns-control"
+        "/opt/dns-control/backend/.."
     )
 
+    # Deduplicate and resolve
+    local seen=()
     local candidate
     for candidate in "${candidates[@]}"; do
-        if [[ -f "${candidate}/backend/requirements.txt" ]] && [[ -f "${candidate}/backend/app/main.py" ]]; then
-            SOURCE_ROOT="${candidate}"
+        [[ -z "${candidate}" ]] && continue
+        local resolved
+        resolved="$(cd "${candidate}" 2>/dev/null && pwd || echo "")"
+        [[ -z "${resolved}" ]] && continue
+
+        # Skip if already checked
+        local already=false
+        for s in "${seen[@]+"${seen[@]}"}"; do
+            [[ "${s}" == "${resolved}" ]] && already=true && break
+        done
+        ${already} && continue
+        seen+=("${resolved}")
+
+        if is_repo_root "${resolved}"; then
+            SOURCE_ROOT="${resolved}"
             return 0
         fi
     done
@@ -44,72 +92,34 @@ detect_source_root() {
 }
 
 # ── Configuration ──
-INSTALL_DIR="/opt/dns-control"
-DATA_DIR="/var/lib/dns-control"
-DB_PATH="${DATA_DIR}/dns-control.db"
-SERVICE_USER="dns-control"
-VENV_DIR="${INSTALL_DIR}/backend/venv"
-ENV_DIR="/etc/dns-control"
-ENV_FILE="${ENV_DIR}/env"
-LOG_DIR="/var/log/dns-control"
-INSTALL_LOG="${LOG_DIR}/install.log"
-LOCK_FILE="/var/lock/dns-control-install.lock"
+# (moved below detection block but defined here for early reference)
 
-UPGRADE_STAGING_DIR="${INSTALL_DIR}/.upgrade-staging"
-BACKEND_STAGING_DIR="${UPGRADE_STAGING_DIR}/backend"
-PREVIOUS_BACKEND_DIR=""
-BACKEND_SWAPPED=false
-ROLLBACK_PERFORMED=false
-
-cleanup_upgrade_artifacts() {
-    rm -rf "${UPGRADE_STAGING_DIR}" 2>/dev/null || true
-}
-
-rollback_backend_if_needed() {
-    if [[ "${BACKEND_SWAPPED}" == "true" ]] && [[ -n "${PREVIOUS_BACKEND_DIR}" ]] && [[ -d "${PREVIOUS_BACKEND_DIR}" ]]; then
-        warn "Falha detectada — iniciando rollback automático do backend"
-        rm -rf "${INSTALL_DIR}/backend" 2>/dev/null || true
-        mv "${PREVIOUS_BACKEND_DIR}" "${INSTALL_DIR}/backend"
-        systemctl daemon-reload 2>/dev/null || true
-        systemctl restart dns-control-api 2>/dev/null || true
-        ROLLBACK_PERFORMED=true
-        BACKEND_SWAPPED=false
-    fi
-    cleanup_upgrade_artifacts
-}
-
-on_error() {
-    local line="$1"
-    local cmd="$2"
-    fail "Erro inesperado na linha ${line}: ${cmd}"
-    rollback_backend_if_needed
-}
-
-TOTAL_STEPS=10
-ERRORS=0
-WARNINGS=0
-
-echo ""
-echo "============================================"
-echo "  DNS Control v2.1 — Debian 13 Installer"
-echo "  Zero-Config · Auto-Detect · Self-Verify"
-echo "============================================"
-echo ""
-echo "  Install dir:  ${INSTALL_DIR}"
-echo "  Data dir:     ${DATA_DIR}"
-echo ""
-
-# ── Check root ──
-if [[ "$(id -u)" -ne 0 ]]; then
-    echo -e "${RED}ERROR: This script must be run as root.${NC}"
-    echo "  Usage: sudo bash ${BASH_SOURCE[0]}"
+if ! detect_source_root; then
+    echo -e "${RED}ERROR: Cannot locate source repository root.${NC}"
+    echo "  Checked markers: .git, backend/app/main.py, backend/app/scripts/install_debian13.sh, src/+package.json"
+    echo "  Scanned directories:"
+    for d in "${REPO_ROOT_GUESS}" "$(pwd)" "/opt/dns-control"; do
+        echo "    - ${d} (exists: $(test -d "${d}" && echo yes || echo no))"
+    done
+    echo ""
+    echo "  Ensure you are running from a full source checkout, e.g.:"
+    echo "    cd /opt/dns-control && sudo bash backend/app/scripts/install_debian13.sh"
     exit 1
 fi
 
-if ! detect_source_root; then
-    echo -e "${RED}ERROR: Cannot locate source repository root with backend/requirements.txt.${NC}"
-    echo "  Checked candidates: ${REPO_ROOT_GUESS}, $(pwd), /opt/dns-control"
-    echo "  Re-run from a full source checkout containing backend/."
+# Locate requirements file
+if ! find_requirements "${SOURCE_ROOT}"; then
+    echo -e "${RED}ERROR: Repository found at ${SOURCE_ROOT}, but no Python dependency manifest.${NC}"
+    echo "  Searched for:"
+    echo "    - ${SOURCE_ROOT}/backend/requirements.txt"
+    echo "    - ${SOURCE_ROOT}/requirements.txt"
+    echo "    - ${SOURCE_ROOT}/backend/pyproject.toml"
+    echo "    - ${SOURCE_ROOT}/pyproject.toml"
+    echo ""
+    echo "  Contents of ${SOURCE_ROOT}/backend/:"
+    ls -la "${SOURCE_ROOT}/backend/" 2>/dev/null || echo "    (directory does not exist)"
+    echo ""
+    echo "  Ensure backend/requirements.txt is committed and pushed."
     exit 1
 fi
 
