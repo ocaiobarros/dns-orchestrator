@@ -676,9 +676,9 @@ def _execute_deploy_locked(
     steps.append(s8_chmod)
     _update_live_state(completedSteps=8)
 
-    # ═══ Step 8: daemon-reload ═══
-    s8 = _step(8, "Recarregar daemons (systemctl daemon-reload)", "systemctl daemon-reload")
-    s8["rollbackHint"] = "Não requer rollback"
+    # ═══ Step 9: daemon-reload ═══
+    s9 = _step(9, "Recarregar daemons (systemctl daemon-reload)", "systemctl daemon-reload")
+    s9["rollbackHint"] = "Não requer rollback"
     def daemon_reload():
         r = run_command("systemctl", ["daemon-reload"], timeout=15, use_privilege=True)
         return {
@@ -686,24 +686,28 @@ def _execute_deploy_locked(
             "output": r["stdout"][:500] or "daemon-reload executado",
             "stderr": r["stderr"][:500],
         }
-    _run_step(s8, daemon_reload)
-    steps.append(s8)
-    _update_live_state(completedSteps=8)
-    if s8["status"] == "failed":
+    _run_step(s9, daemon_reload)
+    steps.append(s9)
+    _update_live_state(completedSteps=9)
+    if s9["status"] == "failed":
         all_ok = False
 
-    # ═══ Step 9: targeted sysctl reload ═══
-    s9_sysctl = _step(9, "Aplicar parâmetros sysctl", "sysctl --load <arquivo>")
+    # ═══ Step 10: Apply ALL sysctl files (sysctl --system) ═══
+    s10_sysctl = _step(10, "Aplicar parâmetros sysctl", "sysctl --system")
     def apply_sysctl():
         sysctl_files = _get_scoped_sysctl_files(files, scope)
         if not sysctl_files:
             return {"status": "success", "output": "Nenhum arquivo sysctl no escopo"}
 
+        # Apply individual files first for granularity
         errors: list[str] = []
         for sysctl_path in sysctl_files:
             r = run_command("sysctl", ["--load", sysctl_path], timeout=15, use_privilege=True)
             if r["exit_code"] != 0:
                 errors.append(f"{sysctl_path}: {(r['stderr'] or r['stdout'])[:200]}")
+
+        # Then apply --system for anything missed
+        r_sys = run_command("sysctl", ["--system"], timeout=15, use_privilege=True)
 
         if errors:
             return {
@@ -712,10 +716,10 @@ def _execute_deploy_locked(
                 "stderr": "; ".join(errors),
             }
 
-        return {"status": "success", "output": f"{len(sysctl_files)} arquivo(s) sysctl aplicados"}
-    _run_step(s9_sysctl, apply_sysctl)
-    steps.append(s9_sysctl)
-    _update_live_state(completedSteps=9)
+        return {"status": "success", "output": f"{len(sysctl_files)} arquivo(s) sysctl aplicados + sysctl --system"}
+    _run_step(s10_sysctl, apply_sysctl)
+    steps.append(s10_sysctl)
+    _update_live_state(completedSteps=10)
 
     # ═══ Step 10+: Restart/reload services ═══
     restart_cmds = _get_restart_commands(scope, payload)
