@@ -151,7 +151,6 @@ def generate_sysctl_configs(payload: dict[str, Any]) -> list[dict]:
         "net.netfilter.nf_conntrack_sctp_timeout_cookie_echoed=3",
         "net.netfilter.nf_conntrack_sctp_timeout_cookie_wait=3",
         "net.netfilter.nf_conntrack_sctp_timeout_established=432000",
-        "net.netfilter.nf_conntrack_sctp_timeout_heartbeat_acked=210",
         "net.netfilter.nf_conntrack_sctp_timeout_heartbeat_sent=30",
         "net.netfilter.nf_conntrack_sctp_timeout_shutdown_ack_sent=3",
         "net.netfilter.nf_conntrack_sctp_timeout_shutdown_recd=0",
