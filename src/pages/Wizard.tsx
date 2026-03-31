@@ -439,9 +439,20 @@ export default function Wizard() {
         return (
           <div className="space-y-4">
             <InfoBox>
-              Configure os IPs que os clientes usarão como servidor DNS.
-              Estes são os IPs de serviço — a identidade pública do resolver.
+              Configure os IPs Anycast que a sua rede <strong>anuncia/possui</strong> e que os clientes usarão como servidor DNS.
+              <strong>Não confunda com DNS públicos interceptados</strong> (Google 8.8.8.8, Level3 4.2.2.5) — esses vão na etapa "VIP Interception".
+              <br /><span className="text-accent/70 mt-1 block">→ Exemplo: se você possui o bloco 191.243.128.0/24, o VIP de serviço pode ser 191.243.128.1</span>
             </InfoBox>
+            {config.serviceVips.some(v => v.ipv4 === config.bootstrapDns) && (
+              <div className="flex gap-2 p-3 rounded bg-destructive/10 border border-destructive/30 text-xs text-destructive">
+                <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                <div>
+                  <strong>Atenção:</strong> O IP <code className="font-mono bg-destructive/20 px-1 rounded">{config.bootstrapDns}</code> está configurado como VIP de serviço 
+                  E como Bootstrap DNS do host. Isso pode causar loop de resolução — o host tentará resolver DNS via um IP que ele mesmo intercepta.
+                  <br />Considere mover este IP para a etapa <strong>"VIP Interception"</strong> ou alterar o Bootstrap DNS na etapa 1.
+                </div>
+              </div>
+            )}
             <div className="space-y-3">
               {config.serviceVips.map((vip, i) => (
                 <div key={i} className="p-4 rounded bg-secondary border border-border space-y-3">
