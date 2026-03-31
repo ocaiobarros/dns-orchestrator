@@ -23,6 +23,8 @@ dns-control ALL=(root) NOPASSWD: \
     /usr/bin/journalctl --no-pager *, \
     /usr/bin/install -m * -o * -g * *, \
     /usr/bin/install -m *, \
+    /usr/bin/cp --no-preserve=ownership *, \
+    /usr/bin/chmod *, \
     /usr/bin/mkdir -p *, \
     /usr/bin/systemctl daemon-reload, \
     /usr/bin/systemctl restart unbound*, \
