@@ -528,7 +528,7 @@ def _execute_deploy_locked(
         )
 
     # ═══ Step 5: Backup ═══
-    total_apply_steps = 12  # estimate
+    total_apply_steps = 14  # estimate
     _update_live_state(totalSteps=total_apply_steps)
 
     s5 = _step(5, "Backup configuração atual", None)
@@ -558,8 +558,79 @@ def _execute_deploy_locked(
     steps.append(s5)
     _update_live_state(completedSteps=5)
 
-    # ═══ Step 6: Apply files from staging to final paths ═══
-    s6 = _step(6, "Aplicar arquivos (staging → produção)")
+    # ═══ Step 6: Cleanup existing services (stop old, flush nftables, remove stale IPs) ═══
+    s6_cleanup = _step(6, "Limpeza de serviços existentes")
+    s6_cleanup["rollbackHint"] = "Restaurar backup anterior"
+    def cleanup_existing():
+        cleanup_msgs = []
+
+        # 6a: Stop legacy unbound.service if active
+        r = run_command("systemctl", ["is-active", "unbound"], timeout=5)
+        if r["exit_code"] == 0 and "active" in (r.get("stdout") or ""):
+            run_command("systemctl", ["stop", "unbound"], timeout=15, use_privilege=True)
+            run_command("systemctl", ["disable", "unbound"], timeout=10, use_privilege=True)
+            run_command("systemctl", ["mask", "unbound"], timeout=10, use_privilege=True)
+            cleanup_msgs.append("Legacy unbound.service parado/mascarado")
+
+        # 6b: Stop all existing unbound instances
+        r = run_command("bash", ["-c", "systemctl list-units --type=service --state=active --no-pager --plain | grep '^unbound' | awk '{print $1}'"], timeout=10)
+        active_unbounds = [s.strip() for s in (r.get("stdout") or "").splitlines() if s.strip()]
+        for unit in active_unbounds:
+            name = unit.replace(".service", "")
+            run_command("systemctl", ["stop", name], timeout=15, use_privilege=True)
+            cleanup_msgs.append(f"Parado: {name}")
+
+        # 6c: Flush nftables ruleset
+        r_flush = run_command("nft", ["flush", "ruleset"], timeout=10, use_privilege=True)
+        if r_flush["exit_code"] == 0:
+            cleanup_msgs.append("nftables: ruleset flush OK")
+        else:
+            cleanup_msgs.append(f"nftables flush: {r_flush.get('stderr', '')[:100]}")
+
+        # 6d: Remove DNS-related loopback IPs (keep only 127.0.0.1)
+        r_lo = run_command("ip", ["-4", "addr", "show", "dev", "lo"], timeout=5)
+        lo_output = r_lo.get("stdout") or ""
+        import re as _re
+        lo_ips_found = _re.findall(r'inet (\d+\.\d+\.\d+\.\d+)/\d+', lo_output)
+        removed_ips = 0
+        for ip in lo_ips_found:
+            if ip == "127.0.0.1":
+                continue
+            run_command("ip", ["addr", "del", f"{ip}/32", "dev", "lo"], timeout=5, use_privilege=True)
+            removed_ips += 1
+        if removed_ips:
+            cleanup_msgs.append(f"Removidos {removed_ips} IPs do loopback")
+
+        # 6e: Remove IPv6 non-link-local loopback IPs
+        r_lo6 = run_command("ip", ["-6", "addr", "show", "dev", "lo"], timeout=5)
+        lo6_output = r_lo6.get("stdout") or ""
+        lo6_ips = _re.findall(r'inet6 ([0-9a-fA-F:]+)/\d+', lo6_output)
+        removed_v6 = 0
+        for ip6 in lo6_ips:
+            if ip6 == "::1" or ip6.startswith("fe80"):
+                continue
+            run_command("ip", ["-6", "addr", "del", f"{ip6}/128", "dev", "lo"], timeout=5, use_privilege=True)
+            removed_v6 += 1
+        if removed_v6:
+            cleanup_msgs.append(f"Removidos {removed_v6} IPv6 do loopback")
+
+        # 6f: Clean old nftables.d snippets
+        r_clean = run_command("bash", ["-c", "rm -f /etc/nftables.d/*.nft 2>/dev/null; echo ok"], timeout=5, use_privilege=True)
+        cleanup_msgs.append("Snippets /etc/nftables.d/*.nft limpos")
+
+        # 6g: Kill any remaining unbound processes
+        run_command("killall", ["-q", "unbound"], timeout=5, use_privilege=True)
+
+        return {
+            "status": "success",
+            "output": "; ".join(cleanup_msgs) if cleanup_msgs else "Limpeza concluída (nada encontrado)",
+        }
+    _run_step(s6_cleanup, cleanup_existing)
+    steps.append(s6_cleanup)
+    _update_live_state(completedSteps=6)
+
+    # ═══ Step 7: Apply files from staging to final paths ═══
+    s7 = _step(7, "Aplicar arquivos (staging → produção)")
     def apply_from_staging():
         if not staging_dir:
             return {"status": "failed", "output": "Diretório de staging não encontrado"}
@@ -591,23 +662,23 @@ def _execute_deploy_locked(
             }
 
         return {"status": "success", "output": f"{written} arquivos aplicados"}
-    _run_step(s6, apply_from_staging)
-    steps.append(s6)
-    _update_live_state(completedSteps=6)
-    if s6["status"] == "failed":
+    _run_step(s7, apply_from_staging)
+    steps.append(s7)
+    _update_live_state(completedSteps=7)
+    if s7["status"] == "failed":
         all_ok = False
 
-    # ═══ Step 7: chmod scripts ═══
-    s7_chmod = _step(7, "Ajustar permissões de scripts")
+    # ═══ Step 8: chmod scripts ═══
+    s8_chmod = _step(8, "Ajustar permissões de scripts")
     def chmod_scripts():
         return {"status": "success", "output": "Permissões já aplicadas durante install"}
-    _run_step(s7_chmod, chmod_scripts)
-    steps.append(s7_chmod)
-    _update_live_state(completedSteps=7)
+    _run_step(s8_chmod, chmod_scripts)
+    steps.append(s8_chmod)
+    _update_live_state(completedSteps=8)
 
-    # ═══ Step 8: daemon-reload ═══
-    s8 = _step(8, "Recarregar daemons (systemctl daemon-reload)", "systemctl daemon-reload")
-    s8["rollbackHint"] = "Não requer rollback"
+    # ═══ Step 9: daemon-reload ═══
+    s9 = _step(9, "Recarregar daemons (systemctl daemon-reload)", "systemctl daemon-reload")
+    s9["rollbackHint"] = "Não requer rollback"
     def daemon_reload():
         r = run_command("systemctl", ["daemon-reload"], timeout=15, use_privilege=True)
         return {
@@ -615,24 +686,28 @@ def _execute_deploy_locked(
             "output": r["stdout"][:500] or "daemon-reload executado",
             "stderr": r["stderr"][:500],
         }
-    _run_step(s8, daemon_reload)
-    steps.append(s8)
-    _update_live_state(completedSteps=8)
-    if s8["status"] == "failed":
+    _run_step(s9, daemon_reload)
+    steps.append(s9)
+    _update_live_state(completedSteps=9)
+    if s9["status"] == "failed":
         all_ok = False
 
-    # ═══ Step 9: targeted sysctl reload ═══
-    s9_sysctl = _step(9, "Aplicar parâmetros sysctl", "sysctl --load <arquivo>")
+    # ═══ Step 10: Apply ALL sysctl files (sysctl --system) ═══
+    s10_sysctl = _step(10, "Aplicar parâmetros sysctl", "sysctl --system")
     def apply_sysctl():
         sysctl_files = _get_scoped_sysctl_files(files, scope)
         if not sysctl_files:
             return {"status": "success", "output": "Nenhum arquivo sysctl no escopo"}
 
+        # Apply individual files first for granularity
         errors: list[str] = []
         for sysctl_path in sysctl_files:
             r = run_command("sysctl", ["--load", sysctl_path], timeout=15, use_privilege=True)
             if r["exit_code"] != 0:
                 errors.append(f"{sysctl_path}: {(r['stderr'] or r['stdout'])[:200]}")
+
+        # Then apply --system for anything missed
+        r_sys = run_command("sysctl", ["--system"], timeout=15, use_privilege=True)
 
         if errors:
             return {
@@ -641,14 +716,14 @@ def _execute_deploy_locked(
                 "stderr": "; ".join(errors),
             }
 
-        return {"status": "success", "output": f"{len(sysctl_files)} arquivo(s) sysctl aplicados"}
-    _run_step(s9_sysctl, apply_sysctl)
-    steps.append(s9_sysctl)
-    _update_live_state(completedSteps=9)
+        return {"status": "success", "output": f"{len(sysctl_files)} arquivo(s) sysctl aplicados + sysctl --system"}
+    _run_step(s10_sysctl, apply_sysctl)
+    steps.append(s10_sysctl)
+    _update_live_state(completedSteps=10)
 
-    # ═══ Step 10+: Restart/reload services ═══
+    # ═══ Step 11+: Restart/reload services (order: post-up → nftables → unbound → frr) ═══
     restart_cmds = _get_restart_commands(scope, payload)
-    order = 10
+    order = 11
     for cmd_name, cmd_args, hint in restart_cmds:
         s = _step(order, cmd_name, " ".join(cmd_args))
         s["rollbackHint"] = hint
@@ -1046,7 +1121,6 @@ def _scope_matches(path: str, scope: str) -> bool:
 def _get_restart_commands(scope: str, payload: dict) -> list[tuple[str, list[str], str]]:
     cmds = []
     # Network post-up MUST run FIRST to materialize listener + egress IPs on loopback
-    # before Unbound tries to bind on them (outgoing-interface requires local IP)
     if scope in ("full", "network"):
         cmds.append((
             "Materializar IPs de rede (post-up)",
@@ -1055,10 +1129,12 @@ def _get_restart_commands(scope: str, payload: dict) -> list[tuple[str, list[str
         ))
     if scope in ("full", "nftables"):
         cmds.append(("Aplicar nftables", ["nft", "-f", "/etc/nftables.conf"], "nft -f <backup>/nftables.conf"))
+        cmds.append(("Habilitar nftables no boot", ["systemctl", "enable", "nftables"], ""))
     if scope in ("full", "dns"):
         instances = payload.get("instances", [])
         for inst in instances:
             name = inst.get("name", "unbound")
+            cmds.append((f"Habilitar {name} no boot", ["systemctl", "enable", name], ""))
             cmds.append((f"Reiniciar {name}", ["systemctl", "restart", name], f"systemctl restart {name} (from backup)"))
     if scope in ("full", "frr"):
         routing = payload.get("routingMode", "static")

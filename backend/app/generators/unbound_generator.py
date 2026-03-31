@@ -141,7 +141,6 @@ server:
     rrset-cache-slabs: {threads}
 
     cache-max-ttl: {max_ttl}
-    cache-min-ttl: {min_ttl}
     infra-host-ttl: 60
     infra-lame-ttl: 120
 
@@ -172,17 +171,15 @@ server:
     use-syslog: no
     pidfile: "/var/run/{name}.pid"
     root-hints: "{root_hints_path}"
-    auto-trust-anchor-file: "/var/lib/unbound/root.key"
 
     identity: "{dns_identity}"
     version: "{dns_version}"
     hide-identity: yes
     hide-version: yes
     harden-glue: yes
-    harden-dnssec-stripped: yes
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
-    module-config: "validator iterator"
+    module-config: "iterator"
 
     #zone localhost
     local-zone: "localhost." static

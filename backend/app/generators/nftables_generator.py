@@ -256,29 +256,32 @@ def _generate_modular(
                       f"add rule ip6 nat {topchain} ip6 saddr @{subusers} counter jump {subchain}")
                 ruleid += 1
 
-    # Nth balancing fallback (IPv4): numgen inc mod N vmap for uniform distribution
+    # Nth balancing fallback (IPv4): numgen inc mod N with decrementing N
+    # Matches production reference: mod 4 → mod 3 → mod 2 → mod 1
     ruleid = 7201
     for proto in ("tcp", "udp"):
         topchain = f"ipv4_{proto}_dns"
-        vmap_entries = ", ".join(
-            f"{i} : jump ipv4_dns_{proto}_{b['name']}" for i, b in enumerate(backends)
-        )
-        _file(f"/etc/nftables.d/{ruleid}-nat-rule-nth-ipv4_{proto}_dns.nft",
-              f"add rule ip nat {topchain} numgen inc mod {len(backends)} vmap {{ {vmap_entries} }}")
-        ruleid += 1
+        num_backends = len(backends)
+        for idx, backend in enumerate(backends):
+            mod_val = num_backends - idx
+            subchain = f"ipv4_dns_{proto}_{backend['name']}"
+            _file(f"/etc/nftables.d/{ruleid}-nat-rule-memorized-{subchain}.nft",
+                  f"add rule ip nat {topchain} numgen inc mod {mod_val} 0 counter jump {subchain}")
+            ruleid += 1
 
-    # Nth balancing fallback (IPv6): numgen inc mod N vmap for uniform distribution
+    # Nth balancing fallback (IPv6): numgen inc mod N with decrementing N
     if enable_ipv6:
         ruleid = 7301
         ipv6_backends = [b for b in backends if b.get("ipv6")]
+        num_backends_v6 = len(ipv6_backends)
         for proto in ("tcp", "udp"):
-            topchain = f"ipv6_{proto}_dns"
-            vmap_entries = ", ".join(
-                f"{i} : jump ipv6_dns_{proto}_{b['name']}" for i, b in enumerate(ipv6_backends)
-            )
-            _file(f"/etc/nftables.d/{ruleid}-nat-rule-nth-ipv6_{proto}_dns.nft",
-                  f"add rule ip6 nat {topchain} numgen inc mod {len(ipv6_backends)} vmap {{ {vmap_entries} }}")
-            ruleid += 1
+            topchain_v6 = f"ipv6_{proto}_dns"
+            for idx, backend in enumerate(ipv6_backends):
+                mod_val = num_backends_v6 - idx
+                subchain = f"ipv6_dns_{proto}_{backend['name']}"
+                _file(f"/etc/nftables.d/{ruleid}-nat-rule-memorized-{subchain}.nft",
+                      f"add rule ip6 nat {topchain_v6} numgen inc mod {mod_val} 0 counter jump {subchain}")
+                ruleid += 1
 
     return files
 
