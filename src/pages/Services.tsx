@@ -12,8 +12,10 @@ function formatMemory(svc: any): string {
 }
 
 function getServiceStatus(svc: any): string {
+  // nftables special handling: ruleset-based status
   if (svc.nftables_status === 'active') return 'running';
   if (svc.nftables_status === 'empty' || svc.nftables_status === 'unavailable') return 'stopped';
+  if (svc.status === 'active') return 'running';
   if (svc.status) return svc.status;
   if (svc.active === true) return 'running';
   if (svc.active === false) return 'stopped';

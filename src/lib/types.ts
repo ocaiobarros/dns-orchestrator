@@ -215,14 +215,18 @@ export type ServiceState = 'running' | 'active' | 'stopped' | 'no ruleset' | 'er
 
 export interface ServiceStatus {
   name: string;
+  display_name?: string;
   status: ServiceState;
   pid: number | null;
   memoryBytes: number | null;
+  memory?: string;
   cpuPercent: number | null;
+  cpu?: string;
   restartCount: number;
   uptime: string;
   lastLog: string;
   unitFile: string;
+  enabled?: boolean;
   active?: boolean;
   nftables_status?: string;
   tables?: string[];

@@ -6,8 +6,12 @@ interface NocResolverPanelProps {
   services: ServiceStatus[];
 }
 
-function formatBytes(bytes: number | null | undefined): string {
-  if (bytes == null) return '—';
+function formatMemory(value: number | string | null | undefined): string {
+  if (value == null) return '—';
+  // Backend may send a string like "28.5M" or "1.2G"
+  if (typeof value === 'string' && value) return value;
+  const bytes = typeof value === 'number' ? value : 0;
+  if (bytes <= 0) return '—';
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)}MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)}GB`;
@@ -15,10 +19,12 @@ function formatBytes(bytes: number | null | undefined): string {
 
 type SvcState = 'running' | 'stopped' | 'error' | 'unknown';
 
-function statusMeta(s: string): { dot: string; text: string; cls: string; state: SvcState } {
-  if (s === 'running') return { dot: 'noc-dot-live', text: 'RUNNING', cls: 'text-success/60', state: 'running' };
+function statusMeta(s: string, active?: boolean): { dot: string; text: string; cls: string; state: SvcState } {
+  // Handle nftables 'active' status and boolean active field
+  if (s === 'running' || (active === true && s !== 'stopped' && s !== 'no ruleset')) return { dot: 'noc-dot-live', text: 'RUNNING', cls: 'text-success/60', state: 'running' };
+  if (s === 'active') return { dot: 'noc-dot-live', text: 'ACTIVE', cls: 'text-success/60', state: 'running' };
   if (s === 'error') return { dot: 'noc-dot-fail', text: 'ERROR', cls: 'text-destructive', state: 'error' };
-  if (s === 'stopped') return { dot: 'noc-dot-dead', text: 'INACTIVE', cls: 'text-muted-foreground/30', state: 'stopped' };
+  if (s === 'stopped' || s === 'no ruleset') return { dot: 'noc-dot-dead', text: 'INACTIVE', cls: 'text-muted-foreground/30', state: 'stopped' };
   return { dot: 'noc-dot-dead', text: s.toUpperCase(), cls: 'text-muted-foreground/30', state: 'unknown' };
 }
 
@@ -39,7 +45,7 @@ export default function NocResolverPanel({ services }: NocResolverPanelProps) {
 
         <div className="space-y-0">
           {services.map((svc, i) => {
-            const meta = statusMeta(svc.status);
+            const meta = statusMeta(svc.status, svc.active);
             return (
               <motion.div
                 key={svc.name}
@@ -58,7 +64,7 @@ export default function NocResolverPanel({ services }: NocResolverPanelProps) {
                   )}
                 </div>
                 <div className="flex items-center gap-4">
-                  <span className="text-[9px] text-muted-foreground/20 font-mono w-[40px] text-right">{formatBytes(svc.memoryBytes)}</span>
+                  <span className="text-[9px] text-muted-foreground/20 font-mono w-[40px] text-right">{formatMemory((svc as any).memory ?? svc.memoryBytes)}</span>
                   <span className={`text-[10px] font-mono font-bold uppercase tracking-wider min-w-[58px] text-right ${meta.cls}`}>
                     {meta.text}
                   </span>
