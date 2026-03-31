@@ -894,8 +894,18 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
       for (const proto of ['tcp', 'udp']) {
         const subchain = `ipv6_dns_${proto}_${inst.name}`;
         const subusers = `ipv6_users_${inst.name}`;
-        files.push({ path: `/etc/nftables.d/${ruleid}-nat-addrlist-${subusers}.nft`, content: `add set ip6 nat ${subusers} { type ipv6_addr; size 8192; flags dynamic, timeout; timeout ${stickyTimeoutMin}m; }` });
-        files.push({ path: `/etc/nftables.d/${ruleid}-nat-chain-${subchain}.nft`, content: `add chain ip6 nat ${subchain} {}` });
+        files.push({
+          path: `/etc/nftables.d/${ruleid}-nat-addrlist-${subusers}.nft`,
+          content: [
+            `add set ip6 nat ${subusers} {`,
+            `    type ipv6_addr`,
+            `    size 8192`,
+            `    flags dynamic, timeout`,
+            `    timeout ${stickyTimeoutMin}m`,
+            `}`,
+          ].join('\n'),
+        });
+        files.push({ path: `/etc/nftables.d/${ruleid}-nat-chain-${subchain}.nft`, content: `add chain ip6 nat ${subchain}\n` });
         ruleid++;
       }
     });

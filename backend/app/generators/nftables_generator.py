@@ -196,10 +196,17 @@ def _generate_modular(
             for proto in ("tcp", "udp"):
                 subusers = f"ipv6_users_{name}"
                 subchain = f"ipv6_dns_{proto}_{name}"
-                _file(f"/etc/nftables.d/{ruleid}-nat-addrlist-{subusers}.nft",
-                      f"add set ip6 nat {subusers} {{ type ipv6_addr; size 8192; flags dynamic, timeout; timeout {sticky_timeout_min}m; }}")
+                set_content = "\n".join([
+                    f"add set ip6 nat {subusers} {{",
+                    f"    type ipv6_addr",
+                    f"    size 8192",
+                    f"    flags dynamic, timeout",
+                    f"    timeout {sticky_timeout_min}m",
+                    f"}}",
+                ])
+                _file(f"/etc/nftables.d/{ruleid}-nat-addrlist-{subusers}.nft", set_content)
                 _file(f"/etc/nftables.d/{ruleid}-nat-chain-{subchain}.nft",
-                      f"add chain ip6 nat {subchain} {{}}")
+                      f"add chain ip6 nat {subchain}\n")
                 ruleid += 1
 
     # Action rules: add to set + update + DNAT (IPv4)
