@@ -97,10 +97,47 @@ def _run_step(step: dict, fn) -> dict:
 
 
 def get_live_deploy_state() -> dict:
-    """Return current in-memory deploy state for polling."""
+    """Return current deploy state for the dashboard, merging disk + DB + live pipeline state."""
     disk_state = get_deploy_state()
+
+    # If disk state has no history, try to fill from DB
+    if not disk_state.get("lastApplyAt"):
+        try:
+            from app.core.database import SessionLocal
+            from app.models.apply_job import ApplyJob
+            db = SessionLocal()
+            try:
+                last_job = db.query(ApplyJob).filter(
+                    ApplyJob.job_type != "dry-run"
+                ).order_by(ApplyJob.created_at.desc()).first()
+                total = db.query(ApplyJob).filter(
+                    ApplyJob.job_type != "dry-run"
+                ).count()
+                if last_job:
+                    disk_state["lastApplyAt"] = last_job.finished_at.isoformat() if last_job.finished_at else (last_job.created_at.isoformat() if last_job.created_at else None)
+                    disk_state["lastApplyOperator"] = last_job.created_by
+                    disk_state["lastApplyStatus"] = last_job.status
+                    disk_state["totalDeployments"] = total
+                    disk_state["rollbackAvailable"] = total > 0
+                    disk_state["lastDeploymentId"] = last_job.id
+            finally:
+                db.close()
+        except Exception:
+            pass
+
+    # Flatten: return disk_state fields at top level + live pipeline state
     return {
-        **_live_state,
+        **disk_state,
+        "phase": _live_state.get("phase", "idle"),
+        "currentStep": _live_state.get("currentStep"),
+        "totalSteps": _live_state.get("totalSteps", 0),
+        "completedSteps": _live_state.get("completedSteps", 0),
+        "lastMessage": _live_state.get("lastMessage", ""),
+        "startedAt": _live_state.get("startedAt"),
+        "updatedAt": _live_state.get("updatedAt"),
+        "deployId": _live_state.get("deployId"),
+        "errors": _live_state.get("errors", []),
+        "warnings": _live_state.get("warnings", []),
         "diskState": disk_state,
     }
 
