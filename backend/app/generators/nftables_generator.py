@@ -146,7 +146,7 @@ def _generate_modular(
     for proto in ("tcp", "udp"):
         suffix = "2" if proto == "tcp" else "3"
         _file(f"/etc/nftables.d/510{suffix}-nat-chain-ipv4_{proto}_dns.nft",
-              f"add chain ip nat ipv4_{proto}_dns\n")
+              f"add chain ip nat ipv4_{proto}_dns {{}}\n")
 
     # PREROUTING capture rules (IPv4)
     for proto in ("tcp", "udp"):
@@ -159,7 +159,7 @@ def _generate_modular(
         for proto in ("tcp", "udp"):
             suffix = "2" if proto == "tcp" else "3"
             _file(f"/etc/nftables.d/520{suffix}-nat-chain-ipv6_{proto}_dns.nft",
-                  f"add chain ip6 nat ipv6_{proto}_dns")
+                  f"add chain ip6 nat ipv6_{proto}_dns {{}}")
         for proto in ("tcp", "udp"):
             suffix = "1" if proto == "tcp" else "2"
             _file(f"/etc/nftables.d/521{suffix}-nat-rule-ipv6_{proto}_dns.nft",
@@ -173,9 +173,9 @@ def _generate_modular(
             subusers = f"ipv4_users_{name}"
             subchain = f"ipv4_dns_{proto}_{name}"
             _file(f"/etc/nftables.d/{ruleid}-nat-addrlist-{subusers}.nft",
-                  f"add set ip nat {subusers} {{ type ipv4_addr; size 8192; flags dynamic, timeout; timeout {sticky_timeout_min}m; }}"))
+                  f"add set ip nat {subusers} {{ type ipv4_addr; size 8192; flags dynamic, timeout; timeout {sticky_timeout_min}m; }}")
             _file(f"/etc/nftables.d/{ruleid}-nat-chain-{subchain}.nft",
-                  f"add chain ip nat {subchain}")
+                  f"add chain ip nat {subchain} {{}}")
             ruleid += 1
 
     # Per-instance: sticky sets + backend chains (IPv6)
@@ -189,9 +189,9 @@ def _generate_modular(
                 subusers = f"ipv6_users_{name}"
                 subchain = f"ipv6_dns_{proto}_{name}"
                 _file(f"/etc/nftables.d/{ruleid}-nat-addrlist-{subusers}.nft",
-                      f"add set ip6 nat {subusers} {{ type ipv6_addr; size 8192; flags dynamic, timeout; timeout {sticky_timeout_min}m; }}"))
+                      f"add set ip6 nat {subusers} {{ type ipv6_addr; size 8192; flags dynamic, timeout; timeout {sticky_timeout_min}m; }}")
                 _file(f"/etc/nftables.d/{ruleid}-nat-chain-{subchain}.nft",
-                      f"add chain ip6 nat {subchain}")
+                      f"add chain ip6 nat {subchain} {{}}")
                 ruleid += 1
 
     # Action rules: add to set + update + DNAT (IPv4)
