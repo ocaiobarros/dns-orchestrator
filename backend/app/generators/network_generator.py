@@ -134,6 +134,19 @@ post-up /etc/network/post-up.sh
             post_up_lines.append(f"     /usr/sbin/ip addr add {lip6}/128 dev lo 2>/dev/null || true")
         post_up_lines.append("")
 
+    # Public listener IPs on loopback (public-facing IPs for each instance)
+    if public_listener_ips:
+        post_up_lines.append("     # Public Listener IPv4 (public-facing Unbound addresses)")
+        for plip in public_listener_ips:
+            post_up_lines.append(f"     /usr/sbin/ip addr add {plip}/32 dev lo 2>/dev/null || true")
+        post_up_lines.append("")
+
+    if public_listener_ipv6:
+        post_up_lines.append("     # Public Listener IPv6 (public-facing Unbound addresses)")
+        for plip6 in public_listener_ipv6:
+            post_up_lines.append(f"     /usr/sbin/ip addr add {plip6}/128 dev lo 2>/dev/null || true")
+        post_up_lines.append("")
+
     # Service VIPs on loopback (required for DNAT interception to work)
     if service_vips:
         post_up_lines.append("     # Service VIPs (anycast/intercepted — required for nftables DNAT)")
