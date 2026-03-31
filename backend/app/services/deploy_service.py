@@ -662,19 +662,19 @@ def _execute_deploy_locked(
             }
 
         return {"status": "success", "output": f"{written} arquivos aplicados"}
-    _run_step(s6, apply_from_staging)
-    steps.append(s6)
-    _update_live_state(completedSteps=6)
-    if s6["status"] == "failed":
+    _run_step(s7, apply_from_staging)
+    steps.append(s7)
+    _update_live_state(completedSteps=7)
+    if s7["status"] == "failed":
         all_ok = False
 
-    # ═══ Step 7: chmod scripts ═══
-    s7_chmod = _step(7, "Ajustar permissões de scripts")
+    # ═══ Step 8: chmod scripts ═══
+    s8_chmod = _step(8, "Ajustar permissões de scripts")
     def chmod_scripts():
         return {"status": "success", "output": "Permissões já aplicadas durante install"}
-    _run_step(s7_chmod, chmod_scripts)
-    steps.append(s7_chmod)
-    _update_live_state(completedSteps=7)
+    _run_step(s8_chmod, chmod_scripts)
+    steps.append(s8_chmod)
+    _update_live_state(completedSteps=8)
 
     # ═══ Step 8: daemon-reload ═══
     s8 = _step(8, "Recarregar daemons (systemctl daemon-reload)", "systemctl daemon-reload")
