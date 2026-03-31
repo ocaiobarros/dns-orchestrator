@@ -778,7 +778,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     if (config.enableIpv6 && allVipIpv6s.length > 0) {
       files.push({
         path: '/etc/nftables.d/5200-nat-define-anyaddr-ipv6.nft',
-        content: `define DNS_ANYCAST_IPV6 = {\n    ${allVipIpv6s.join(',\n    ')}\n}`,
+        content: `define DNS_ANYCAST_IPV6 = { ${allVipIpv6s.join(', ')} }\n`,
       });
     }
   }
