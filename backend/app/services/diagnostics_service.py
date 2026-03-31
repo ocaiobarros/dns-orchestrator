@@ -296,11 +296,22 @@ def get_dashboard_summary() -> dict:
 
 
 def _get_nftables_state() -> dict:
-    """Check nftables state via ruleset, not service status."""
+    """Check nftables state via ruleset, not service status.
+    Falls back to systemctl is-active if nft list tables fails (permission).
+    """
     r = _safe_run("nft", ["list", "tables"], timeout=5, use_privilege=True)
     if r["exit_code"] == 0:
         tables = [l.strip() for l in r["stdout"].split("\n") if l.strip()]
         return {"active": len(tables) > 0, "tables": tables, "status": "active" if tables else "empty"}
+
+    # Fallback: check systemctl is-active (works for oneshot+RemainAfterExit=yes)
+    r2 = _safe_run("systemctl", ["is-active", "nftables"], timeout=5, use_privilege=True)
+    if r2["exit_code"] == 0 and r2["stdout"].strip() == "active":
+        return {"active": True, "tables": [], "status": "active"}
+
+    logger.warning("nftables state: nft list tables exit=%s stderr=%s; systemctl is-active exit=%s stdout=%s",
+                   r["exit_code"], r.get("stderr", "")[:200],
+                   r2["exit_code"], r2["stdout"].strip())
     return {"active": False, "tables": [], "status": "unavailable"}
 
 
