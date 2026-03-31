@@ -772,7 +772,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
   if (allVipIpv4s.length > 0) {
     files.push({
       path: '/etc/nftables.d/5100-nat-define-anyaddr-ipv4.nft',
-      content: `define DNS_ANYCAST_IPV4 = {\n    ${allVipIpv4s.join(',\n    ')}\n}`,
+      content: `define DNS_ANYCAST_IPV4 = { ${allVipIpv4s.join(', ')} }\n`,
     });
 
     if (config.enableIpv6 && allVipIpv6s.length > 0) {
