@@ -518,79 +518,18 @@ chmod 600 "${DB_PATH}" 2>/dev/null || true
 chmod 700 "${ENV_DIR}"
 ok "Permissions set on install dir, data dir, and log dir"
 
-# Create comprehensive sudoers policy
-cat > /etc/sudoers.d/dns-control << 'SUDOEOF'
-# DNS Control v2.1 — Sudoers Policy (Zero-Config)
-# Allows dns-control user to manage DNS infrastructure services
-
-# Service management
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl restart unbound*
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl restart frr
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl restart nftables
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl status *
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl is-active *
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl stop unbound*
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl start unbound*
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl enable unbound*
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl disable unbound*
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl mask unbound.service
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl stop unbound.service
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl disable unbound.service
-
-# Firewall (nftables)
-dns-control ALL=(root) NOPASSWD: /usr/sbin/nft *
-
-# DNS (Unbound)
-dns-control ALL=(root) NOPASSWD: /usr/sbin/unbound-control *
-dns-control ALL=(root) NOPASSWD: /usr/sbin/unbound-checkconf *
-
-# Routing (FRR)
-dns-control ALL=(root) NOPASSWD: /usr/bin/vtysh -c *
-
-# Network
-dns-control ALL=(root) NOPASSWD: /sbin/ifreload -a
-dns-control ALL=(root) NOPASSWD: /sbin/ifquery *
-
-# Deploy operations
-dns-control ALL=(root) NOPASSWD: /usr/bin/install -m *
-dns-control ALL=(root) NOPASSWD: /usr/bin/mkdir -p *
-dns-control ALL=(root) NOPASSWD: /usr/sbin/sysctl --load *
-dns-control ALL=(root) NOPASSWD: /usr/sbin/sysctl --system
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl restart unbound*
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl restart frr
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl restart nftables
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl enable unbound*
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl enable frr
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl enable nftables
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl disable unbound*
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl disable systemd-resolved
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl stop systemd-resolved
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl stop unbound*
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl mask unbound.service
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl status unbound*
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl status frr
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl status nftables
-dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl is-active *
-dns-control ALL=(root) NOPASSWD: /usr/bin/killall -q unbound
-dns-control ALL=(root) NOPASSWD: /usr/sbin/nft -f *
-dns-control ALL=(root) NOPASSWD: /usr/sbin/nft -c -f *
-dns-control ALL=(root) NOPASSWD: /usr/sbin/nft flush ruleset
-dns-control ALL=(root) NOPASSWD: /usr/sbin/nft list *
-dns-control ALL=(root) NOPASSWD: /usr/sbin/ip addr *
-dns-control ALL=(root) NOPASSWD: /usr/sbin/ip -6 addr *
-dns-control ALL=(root) NOPASSWD: /usr/bin/bash -n *
-dns-control ALL=(root) NOPASSWD: /etc/network/post-up.d/dns-control
-
-# IP blocking (blackhole routes)
-dns-control ALL=(root) NOPASSWD: /usr/local/bin/anablock-ip-sync.sh
-
-# Journalctl for log access
-dns-control ALL=(root) NOPASSWD: /usr/bin/journalctl --no-pager *
-SUDOEOF
-
-chmod 440 /etc/sudoers.d/dns-control
+# Install sudoers policy from repository file (single source of truth)
+SUDOERS_SRC="${SOURCE_ROOT}/deploy/sudoers/dns-control-diagnostics"
+if [[ -f "${SUDOERS_SRC}" ]]; then
+    cp "${SUDOERS_SRC}" /etc/sudoers.d/dns-control-diagnostics
+    chmod 440 /etc/sudoers.d/dns-control-diagnostics
+    # Also install as dns-control for backward compat
+    cp "${SUDOERS_SRC}" /etc/sudoers.d/dns-control
+    chmod 440 /etc/sudoers.d/dns-control
+else
+    fail "Sudoers source file not found: ${SUDOERS_SRC}"
+    ERRORS=$((ERRORS+1))
+fi
 
 # Validate sudoers
 if visudo -c -f /etc/sudoers.d/dns-control >/dev/null 2>&1; then
