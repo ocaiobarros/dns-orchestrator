@@ -159,7 +159,7 @@ def _generate_modular(
         for proto in ("tcp", "udp"):
             suffix = "2" if proto == "tcp" else "3"
             _file(f"/etc/nftables.d/520{suffix}-nat-chain-ipv6_{proto}_dns.nft",
-                  f"add chain ip6 nat ipv6_{proto}_dns")
+                  f"add chain ip6 nat ipv6_{proto}_dns {{}}")
         for proto in ("tcp", "udp"):
             suffix = "1" if proto == "tcp" else "2"
             _file(f"/etc/nftables.d/521{suffix}-nat-rule-ipv6_{proto}_dns.nft",
