@@ -229,14 +229,25 @@ server:
 
         # Always allow queries from the listener IPs themselves (loopback VIPs)
         # This prevents REFUSED when probing via dig @<listener_ip> or DNAT source
-        listener_ips_to_allow = set()
-        listener_ips_to_allow.add(f"{bind_ip}/32")
+        import ipaddress
+        existing_nets = []
+        for cidr in access_cidrs_v4:
+            try:
+                existing_nets.append(ipaddress.ip_network(cidr, strict=False))
+            except ValueError:
+                pass
+
+        listener_ips_to_allow = {bind_ip}
         if public_listener_ip:
-            listener_ips_to_allow.add(f"{public_listener_ip}/32")
-        for lip in listener_ips_to_allow:
-            # Only add if not already covered by existing CIDRs
-            if not any(lip.split("/")[0].startswith(cidr.split("/")[0].rsplit(".", 1)[0]) and int(cidr.split("/")[1]) <= 24 for cidr in access_cidrs_v4):
-                config += f"    access-control: {lip} allow  # auto — listener IP\n"
+            listener_ips_to_allow.add(public_listener_ip)
+
+        for lip in sorted(listener_ips_to_allow):
+            try:
+                addr = ipaddress.ip_address(lip)
+                if not any(addr in net for net in existing_nets):
+                    config += f"    access-control: {lip}/32 allow  # auto — listener IP\n"
+            except ValueError:
+                pass
 
         if enable_ipv6:
             for cidr in access_cidrs_v6:
