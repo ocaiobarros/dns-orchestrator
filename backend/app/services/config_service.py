@@ -74,6 +74,10 @@ def generate_preview(payload: dict[str, Any]) -> list[dict]:
         files.extend(generate_ip_blocking_configs(normalized))
     except Exception:
         pass
+    try:
+        files.extend(generate_sysctl_configs(normalized))
+    except Exception:
+        pass
     return files
 
 
