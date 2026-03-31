@@ -28,9 +28,15 @@ ensure_runtime_dirs() {
     mkdir -p "${LOG_DIR}"
     mkdir -p "${ENV_DIR}"
     mkdir -p "/etc/unbound"
+    mkdir -p "/etc/unbound/unbound.conf.d"
     mkdir -p "/etc/nftables.d"
     mkdir -p "/etc/network"
+    mkdir -p "/etc/network/post-up.d"
+    mkdir -p "/etc/sysctl.d"
+    mkdir -p "/etc/frr"
+    mkdir -p "/etc/default"
     mkdir -p "/etc/systemd/system"
+    mkdir -p "/usr/lib/systemd/system"
 }
 
 # ── Path constants (must be defined before any use) ──
@@ -550,6 +556,31 @@ dns-control ALL=(root) NOPASSWD: /sbin/ifquery *
 dns-control ALL=(root) NOPASSWD: /usr/bin/install -m *
 dns-control ALL=(root) NOPASSWD: /usr/bin/mkdir -p *
 dns-control ALL=(root) NOPASSWD: /usr/sbin/sysctl --load *
+dns-control ALL=(root) NOPASSWD: /usr/sbin/sysctl --system
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl restart unbound*
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl restart frr
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl restart nftables
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl enable unbound*
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl enable frr
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl enable nftables
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl disable unbound*
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl disable systemd-resolved
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl stop systemd-resolved
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl stop unbound*
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl mask unbound.service
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl status unbound*
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl status frr
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl status nftables
+dns-control ALL=(root) NOPASSWD: /usr/bin/systemctl is-active *
+dns-control ALL=(root) NOPASSWD: /usr/bin/killall -q unbound
+dns-control ALL=(root) NOPASSWD: /usr/sbin/nft -f *
+dns-control ALL=(root) NOPASSWD: /usr/sbin/nft -c -f *
+dns-control ALL=(root) NOPASSWD: /usr/sbin/nft flush ruleset
+dns-control ALL=(root) NOPASSWD: /usr/sbin/nft list *
+dns-control ALL=(root) NOPASSWD: /usr/sbin/ip addr *
+dns-control ALL=(root) NOPASSWD: /usr/sbin/ip -6 addr *
+dns-control ALL=(root) NOPASSWD: /usr/bin/bash -n *
 dns-control ALL=(root) NOPASSWD: /etc/network/post-up.d/dns-control
 
 # IP blocking (blackhole routes)

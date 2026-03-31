@@ -22,33 +22,47 @@ ALLOWED_EXECUTABLES = frozenset({
     "ping", "traceroute", "ifreload", "ifquery",
     "dpkg", "apt",
     "chmod", "sysctl", "echo",
-    "install", "mkdir", "bash",
+    "install", "mkdir", "bash", "killall",
     "/etc/network/post-up.d/dns-control",
 })
 
 # Strict allowlist: only these exact (executable, args_prefix) combos may use sudo
 _SUDO_ALLOWED_COMMANDS: list[tuple[str, list[str]]] = [
     # Diagnostics
-    ("unbound-control", ["-s"]),   # per-instance targeting via -s <ip>@<port>
+    ("unbound-control", ["-s"]),
+    ("unbound-control", ["-c"]),
     ("unbound-control", ["stats_noreset"]),
     ("unbound-control", ["status"]),
     ("unbound-control", ["dump_cache"]),
     ("nft", ["list", "tables"]),
     ("nft", ["list", "ruleset"]),
     ("nft", ["list", "counters"]),
-    ("nft", ["-c", "-f"]),  # staging syntax validation
-    ("nft", ["-f"]),          # apply ruleset
-    ("vtysh", ["-c"]),  # read-only vtysh commands
+    ("nft", ["-c", "-f"]),
+    ("nft", ["-f"]),
+    ("nft", ["flush", "ruleset"]),
+    ("vtysh", ["-c"]),
     ("journalctl", ["--no-pager"]),
     # Deploy operations
-    ("install", ["-m"]),      # file install with permissions
-    ("mkdir", ["-p"]),        # create directories
+    ("install", ["-m"]),
+    ("mkdir", ["-p"]),
     ("systemctl", ["daemon-reload"]),
     ("systemctl", ["restart"]),
+    ("systemctl", ["start"]),
+    ("systemctl", ["stop"]),
+    ("systemctl", ["enable"]),
+    ("systemctl", ["disable"]),
+    ("systemctl", ["mask"]),
     ("systemctl", ["status"]),
-    ("sysctl", ["--load"]),   # targeted sysctl load
-    ("ifreload", ["-a"]),     # network reload
-    ("/etc/network/post-up.d/dns-control", []),  # materialize listener/egress IPs
+    ("systemctl", ["is-active"]),
+    ("sysctl", ["--load"]),
+    ("sysctl", ["--system"]),
+    ("ifreload", ["-a"]),
+    ("ip", ["addr"]),
+    ("ip", ["-6", "addr"]),
+    ("killall", ["-q"]),
+    ("bash", ["-n"]),
+    ("bash", ["-c"]),
+    ("/etc/network/post-up.d/dns-control", []),
 ]
 
 # Cache for sudo availability check
