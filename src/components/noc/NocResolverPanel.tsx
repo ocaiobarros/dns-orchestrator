@@ -45,7 +45,7 @@ export default function NocResolverPanel({ services }: NocResolverPanelProps) {
 
         <div className="space-y-0">
           {services.map((svc, i) => {
-            const meta = statusMeta(svc.status);
+            const meta = statusMeta(svc.status, svc.active);
             return (
               <motion.div
                 key={svc.name}
