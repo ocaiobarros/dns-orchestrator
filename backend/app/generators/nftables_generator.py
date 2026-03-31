@@ -213,7 +213,7 @@ def _generate_modular(
                     f"        timeout {sticky_timeout_min}m",
                     f"    }}",
                     "}",
-                ])
+                ]) + "\n"
                 _file(f"/etc/nftables.d/{ruleid}-nat-addrlist-{subusers}.nft", set_content)
                 _file(f"/etc/nftables.d/{ruleid}-nat-chain-{subchain}.nft",
                       f"table ip6 nat {{\n    chain {subchain} {{\n    }}\n}}\n")
