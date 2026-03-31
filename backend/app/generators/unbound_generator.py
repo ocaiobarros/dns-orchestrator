@@ -71,6 +71,14 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     dns_version = _safe_str(payload.get("dnsVersion") or wizard_cfg.get("dnsVersion"), "1.0")
     enable_detailed_logs = payload.get("enableDetailedLogs") or wizard_cfg.get("enableDetailedLogs", False)
 
+    # Egress delivery mode — check both payload and wizard config for consistency
+    egress_delivery_mode = str(
+        payload.get("egressDeliveryMode")
+        or wizard_cfg.get("egressDeliveryMode")
+        or "host-owned"
+    )
+    is_border_routed = egress_delivery_mode == "border-routed"
+
     for inst in instances:
         name = inst.get("name", "unbound")
         bind_ip = inst.get("bindIp", "127.0.0.1")
