@@ -870,8 +870,10 @@ export default function Wizard() {
         return (
           <div className="space-y-4">
             <InfoBox>
-              Configure o IP público de saída (outgoing-interface) de cada instância.
+              Configure o IP público de saída (<code className="font-mono bg-accent/20 px-1 rounded">outgoing-interface</code>) de cada instância.
               Este é o IP que os servidores autoritativos verão ao receber queries recursivas.
+              <br /><span className="text-accent/70 mt-1 block">→ No modelo de referência, cada instância tem um IP público exclusivo (ex: 45.232.215.20 para unbound01, 45.232.215.21 para unbound02).</span>
+              <span className="text-accent/70 block">→ Esses IPs são materializados na interface <code className="font-mono bg-accent/20 px-1 rounded">lo</code> (loopback real) do host.</span>
             </InfoBox>
 
             {/* Egress Delivery Mode */}
@@ -880,11 +882,22 @@ export default function Wizard() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <ModeCard selected={config.egressDeliveryMode === 'host-owned'}
                   onClick={() => set('egressDeliveryMode', 'host-owned')}
-                  label="Host-Owned (IP Local)" desc="O IP público de egress é configurado localmente no host (loopback). O host é dono do IP." />
+                  label="⭐ Host-Owned (Recomendado)" desc="O IP público de egress é configurado na loopback (lo) do host. O Unbound usa outgoing-interface para selecionar a identidade de saída. Padrão para a maioria dos ISPs." />
                 <ModeCard selected={config.egressDeliveryMode === 'border-routed'}
                   onClick={() => set('egressDeliveryMode', 'border-routed')}
-                  label="Border-Routed (Lógico)" desc="O IP público de egress NÃO é configurado no host. Unbound NÃO emite outgoing-interface. A identidade de saída é imposta pelo dispositivo de borda (SNAT/roteamento estático)." />
+                  label="Border-Routed (Avançado)" desc="O IP de egress NÃO é configurado no host. A identidade de saída é imposta pelo dispositivo de borda (SNAT). Apenas para arquiteturas com NAT centralizado no gateway." />
               </div>
+              {config.egressDeliveryMode === 'host-owned' && (
+                <div className="flex gap-2 p-3 rounded bg-primary/10 border border-primary/20 text-xs text-primary">
+                  <Info size={14} className="shrink-0 mt-0.5" />
+                  <div>
+                    <strong>Host-Owned:</strong> Os IPs de egress serão adicionados à interface <code className="font-mono bg-primary/20 px-1 rounded">lo</code> via <code className="font-mono bg-primary/20 px-1 rounded">ip addr add</code> no post-up.
+                    <br />
+                    <span className="text-primary/70 mt-1 block">→ O Unbound emitirá <code className="font-mono bg-primary/20 px-1 rounded">outgoing-interface: &lt;IP&gt;</code> para cada instância.</span>
+                    <span className="text-primary/70 block">→ Os IPs devem pertencer a um bloco roteado para este host (ex: /29 ou /30 público).</span>
+                  </div>
+                </div>
+              )}
               {config.egressDeliveryMode === 'border-routed' && (
                 <div className="flex gap-2 p-3 rounded bg-accent/10 border border-accent/20 text-xs text-accent">
                   <Info size={14} className="shrink-0 mt-0.5" />
@@ -894,7 +907,7 @@ export default function Wizard() {
                     <br />
                     <span className="text-accent/70 mt-1 block">→ O Unbound usará o IP padrão do host para queries recursivas.</span>
                     <span className="text-accent/70 block">→ A identidade pública é imposta pelo dispositivo de borda (SNAT/policy routing/rota estática de retorno).</span>
-                    <span className="text-accent/70 block">→ nftables NÃO gerará masquerade genérico.</span>
+                    <span className="text-accent/70 block">→ Os IPs de egress preenchidos abaixo servirão apenas como referência documental — não serão materializados.</span>
                   </div>
                 </div>
               )}
