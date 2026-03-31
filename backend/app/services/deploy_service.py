@@ -192,6 +192,28 @@ def _execute_deploy_locked(
             with open(staged_path, "w") as fp:
                 fp.write(f["content"])
 
+        # ═══ Create directories for glob includes (e.g. unbound.conf.d/) ═══
+        # The master unbound.conf includes /etc/unbound/unbound.conf.d/*.conf
+        # Create the directory in staging so glob resolution doesn't fail.
+        unbound_confd_staging = os.path.join(staging_dir, "etc/unbound/unbound.conf.d")
+        os.makedirs(unbound_confd_staging, exist_ok=True)
+
+        # ═══ Create stub named.cache for root-hints validation ═══
+        named_cache_staging = os.path.join(staging_dir, "etc/unbound/named.cache")
+        if not os.path.exists(named_cache_staging):
+            # Try to copy from production first, otherwise create a minimal stub
+            prod_named_cache = "/etc/unbound/named.cache"
+            if os.path.exists(prod_named_cache):
+                shutil.copy2(prod_named_cache, named_cache_staging)
+                logger.info("Copied named.cache from production to staging")
+            else:
+                with open(named_cache_staging, "w") as nc:
+                    nc.write("; DNS Control — named.cache stub for staging validation\n"
+                             "; Download full root hints: wget https://www.internic.net/domain/named.root -O /etc/unbound/named.cache\n"
+                             ".\t\t\t3600000\tNS\tA.ROOT-SERVERS.NET.\n"
+                             "A.ROOT-SERVERS.NET.\t3600000\tA\t198.41.0.4\n")
+                logger.info("Created named.cache stub in staging")
+
         # Generate safe nftables artifact for syntax validation (no flush ruleset)
         try:
             normalized_payload = normalize_payload(payload)
@@ -305,6 +327,16 @@ def _execute_deploy_locked(
                         return match.group(0).replace(inc, os.path.join(staging_dir, inc.lstrip("/")))
 
                     rewritten = include_pattern.sub(_rewrite_inc, original_content)
+
+                    # ═══ Rewrite root-hints path to staging ═══
+                    import re as _re
+                    root_hints_re = _re.compile(r'(\s*root-hints:\s*["\']?)(/[^"\'#\s]+)', _re.MULTILINE)
+                    def _rewrite_root_hints(m):
+                        prefix = m.group(1)
+                        abs_path = m.group(2)
+                        staged = os.path.join(staging_dir, abs_path.lstrip("/"))
+                        return f"{prefix}{staged}"
+                    rewritten = root_hints_re.sub(_rewrite_root_hints, rewritten)
 
                     checkconf_path = staged_path + ".checkconf"
                     with open(checkconf_path, "w") as tmp:

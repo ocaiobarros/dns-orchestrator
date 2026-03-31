@@ -22,7 +22,7 @@ ALLOWED_EXECUTABLES = frozenset({
     "ping", "traceroute", "ifreload", "ifquery",
     "dpkg", "apt",
     "chmod", "sysctl", "echo",
-    "install", "mkdir",
+    "install", "mkdir", "bash",
     "/etc/network/post-up.d/dns-control",
 })
 
