@@ -733,7 +733,19 @@ export default function Wizard() {
               Configure quais IPs DNS públicos conhecidos serão "sequestrados" dentro da rede.
               Clientes acreditam estar usando o DNS público, mas a resolução é local.
               <strong> Esta é a feature principal do DNS Control.</strong>
+              <br /><span className="text-accent/70 mt-1 block">→ Exemplo: interceptar 4.2.2.5 (Level3) e 8.8.8.8 (Google) para que clientes internos usem seu resolver local.</span>
             </InfoBox>
+
+            {config.interceptedVips.some(v => v.vipIp === config.bootstrapDns) && (
+              <div className="flex gap-2 p-3 rounded bg-destructive/10 border border-destructive/30 text-xs text-destructive">
+                <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                <div>
+                  <strong>Atenção:</strong> O IP <code className="font-mono bg-destructive/20 px-1 rounded">{config.bootstrapDns}</code> está sendo interceptado 
+                  E é o Bootstrap DNS do host (etapa 1). Durante o boot, antes do Unbound iniciar, o host não conseguirá resolver DNS.
+                  <br />Considere usar um Bootstrap DNS diferente (ex: IP de outro resolver na rede ou 1.1.1.1).
+                </div>
+              </div>
+            )}
 
             <div className="space-y-3">
               {config.interceptedVips.map((vip, i) => (
