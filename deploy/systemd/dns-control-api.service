@@ -13,6 +13,7 @@ WorkingDirectory=/opt/dns-control/backend
 EnvironmentFile=/etc/dns-control/env
 ExecStartPre=/usr/bin/test -d /etc/nftables.d
 ExecStartPre=/usr/bin/test -x /opt/dns-control/backend/venv/bin/uvicorn
+ExecStartPre=+/bin/mkdir -p /run/sudo/ts
 ExecStart=/opt/dns-control/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5
