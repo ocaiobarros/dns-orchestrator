@@ -656,7 +656,7 @@ def _execute_deploy_locked(
         else:
             cleanup_msgs.append(f"nftables flush: {r_flush.get('stderr', '')[:100]}")
 
-        # 6d: Remove DNS-related loopback IPs (keep only 127.0.0.1)
+        # 6d: Remove DNS-related loopback IPs from lo (keep only 127.0.0.1)
         r_lo = run_command("ip", ["-4", "addr", "show", "dev", "lo"], timeout=5)
         lo_output = r_lo.get("stdout") or ""
         import re as _re
@@ -668,7 +668,13 @@ def _execute_deploy_locked(
             run_command("ip", ["addr", "del", f"{ip}/32", "dev", "lo"], timeout=5, use_privilege=True)
             removed_ips += 1
         if removed_ips:
-            cleanup_msgs.append(f"Removidos {removed_ips} IPs do loopback")
+            cleanup_msgs.append(f"Removidos {removed_ips} IPs do lo")
+
+        # 6d2: Remove dummy lo0 interface entirely (clean slate for re-creation)
+        r_lo0_check = run_command("ip", ["link", "show", "lo0"], timeout=5)
+        if r_lo0_check.get("exit_code") == 0:
+            run_command("ip", ["link", "del", "lo0"], timeout=5, use_privilege=True)
+            cleanup_msgs.append("Interface dummy lo0 removida")
 
         # 6e: Remove IPv6 non-link-local loopback IPs
         r_lo6 = run_command("ip", ["-6", "addr", "show", "dev", "lo"], timeout=5)
@@ -681,7 +687,7 @@ def _execute_deploy_locked(
             run_command("ip", ["-6", "addr", "del", f"{ip6}/128", "dev", "lo"], timeout=5, use_privilege=True)
             removed_v6 += 1
         if removed_v6:
-            cleanup_msgs.append(f"Removidos {removed_v6} IPv6 do loopback")
+            cleanup_msgs.append(f"Removidos {removed_v6} IPv6 do lo")
 
         # 6f: Clean old nftables.d snippets (use Python os.remove — directory is owned by dns-control)
         nft_dir = "/etc/nftables.d"
