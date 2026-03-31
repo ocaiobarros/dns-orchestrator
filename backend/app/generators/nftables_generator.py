@@ -142,11 +142,11 @@ def _generate_modular(
         _file("/etc/nftables.d/5200-nat-define-anyaddr-ipv6.nft",
               f"define DNS_ANYCAST_IPV6 = {{ {vip6_list} }}\n")
 
-    # DNS dispatch chains (IPv4)
+    # DNS dispatch chains (IPv4) — no braces for regular (non-base) chains
     for proto in ("tcp", "udp"):
         suffix = "2" if proto == "tcp" else "3"
         _file(f"/etc/nftables.d/510{suffix}-nat-chain-ipv4_{proto}_dns.nft",
-              f"add chain ip nat ipv4_{proto}_dns {{}}\n")
+              f"add chain ip nat ipv4_{proto}_dns\n")
 
     # PREROUTING capture rules (IPv4)
     for proto in ("tcp", "udp"):
