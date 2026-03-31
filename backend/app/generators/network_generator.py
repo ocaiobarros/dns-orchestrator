@@ -40,6 +40,8 @@ def generate_network_config(payload: dict[str, Any]) -> list[dict]:
     egress_ipv6: list[str] = []
     listener_ips: list[str] = []
     listener_ipv6: list[str] = []
+    public_listener_ips: list[str] = []
+    public_listener_ipv6: list[str] = []
 
     for inst in instances:
         bind_ip = str(inst.get("bindIp", "")).strip()
@@ -54,6 +56,13 @@ def generate_network_config(payload: dict[str, Any]) -> list[dict]:
         exit_ipv6 = str(inst.get("exitIpv6", "") or inst.get("egressIpv6", "")).strip()
         if exit_ipv6:
             egress_ipv6.append(exit_ipv6)
+        # Public listener IP — must be materialized on loopback for unbound to bind
+        pub_ip = str(inst.get("publicListenerIp", "")).strip()
+        if pub_ip and pub_ip not in listener_ips and pub_ip not in egress_ips:
+            public_listener_ips.append(pub_ip)
+        pub_ipv6 = str(inst.get("publicListenerIpv6", "")).strip()
+        if pub_ipv6 and pub_ipv6 not in listener_ipv6 and pub_ipv6 not in egress_ipv6:
+            public_listener_ipv6.append(pub_ipv6)
 
     # ── /etc/network/interfaces ──
     interfaces_content = f"""source /etc/network/interfaces.d/*
