@@ -813,7 +813,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
       });
       files.push({
         path: `/etc/nftables.d/${ruleid}-nat-chain-${subchain}.nft`,
-        content: `add chain ip nat ${subchain}`,
+        content: `add chain ip nat ${subchain} {}`,
       });
       ruleid++;
     }
