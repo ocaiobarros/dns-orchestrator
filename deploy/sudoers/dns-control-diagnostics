@@ -41,6 +41,9 @@ dns-control ALL=(root) NOPASSWD: \
     /usr/bin/systemctl status unbound*, \
     /usr/bin/systemctl status frr, \
     /usr/bin/systemctl status nftables, \
+    /usr/bin/systemctl is-active nftables, \
+    /usr/bin/systemctl is-active frr, \
+    /usr/bin/systemctl is-active unbound*, \
     /usr/sbin/sysctl --load *, \
     /usr/sbin/ifreload -a, \
     /usr/bin/killall -q unbound, \
