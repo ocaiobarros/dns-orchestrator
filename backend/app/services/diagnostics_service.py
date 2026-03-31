@@ -566,8 +566,8 @@ def get_services_status() -> list[dict]:
 
 
 def _discover_unbound_services() -> list[str]:
-    """Discover unbound instance service names from systemd."""
-    result = _safe_run("systemctl", ["list-units", "--type=service", "--no-pager", "--plain"], timeout=5)
+    """Discover unbound instance service names from systemd (including inactive/loaded)."""
+    result = _safe_run("systemctl", ["list-units", "--type=service", "--all", "--no-pager", "--plain"], timeout=5)
     instances = []
     if result["exit_code"] == 0:
         for line in result["stdout"].split("\n"):
