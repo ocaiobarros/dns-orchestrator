@@ -185,11 +185,52 @@ def _parse_entry_counters(ruleset: str) -> list[dict]:
 
 
 def get_nat_backends() -> list[dict]:
-    return []
+    """Get structured backend list from DNAT rules."""
+    summary = get_nat_summary()
+    return summary.get("backends", [])
 
 
 def get_nat_sticky() -> list[dict]:
-    return []
+    """Get sticky set entries from nftables sets."""
+    entries = []
+    # List all sets and their elements
+    result = run_command("nft", ["list", "sets"], timeout=10, use_privilege=True)
+    if result["exit_code"] != 0:
+        return entries
+
+    current_set = ""
+    for line in result["stdout"].split("\n"):
+        stripped = line.strip()
+        set_match = re.match(r'set\s+(\S+)\s*\{', stripped)
+        if set_match:
+            current_set = set_match.group(1)
+            continue
+        if current_set and "elements" in stripped:
+            # Parse elements like: elements = { 10.0.0.1 timeout 19m50s, 10.0.0.2 timeout 18m30s }
+            elem_match = re.search(r'elements\s*=\s*\{([^}]*)\}', stripped)
+            if elem_match:
+                for elem in elem_match.group(1).split(","):
+                    elem = elem.strip()
+                    if elem:
+                        parts = elem.split()
+                        ip = parts[0] if parts else ""
+                        timeout_val = ""
+                        if "timeout" in elem:
+                            idx = parts.index("timeout") if "timeout" in parts else -1
+                            if idx >= 0 and idx + 1 < len(parts):
+                                timeout_val = parts[idx + 1]
+                        if ip:
+                            # Map set name to backend
+                            backend = current_set.replace("ipv4_users_", "")
+                            entries.append({
+                                "sourceIp": ip,
+                                "backend": backend,
+                                "set_name": current_set,
+                                "expires": timeout_val,
+                                "packets": 0,
+                            })
+
+    return entries
 
 
 def get_nat_ruleset() -> dict:
