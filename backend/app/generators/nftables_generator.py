@@ -308,7 +308,7 @@ def _generate_monolithic_validation(
     for backend in backends:
         name = backend["name"]
         for proto in ("tcp", "udp"):
-            lines.append(f"    set ipv4_users_{name} {{ type ipv4_addr; counter; size 8192; flags dynamic, timeout; timeout {sticky_timeout_min}m; }}")
+            lines.append(f"    set ipv4_users_{name} {{ type ipv4_addr; size 8192; flags dynamic, timeout; timeout {sticky_timeout_min}m; }}")
 
     # Backend chains
     for backend in backends:
