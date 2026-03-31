@@ -256,9 +256,12 @@ export default function Dashboard() {
           bindIp: vipAddress || undefined,
         });
 
-        // Resolver nodes
-        if (safeV2.length > 0) {
-          safeV2.forEach(inst => {
+        // Resolver nodes — prefer v2 DB instances, fallback to live stats discovery
+        const resolverSource = safeV2.length > 0 ? safeV2 : null;
+        const liveResolvers = resolverSource ? null : safeStats;
+
+        if (resolverSource) {
+          resolverSource.forEach(inst => {
             const instStat = safeStats.find((s: any) => s.instance_id === inst.id);
             const instLat = instStat ? getInstanceLatency(instStat) : (dnsAvail ? Number(avgLatency) : undefined);
             const instQps = instStat ? getInstanceQueries(instStat) : undefined;
@@ -274,6 +277,26 @@ export default function Dashboard() {
               bindIp: inst.bind_ip,
             });
             mapEdges.push({ from: 'vip-anycast', to: `resolver-${inst.id}`, latency: instLat != null ? Math.round(instLat) : undefined, qps: instQps ?? 0 });
+          });
+        } else if (liveResolvers && liveResolvers.length > 0) {
+          // Use live stats from /dns/instances (systemd discovery)
+          liveResolvers.forEach((inst: any) => {
+            const name = String(inst.instance ?? inst.name ?? 'resolver');
+            const instQps = getInstanceQueries(inst);
+            const instLat = getInstanceLatency(inst);
+            const instCh = Math.round(getInstanceCacheHit(inst));
+            const isLive = inst.source === 'live';
+            mapNodes.push({
+              id: `resolver-${name}`,
+              label: name,
+              type: 'resolver',
+              status: isLive ? 'ok' : 'inactive',
+              latency: instLat > 0 ? Math.round(instLat) : undefined,
+              qps: instQps > 0 ? instQps : undefined,
+              cacheHit: instCh > 0 ? instCh : undefined,
+              bindIp: inst.bind_ip || inst.bind_ips?.[0],
+            });
+            mapEdges.push({ from: 'vip-anycast', to: `resolver-${name}`, latency: instLat > 0 ? Math.round(instLat) : undefined, qps: instQps });
           });
         } else if (totalInstances > 0) {
           mapNodes.push({
