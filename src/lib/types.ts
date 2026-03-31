@@ -211,7 +211,7 @@ export interface WizardConfig {
 
 // ---- Service Status ----
 
-export type ServiceState = 'running' | 'stopped' | 'error' | 'unknown' | 'starting' | 'reloading';
+export type ServiceState = 'running' | 'active' | 'stopped' | 'no ruleset' | 'error' | 'unknown' | 'starting' | 'reloading';
 
 export interface ServiceStatus {
   name: string;
