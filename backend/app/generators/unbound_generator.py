@@ -49,7 +49,15 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
 
     instances = payload.get("instances", [])
     security = payload.get("security", {})
-    egress_delivery_mode = payload.get("egressDeliveryMode", "host-owned")
+
+    # Global settings from payload or wizard config
+    wizard_cfg = payload.get("_wizardConfig", {}) or {}
+
+    egress_delivery_mode = str(
+        payload.get("egressDeliveryMode")
+        or wizard_cfg.get("egressDeliveryMode")
+        or "host-owned"
+    )
     is_border_routed = egress_delivery_mode == "border-routed"
 
     # Global settings from payload or wizard config
