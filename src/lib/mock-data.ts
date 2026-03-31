@@ -37,8 +37,10 @@ export const mockServices: ServiceStatus[] = [
   { name: 'unbound02', status: 'running', pid: 1235, memoryBytes: 536870912, cpuPercent: 1.8, restartCount: 0, uptime: '3d 21h', lastLog: 'start of service (unbound 1.22.0)', unitFile: '/etc/systemd/system/unbound02.service' },
   { name: 'unbound03', status: 'running', pid: 1236, memoryBytes: 536870912, cpuPercent: 1.5, restartCount: 0, uptime: '3d 21h', lastLog: 'start of service (unbound 1.22.0)', unitFile: '/etc/systemd/system/unbound03.service' },
   { name: 'unbound04', status: 'running', pid: 1237, memoryBytes: 536870912, cpuPercent: 1.9, restartCount: 0, uptime: '3d 21h', lastLog: 'start of service (unbound 1.22.0)', unitFile: '/etc/systemd/system/unbound04.service' },
+  { name: 'nginx', display_name: 'nginx (reverse proxy)', status: 'running', pid: 780, memoryBytes: 15728640, cpuPercent: 0.1, restartCount: 0, uptime: '3d 21h', lastLog: 'worker process started', unitFile: '/lib/systemd/system/nginx.service' },
   { name: 'frr', status: 'running', pid: 890, memoryBytes: 47185920, cpuPercent: 0.3, restartCount: 0, uptime: '3d 21h', lastLog: 'ospfd[890]: Neighbor Full', unitFile: '/lib/systemd/system/frr.service' },
-  { name: 'nftables', status: 'running', pid: null, memoryBytes: null, cpuPercent: null, restartCount: 0, uptime: '3d 21h', lastLog: 'ruleset loaded', unitFile: '/lib/systemd/system/nftables.service' },
+  { name: 'networking', display_name: 'networking (ifupdown2)', status: 'running', pid: null, memoryBytes: null, cpuPercent: null, restartCount: 0, uptime: '3d 21h', lastLog: 'interfaces configured', unitFile: '/lib/systemd/system/networking.service' },
+  { name: 'nftables', display_name: 'nftables (firewall)', status: 'active', active: true, nftables_status: 'active', tables: ['table ip nat', 'table ip filter'], pid: null, memoryBytes: null, cpuPercent: null, restartCount: 0, uptime: '3d 21h', lastLog: 'ruleset loaded', unitFile: '/lib/systemd/system/nftables.service' },
   { name: 'dns-control', status: 'running', pid: 2001, memoryBytes: 67108864, cpuPercent: 0.8, restartCount: 0, uptime: '3d 21h', lastLog: 'API started on 0.0.0.0:8443', unitFile: '/etc/systemd/system/dns-control.service' },
 ];
 
