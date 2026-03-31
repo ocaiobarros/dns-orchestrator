@@ -10,6 +10,7 @@ from app.generators.frr_generator import generate_frr_config
 from app.generators.network_generator import generate_network_config
 from app.generators.systemd_generator import generate_systemd_units
 from app.generators.ip_blocking_generator import generate_ip_blocking_configs
+from app.generators.sysctl_generator import generate_sysctl_configs
 from app.services.payload_normalizer import normalize_payload
 
 
