@@ -96,9 +96,10 @@ def get_nat_summary() -> dict:
 def _parse_dnat_backends(ruleset: str) -> list[dict]:
     """
     Extract DNAT backends with inline counter values from the ruleset.
-    Matches lines like:
-      tcp dport 53 counter packets 123 bytes 45678 dnat to 100.127.255.101:53
-      udp dport 53 counter packets 456 bytes 78901 dnat to 100.127.255.101:53
+    Supports two ruleset formats:
+    1. Direct DNAT: tcp dport 53 counter packets 123 bytes 45678 dnat to 100.127.255.101:53
+    2. Jump chains: counter packets 123 bytes 45678 dnat to 100.127.255.101:53
+       Also: counter packets 123 bytes 45678 jump ipv4_dns_tcp_unbound01
     """
     backends: dict[str, dict] = {}
     current_chain = ""
@@ -112,18 +113,19 @@ def _parse_dnat_backends(ruleset: str) -> list[dict]:
             current_chain = chain_match.group(1)
             continue
 
-        # Match DNAT rules with inline counters
+        # Match DNAT rules with inline counters (direct dnat to)
         dnat_match = re.search(
-            r'(tcp|udp)\s+dport\s+(\d+)\s+counter\s+packets\s+(\d+)\s+bytes\s+(\d+)\s+dnat\s+to\s+(\S+)',
+            r'counter\s+packets\s+(\d+)\s+bytes\s+(\d+)\s+dnat\s+to\s+(\S+)',
             stripped,
         )
         if dnat_match:
-            proto = dnat_match.group(1)
-            port = int(dnat_match.group(2))
-            packets = int(dnat_match.group(3))
-            bytes_val = int(dnat_match.group(4))
-            target = dnat_match.group(5)
+            packets = int(dnat_match.group(1))
+            bytes_val = int(dnat_match.group(2))
+            target = dnat_match.group(3)
             backend_ip = target.split(":")[0]
+
+            # Detect protocol from line
+            proto = "tcp" if "tcp" in stripped.split("counter")[0] else "udp" if "udp" in stripped.split("counter")[0] else "unknown"
 
             if backend_ip not in backends:
                 backends[backend_ip] = {
@@ -136,7 +138,7 @@ def _parse_dnat_backends(ruleset: str) -> list[dict]:
                     "udp_packets": 0,
                     "tcp_bytes": 0,
                     "udp_bytes": 0,
-                    "port": port,
+                    "port": 53,
                     "target": target,
                 }
 
@@ -146,7 +148,54 @@ def _parse_dnat_backends(ruleset: str) -> list[dict]:
             if proto == "tcp":
                 entry["tcp_packets"] += packets
                 entry["tcp_bytes"] += bytes_val
-            else:
+            elif proto == "udp":
+                entry["udp_packets"] += packets
+                entry["udp_bytes"] += bytes_val
+            continue
+
+        # Match jump chain rules with counters (sticky/dispatch pattern)
+        # e.g.: ip saddr @ipv4_users_unbound01 counter packets 0 bytes 0 jump ipv4_dns_tcp_unbound01
+        # or: counter packets 123 bytes 456 jump ipv4_dns_udp_unbound01
+        jump_match = re.search(
+            r'counter\s+packets\s+(\d+)\s+bytes\s+(\d+)\s+jump\s+(\S+)',
+            stripped,
+        )
+        if jump_match:
+            packets = int(jump_match.group(1))
+            bytes_val = int(jump_match.group(2))
+            jump_target = jump_match.group(3)
+
+            # Extract backend name from jump target: ipv4_dns_udp_unbound01 → unbound01
+            name_match = re.search(r'(unbound\d+)', jump_target)
+            if not name_match:
+                continue
+            backend_name = name_match.group(1)
+
+            # Detect protocol from chain name or line
+            proto = "tcp" if "tcp" in jump_target else "udp" if "udp" in jump_target else "unknown"
+
+            if backend_name not in backends:
+                backends[backend_name] = {
+                    "backend": backend_name,
+                    "name": backend_name,
+                    "chain": current_chain,
+                    "packets": 0,
+                    "bytes": 0,
+                    "tcp_packets": 0,
+                    "udp_packets": 0,
+                    "tcp_bytes": 0,
+                    "udp_bytes": 0,
+                    "port": 53,
+                    "target": jump_target,
+                }
+
+            entry = backends[backend_name]
+            entry["packets"] += packets
+            entry["bytes"] += bytes_val
+            if proto == "tcp":
+                entry["tcp_packets"] += packets
+                entry["tcp_bytes"] += bytes_val
+            elif proto == "udp":
                 entry["udp_packets"] += packets
                 entry["udp_bytes"] += bytes_val
 

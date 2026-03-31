@@ -29,7 +29,7 @@ UNBOUND_METRICS_MAP = {
 def collect_instance_metrics(db: Session, instance: DnsInstance) -> dict:
     """Scrape unbound-control stats_noreset and store samples."""
     config_path = f"/etc/unbound/{instance.instance_name}.conf"
-    result = run_command("unbound-control", ["-c", config_path, "stats_noreset"], timeout=10)
+    result = run_command("unbound-control", ["-c", config_path, "stats_noreset"], timeout=10, use_privilege=True)
 
     if result["exit_code"] != 0:
         logger.warning(f"Failed to collect metrics for {instance.instance_name}: {result['stderr'][:200]}")

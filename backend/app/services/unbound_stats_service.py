@@ -145,8 +145,10 @@ def _discover_instances() -> list[dict]:
     instances = []
     if result["exit_code"] == 0:
         for line in result["stdout"].split("\n"):
-            if "unbound" in line and ".service" in line:
-                name = line.split()[0].replace(".service", "")
+            if "unbound" in line and ".service" in line and ("running" in line or "active" in line):
+                name = line.split()[0].replace(".service", "").strip()
+                # Handle bullet prefix from systemd
+                name = name.lstrip("●").lstrip()
                 # Skip the default unbound.service if running alongside instances
                 if name == "unbound":
                     continue
