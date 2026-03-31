@@ -328,6 +328,16 @@ def _execute_deploy_locked(
 
                     rewritten = include_pattern.sub(_rewrite_inc, original_content)
 
+                    # ═══ Rewrite root-hints path to staging ═══
+                    import re as _re
+                    root_hints_re = _re.compile(r'(\s*root-hints:\s*["\']?)(/[^"\'#\s]+)', _re.MULTILINE)
+                    def _rewrite_root_hints(m):
+                        prefix = m.group(1)
+                        abs_path = m.group(2)
+                        staged = os.path.join(staging_dir, abs_path.lstrip("/"))
+                        return f"{prefix}{staged}"
+                    rewritten = root_hints_re.sub(_rewrite_root_hints, rewritten)
+
                     checkconf_path = staged_path + ".checkconf"
                     with open(checkconf_path, "w") as tmp:
                         tmp.write(rewritten)
