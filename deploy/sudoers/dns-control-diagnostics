@@ -30,6 +30,7 @@ dns-control ALL=(root) NOPASSWD: \
     /usr/bin/systemctl restart unbound*, \
     /usr/bin/systemctl restart frr, \
     /usr/bin/systemctl restart nftables, \
+    /usr/bin/systemctl start nftables, \
     /usr/bin/systemctl enable unbound*, \
     /usr/bin/systemctl enable frr, \
     /usr/bin/systemctl enable nftables, \
