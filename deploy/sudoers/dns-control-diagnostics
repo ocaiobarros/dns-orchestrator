@@ -64,6 +64,11 @@ dns-control ALL=(root) NOPASSWD: \
     /usr/bin/killall -q unbound, \
     /usr/sbin/nft flush ruleset, \
     /usr/sbin/ip addr *, \
+    /usr/sbin/ip -4 addr *, \
     /usr/sbin/ip -6 addr *, \
+    /usr/sbin/ip link add lo0 type dummy, \
+    /usr/sbin/ip link set lo0 up, \
+    /usr/sbin/ip link del lo0, \
+    /usr/sbin/ip link show lo0, \
     /usr/bin/bash -n *, \
     /etc/network/post-up.d/dns-control
