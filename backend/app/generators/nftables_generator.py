@@ -146,7 +146,7 @@ def _generate_modular(
     for proto in ("tcp", "udp"):
         suffix = "2" if proto == "tcp" else "3"
         _file(f"/etc/nftables.d/510{suffix}-nat-chain-ipv4_{proto}_dns.nft",
-              f"add chain ip nat ipv4_{proto}_dns\n")
+              f"add chain ip nat ipv4_{proto}_dns {{}}\n")
 
     # PREROUTING capture rules (IPv4)
     for proto in ("tcp", "udp"):
