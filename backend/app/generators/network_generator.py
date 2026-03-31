@@ -1,8 +1,9 @@
 """
 DNS Control — Network Configuration Generator
 Generates ifupdown2 configuration, persistent loopback aliases, and post-up scripts.
-Matches production tutorial structure: ip addr add with 2>/dev/null || true,
-gateway setup, IPv6 addressing, loopback for all addresses.
+Two-plane loopback model matching production reference:
+  - lo:  Public egress IPs (outgoing-interface sources)
+  - lo0: Dummy interface for listener IPs + service/intercepted VIPs
 """
 
 from typing import Any
@@ -36,8 +37,11 @@ def generate_network_config(payload: dict[str, Any]) -> list[dict]:
     files = []
 
     # ── Collect address sets ──
+    # lo plane: egress IPs only (outgoing-interface sources)
     egress_ips: list[str] = []
     egress_ipv6: list[str] = []
+
+    # lo0 plane: listener IPs + public listener IPs (all go on dummy)
     listener_ips: list[str] = []
     listener_ipv6: list[str] = []
     public_listener_ips: list[str] = []
@@ -56,7 +60,7 @@ def generate_network_config(payload: dict[str, Any]) -> list[dict]:
         exit_ipv6 = str(inst.get("exitIpv6", "") or inst.get("egressIpv6", "")).strip()
         if exit_ipv6:
             egress_ipv6.append(exit_ipv6)
-        # Public listener IP — must be materialized on loopback for unbound to bind
+        # Public listener IP — goes on lo0
         pub_ip = str(inst.get("publicListenerIp", "")).strip()
         if pub_ip and pub_ip not in listener_ips and pub_ip not in egress_ips:
             public_listener_ips.append(pub_ip)
@@ -91,88 +95,92 @@ post-up /etc/network/post-up.sh
         "#!/bin/sh",
         "# DNS Control — Network post-up script",
         "# Generated configuration — do not edit manually",
+        "# Two-plane model: lo (egress) + lo0 (listeners/VIPs)",
+        "",
+        "# ── Create dummy lo0 interface for DNS listener/VIP addresses ──",
+        "/usr/sbin/ip link add lo0 type dummy 2>/dev/null || true",
+        "/usr/sbin/ip link set lo0 up 2>/dev/null || true",
         "",
     ]
 
-    # Egress IPs on loopback (host-owned only)
+    # ── lo plane: Egress IPs (host-owned only) ──
     if egress_ips and not is_border_routed:
-        post_up_lines.append("     # Egress IPv4 (outgoing-interface sources)")
+        post_up_lines.append("# Egress IPv4 on lo (outgoing-interface sources)")
         for eip in egress_ips:
-            post_up_lines.append(f"     /usr/sbin/ip -4 addr add {eip}/32 dev lo 2>/dev/null || true")
+            post_up_lines.append(f"/usr/sbin/ip -4 addr add {eip}/32 dev lo 2>/dev/null || true")
         post_up_lines.append("")
 
     # IPv4 default gateway
     if ipv4_gateway:
-        post_up_lines.append(f"     /usr/sbin/ip -4 route add default via {ipv4_gateway} 2>/dev/null || true")
+        post_up_lines.append(f"/usr/sbin/ip -4 route add default via {ipv4_gateway} 2>/dev/null || true")
         post_up_lines.append("")
 
     # IPv6 address on main interface + gateway
     if enable_ipv6 and ipv6_address:
-        post_up_lines.append(f"     /usr/sbin/ip -6 addr add {ipv6_address} dev {main_interface} 2>/dev/null || true")
+        post_up_lines.append(f"/usr/sbin/ip -6 addr add {ipv6_address} dev {main_interface} 2>/dev/null || true")
         if ipv6_gateway:
-            post_up_lines.append(f"     /usr/sbin/ip -6 route add default via {ipv6_gateway} 2>/dev/null || true")
+            post_up_lines.append(f"/usr/sbin/ip -6 route add default via {ipv6_gateway} 2>/dev/null || true")
         post_up_lines.append("")
 
-    # IPv6 egress IPs on loopback (host-owned)
+    # IPv6 egress IPs on lo (host-owned)
     if egress_ipv6 and not is_border_routed:
-        post_up_lines.append("     # Egress IPv6 (outgoing-interface sources)")
+        post_up_lines.append("# Egress IPv6 on lo (outgoing-interface sources)")
         for eip6 in egress_ipv6:
-            post_up_lines.append(f"     /usr/sbin/ip addr add {eip6}/128 dev lo 2>/dev/null || true")
+            post_up_lines.append(f"/usr/sbin/ip addr add {eip6}/128 dev lo 2>/dev/null || true")
         post_up_lines.append("")
 
-    # Listener IPv4 IPs on loopback
+    # ── lo0 plane: Listener IPs ──
     if listener_ips:
-        post_up_lines.append("     # Listener IPv4 (Unbound bind addresses)")
+        post_up_lines.append("# Listener IPv4 on lo0 (Unbound bind addresses)")
         for lip in listener_ips:
-            post_up_lines.append(f"     /usr/sbin/ip addr add {lip}/32 dev lo 2>/dev/null || true")
+            post_up_lines.append(f"/usr/sbin/ip addr add {lip}/32 dev lo0 2>/dev/null || true")
         post_up_lines.append("")
 
-    # Listener IPv6 IPs on loopback
     if listener_ipv6:
-        post_up_lines.append("     # Listener IPv6 (Unbound bind addresses)")
+        post_up_lines.append("# Listener IPv6 on lo0 (Unbound bind addresses)")
         for lip6 in listener_ipv6:
-            post_up_lines.append(f"     /usr/sbin/ip addr add {lip6}/128 dev lo 2>/dev/null || true")
+            post_up_lines.append(f"/usr/sbin/ip addr add {lip6}/128 dev lo0 2>/dev/null || true")
         post_up_lines.append("")
 
-    # Public listener IPs on loopback (public-facing IPs for each instance)
+    # Public listener IPs on lo0
     if public_listener_ips:
-        post_up_lines.append("     # Public Listener IPv4 (public-facing Unbound addresses)")
+        post_up_lines.append("# Public Listener IPv4 on lo0 (public-facing Unbound addresses)")
         for plip in public_listener_ips:
-            post_up_lines.append(f"     /usr/sbin/ip addr add {plip}/32 dev lo 2>/dev/null || true")
+            post_up_lines.append(f"/usr/sbin/ip addr add {plip}/32 dev lo0 2>/dev/null || true")
         post_up_lines.append("")
 
     if public_listener_ipv6:
-        post_up_lines.append("     # Public Listener IPv6 (public-facing Unbound addresses)")
+        post_up_lines.append("# Public Listener IPv6 on lo0 (public-facing Unbound addresses)")
         for plip6 in public_listener_ipv6:
-            post_up_lines.append(f"     /usr/sbin/ip addr add {plip6}/128 dev lo 2>/dev/null || true")
+            post_up_lines.append(f"/usr/sbin/ip addr add {plip6}/128 dev lo0 2>/dev/null || true")
         post_up_lines.append("")
 
-    # Service VIPs on loopback (required for DNAT interception to work)
+    # ── lo0 plane: Service VIPs (required for DNAT interception) ──
     if service_vips:
-        post_up_lines.append("     # Service VIPs (anycast/intercepted — required for nftables DNAT)")
+        post_up_lines.append("# Service VIPs on lo0 (anycast/intercepted — required for nftables DNAT)")
         for vip in service_vips:
             if not isinstance(vip, dict):
                 continue
             vip_ip = str(vip.get("ipv4", "")).strip()
             if vip_ip:
-                post_up_lines.append(f"     /usr/sbin/ip addr add {vip_ip}/32 dev lo 2>/dev/null || true")
+                post_up_lines.append(f"/usr/sbin/ip addr add {vip_ip}/32 dev lo0 2>/dev/null || true")
             vip_ipv6 = str(vip.get("ipv6", "")).strip()
             if vip_ipv6 and enable_ipv6:
-                post_up_lines.append(f"     /usr/sbin/ip addr add {vip_ipv6}/128 dev lo 2>/dev/null || true")
+                post_up_lines.append(f"/usr/sbin/ip addr add {vip_ipv6}/128 dev lo0 2>/dev/null || true")
         post_up_lines.append("")
 
-    # Intercepted VIPs on loopback (required for DNAT interception to work)
+    # ── lo0 plane: Intercepted VIPs (DNS Seizure) ──
     if intercepted_vips:
-        post_up_lines.append("     # Intercepted VIPs (DNS seizure — required for nftables DNAT)")
+        post_up_lines.append("# Intercepted VIPs on lo0 (DNS seizure — required for nftables DNAT)")
         for vip in intercepted_vips:
             if not isinstance(vip, dict):
                 continue
             vip_ip = str(vip.get("vipIp", "")).strip()
             if vip_ip:
-                post_up_lines.append(f"     /usr/sbin/ip addr add {vip_ip}/32 dev lo 2>/dev/null || true")
+                post_up_lines.append(f"/usr/sbin/ip addr add {vip_ip}/32 dev lo0 2>/dev/null || true")
             vip_ipv6 = str(vip.get("vipIpv6", "")).strip()
             if vip_ipv6 and enable_ipv6:
-                post_up_lines.append(f"     /usr/sbin/ip addr add {vip_ipv6}/128 dev lo 2>/dev/null || true")
+                post_up_lines.append(f"/usr/sbin/ip addr add {vip_ipv6}/128 dev lo0 2>/dev/null || true")
         post_up_lines.append("")
 
     post_up_lines.append("exit 0")
