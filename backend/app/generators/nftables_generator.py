@@ -235,7 +235,7 @@ def _generate_modular(
                 f"        {proto} dport 53 counter dnat to {bind_ip}:53",
                 f"    }}",
                 "}",
-            ])
+            ]) + "\n"
             _file(f"/etc/nftables.d/{ruleid}-nat-rule-action-{subchain}.nft", content)
             ruleid += 1
 
