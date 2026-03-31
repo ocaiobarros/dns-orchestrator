@@ -809,11 +809,18 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
 
       files.push({
         path: `/etc/nftables.d/${ruleid}-nat-addrlist-${subusers}.nft`,
-        content: `add set ip nat ${subusers} { type ipv4_addr; size 8192; flags dynamic, timeout; timeout ${stickyTimeoutMin}m; }`,
+        content: [
+          `add set ip nat ${subusers} {`,
+          `    type ipv4_addr`,
+          `    size 8192`,
+          `    flags dynamic, timeout`,
+          `    timeout ${stickyTimeoutMin}m`,
+          `}`,
+        ].join('\n'),
       });
       files.push({
         path: `/etc/nftables.d/${ruleid}-nat-chain-${subchain}.nft`,
-        content: `add chain ip nat ${subchain} {}`,
+        content: `add chain ip nat ${subchain}\n`,
       });
       ruleid++;
     }
