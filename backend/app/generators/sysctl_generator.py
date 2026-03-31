@@ -118,7 +118,7 @@ def generate_sysctl_configs(payload: dict[str, Any]) -> list[dict]:
         "net.netfilter.nf_conntrack_timestamp = 0",
     ]))
 
-    _file("/etc/sysctl.d/092-netfilter-helper.conf", "net.netfilter.nf_conntrack_helper=1")
+    # Note: nf_conntrack_helper was removed from kernel 4.7+ — skipped
 
     _file("/etc/sysctl.d/093-netfilter-icmp.conf", "\n".join([
         "net.netfilter.nf_conntrack_icmp_timeout=30",
