@@ -53,15 +53,6 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     # Global settings from payload or wizard config
     wizard_cfg = payload.get("_wizardConfig", {}) or {}
 
-    egress_delivery_mode = str(
-        payload.get("egressDeliveryMode")
-        or wizard_cfg.get("egressDeliveryMode")
-        or "host-owned"
-    )
-    is_border_routed = egress_delivery_mode == "border-routed"
-
-    # Global settings from payload or wizard config
-    wizard_cfg = payload.get("_wizardConfig", {}) or {}
     enable_ipv6 = payload.get("enableIpv6") or wizard_cfg.get("enableIpv6", False)
     enable_blocklist = payload.get("enableBlocklist") or wizard_cfg.get("enableBlocklist", False)
     threads = _safe_int(payload.get("threads") or wizard_cfg.get("threads"), 4)
