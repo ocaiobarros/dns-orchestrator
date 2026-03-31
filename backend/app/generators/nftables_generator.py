@@ -152,7 +152,7 @@ def _generate_modular(
     for proto in ("tcp", "udp"):
         suffix = "1" if proto == "tcp" else "2"
         _file(f"/etc/nftables.d/511{suffix}-nat-rule-ipv4_{proto}_dns.nft",
-              f"add rule ip  nat PREROUTING ip daddr $DNS_ANYCAST_IPV4 {proto} dport 53 counter packets 0 bytes 0 jump ipv4_{proto}_dns")
+              f"add rule ip nat PREROUTING ip daddr $DNS_ANYCAST_IPV4 {proto} dport 53 counter packets 0 bytes 0 jump ipv4_{proto}_dns\n")
 
     # IPv6 dispatch chains + capture rules
     if enable_ipv6:
