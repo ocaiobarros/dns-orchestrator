@@ -226,6 +226,18 @@ server:
         # Access control
         for cidr in access_cidrs_v4:
             config += f"    access-control: {cidr} allow\n"
+
+        # Always allow queries from the listener IPs themselves (loopback VIPs)
+        # This prevents REFUSED when probing via dig @<listener_ip> or DNAT source
+        listener_ips_to_allow = set()
+        listener_ips_to_allow.add(f"{bind_ip}/32")
+        if public_listener_ip:
+            listener_ips_to_allow.add(f"{public_listener_ip}/32")
+        for lip in listener_ips_to_allow:
+            # Only add if not already covered by existing CIDRs
+            if not any(lip.split("/")[0].startswith(cidr.split("/")[0].rsplit(".", 1)[0]) and int(cidr.split("/")[1]) <= 24 for cidr in access_cidrs_v4):
+                config += f"    access-control: {lip} allow  # auto — listener IP\n"
+
         if enable_ipv6:
             for cidr in access_cidrs_v6:
                 config += f"    access-control: {cidr} allow\n"
