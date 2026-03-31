@@ -275,11 +275,12 @@ def _generate_modular(
         ipv6_backends = [b for b in backends if b.get("ipv6")]
         num_backends_v6 = len(ipv6_backends)
         for proto in ("tcp", "udp"):
+            topchain_v6 = f"ipv6_{proto}_dns"
             for idx, backend in enumerate(ipv6_backends):
                 mod_val = num_backends_v6 - idx
                 subchain = f"ipv6_dns_{proto}_{backend['name']}"
                 _file(f"/etc/nftables.d/{ruleid}-nat-rule-memorized-{subchain}.nft",
-                      f"add rule ip6 nat {topchain} numgen inc mod {mod_val} 0 counter jump {subchain}")
+                      f"add rule ip6 nat {topchain_v6} numgen inc mod {mod_val} 0 counter jump {subchain}")
                 ruleid += 1
 
     return files
