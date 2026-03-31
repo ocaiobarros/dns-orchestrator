@@ -1121,7 +1121,6 @@ def _scope_matches(path: str, scope: str) -> bool:
 def _get_restart_commands(scope: str, payload: dict) -> list[tuple[str, list[str], str]]:
     cmds = []
     # Network post-up MUST run FIRST to materialize listener + egress IPs on loopback
-    # before Unbound tries to bind on them (outgoing-interface requires local IP)
     if scope in ("full", "network"):
         cmds.append((
             "Materializar IPs de rede (post-up)",
@@ -1130,10 +1129,12 @@ def _get_restart_commands(scope: str, payload: dict) -> list[tuple[str, list[str
         ))
     if scope in ("full", "nftables"):
         cmds.append(("Aplicar nftables", ["nft", "-f", "/etc/nftables.conf"], "nft -f <backup>/nftables.conf"))
+        cmds.append(("Habilitar nftables no boot", ["systemctl", "enable", "nftables"], ""))
     if scope in ("full", "dns"):
         instances = payload.get("instances", [])
         for inst in instances:
             name = inst.get("name", "unbound")
+            cmds.append((f"Habilitar {name} no boot", ["systemctl", "enable", name], ""))
             cmds.append((f"Reiniciar {name}", ["systemctl", "restart", name], f"systemctl restart {name} (from backup)"))
     if scope in ("full", "frr"):
         routing = payload.get("routingMode", "static")
