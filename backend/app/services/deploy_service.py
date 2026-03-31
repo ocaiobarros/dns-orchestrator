@@ -528,7 +528,7 @@ def _execute_deploy_locked(
         )
 
     # ═══ Step 5: Backup ═══
-    total_apply_steps = 12  # estimate
+    total_apply_steps = 14  # estimate
     _update_live_state(totalSteps=total_apply_steps)
 
     s5 = _step(5, "Backup configuração atual", None)
