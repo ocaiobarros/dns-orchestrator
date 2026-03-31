@@ -176,8 +176,8 @@ export default function Dashboard() {
   ];
 
   // Compute health summary counts
-  const activeServicesCount = safeServices.filter(s => s.status === 'running').length;
-  const inactiveServicesCount = safeServices.filter(s => s.status === 'stopped').length;
+  const activeServicesCount = safeServices.filter(s => s.status === 'running' || s.status === 'active' || s.active).length;
+  const inactiveServicesCount = safeServices.filter(s => (s.status === 'stopped' || s.status === 'no ruleset') && !s.active).length;
   const errorServicesCount = safeServices.filter(s => s.status === 'error').length;
   const critEvents = eventItems.filter((e: any) => e.severity === 'critical').length;
   const warnEvents = eventItems.filter((e: any) => e.severity === 'warning').length;
