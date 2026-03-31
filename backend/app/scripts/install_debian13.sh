@@ -577,41 +577,17 @@ if [[ ! -d "/etc/nftables.d" ]]; then
     exit 1
 fi
 
-# Create systemd service (always overwrite to stay in sync)
-cat > /etc/systemd/system/dns-control-api.service << 'SERVICEEOF'
-[Unit]
-Description=DNS Control API v2.1
-After=network.target
-Documentation=https://github.com/ocaiobarros/dns-orchestrator
-ConditionPathIsDirectory=/etc/nftables.d
-ConditionPathExists=/opt/dns-control/backend/venv/bin/uvicorn
-
-[Service]
-Type=simple
-User=dns-control
-Group=dns-control
-WorkingDirectory=/opt/dns-control/backend
-EnvironmentFile=/etc/dns-control/env
-ExecStartPre=/usr/bin/test -d /etc/nftables.d
-ExecStartPre=/usr/bin/test -x /opt/dns-control/backend/venv/bin/uvicorn
-ExecStart=/opt/dns-control/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
-Restart=always
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=dns-control-api
-
-# Security hardening
-# All ReadWritePaths directories are created by this installer in Step 3.
-NoNewPrivileges=false
-ProtectSystem=strict
-ReadWritePaths=/var/lib/dns-control /var/log/dns-control /etc/unbound /etc/nftables.d /etc/network /etc/systemd/system
-ProtectHome=true
-PrivateTmp=true
-
-[Install]
-WantedBy=multi-user.target
-SERVICEEOF
+# Install systemd unit file from repository (single source of truth)
+UNIT_SRC="${SOURCE_ROOT}/deploy/systemd/dns-control-api.service"
+if [[ -f "${UNIT_SRC}" ]]; then
+    cp "${UNIT_SRC}" /usr/lib/systemd/system/dns-control-api.service
+    # Also remove any old copy in /etc/systemd/system/ to avoid override conflicts
+    rm -f /etc/systemd/system/dns-control-api.service
+    ok "Systemd unit file installed from repository to /usr/lib/systemd/system/"
+else
+    fail "Systemd unit file not found: ${UNIT_SRC}"
+    ERRORS=$((ERRORS+1))
+fi
 
 systemctl daemon-reload
 systemctl enable dns-control-api
