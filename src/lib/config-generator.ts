@@ -725,37 +725,45 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
   // Main config
   files.push({ path: '/etc/nftables.conf', content: generateNftablesConf(config) });
 
-  // Tables
-  files.push({ path: '/etc/nftables.d/0002-table-ipv4-nat.nft', content: 'add table ip nat\n' });
+  // Tables (block syntax — empty table is additive in nft -f mode)
+  files.push({ path: '/etc/nftables.d/0002-table-ipv4-nat.nft', content: 'table ip nat {\n}\n' });
   if (config.enableIpv6) {
-    files.push({ path: '/etc/nftables.d/0003-table-ipv6-nat.nft', content: 'add table ip6 nat\n' });
+    files.push({ path: '/etc/nftables.d/0003-table-ipv6-nat.nft', content: 'table ip6 nat {\n}\n' });
   }
 
-  // PREROUTING hooks (top-level, single line)
+  // PREROUTING hooks (base chains inside table block)
   files.push({
     path: '/etc/nftables.d/0051-hook-ipv4-prerouting.nft',
-    content: `add chain ip nat PREROUTING { type nat hook prerouting priority dstnat; policy accept; }\n`,
+    content: `table ip nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n`,
   });
   if (config.enableIpv6) {
     files.push({
       path: '/etc/nftables.d/0052-hook-ipv6-prerouting.nft',
-      content: `add chain ip6 nat PREROUTING { type nat hook prerouting priority dstnat; policy accept; }\n`,
+      content: `table ip6 nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n`,
     });
   }
 
-  // Rate limiting chains (if enabled)
+  // Rate limiting chains (if enabled) — inside table block
   if (config.enableDnsProtection) {
     files.push({
       path: '/etc/nftables.d/0060-table-filter.nft',
-      content: `add table ip filter\n`,
+      content: `table ip filter {\n}\n`,
     });
     files.push({
       path: '/etc/nftables.d/0061-hook-input.nft',
-      content: `add chain ip filter INPUT { type filter hook input priority 0; policy accept; }\nadd rule ip filter INPUT udp dport 53 limit rate over 100/second burst 50 packets drop\nadd rule ip filter INPUT tcp dport 53 limit rate over 50/second burst 25 packets drop\n`,
+      content: [
+        'table ip filter {',
+        '    chain INPUT {',
+        '        type filter hook input priority 0; policy accept;',
+        '        udp dport 53 limit rate over 100/second burst 50 packets drop',
+        '        tcp dport 53 limit rate over 50/second burst 25 packets drop',
+        '    }',
+        '}',
+      ].join('\n') + '\n',
     });
   }
 
-  // VIP definitions — merge service VIPs + intercepted VIPs into one define
+  // VIP definitions — 'define' stays at top level (outside table blocks)
   const allVipIpv4s: string[] = [];
   const allVipIpv6s: string[] = [];
   config.serviceVips.forEach(v => {
@@ -783,23 +791,23 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     }
   }
 
-  // DNS chains — no braces for regular (non-base) chains
+  // DNS dispatch chains (IPv4) — empty chains inside table block
   for (const proto of ['tcp', 'udp']) {
     files.push({
       path: `/etc/nftables.d/510${proto === 'tcp' ? '2' : '3'}-nat-chain-ipv4_${proto}_dns.nft`,
-      content: `add chain ip nat ipv4_${proto}_dns\n`,
+      content: `table ip nat {\n    chain ipv4_${proto}_dns {\n    }\n}\n`,
     });
   }
 
-  // PREROUTING capture rules
+  // PREROUTING capture rules — rules inside chain inside table block
   for (const proto of ['tcp', 'udp']) {
     files.push({
       path: `/etc/nftables.d/511${proto === 'tcp' ? '1' : '2'}-nat-rule-ipv4_${proto}_dns.nft`,
-      content: `add rule ip nat PREROUTING ip daddr $DNS_ANYCAST_IPV4 ${proto} dport 53 counter packets 0 bytes 0 jump ipv4_${proto}_dns`,
+      content: `table ip nat {\n    chain PREROUTING {\n        ip daddr $DNS_ANYCAST_IPV4 ${proto} dport 53 counter packets 0 bytes 0 jump ipv4_${proto}_dns\n    }\n}\n`,
     });
   }
 
-  // Per-instance chains + sticky sets
+  // Per-instance chains + sticky sets — inside table blocks
   const stickyTimeoutMin = Math.max(1, Math.floor(config.stickyTimeout / 60));
   let ruleid = 6001;
   config.instances.forEach(inst => {
@@ -807,26 +815,30 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
       const subchain = `ipv4_dns_${proto}_${inst.name}`;
       const subusers = `ipv4_users_${inst.name}`;
 
+      // Set definition inside table block (multi-line, no semicolons)
       files.push({
         path: `/etc/nftables.d/${ruleid}-nat-addrlist-${subusers}.nft`,
         content: [
-          `add set ip nat ${subusers} {`,
-          `    type ipv4_addr`,
-          `    size 8192`,
-          `    flags dynamic, timeout`,
-          `    timeout ${stickyTimeoutMin}m`,
-          `}`,
-        ].join('\n'),
+          'table ip nat {',
+          `    set ${subusers} {`,
+          `        type ipv4_addr`,
+          `        size 8192`,
+          `        flags dynamic, timeout`,
+          `        timeout ${stickyTimeoutMin}m`,
+          `    }`,
+          '}',
+        ].join('\n') + '\n',
       });
+      // Chain inside table block
       files.push({
         path: `/etc/nftables.d/${ruleid}-nat-chain-${subchain}.nft`,
-        content: `add chain ip nat ${subchain}\n`,
+        content: `table ip nat {\n    chain ${subchain} {\n    }\n}\n`,
       });
       ruleid++;
     }
   });
 
-  // Action rules (add to set, DNAT)
+  // Action rules (add to set, DNAT) — inside table block
   ruleid = 6201;
   config.instances.forEach(inst => {
     for (const proto of ['tcp', 'udp']) {
@@ -836,16 +848,20 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
       files.push({
         path: `/etc/nftables.d/${ruleid}-nat-rule-action-${subchain}.nft`,
         content: [
-          `add rule ip nat ${subchain} add @${subusers} { ip saddr } counter`,
-          `add rule ip nat ${subchain} set update ip saddr timeout 0s @${subusers} counter`,
-          `add rule ip nat ${subchain} ${proto} dport 53 counter dnat to ${inst.bindIp}:53`,
-        ].join('\n'),
+          'table ip nat {',
+          `    chain ${subchain} {`,
+          `        add @${subusers} { ip saddr } counter`,
+          `        set update ip saddr timeout 0s @${subusers} counter`,
+          `        ${proto} dport 53 counter dnat to ${inst.bindIp}:53`,
+          `    }`,
+          '}',
+        ].join('\n') + '\n',
       });
       ruleid++;
     }
   });
 
-  // Memorized source rules
+  // Memorized source rules — inside table block
   ruleid = 7001;
   config.instances.forEach(inst => {
     for (const proto of ['tcp', 'udp']) {
@@ -855,13 +871,13 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
 
       files.push({
         path: `/etc/nftables.d/${ruleid}-nat-rule-memorized-${subchain}.nft`,
-        content: `add rule ip nat ${topchain} ip saddr @${subusers} counter jump ${subchain}`,
+        content: `table ip nat {\n    chain ${topchain} {\n        ip saddr @${subusers} counter jump ${subchain}\n    }\n}\n`,
       });
       ruleid++;
     }
   });
 
-  // Nth balancing fallback — numgen inc mod N vmap for uniform distribution
+  // Nth balancing fallback — numgen inc mod N vmap inside table block
   ruleid = 7201;
   for (const proto of ['tcp', 'udp']) {
     const topchain = `ipv4_${proto}_dns`;
@@ -870,21 +886,21 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
       .join(', ');
     files.push({
       path: `/etc/nftables.d/${ruleid}-nat-rule-nth-ipv4_${proto}_dns.nft`,
-      content: `add rule ip nat ${topchain} numgen inc mod ${config.instances.length} vmap { ${vmapEntries} }`,
+      content: `table ip nat {\n    chain ${topchain} {\n        numgen inc mod ${config.instances.length} vmap { ${vmapEntries} }\n    }\n}\n`,
     });
     ruleid++;
   }
 
-  // IPv6 rules
+  // IPv6 rules — all using table block syntax
   if (config.enableIpv6) {
     for (const proto of ['tcp', 'udp']) {
       files.push({
         path: `/etc/nftables.d/520${proto === 'tcp' ? '2' : '3'}-nat-chain-ipv6_${proto}_dns.nft`,
-        content: `add chain ip6 nat ipv6_${proto}_dns\n`,
+        content: `table ip6 nat {\n    chain ipv6_${proto}_dns {\n    }\n}\n`,
       });
       files.push({
         path: `/etc/nftables.d/521${proto === 'tcp' ? '1' : '2'}-nat-rule-ipv6_${proto}_dns.nft`,
-        content: `add rule ip6 nat PREROUTING ip6 daddr $DNS_ANYCAST_IPV6 ${proto} dport 53 counter packets 0 bytes 0 jump ipv6_${proto}_dns`,
+        content: `table ip6 nat {\n    chain PREROUTING {\n        ip6 daddr $DNS_ANYCAST_IPV6 ${proto} dport 53 counter packets 0 bytes 0 jump ipv6_${proto}_dns\n    }\n}\n`,
       });
     }
 
@@ -897,15 +913,20 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
         files.push({
           path: `/etc/nftables.d/${ruleid}-nat-addrlist-${subusers}.nft`,
           content: [
-            `add set ip6 nat ${subusers} {`,
-            `    type ipv6_addr`,
-            `    size 8192`,
-            `    flags dynamic, timeout`,
-            `    timeout ${stickyTimeoutMin}m`,
-            `}`,
-          ].join('\n'),
+            'table ip6 nat {',
+            `    set ${subusers} {`,
+            `        type ipv6_addr`,
+            `        size 8192`,
+            `        flags dynamic, timeout`,
+            `        timeout ${stickyTimeoutMin}m`,
+            `    }`,
+            '}',
+          ].join('\n') + '\n',
         });
-        files.push({ path: `/etc/nftables.d/${ruleid}-nat-chain-${subchain}.nft`, content: `add chain ip6 nat ${subchain}\n` });
+        files.push({
+          path: `/etc/nftables.d/${ruleid}-nat-chain-${subchain}.nft`,
+          content: `table ip6 nat {\n    chain ${subchain} {\n    }\n}\n`,
+        });
         ruleid++;
       }
     });
@@ -919,10 +940,14 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
         files.push({
           path: `/etc/nftables.d/${ruleid}-nat-rule-action-${subchain}.nft`,
           content: [
-            `add rule ip6 nat ${subchain} add @${subusers} { ip6 saddr } counter`,
-            `add rule ip6 nat ${subchain} set update ip6 saddr timeout 0s @${subusers} counter`,
-            `add rule ip6 nat ${subchain} ${proto} dport 53 counter dnat to ${inst.bindIpv6}:53`,
-          ].join('\n'),
+            'table ip6 nat {',
+            `    chain ${subchain} {`,
+            `        add @${subusers} { ip6 saddr } counter`,
+            `        set update ip6 saddr timeout 0s @${subusers} counter`,
+            `        ${proto} dport 53 counter dnat to [${inst.bindIpv6}]:53`,
+            `    }`,
+            '}',
+          ].join('\n') + '\n',
         });
         ruleid++;
       }
@@ -935,7 +960,10 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
         const topchain = `ipv6_${proto}_dns`;
         const subchain = `ipv6_dns_${proto}_${inst.name}`;
         const subusers = `ipv6_users_${inst.name}`;
-        files.push({ path: `/etc/nftables.d/${ruleid}-nat-rule-memorized-${subchain}.nft`, content: `add rule ip6 nat ${topchain} ip6 saddr @${subusers} counter jump ${subchain}` });
+        files.push({
+          path: `/etc/nftables.d/${ruleid}-nat-rule-memorized-${subchain}.nft`,
+          content: `table ip6 nat {\n    chain ${topchain} {\n        ip6 saddr @${subusers} counter jump ${subchain}\n    }\n}\n`,
+        });
         ruleid++;
       }
     });
@@ -949,7 +977,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
         .join(', ');
       files.push({
         path: `/etc/nftables.d/${ruleid}-nat-rule-nth-ipv6_${proto}_dns.nft`,
-        content: `add rule ip6 nat ${topchain} numgen inc mod ${ipv6Instances.length} vmap { ${vmapEntries} }`,
+        content: `table ip6 nat {\n    chain ${topchain} {\n        numgen inc mod ${ipv6Instances.length} vmap { ${vmapEntries} }\n    }\n}\n`,
       });
       ruleid++;
     }

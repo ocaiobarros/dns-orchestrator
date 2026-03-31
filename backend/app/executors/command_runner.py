@@ -22,7 +22,7 @@ ALLOWED_EXECUTABLES = frozenset({
     "ping", "traceroute", "ifreload", "ifquery",
     "dpkg", "apt",
     "chmod", "sysctl", "echo",
-    "install", "mkdir", "bash", "killall",
+    "install", "mkdir", "bash", "killall", "cp",
     "/etc/network/post-up.d/dns-control",
 })
 
@@ -43,6 +43,8 @@ _SUDO_ALLOWED_COMMANDS: list[tuple[str, list[str]]] = [
     ("vtysh", ["-c"]),
     ("journalctl", ["--no-pager"]),
     # Deploy operations
+    ("cp", ["--no-preserve=ownership"]),
+    ("chmod", []),
     ("install", ["-m"]),
     ("mkdir", ["-p"]),
     ("systemctl", ["daemon-reload"]),
