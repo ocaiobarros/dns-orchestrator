@@ -439,9 +439,20 @@ export default function Wizard() {
         return (
           <div className="space-y-4">
             <InfoBox>
-              Configure os IPs que os clientes usarão como servidor DNS.
-              Estes são os IPs de serviço — a identidade pública do resolver.
+              Configure os IPs Anycast que a sua rede <strong>anuncia/possui</strong> e que os clientes usarão como servidor DNS.
+              <strong>Não confunda com DNS públicos interceptados</strong> (Google 8.8.8.8, Level3 4.2.2.5) — esses vão na etapa "VIP Interception".
+              <br /><span className="text-accent/70 mt-1 block">→ Exemplo: se você possui o bloco 191.243.128.0/24, o VIP de serviço pode ser 191.243.128.1</span>
             </InfoBox>
+            {config.serviceVips.some(v => v.ipv4 === config.bootstrapDns) && (
+              <div className="flex gap-2 p-3 rounded bg-destructive/10 border border-destructive/30 text-xs text-destructive">
+                <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                <div>
+                  <strong>Atenção:</strong> O IP <code className="font-mono bg-destructive/20 px-1 rounded">{config.bootstrapDns}</code> está configurado como VIP de serviço 
+                  E como Bootstrap DNS do host. Isso pode causar loop de resolução — o host tentará resolver DNS via um IP que ele mesmo intercepta.
+                  <br />Considere mover este IP para a etapa <strong>"VIP Interception"</strong> ou alterar o Bootstrap DNS na etapa 1.
+                </div>
+              </div>
+            )}
             <div className="space-y-3">
               {config.serviceVips.map((vip, i) => (
                 <div key={i} className="p-4 rounded bg-secondary border border-border space-y-3">
@@ -529,6 +540,9 @@ export default function Wizard() {
           <div className="space-y-4">
             <InfoBox>
               Cada instância é um processo Unbound independente com listener e interface de controle próprios.
+              <br /><span className="text-accent/70 mt-1 block">→ <strong>Listener Privado</strong>: IP interno (RFC 6598, ex: 100.127.255.101) onde o Unbound faz bind. Materializado em <code className="font-mono bg-accent/20 px-1 rounded">lo0</code> (dummy).</span>
+              <span className="text-accent/70 block">→ <strong>Listener Público</strong>: IP público da instância (opcional). Também em lo0. Usado se clientes se conectam diretamente.</span>
+              <span className="text-accent/70 block">→ Os IPs de <strong>egress</strong> (saída para recursão) são configurados na próxima etapa.</span>
             </InfoBox>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <FieldGroup label="Threads por instância *" error={fieldError('threads')}>
@@ -722,7 +736,19 @@ export default function Wizard() {
               Configure quais IPs DNS públicos conhecidos serão "sequestrados" dentro da rede.
               Clientes acreditam estar usando o DNS público, mas a resolução é local.
               <strong> Esta é a feature principal do DNS Control.</strong>
+              <br /><span className="text-accent/70 mt-1 block">→ Exemplo: interceptar 4.2.2.5 (Level3) e 8.8.8.8 (Google) para que clientes internos usem seu resolver local.</span>
             </InfoBox>
+
+            {config.interceptedVips.some(v => v.vipIp === config.bootstrapDns) && (
+              <div className="flex gap-2 p-3 rounded bg-destructive/10 border border-destructive/30 text-xs text-destructive">
+                <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                <div>
+                  <strong>Atenção:</strong> O IP <code className="font-mono bg-destructive/20 px-1 rounded">{config.bootstrapDns}</code> está sendo interceptado 
+                  E é o Bootstrap DNS do host (etapa 1). Durante o boot, antes do Unbound iniciar, o host não conseguirá resolver DNS.
+                  <br />Considere usar um Bootstrap DNS diferente (ex: IP de outro resolver na rede ou 1.1.1.1).
+                </div>
+              </div>
+            )}
 
             <div className="space-y-3">
               {config.interceptedVips.map((vip, i) => (
@@ -859,8 +885,10 @@ export default function Wizard() {
         return (
           <div className="space-y-4">
             <InfoBox>
-              Configure o IP público de saída (outgoing-interface) de cada instância.
+              Configure o IP público de saída (<code className="font-mono bg-accent/20 px-1 rounded">outgoing-interface</code>) de cada instância.
               Este é o IP que os servidores autoritativos verão ao receber queries recursivas.
+              <br /><span className="text-accent/70 mt-1 block">→ No modelo de referência, cada instância tem um IP público exclusivo (ex: 45.232.215.20 para unbound01, 45.232.215.21 para unbound02).</span>
+              <span className="text-accent/70 block">→ Esses IPs são materializados na interface <code className="font-mono bg-accent/20 px-1 rounded">lo</code> (loopback real) do host.</span>
             </InfoBox>
 
             {/* Egress Delivery Mode */}
@@ -869,11 +897,22 @@ export default function Wizard() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <ModeCard selected={config.egressDeliveryMode === 'host-owned'}
                   onClick={() => set('egressDeliveryMode', 'host-owned')}
-                  label="Host-Owned (IP Local)" desc="O IP público de egress é configurado localmente no host (loopback). O host é dono do IP." />
+                  label="⭐ Host-Owned (Recomendado)" desc="O IP público de egress é configurado na loopback (lo) do host. O Unbound usa outgoing-interface para selecionar a identidade de saída. Padrão para a maioria dos ISPs." />
                 <ModeCard selected={config.egressDeliveryMode === 'border-routed'}
                   onClick={() => set('egressDeliveryMode', 'border-routed')}
-                  label="Border-Routed (Lógico)" desc="O IP público de egress NÃO é configurado no host. Unbound NÃO emite outgoing-interface. A identidade de saída é imposta pelo dispositivo de borda (SNAT/roteamento estático)." />
+                  label="Border-Routed (Avançado)" desc="O IP de egress NÃO é configurado no host. A identidade de saída é imposta pelo dispositivo de borda (SNAT). Apenas para arquiteturas com NAT centralizado no gateway." />
               </div>
+              {config.egressDeliveryMode === 'host-owned' && (
+                <div className="flex gap-2 p-3 rounded bg-primary/10 border border-primary/20 text-xs text-primary">
+                  <Info size={14} className="shrink-0 mt-0.5" />
+                  <div>
+                    <strong>Host-Owned:</strong> Os IPs de egress serão adicionados à interface <code className="font-mono bg-primary/20 px-1 rounded">lo</code> via <code className="font-mono bg-primary/20 px-1 rounded">ip addr add</code> no post-up.
+                    <br />
+                    <span className="text-primary/70 mt-1 block">→ O Unbound emitirá <code className="font-mono bg-primary/20 px-1 rounded">outgoing-interface: &lt;IP&gt;</code> para cada instância.</span>
+                    <span className="text-primary/70 block">→ Os IPs devem pertencer a um bloco roteado para este host (ex: /29 ou /30 público).</span>
+                  </div>
+                </div>
+              )}
               {config.egressDeliveryMode === 'border-routed' && (
                 <div className="flex gap-2 p-3 rounded bg-accent/10 border border-accent/20 text-xs text-accent">
                   <Info size={14} className="shrink-0 mt-0.5" />
@@ -883,7 +922,7 @@ export default function Wizard() {
                     <br />
                     <span className="text-accent/70 mt-1 block">→ O Unbound usará o IP padrão do host para queries recursivas.</span>
                     <span className="text-accent/70 block">→ A identidade pública é imposta pelo dispositivo de borda (SNAT/policy routing/rota estática de retorno).</span>
-                    <span className="text-accent/70 block">→ nftables NÃO gerará masquerade genérico.</span>
+                    <span className="text-accent/70 block">→ Os IPs de egress preenchidos abaixo servirão apenas como referência documental — não serão materializados.</span>
                   </div>
                 </div>
               )}
