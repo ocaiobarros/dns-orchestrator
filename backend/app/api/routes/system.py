@@ -141,18 +141,19 @@ def _check_sudoers() -> dict[str, Any]:
     """Check that the service user has sudo privileges configured."""
     start = monotonic()
     import os
-    sudoers_path = "/etc/sudoers.d/dns-control"
-    if os.path.isfile(sudoers_path):
-        return {
-            "name": "sudoers_ok",
-            "status": "pass",
-            "detail": f"{sudoers_path} exists",
-            "duration_ms": int((monotonic() - start) * 1000),
-        }
+    # Check both possible sudoers paths
+    for path in ["/etc/sudoers.d/dns-control-diagnostics", "/etc/sudoers.d/dns-control"]:
+        if os.path.isfile(path):
+            return {
+                "name": "sudoers_ok",
+                "status": "pass",
+                "detail": f"{path} exists",
+                "duration_ms": int((monotonic() - start) * 1000),
+            }
     return {
         "name": "sudoers_ok",
         "status": "fail",
-        "detail": f"{sudoers_path} not found",
+        "detail": "sudoers file not found in /etc/sudoers.d/",
         "duration_ms": int((monotonic() - start) * 1000),
     }
 

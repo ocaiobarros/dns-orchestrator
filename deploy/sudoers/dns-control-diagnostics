@@ -46,11 +46,13 @@ dns-control ALL=(root) NOPASSWD: \
     /usr/bin/systemctl status nftables, \
     /usr/bin/systemctl status nginx, \
     /usr/bin/systemctl status networking, \
+    /usr/bin/systemctl status dns-control-api, \
     /usr/bin/systemctl is-active nftables, \
     /usr/bin/systemctl is-active frr, \
     /usr/bin/systemctl is-active nginx, \
     /usr/bin/systemctl is-active networking, \
     /usr/bin/systemctl is-active unbound*, \
+    /usr/bin/systemctl is-active dns-control-api, \
     /usr/bin/systemctl is-enabled unbound*, \
     /usr/bin/systemctl is-enabled frr, \
     /usr/bin/systemctl is-enabled nftables, \
