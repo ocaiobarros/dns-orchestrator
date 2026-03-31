@@ -584,10 +584,10 @@ def get_service_detail(name: str) -> dict:
 
 
 def restart_service(name: str) -> dict:
-    allowed = ["frr", "nftables"]
+    allowed = ["frr", "nftables", "nginx", "networking"]
     if name not in allowed and not name.startswith("unbound"):
         return {"success": False, "error": "Serviço não permitido"}
-    result = _safe_run("systemctl", ["restart", name], timeout=30)
+    result = _safe_run("systemctl", ["restart", name], timeout=30, use_privilege=True)
     return {"success": result["exit_code"] == 0, "output": result["stdout"], "stderr": result["stderr"]}
 
 
