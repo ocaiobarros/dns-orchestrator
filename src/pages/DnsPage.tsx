@@ -92,7 +92,7 @@ export default function DnsPage() {
 
     // Per-instance snapshots: aggregate into a single data point
     let totalQps = 0, totalHits = 0, totalMisses = 0, totalLatency = 0, totalServfail = 0, totalNxdomain = 0, count = 0;
-    allMetrics.forEach(m => {
+    allMetrics.forEach((m: any) => {
       if (!m) return;
       totalQps += asNumber(m.totalQueries ?? m.qps ?? m.queries_total);
       totalHits += asNumber(m.cacheHits ?? m.cache_hits);
