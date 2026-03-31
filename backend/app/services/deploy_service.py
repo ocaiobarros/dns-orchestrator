@@ -721,9 +721,9 @@ def _execute_deploy_locked(
     steps.append(s10_sysctl)
     _update_live_state(completedSteps=10)
 
-    # ═══ Step 10+: Restart/reload services ═══
+    # ═══ Step 11+: Restart/reload services (order: post-up → nftables → unbound → frr) ═══
     restart_cmds = _get_restart_commands(scope, payload)
-    order = 10
+    order = 11
     for cmd_name, cmd_args, hint in restart_cmds:
         s = _step(order, cmd_name, " ".join(cmd_args))
         s["rollbackHint"] = hint
