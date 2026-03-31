@@ -26,7 +26,7 @@ SyslogIdentifier=dns-control-api
 # The installer (install_debian13.sh) creates these in Step 3.
 NoNewPrivileges=false
 ProtectSystem=strict
-ReadWritePaths=/var/lib/dns-control /var/log/dns-control /etc/unbound /etc/nftables.d /etc/network /etc/systemd/system
+ReadWritePaths=/var/lib/dns-control /var/log/dns-control /etc/unbound /etc/nftables.d /etc/nftables.conf /etc/network /etc/systemd/system /etc/sysctl.d /etc/frr /etc/default /usr/lib/systemd/system
 ProtectHome=true
 PrivateTmp=true
 
