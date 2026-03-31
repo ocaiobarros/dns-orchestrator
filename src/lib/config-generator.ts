@@ -783,11 +783,11 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     }
   }
 
-  // DNS chains
+  // DNS chains — no braces for regular (non-base) chains
   for (const proto of ['tcp', 'udp']) {
     files.push({
       path: `/etc/nftables.d/510${proto === 'tcp' ? '2' : '3'}-nat-chain-ipv4_${proto}_dns.nft`,
-      content: `add chain ip nat ipv4_${proto}_dns {}`,
+      content: `add chain ip nat ipv4_${proto}_dns\n`,
     });
   }
 
@@ -809,11 +809,18 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
 
       files.push({
         path: `/etc/nftables.d/${ruleid}-nat-addrlist-${subusers}.nft`,
-        content: `add set ip nat ${subusers} { type ipv4_addr; size 8192; flags dynamic, timeout; timeout ${stickyTimeoutMin}m; }`,
+        content: [
+          `add set ip nat ${subusers} {`,
+          `    type ipv4_addr`,
+          `    size 8192`,
+          `    flags dynamic, timeout`,
+          `    timeout ${stickyTimeoutMin}m`,
+          `}`,
+        ].join('\n'),
       });
       files.push({
         path: `/etc/nftables.d/${ruleid}-nat-chain-${subchain}.nft`,
-        content: `add chain ip nat ${subchain} {}`,
+        content: `add chain ip nat ${subchain}\n`,
       });
       ruleid++;
     }
@@ -873,7 +880,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     for (const proto of ['tcp', 'udp']) {
       files.push({
         path: `/etc/nftables.d/520${proto === 'tcp' ? '2' : '3'}-nat-chain-ipv6_${proto}_dns.nft`,
-        content: `add chain ip6 nat ipv6_${proto}_dns {}`,
+        content: `add chain ip6 nat ipv6_${proto}_dns\n`,
       });
       files.push({
         path: `/etc/nftables.d/521${proto === 'tcp' ? '1' : '2'}-nat-rule-ipv6_${proto}_dns.nft`,
@@ -887,8 +894,18 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
       for (const proto of ['tcp', 'udp']) {
         const subchain = `ipv6_dns_${proto}_${inst.name}`;
         const subusers = `ipv6_users_${inst.name}`;
-        files.push({ path: `/etc/nftables.d/${ruleid}-nat-addrlist-${subusers}.nft`, content: `add set ip6 nat ${subusers} { type ipv6_addr; size 8192; flags dynamic, timeout; timeout ${stickyTimeoutMin}m; }` });
-        files.push({ path: `/etc/nftables.d/${ruleid}-nat-chain-${subchain}.nft`, content: `add chain ip6 nat ${subchain} {}` });
+        files.push({
+          path: `/etc/nftables.d/${ruleid}-nat-addrlist-${subusers}.nft`,
+          content: [
+            `add set ip6 nat ${subusers} {`,
+            `    type ipv6_addr`,
+            `    size 8192`,
+            `    flags dynamic, timeout`,
+            `    timeout ${stickyTimeoutMin}m`,
+            `}`,
+          ].join('\n'),
+        });
+        files.push({ path: `/etc/nftables.d/${ruleid}-nat-chain-${subchain}.nft`, content: `add chain ip6 nat ${subchain}\n` });
         ruleid++;
       }
     });

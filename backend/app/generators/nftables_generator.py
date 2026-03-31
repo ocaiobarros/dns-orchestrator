@@ -142,11 +142,11 @@ def _generate_modular(
         _file("/etc/nftables.d/5200-nat-define-anyaddr-ipv6.nft",
               f"define DNS_ANYCAST_IPV6 = {{ {vip6_list} }}\n")
 
-    # DNS dispatch chains (IPv4)
+    # DNS dispatch chains (IPv4) — no braces for regular (non-base) chains
     for proto in ("tcp", "udp"):
         suffix = "2" if proto == "tcp" else "3"
         _file(f"/etc/nftables.d/510{suffix}-nat-chain-ipv4_{proto}_dns.nft",
-              f"add chain ip nat ipv4_{proto}_dns {{}}\n")
+              f"add chain ip nat ipv4_{proto}_dns\n")
 
     # PREROUTING capture rules (IPv4)
     for proto in ("tcp", "udp"):
@@ -159,23 +159,31 @@ def _generate_modular(
         for proto in ("tcp", "udp"):
             suffix = "2" if proto == "tcp" else "3"
             _file(f"/etc/nftables.d/520{suffix}-nat-chain-ipv6_{proto}_dns.nft",
-                  f"add chain ip6 nat ipv6_{proto}_dns {{}}")
+                  f"add chain ip6 nat ipv6_{proto}_dns\n")
         for proto in ("tcp", "udp"):
             suffix = "1" if proto == "tcp" else "2"
             _file(f"/etc/nftables.d/521{suffix}-nat-rule-ipv6_{proto}_dns.nft",
                   f"add rule ip6 nat PREROUTING ip6 daddr $DNS_ANYCAST_IPV6 {proto} dport 53 counter packets 0 bytes 0 jump ipv6_{proto}_dns")
 
     # Per-instance: sticky sets + backend chains (IPv4)
+    # Sets use multi-line format (newlines, not semicolons) for nft parser compatibility
     ruleid = 6001
     for backend in backends:
         name = backend["name"]
         for proto in ("tcp", "udp"):
             subusers = f"ipv4_users_{name}"
             subchain = f"ipv4_dns_{proto}_{name}"
-            _file(f"/etc/nftables.d/{ruleid}-nat-addrlist-{subusers}.nft",
-                  f"add set ip nat {subusers} {{ type ipv4_addr; size 8192; flags dynamic, timeout; timeout {sticky_timeout_min}m; }}")
+            set_content = "\n".join([
+                f"add set ip nat {subusers} {{",
+                f"    type ipv4_addr",
+                f"    size 8192",
+                f"    flags dynamic, timeout",
+                f"    timeout {sticky_timeout_min}m",
+                f"}}",
+            ])
+            _file(f"/etc/nftables.d/{ruleid}-nat-addrlist-{subusers}.nft", set_content)
             _file(f"/etc/nftables.d/{ruleid}-nat-chain-{subchain}.nft",
-                  f"add chain ip nat {subchain} {{}}")
+                  f"add chain ip nat {subchain}\n")
             ruleid += 1
 
     # Per-instance: sticky sets + backend chains (IPv6)
@@ -188,10 +196,17 @@ def _generate_modular(
             for proto in ("tcp", "udp"):
                 subusers = f"ipv6_users_{name}"
                 subchain = f"ipv6_dns_{proto}_{name}"
-                _file(f"/etc/nftables.d/{ruleid}-nat-addrlist-{subusers}.nft",
-                      f"add set ip6 nat {subusers} {{ type ipv6_addr; size 8192; flags dynamic, timeout; timeout {sticky_timeout_min}m; }}")
+                set_content = "\n".join([
+                    f"add set ip6 nat {subusers} {{",
+                    f"    type ipv6_addr",
+                    f"    size 8192",
+                    f"    flags dynamic, timeout",
+                    f"    timeout {sticky_timeout_min}m",
+                    f"}}",
+                ])
+                _file(f"/etc/nftables.d/{ruleid}-nat-addrlist-{subusers}.nft", set_content)
                 _file(f"/etc/nftables.d/{ruleid}-nat-chain-{subchain}.nft",
-                      f"add chain ip6 nat {subchain} {{}}")
+                      f"add chain ip6 nat {subchain}\n")
                 ruleid += 1
 
     # Action rules: add to set + update + DNAT (IPv4)
