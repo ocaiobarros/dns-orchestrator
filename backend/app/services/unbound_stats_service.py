@@ -138,8 +138,9 @@ def _discover_instances() -> list[dict]:
     For each, parse config file to extract control-interface and control-port.
     """
     result = run_command(
-        "systemctl", ["list-units", "--type=service", "--state=running", "--no-pager", "--plain"],
+        "systemctl", ["list-units", "--all", "--type=service", "--no-pager", "--plain"],
         timeout=10,
+        use_privilege=True,
     )
     instances = []
     if result["exit_code"] == 0:
