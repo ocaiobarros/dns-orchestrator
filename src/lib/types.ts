@@ -223,6 +223,9 @@ export interface ServiceStatus {
   uptime: string;
   lastLog: string;
   unitFile: string;
+  active?: boolean;
+  nftables_status?: string;
+  tables?: string[];
 }
 
 // ---- System Info ----

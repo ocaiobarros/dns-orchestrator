@@ -60,8 +60,8 @@ export default function NocHealthMatrix({ services, dnsHealthy, networkOk, dnsAv
     },
     {
       label: 'FIREWALL',
-      state: (nftSvc?.status === 'running' || nftSvc?.status === 'active') ? 'ok' : nftSvc?.status === 'stopped' || nftSvc?.status === 'no ruleset' ? 'inactive' : nftSvc ? 'fail' : 'inactive',
-      detail: !nftSvc ? 'Not detected' : (nftSvc?.status === 'stopped' || nftSvc?.status === 'no ruleset') ? 'Inactive' : undefined,
+      state: (nftSvc?.active || nftSvc?.status === 'running' || nftSvc?.status === 'active') ? 'ok' : nftSvc?.status === 'stopped' || nftSvc?.status === 'no ruleset' ? 'inactive' : nftSvc ? 'warn' : 'inactive',
+      detail: !nftSvc ? 'Not detected' : (nftSvc?.status === 'stopped' || nftSvc?.status === 'no ruleset') ? 'Inactive' : nftSvc?.nftables_status === 'unavailable' ? 'Privilege required' : undefined,
     },
     { label: 'API', state: 'ok' },
     { label: 'AUTH', state: 'ok' },
