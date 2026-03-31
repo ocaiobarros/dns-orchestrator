@@ -28,9 +28,15 @@ ensure_runtime_dirs() {
     mkdir -p "${LOG_DIR}"
     mkdir -p "${ENV_DIR}"
     mkdir -p "/etc/unbound"
+    mkdir -p "/etc/unbound/unbound.conf.d"
     mkdir -p "/etc/nftables.d"
     mkdir -p "/etc/network"
+    mkdir -p "/etc/network/post-up.d"
+    mkdir -p "/etc/sysctl.d"
+    mkdir -p "/etc/frr"
+    mkdir -p "/etc/default"
     mkdir -p "/etc/systemd/system"
+    mkdir -p "/usr/lib/systemd/system"
 }
 
 # ── Path constants (must be defined before any use) ──
