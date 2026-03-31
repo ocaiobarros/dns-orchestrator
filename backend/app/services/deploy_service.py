@@ -558,8 +558,79 @@ def _execute_deploy_locked(
     steps.append(s5)
     _update_live_state(completedSteps=5)
 
-    # ═══ Step 6: Apply files from staging to final paths ═══
-    s6 = _step(6, "Aplicar arquivos (staging → produção)")
+    # ═══ Step 6: Cleanup existing services (stop old, flush nftables, remove stale IPs) ═══
+    s6_cleanup = _step(6, "Limpeza de serviços existentes")
+    s6_cleanup["rollbackHint"] = "Restaurar backup anterior"
+    def cleanup_existing():
+        cleanup_msgs = []
+
+        # 6a: Stop legacy unbound.service if active
+        r = run_command("systemctl", ["is-active", "unbound"], timeout=5)
+        if r["exit_code"] == 0 and "active" in (r.get("stdout") or ""):
+            run_command("systemctl", ["stop", "unbound"], timeout=15, use_privilege=True)
+            run_command("systemctl", ["disable", "unbound"], timeout=10, use_privilege=True)
+            run_command("systemctl", ["mask", "unbound"], timeout=10, use_privilege=True)
+            cleanup_msgs.append("Legacy unbound.service parado/mascarado")
+
+        # 6b: Stop all existing unbound instances
+        r = run_command("bash", ["-c", "systemctl list-units --type=service --state=active --no-pager --plain | grep '^unbound' | awk '{print $1}'"], timeout=10)
+        active_unbounds = [s.strip() for s in (r.get("stdout") or "").splitlines() if s.strip()]
+        for unit in active_unbounds:
+            name = unit.replace(".service", "")
+            run_command("systemctl", ["stop", name], timeout=15, use_privilege=True)
+            cleanup_msgs.append(f"Parado: {name}")
+
+        # 6c: Flush nftables ruleset
+        r_flush = run_command("nft", ["flush", "ruleset"], timeout=10, use_privilege=True)
+        if r_flush["exit_code"] == 0:
+            cleanup_msgs.append("nftables: ruleset flush OK")
+        else:
+            cleanup_msgs.append(f"nftables flush: {r_flush.get('stderr', '')[:100]}")
+
+        # 6d: Remove DNS-related loopback IPs (keep only 127.0.0.1)
+        r_lo = run_command("ip", ["-4", "addr", "show", "dev", "lo"], timeout=5)
+        lo_output = r_lo.get("stdout") or ""
+        import re as _re
+        lo_ips_found = _re.findall(r'inet (\d+\.\d+\.\d+\.\d+)/\d+', lo_output)
+        removed_ips = 0
+        for ip in lo_ips_found:
+            if ip == "127.0.0.1":
+                continue
+            run_command("ip", ["addr", "del", f"{ip}/32", "dev", "lo"], timeout=5, use_privilege=True)
+            removed_ips += 1
+        if removed_ips:
+            cleanup_msgs.append(f"Removidos {removed_ips} IPs do loopback")
+
+        # 6e: Remove IPv6 non-link-local loopback IPs
+        r_lo6 = run_command("ip", ["-6", "addr", "show", "dev", "lo"], timeout=5)
+        lo6_output = r_lo6.get("stdout") or ""
+        lo6_ips = _re.findall(r'inet6 ([0-9a-fA-F:]+)/\d+', lo6_output)
+        removed_v6 = 0
+        for ip6 in lo6_ips:
+            if ip6 == "::1" or ip6.startswith("fe80"):
+                continue
+            run_command("ip", ["-6", "addr", "del", f"{ip6}/128", "dev", "lo"], timeout=5, use_privilege=True)
+            removed_v6 += 1
+        if removed_v6:
+            cleanup_msgs.append(f"Removidos {removed_v6} IPv6 do loopback")
+
+        # 6f: Clean old nftables.d snippets
+        r_clean = run_command("bash", ["-c", "rm -f /etc/nftables.d/*.nft 2>/dev/null; echo ok"], timeout=5, use_privilege=True)
+        cleanup_msgs.append("Snippets /etc/nftables.d/*.nft limpos")
+
+        # 6g: Kill any remaining unbound processes
+        run_command("killall", ["-q", "unbound"], timeout=5, use_privilege=True)
+
+        return {
+            "status": "success",
+            "output": "; ".join(cleanup_msgs) if cleanup_msgs else "Limpeza concluída (nada encontrado)",
+        }
+    _run_step(s6_cleanup, cleanup_existing)
+    steps.append(s6_cleanup)
+    _update_live_state(completedSteps=6)
+
+    # ═══ Step 7: Apply files from staging to final paths ═══
+    s7 = _step(7, "Aplicar arquivos (staging → produção)")
     def apply_from_staging():
         if not staging_dir:
             return {"status": "failed", "output": "Diretório de staging não encontrado"}
