@@ -187,7 +187,7 @@ def _generate_modular(
                 f"        timeout {sticky_timeout_min}m",
                 f"    }}",
                 "}",
-            ])
+            ]) + "\n"
             _file(f"/etc/nftables.d/{ruleid}-nat-addrlist-{subusers}.nft", set_content)
             # Chain inside table block
             _file(f"/etc/nftables.d/{ruleid}-nat-chain-{subchain}.nft",
@@ -213,7 +213,7 @@ def _generate_modular(
                     f"        timeout {sticky_timeout_min}m",
                     f"    }}",
                     "}",
-                ])
+                ]) + "\n"
                 _file(f"/etc/nftables.d/{ruleid}-nat-addrlist-{subusers}.nft", set_content)
                 _file(f"/etc/nftables.d/{ruleid}-nat-chain-{subchain}.nft",
                       f"table ip6 nat {{\n    chain {subchain} {{\n    }}\n}}\n")
@@ -235,7 +235,7 @@ def _generate_modular(
                 f"        {proto} dport 53 counter dnat to {bind_ip}:53",
                 f"    }}",
                 "}",
-            ])
+            ]) + "\n"
             _file(f"/etc/nftables.d/{ruleid}-nat-rule-action-{subchain}.nft", content)
             ruleid += 1
 
@@ -258,7 +258,7 @@ def _generate_modular(
                     f"        {proto} dport 53 counter dnat to [{bind_ipv6}]:53",
                     f"    }}",
                     "}",
-                ])
+                ]) + "\n"
                 _file(f"/etc/nftables.d/{ruleid}-nat-rule-action-{subchain}.nft", content)
                 ruleid += 1
 

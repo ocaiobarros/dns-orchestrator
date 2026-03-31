@@ -646,9 +646,24 @@ def _execute_deploy_locked(
         if removed_v6:
             cleanup_msgs.append(f"Removidos {removed_v6} IPv6 do loopback")
 
-        # 6f: Clean old nftables.d snippets
-        r_clean = run_command("bash", ["-c", "rm -f /etc/nftables.d/*.nft 2>/dev/null; echo ok"], timeout=5, use_privilege=True)
-        cleanup_msgs.append("Snippets /etc/nftables.d/*.nft limpos")
+        # 6f: Clean old nftables.d snippets (use Python os.remove — directory is owned by dns-control)
+        nft_dir = "/etc/nftables.d"
+        nft_removed = 0
+        try:
+            if os.path.isdir(nft_dir):
+                for fname in os.listdir(nft_dir):
+                    if fname.endswith(".nft"):
+                        fpath = os.path.join(nft_dir, fname)
+                        try:
+                            os.remove(fpath)
+                            nft_removed += 1
+                        except OSError:
+                            # File owned by root — use sudo rm
+                            run_command("bash", ["-c", f"rm -f {fpath}"], timeout=3, use_privilege=True)
+                            nft_removed += 1
+        except Exception as e:
+            logger.warning(f"nftables.d cleanup partial: {e}")
+        cleanup_msgs.append(f"Snippets /etc/nftables.d/*.nft limpos ({nft_removed} removidos)")
 
         # 6g: Kill any remaining unbound processes
         run_command("killall", ["-q", "unbound"], timeout=5, use_privilege=True)
