@@ -138,14 +138,17 @@ def _discover_instances() -> list[dict]:
     For each, parse config file to extract control-interface and control-port.
     """
     result = run_command(
-        "systemctl", ["list-units", "--type=service", "--state=running", "--no-pager", "--plain"],
+        "systemctl", ["list-units", "--all", "--type=service", "--no-pager", "--plain"],
         timeout=10,
+        use_privilege=True,
     )
     instances = []
     if result["exit_code"] == 0:
         for line in result["stdout"].split("\n"):
-            if "unbound" in line and ".service" in line:
-                name = line.split()[0].replace(".service", "")
+            if "unbound" in line and ".service" in line and ("running" in line or "active" in line):
+                name = line.split()[0].replace(".service", "").strip()
+                # Handle bullet prefix from systemd
+                name = name.lstrip("●").lstrip()
                 # Skip the default unbound.service if running alongside instances
                 if name == "unbound":
                     continue

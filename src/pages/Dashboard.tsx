@@ -256,9 +256,12 @@ export default function Dashboard() {
           bindIp: vipAddress || undefined,
         });
 
-        // Resolver nodes
-        if (safeV2.length > 0) {
-          safeV2.forEach(inst => {
+        // Resolver nodes — prefer v2 DB instances, fallback to live stats discovery
+        const resolverSource = safeV2.length > 0 ? safeV2 : null;
+        const liveResolvers = resolverSource ? null : safeStats;
+
+        if (resolverSource) {
+          resolverSource.forEach(inst => {
             const instStat = safeStats.find((s: any) => s.instance_id === inst.id);
             const instLat = instStat ? getInstanceLatency(instStat) : (dnsAvail ? Number(avgLatency) : undefined);
             const instQps = instStat ? getInstanceQueries(instStat) : undefined;
@@ -274,6 +277,26 @@ export default function Dashboard() {
               bindIp: inst.bind_ip,
             });
             mapEdges.push({ from: 'vip-anycast', to: `resolver-${inst.id}`, latency: instLat != null ? Math.round(instLat) : undefined, qps: instQps ?? 0 });
+          });
+        } else if (liveResolvers && liveResolvers.length > 0) {
+          // Use live stats from /dns/instances (systemd discovery)
+          liveResolvers.forEach((inst: any) => {
+            const name = String(inst.instance ?? inst.name ?? 'resolver');
+            const instQps = getInstanceQueries(inst);
+            const instLat = getInstanceLatency(inst);
+            const instCh = Math.round(getInstanceCacheHit(inst));
+            const isLive = inst.source === 'live';
+            mapNodes.push({
+              id: `resolver-${name}`,
+              label: name,
+              type: 'resolver',
+              status: isLive ? 'ok' : 'inactive',
+              latency: instLat > 0 ? Math.round(instLat) : undefined,
+              qps: instQps > 0 ? instQps : undefined,
+              cacheHit: instCh > 0 ? instCh : undefined,
+              bindIp: inst.bind_ip || inst.bind_ips?.[0],
+            });
+            mapEdges.push({ from: 'vip-anycast', to: `resolver-${name}`, latency: instLat > 0 ? Math.round(instLat) : undefined, qps: instQps });
           });
         } else if (totalInstances > 0) {
           mapNodes.push({
@@ -303,6 +326,27 @@ export default function Dashboard() {
 
       {/* ═══ TIER 4B: DNS PATH FLOW ═══ */}
       {(() => {
+        // Build resolver list: prefer v2 DB, fallback to live stats
+        const resolvers = safeV2.length > 0
+          ? safeV2.map(inst => ({
+              id: `r-${inst.id}`, label: inst.instance_name || 'Resolver',
+              ip: inst.bind_ip,
+              status: (inst.current_status === 'healthy' ? 'ok' : inst.current_status === 'degraded' ? 'degraded' : 'failed') as any,
+            }))
+          : safeStats.length > 0
+            ? safeStats.map((inst: any) => {
+                const name = String(inst.instance ?? inst.name ?? 'resolver');
+                return {
+                  id: `r-${name}`, label: name,
+                  ip: inst.bind_ip || inst.bind_ips?.[0],
+                  status: (inst.source === 'live' ? 'ok' : 'degraded') as any,
+                };
+              })
+            : [];
+
+        const resolverCount = resolvers.length || 1;
+        const perResolverQps = dnsAvail ? Math.round(totalQps / resolverCount) : 0;
+
         const pathNodes = [
           { id: 'clients', label: 'Clientes DNS', type: 'client' as const, status: 'ok' as const },
           {
@@ -310,14 +354,11 @@ export default function Dashboard() {
             type: 'vip' as const, status: vipConfigured ? 'ok' as const : 'unknown' as const,
             ip: vipAddress || undefined, qps: dnsAvail ? totalQps : undefined,
           },
-          ...safeV2.map(inst => ({
-            id: `r-${inst.id}`, label: inst.instance_name || 'Resolver',
-            type: 'resolver' as const,
-            status: (inst.current_status === 'healthy' ? 'ok' : inst.current_status === 'degraded' ? 'degraded' : 'failed') as any,
-            ip: inst.bind_ip,
+          ...resolvers.map(r => ({
+            ...r, type: 'resolver' as const,
             latencyMs: dnsAvail ? Math.round(Number(avgLatency)) : undefined,
             cacheHit: dnsAvail ? Math.round(Number(avgCacheHit)) : undefined,
-            qps: dnsAvail ? Math.round(totalQps / Math.max(safeV2.length, 1)) : undefined,
+            qps: perResolverQps || undefined,
           })),
           {
             id: 'upstream', label: 'Upstream DNS', type: 'upstream' as const,
@@ -326,18 +367,19 @@ export default function Dashboard() {
         ];
         const pathEdges = [
           { from: 'clients', to: 'vip', qps: dnsAvail ? totalQps : 0 },
-          ...safeV2.map(inst => ({
-            from: 'vip', to: `r-${inst.id}`,
-            qps: dnsAvail ? Math.round(totalQps / Math.max(safeV2.length, 1)) : 0,
+          ...resolvers.map(r => ({
+            from: 'vip', to: r.id,
+            qps: perResolverQps,
             latencyMs: dnsAvail ? Math.round(Number(avgLatency)) : undefined,
           })),
-          ...safeV2.map(inst => ({
-            from: `r-${inst.id}`, to: 'upstream',
-            qps: dnsAvail ? Math.round(totalQps / Math.max(safeV2.length, 1)) : 0,
+          ...resolvers.map(r => ({
+            from: r.id, to: 'upstream',
+            qps: perResolverQps,
             latencyMs: dnsAvail ? Math.max(Math.round(Number(avgLatency)) - 3, 1) : undefined,
           })),
         ];
-        if (safeV2.length === 0 && totalInstances > 0) {
+        // Final fallback: no resolvers discovered at all
+        if (resolvers.length === 0 && totalInstances > 0) {
           pathNodes.splice(2, 0, {
             id: 'r-main', label: 'Resolver', type: 'resolver' as const,
             status: resolverHealthState === 'healthy' ? 'ok' as const : 'degraded' as const,

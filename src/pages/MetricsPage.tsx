@@ -59,6 +59,26 @@ export default function MetricsPage() {
     if (metricName) byInstance[instName][metricName] = metricValue;
   }
 
+  // If no collected metrics, synthesize from live instance stats
+  const useLiveFallback = Object.keys(byInstance).length === 0 && instanceStats.length > 0;
+  if (useLiveFallback) {
+    for (const inst of instanceStats) {
+      const name = String(inst.instance ?? inst.name ?? 'unknown');
+      byInstance[name] = {
+        dns_queries_total: safeNum(inst.totalQueries ?? inst.queries_total),
+        dns_cache_hit_ratio: (() => {
+          const ratio = safeNum(inst.cacheHitRatio ?? inst.cache_hit_ratio);
+          return ratio > 1 ? ratio / 100 : ratio;  // normalize to 0-1
+        })(),
+        dns_latency_ms: safeNum(inst.avgLatencyMs ?? inst.avg_latency_ms ?? inst.recursionTimeAvg),
+        dns_servfail_total: safeNum(inst.servfail),
+        dns_nxdomain_total: safeNum(inst.nxdomain),
+        dns_cache_hits: safeNum(inst.cacheHits ?? inst.cache_hits),
+        dns_cache_misses: safeNum(inst.cacheMisses ?? inst.cache_misses),
+      };
+    }
+  }
+
   const instanceNames = Object.keys(byInstance);
   const totalQueries = instanceNames.reduce((sum, n) => sum + safeNum(byInstance[n]?.dns_queries_total), 0);
   const avgHitRatio = instanceNames.length > 0
