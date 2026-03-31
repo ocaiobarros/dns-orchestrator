@@ -189,7 +189,7 @@ def _generate_modular(
                 subusers = f"ipv6_users_{name}"
                 subchain = f"ipv6_dns_{proto}_{name}"
                 _file(f"/etc/nftables.d/{ruleid}-nat-addrlist-{subusers}.nft",
-                      f"add set ip6 nat {subusers} {{ type ipv6_addr; counter; size 8192; flags dynamic, timeout; timeout {sticky_timeout_min}m; }}")
+                      f"add set ip6 nat {subusers} {{ type ipv6_addr; size 8192; flags dynamic, timeout; timeout {sticky_timeout_min}m; }}"))
                 _file(f"/etc/nftables.d/{ruleid}-nat-chain-{subchain}.nft",
                       f"add chain ip6 nat {subchain}")
                 ruleid += 1
