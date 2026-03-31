@@ -6,8 +6,12 @@ interface NocResolverPanelProps {
   services: ServiceStatus[];
 }
 
-function formatBytes(bytes: number | null | undefined): string {
-  if (bytes == null) return '—';
+function formatMemory(value: number | string | null | undefined): string {
+  if (value == null) return '—';
+  // Backend may send a string like "28.5M" or "1.2G"
+  if (typeof value === 'string' && value) return value;
+  const bytes = typeof value === 'number' ? value : 0;
+  if (bytes <= 0) return '—';
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)}MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)}GB`;
