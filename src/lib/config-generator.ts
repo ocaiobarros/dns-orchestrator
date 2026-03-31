@@ -873,7 +873,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     for (const proto of ['tcp', 'udp']) {
       files.push({
         path: `/etc/nftables.d/520${proto === 'tcp' ? '2' : '3'}-nat-chain-ipv6_${proto}_dns.nft`,
-        content: `add chain ip6 nat ipv6_${proto}_dns`,
+        content: `add chain ip6 nat ipv6_${proto}_dns {}`,
       });
       files.push({
         path: `/etc/nftables.d/521${proto === 'tcp' ? '1' : '2'}-nat-rule-ipv6_${proto}_dns.nft`,
