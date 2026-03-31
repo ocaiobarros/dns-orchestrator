@@ -87,7 +87,8 @@ export default function Dashboard() {
   const safeStats = Array.isArray(instanceStats) ? instanceStats.filter(Boolean) : [];
   const safeV2 = Array.isArray(v2Instances) ? v2Instances.filter(Boolean) : [];
 
-  const allRunning = safeServices.every(s => s.status === 'running');
+  // allRunning: check that essential services are active (nftables uses 'active' status, not 'running')
+  const allRunning = safeServices.length > 0 && safeServices.every(s => s.status === 'running' || s.status === 'active' || s.active);
   const dnsAvail = sysInfo?.dns_metrics_available ?? false;
   const dnsStatus = sysInfo?.dns_metrics_status ?? 'unknown';
   const dashQ = sysInfo?.total_queries ?? 0;

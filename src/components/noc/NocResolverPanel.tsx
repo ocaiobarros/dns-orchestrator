@@ -64,7 +64,7 @@ export default function NocResolverPanel({ services }: NocResolverPanelProps) {
                   )}
                 </div>
                 <div className="flex items-center gap-4">
-                  <span className="text-[9px] text-muted-foreground/20 font-mono w-[40px] text-right">{formatBytes(svc.memoryBytes)}</span>
+                  <span className="text-[9px] text-muted-foreground/20 font-mono w-[40px] text-right">{formatMemory((svc as any).memory ?? svc.memoryBytes)}</span>
                   <span className={`text-[10px] font-mono font-bold uppercase tracking-wider min-w-[58px] text-right ${meta.cls}`}>
                     {meta.text}
                   </span>

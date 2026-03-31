@@ -38,6 +38,12 @@ export default function NocHealthMatrix({ services, dnsHealthy, networkOk, dnsAv
   const frrSvc = svcByName('frr');
   const unboundSvc = svcByName('unbound');
   const nftSvc = svcByName('nftables') || svcByName('nft');
+  const nginxSvc = svcByName('nginx');
+  const netSvc = svcByName('networking');
+
+  // nftables: active means ruleset is loaded (not systemd service status)
+  const nftOk = nftSvc?.active === true || nftSvc?.nftables_status === 'active' || nftSvc?.status === 'active';
+  const nftInactive = nftSvc?.status === 'stopped' || nftSvc?.status === 'no ruleset' || nftSvc?.nftables_status === 'empty';
 
   const checks: { label: string; state: CheckState; detail?: string }[] = [
     {
@@ -47,7 +53,13 @@ export default function NocHealthMatrix({ services, dnsHealthy, networkOk, dnsAv
     },
     {
       label: 'NETWORK',
-      state: networkOk ? 'ok' : 'warn',
+      state: netSvc ? (netSvc.active || netSvc.status === 'running' ? 'ok' : 'warn') : (networkOk ? 'ok' : 'warn'),
+      detail: netSvc && netSvc.status !== 'running' && !netSvc.active ? 'Service inactive' : undefined,
+    },
+    {
+      label: 'NGINX',
+      state: nginxSvc ? (nginxSvc.active || nginxSvc.status === 'running' ? 'ok' : 'fail') : 'inactive',
+      detail: !nginxSvc ? 'Not detected' : nginxSvc.status !== 'running' && !nginxSvc.active ? 'Service stopped' : undefined,
     },
     {
       label: 'OSPF',
@@ -60,8 +72,8 @@ export default function NocHealthMatrix({ services, dnsHealthy, networkOk, dnsAv
     },
     {
       label: 'FIREWALL',
-      state: (nftSvc?.active || nftSvc?.status === 'running' || nftSvc?.status === 'active') ? 'ok' : nftSvc?.status === 'stopped' || nftSvc?.status === 'no ruleset' ? 'inactive' : nftSvc ? 'warn' : 'inactive',
-      detail: !nftSvc ? 'Not detected' : (nftSvc?.status === 'stopped' || nftSvc?.status === 'no ruleset') ? 'Inactive' : nftSvc?.nftables_status === 'unavailable' ? 'Privilege required' : undefined,
+      state: nftOk ? 'ok' : nftInactive ? 'inactive' : nftSvc ? 'warn' : 'inactive',
+      detail: !nftSvc ? 'Not detected' : nftInactive ? 'No ruleset' : nftSvc?.nftables_status === 'unavailable' ? 'Privilege required' : undefined,
     },
     { label: 'API', state: 'ok' },
     { label: 'AUTH', state: 'ok' },
