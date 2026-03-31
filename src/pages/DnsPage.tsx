@@ -185,7 +185,7 @@ export default function DnsPage() {
                   const queries = getInstanceQueries(inst);
                   const cacheHit = getInstanceCacheHit(inst);
                   const latency = getInstanceLatency(inst);
-                  const status = inst.status ?? 'unknown';
+                  const status = inst.status ?? (inst.source === 'live' ? 'running' : inst.source === 'unavailable' ? 'stopped' : 'unknown');
                   return (
                     <tr key={name} className="border-b border-border last:border-0">
                       <td className="py-2 text-primary">{name}</td>
