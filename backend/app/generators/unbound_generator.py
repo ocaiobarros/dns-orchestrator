@@ -116,8 +116,11 @@ server:
             config += f"    interface: {bind_ipv6}\n"
 
         # Public listener / public identity can coexist with private listener
-        if public_listener_ip and public_listener_ip != bind_ip:
-            config += f"    interface: {public_listener_ip}  # public listener / identity\n"
+        # In border-routed mode, public IPs are NOT local — skip binding
+        if public_listener_ip and public_listener_ip != bind_ip and not is_border_routed:
+            config += f"    interface: {public_listener_ip}  # public listener / identity (host-owned)\n"
+        elif public_listener_ip and is_border_routed:
+            config += f"    # interface: {public_listener_ip}  # SUPPRESSED — border-routed mode\n"
 
         # In host-owned mode, also bind on egress IP for direct DNS queries
         if not is_border_routed and exit_ip and exit_ip != bind_ip:
