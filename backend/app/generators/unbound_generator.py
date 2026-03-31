@@ -141,7 +141,6 @@ server:
     rrset-cache-slabs: {threads}
 
     cache-max-ttl: {max_ttl}
-    cache-min-ttl: {min_ttl}
     infra-host-ttl: 60
     infra-lame-ttl: 120
 
