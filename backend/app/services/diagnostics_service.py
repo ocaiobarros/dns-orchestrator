@@ -458,13 +458,14 @@ def get_services_status() -> list[dict]:
     """
     Detect real running services:
     - unbound01, unbound02 as separate entities
+    - nginx (reverse proxy)
     - frr (optional)
     - nftables state from ruleset, not service
-    - systemd-resolved
+    - networking / ifupdown2
     """
     # Discover unbound instances dynamically
     unbound_instances = _discover_unbound_services()
-    service_names = unbound_instances + ["frr", "systemd-resolved"]
+    service_names = unbound_instances + ["nginx", "frr", "networking"]
 
     results = []
     for name in service_names:
@@ -484,12 +485,22 @@ def get_services_status() -> list[dict]:
                         pid = int(line_s.split("Main PID:")[1].strip().split()[0])
                     except (ValueError, IndexError):
                         pass
-                if "Memory:" in line_s:
-                    memory = line_s.split("Memory:")[1].strip().split()[0] if "Memory:" in line_s else ""
-                if "CPU:" in line_s:
-                    cpu = line_s.split("CPU:")[1].strip().split()[0] if "CPU:" in line_s else ""
+                # Parse memory — handle both "Memory: 28.5M" and "Memory: 28.5M (peak: 30.0M)"
+                if line_s.startswith("Memory:") or "Memory:" in line_s:
+                    try:
+                        mem_part = line_s.split("Memory:")[1].strip()
+                        # Take first token (e.g. "28.5M" from "28.5M (peak: 30.0M)")
+                        memory = mem_part.split()[0] if mem_part else ""
+                    except (IndexError, ValueError):
+                        pass
+                # Parse CPU — handle "CPU: 1.234s" or "CPU: 1min 2.345s"
+                if line_s.startswith("CPU:") or "CPU:" in line_s:
+                    try:
+                        cpu_part = line_s.split("CPU:")[1].strip()
+                        cpu = cpu_part.split()[0] if cpu_part else ""
+                    except (IndexError, ValueError):
+                        pass
                 if "Active: active" in line_s and "since" in line_s:
-                    # Extract uptime from "Active: active (running) since ..."
                     parts = line_s.split(";")
                     if len(parts) > 1:
                         uptime = parts[-1].strip()
@@ -500,17 +511,27 @@ def get_services_status() -> list[dict]:
             memory = ""
             cpu = ""
 
+        # Check enabled state via is-enabled
+        enabled = False
+        try:
+            en_result = _safe_run("systemctl", ["is-enabled", name], timeout=3)
+            enabled = en_result["stdout"].strip() in ("enabled", "static", "alias")
+        except Exception:
+            pass
+
         # Determine display name
         display = name
-        if name.startswith("unbound"):
-            display = name  # Keep unbound01, unbound02
+        if name == "nginx":
+            display = "nginx (reverse proxy)"
+        elif name == "networking":
+            display = "networking (ifupdown2)"
 
         results.append({
             "name": name,
             "display_name": display,
             "active": active,
             "status": "running" if active else "stopped",
-            "enabled": True,
+            "enabled": enabled,
             "pid": pid,
             "uptime": uptime,
             "memory": memory,
@@ -519,12 +540,20 @@ def get_services_status() -> list[dict]:
 
     # Add nftables as special entry based on ruleset
     nft_state = _get_nftables_state()
+    # Also check is-enabled for nftables
+    nft_enabled = False
+    try:
+        en_r = _safe_run("systemctl", ["is-enabled", "nftables"], timeout=3)
+        nft_enabled = en_r["stdout"].strip() in ("enabled", "static", "alias")
+    except Exception:
+        pass
+
     results.append({
         "name": "nftables",
-        "display_name": "nftables (ruleset)",
+        "display_name": "nftables (firewall)",
         "active": nft_state["active"],
         "status": "active" if nft_state["active"] else "no ruleset",
-        "enabled": True,
+        "enabled": nft_enabled,
         "pid": None,
         "uptime": "",
         "memory": "",
