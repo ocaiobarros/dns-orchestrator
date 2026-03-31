@@ -78,50 +78,110 @@ def get_nat_summary() -> dict:
     result = run_command("nft", ["list", "ruleset"], timeout=10, use_privilege=True)
     ruleset_loaded = result["exit_code"] == 0 and len(result["stdout"].strip()) > 0
 
-    counters_result = run_command("nft", ["list", "counters"], timeout=10, use_privilege=True)
-    counters = _parse_nft_counters(counters_result["stdout"]) if counters_result["exit_code"] == 0 else []
+    # Parse DNAT backends with inline counters from the ruleset
+    backends = _parse_dnat_backends(result["stdout"]) if ruleset_loaded else []
 
-    # Parse DNAT rules from ruleset
-    dnat_rules = _parse_dnat_rules(result["stdout"]) if ruleset_loaded else []
+    # Parse entry counters from PREROUTING chain
+    entry_counters = _parse_entry_counters(result["stdout"]) if ruleset_loaded else []
 
     return {
         "ruleset_loaded": ruleset_loaded,
-        "counters": counters,
-        "dnat_rules": dnat_rules,
+        "counters": backends,
+        "backends": backends,
+        "entry_counters": entry_counters,
         "status": "active" if ruleset_loaded else "no_ruleset",
     }
 
 
-def _parse_dnat_rules(ruleset: str) -> list[dict]:
-    """Extract DNAT rules from nft ruleset."""
-    rules = []
+def _parse_dnat_backends(ruleset: str) -> list[dict]:
+    """
+    Extract DNAT backends with inline counter values from the ruleset.
+    Matches lines like:
+      tcp dport 53 counter packets 123 bytes 45678 dnat to 100.127.255.101:53
+      udp dport 53 counter packets 456 bytes 78901 dnat to 100.127.255.101:53
+    """
+    backends: dict[str, dict] = {}
+    current_chain = ""
+
     for line in ruleset.split("\n"):
-        line_s = line.strip()
-        if "dnat to" in line_s.lower() or "dnat" in line_s.lower():
-            rules.append({"rule": line_s})
-    return rules
+        stripped = line.strip()
 
-
-def _parse_nft_counters(raw: str) -> list[dict]:
-    counters = []
-    current = None
-    for line in raw.split("\n"):
-        line = line.strip()
-        m = re.match(r'counter\s+\w+\s+(\S+)\s+(\S+)\s*\{', line)
-        if m:
-            current = {"name": m.group(2), "chain": m.group(1), "packets": 0, "bytes": 0}
+        # Track current chain name
+        chain_match = re.match(r'chain\s+(\S+)\s*\{', stripped)
+        if chain_match:
+            current_chain = chain_match.group(1)
             continue
-        if current:
-            pm = re.search(r'packets\s+(\d+)', line)
-            if pm:
-                current["packets"] = int(pm.group(1))
-            bm = re.search(r'bytes\s+(\d+)', line)
-            if bm:
-                current["bytes"] = int(bm.group(1))
-            if "}" in line:
-                counters.append(current)
-                current = None
-    return counters
+
+        # Match DNAT rules with inline counters
+        dnat_match = re.search(
+            r'(tcp|udp)\s+dport\s+(\d+)\s+counter\s+packets\s+(\d+)\s+bytes\s+(\d+)\s+dnat\s+to\s+(\S+)',
+            stripped,
+        )
+        if dnat_match:
+            proto = dnat_match.group(1)
+            port = int(dnat_match.group(2))
+            packets = int(dnat_match.group(3))
+            bytes_val = int(dnat_match.group(4))
+            target = dnat_match.group(5)
+            backend_ip = target.split(":")[0]
+
+            if backend_ip not in backends:
+                backends[backend_ip] = {
+                    "backend": backend_ip,
+                    "name": backend_ip,
+                    "chain": current_chain,
+                    "packets": 0,
+                    "bytes": 0,
+                    "tcp_packets": 0,
+                    "udp_packets": 0,
+                    "tcp_bytes": 0,
+                    "udp_bytes": 0,
+                    "port": port,
+                    "target": target,
+                }
+
+            entry = backends[backend_ip]
+            entry["packets"] += packets
+            entry["bytes"] += bytes_val
+            if proto == "tcp":
+                entry["tcp_packets"] += packets
+                entry["tcp_bytes"] += bytes_val
+            else:
+                entry["udp_packets"] += packets
+                entry["udp_bytes"] += bytes_val
+
+    return list(backends.values())
+
+
+def _parse_entry_counters(ruleset: str) -> list[dict]:
+    """Parse PREROUTING entry counters for VIP traffic measurement."""
+    entries = []
+    in_prerouting = False
+
+    for line in ruleset.split("\n"):
+        stripped = line.strip()
+        if "chain PREROUTING" in stripped:
+            in_prerouting = True
+            continue
+        if in_prerouting and stripped == "}":
+            in_prerouting = False
+            continue
+        if in_prerouting:
+            m = re.search(
+                r'ip\s+daddr\s+\{([^}]+)\}\s+(tcp|udp)\s+dport\s+(\d+)\s+counter\s+packets\s+(\d+)\s+bytes\s+(\d+)',
+                stripped,
+            )
+            if m:
+                vips = [v.strip() for v in m.group(1).split(",")]
+                entries.append({
+                    "vips": vips,
+                    "protocol": m.group(2),
+                    "port": int(m.group(3)),
+                    "packets": int(m.group(4)),
+                    "bytes": int(m.group(5)),
+                })
+
+    return entries
 
 
 def get_nat_backends() -> list[dict]:
