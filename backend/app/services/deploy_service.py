@@ -1120,11 +1120,19 @@ def _install_file_from_staging(staging_dir: str, target_path: str, permissions: 
     if mkdir_result["exit_code"] != 0:
         return mkdir_result
 
+    # Use 'cp' instead of 'install' for existing files under ProtectSystem=strict.
+    # 'install' unlinks the target first (fails on read-only fs), while 'cp' overwrites in-place.
+    result = run_command(
+        "cp", ["--no-preserve=ownership", staged_path, target_path],
+        timeout=15, use_privilege=True,
+    )
+    if result["exit_code"] != 0:
+        return result
+
+    # Set permissions separately
     return run_command(
-        "install",
-        ["-m", permissions, staged_path, target_path],
-        timeout=15,
-        use_privilege=True,
+        "chmod", [permissions, target_path],
+        timeout=10, use_privilege=True,
     )
 
 
