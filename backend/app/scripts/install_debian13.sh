@@ -577,6 +577,13 @@ if [[ ! -d "/etc/nftables.d" ]]; then
     exit 1
 fi
 
+# Ensure /etc/nftables.conf exists so ProtectSystem=strict can bind-mount it as writable
+if [[ ! -f "/etc/nftables.conf" ]]; then
+    touch "/etc/nftables.conf"
+    chmod 0644 "/etc/nftables.conf"
+    info "Created /etc/nftables.conf placeholder for systemd bind-mount"
+fi
+
 # Install systemd unit file from repository (single source of truth)
 UNIT_SRC="${SOURCE_ROOT}/deploy/systemd/dns-control-api.service"
 if [[ -f "${UNIT_SRC}" ]]; then
