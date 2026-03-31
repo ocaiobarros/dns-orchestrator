@@ -23,7 +23,7 @@ router = APIRouter()
 
 def _check_systemd_api() -> dict[str, Any]:
     start = monotonic()
-    result = run_command("systemctl", ["is-active", "dns-control-api"], timeout=5, use_privilege=True)
+    result = run_command("systemctl", ["is-active", "dns-control-api"], timeout=5, use_privilege=False)
     active = result.get("exit_code") == 0 and result.get("stdout", "").strip() == "active"
     return {
         "name": "systemd_active",
