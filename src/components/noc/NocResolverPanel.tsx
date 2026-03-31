@@ -19,10 +19,12 @@ function formatMemory(value: number | string | null | undefined): string {
 
 type SvcState = 'running' | 'stopped' | 'error' | 'unknown';
 
-function statusMeta(s: string): { dot: string; text: string; cls: string; state: SvcState } {
-  if (s === 'running') return { dot: 'noc-dot-live', text: 'RUNNING', cls: 'text-success/60', state: 'running' };
+function statusMeta(s: string, active?: boolean): { dot: string; text: string; cls: string; state: SvcState } {
+  // Handle nftables 'active' status and boolean active field
+  if (s === 'running' || (active === true && s !== 'stopped' && s !== 'no ruleset')) return { dot: 'noc-dot-live', text: 'RUNNING', cls: 'text-success/60', state: 'running' };
+  if (s === 'active') return { dot: 'noc-dot-live', text: 'ACTIVE', cls: 'text-success/60', state: 'running' };
   if (s === 'error') return { dot: 'noc-dot-fail', text: 'ERROR', cls: 'text-destructive', state: 'error' };
-  if (s === 'stopped') return { dot: 'noc-dot-dead', text: 'INACTIVE', cls: 'text-muted-foreground/30', state: 'stopped' };
+  if (s === 'stopped' || s === 'no ruleset') return { dot: 'noc-dot-dead', text: 'INACTIVE', cls: 'text-muted-foreground/30', state: 'stopped' };
   return { dot: 'noc-dot-dead', text: s.toUpperCase(), cls: 'text-muted-foreground/30', state: 'unknown' };
 }
 
