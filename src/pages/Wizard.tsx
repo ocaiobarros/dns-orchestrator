@@ -540,6 +540,9 @@ export default function Wizard() {
           <div className="space-y-4">
             <InfoBox>
               Cada instância é um processo Unbound independente com listener e interface de controle próprios.
+              <br /><span className="text-accent/70 mt-1 block">→ <strong>Listener Privado</strong>: IP interno (RFC 6598, ex: 100.127.255.101) onde o Unbound faz bind. Materializado em <code className="font-mono bg-accent/20 px-1 rounded">lo0</code> (dummy).</span>
+              <span className="text-accent/70 block">→ <strong>Listener Público</strong>: IP público da instância (opcional). Também em lo0. Usado se clientes se conectam diretamente.</span>
+              <span className="text-accent/70 block">→ Os IPs de <strong>egress</strong> (saída para recursão) são configurados na próxima etapa.</span>
             </InfoBox>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <FieldGroup label="Threads por instância *" error={fieldError('threads')}>
