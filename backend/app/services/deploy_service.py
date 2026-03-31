@@ -1185,6 +1185,7 @@ def _get_restart_commands(scope: str, payload: dict) -> list[tuple[str, list[str
     if scope in ("full", "nftables"):
         cmds.append(("Aplicar nftables", ["nft", "-f", "/etc/nftables.conf"], "nft -f <backup>/nftables.conf"))
         cmds.append(("Habilitar nftables no boot", ["systemctl", "enable", "nftables"], ""))
+        cmds.append(("Ativar serviço nftables", ["systemctl", "start", "nftables"], ""))
     if scope in ("full", "dns"):
         instances = payload.get("instances", [])
         for inst in instances:
