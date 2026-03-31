@@ -120,39 +120,39 @@ def _generate_modular(
     _file("/etc/nftables.conf", "#!/usr/sbin/nft -f\n\nflush ruleset\ninclude \"/etc/nftables.d/*.nft\"\n")
 
     # Tables
-    _file("/etc/nftables.d/0002-table-ipv4-nat.nft", "create table ip nat")
+    _file("/etc/nftables.d/0002-table-ipv4-nat.nft", "add table ip nat\n")
     if enable_ipv6:
-        _file("/etc/nftables.d/0003-table-ipv6-nat.nft", "create table ip6 nat")
+        _file("/etc/nftables.d/0003-table-ipv6-nat.nft", "add table ip6 nat\n")
 
-    # PREROUTING hooks
+    # PREROUTING hooks (top-level — no indentation)
     _file("/etc/nftables.d/0051-hook-ipv4-prerouting.nft",
-          "    create chain ip nat PREROUTING {\n        type nat hook prerouting priority dstnat;\n        policy accept;\n    }")
+          "add chain ip nat PREROUTING { type nat hook prerouting priority dstnat; policy accept; }\n")
     if enable_ipv6:
         _file("/etc/nftables.d/0052-hook-ipv6-prerouting.nft",
-              "    create chain ip6 nat PREROUTING {\n        type nat hook prerouting priority dstnat;\n        policy accept;\n    }")
+              "add chain ip6 nat PREROUTING { type nat hook prerouting priority dstnat; policy accept; }\n")
 
-    # VIP definitions — ALL VIPs (service + intercepted) in one define
+    # VIP definitions — ALL VIPs (service + intercepted) in one define (single line)
     if vip_ipv4s:
-        vip_list = ",\n    ".join(vip_ipv4s)
+        vip_list = ", ".join(vip_ipv4s)
         _file("/etc/nftables.d/5100-nat-define-anyaddr-ipv4.nft",
-              f"define DNS_ANYCAST_IPV4 = {{\n    {vip_list}\n}}")
+              f"define DNS_ANYCAST_IPV4 = {{ {vip_list} }}\n")
 
     if enable_ipv6 and vip_ipv6s:
-        vip6_list = ",\n    ".join(vip_ipv6s)
+        vip6_list = ", ".join(vip_ipv6s)
         _file("/etc/nftables.d/5200-nat-define-anyaddr-ipv6.nft",
-              f"define DNS_ANYCAST_IPV6 = {{\n    {vip6_list}\n}}")
+              f"define DNS_ANYCAST_IPV6 = {{ {vip6_list} }}\n")
 
     # DNS dispatch chains (IPv4)
     for proto in ("tcp", "udp"):
         suffix = "2" if proto == "tcp" else "3"
         _file(f"/etc/nftables.d/510{suffix}-nat-chain-ipv4_{proto}_dns.nft",
-              f"add chain ip  nat ipv4_{proto}_dns")
+              f"add chain ip nat ipv4_{proto}_dns\n")
 
     # PREROUTING capture rules (IPv4)
     for proto in ("tcp", "udp"):
         suffix = "1" if proto == "tcp" else "2"
         _file(f"/etc/nftables.d/511{suffix}-nat-rule-ipv4_{proto}_dns.nft",
-              f"add rule ip  nat PREROUTING ip daddr $DNS_ANYCAST_IPV4 {proto} dport 53 counter packets 0 bytes 0 jump ipv4_{proto}_dns")
+              f"add rule ip nat PREROUTING ip daddr $DNS_ANYCAST_IPV4 {proto} dport 53 counter packets 0 bytes 0 jump ipv4_{proto}_dns\n")
 
     # IPv6 dispatch chains + capture rules
     if enable_ipv6:

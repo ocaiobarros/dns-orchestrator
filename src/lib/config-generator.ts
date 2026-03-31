@@ -726,20 +726,20 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
   files.push({ path: '/etc/nftables.conf', content: generateNftablesConf(config) });
 
   // Tables
-  files.push({ path: '/etc/nftables.d/0002-table-ipv4-nat.nft', content: 'create table ip nat' });
+  files.push({ path: '/etc/nftables.d/0002-table-ipv4-nat.nft', content: 'add table ip nat\n' });
   if (config.enableIpv6) {
-    files.push({ path: '/etc/nftables.d/0003-table-ipv6-nat.nft', content: 'create table ip6 nat' });
+    files.push({ path: '/etc/nftables.d/0003-table-ipv6-nat.nft', content: 'add table ip6 nat\n' });
   }
 
-  // PREROUTING chains
+  // PREROUTING hooks (top-level, single line)
   files.push({
     path: '/etc/nftables.d/0051-hook-ipv4-prerouting.nft',
-    content: `create chain ip nat PREROUTING {\n    type nat hook prerouting priority dstnat;\n    policy accept;\n}`,
+    content: `add chain ip nat PREROUTING { type nat hook prerouting priority dstnat; policy accept; }\n`,
   });
   if (config.enableIpv6) {
     files.push({
       path: '/etc/nftables.d/0052-hook-ipv6-prerouting.nft',
-      content: `create chain ip6 nat PREROUTING {\n    type nat hook prerouting priority dstnat;\n    policy accept;\n}`,
+      content: `add chain ip6 nat PREROUTING { type nat hook prerouting priority dstnat; policy accept; }\n`,
     });
   }
 
@@ -747,11 +747,11 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
   if (config.enableDnsProtection) {
     files.push({
       path: '/etc/nftables.d/0060-table-filter.nft',
-      content: `create table ip filter`,
+      content: `add table ip filter\n`,
     });
     files.push({
       path: '/etc/nftables.d/0061-hook-input.nft',
-      content: `create chain ip filter INPUT {\n    type filter hook input priority 0;\n    policy accept;\n}\nadd rule ip filter INPUT udp dport 53 limit rate over 100/second burst 50 packets drop\nadd rule ip filter INPUT tcp dport 53 limit rate over 50/second burst 25 packets drop`,
+      content: `add chain ip filter INPUT { type filter hook input priority 0; policy accept; }\nadd rule ip filter INPUT udp dport 53 limit rate over 100/second burst 50 packets drop\nadd rule ip filter INPUT tcp dport 53 limit rate over 50/second burst 25 packets drop\n`,
     });
   }
 
@@ -772,13 +772,13 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
   if (allVipIpv4s.length > 0) {
     files.push({
       path: '/etc/nftables.d/5100-nat-define-anyaddr-ipv4.nft',
-      content: `define DNS_ANYCAST_IPV4 = {\n    ${allVipIpv4s.join(',\n    ')}\n}`,
+      content: `define DNS_ANYCAST_IPV4 = { ${allVipIpv4s.join(', ')} }\n`,
     });
 
     if (config.enableIpv6 && allVipIpv6s.length > 0) {
       files.push({
         path: '/etc/nftables.d/5200-nat-define-anyaddr-ipv6.nft',
-        content: `define DNS_ANYCAST_IPV6 = {\n    ${allVipIpv6s.join(',\n    ')}\n}`,
+        content: `define DNS_ANYCAST_IPV6 = { ${allVipIpv6s.join(', ')} }\n`,
       });
     }
   }
