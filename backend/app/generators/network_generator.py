@@ -125,32 +125,32 @@ post-up /etc/network/post-up.sh
             post_up_lines.append(f"     /usr/sbin/ip addr add {lip6}/128 dev lo 2>/dev/null || true")
         post_up_lines.append("")
 
-    # Service VIPs on loopback (anycast public, commented by default)
+    # Service VIPs on loopback (required for DNAT interception to work)
     if service_vips:
-        post_up_lines.append("     # Anycast publico, descomentar ao final do deploy")
+        post_up_lines.append("     # Service VIPs (anycast/intercepted — required for nftables DNAT)")
         for vip in service_vips:
             if not isinstance(vip, dict):
                 continue
             vip_ip = str(vip.get("ipv4", "")).strip()
             if vip_ip:
-                post_up_lines.append(f"     #/usr/sbin/ip addr add {vip_ip}/32 dev lo")
+                post_up_lines.append(f"     /usr/sbin/ip addr add {vip_ip}/32 dev lo 2>/dev/null || true")
             vip_ipv6 = str(vip.get("ipv6", "")).strip()
             if vip_ipv6 and enable_ipv6:
-                post_up_lines.append(f"     #/usr/sbin/ip addr add {vip_ipv6}/128 dev lo")
+                post_up_lines.append(f"     /usr/sbin/ip addr add {vip_ipv6}/128 dev lo 2>/dev/null || true")
         post_up_lines.append("")
 
-    # Intercepted VIPs on loopback (commented by default, uncomment to activate interception)
+    # Intercepted VIPs on loopback (required for DNAT interception to work)
     if intercepted_vips:
-        post_up_lines.append("     # Anycast publico interceptado, descomentar para ativar")
+        post_up_lines.append("     # Intercepted VIPs (DNS seizure — required for nftables DNAT)")
         for vip in intercepted_vips:
             if not isinstance(vip, dict):
                 continue
             vip_ip = str(vip.get("vipIp", "")).strip()
             if vip_ip:
-                post_up_lines.append(f"     #/usr/sbin/ip addr add {vip_ip}/32 dev lo")
+                post_up_lines.append(f"     /usr/sbin/ip addr add {vip_ip}/32 dev lo 2>/dev/null || true")
             vip_ipv6 = str(vip.get("vipIpv6", "")).strip()
             if vip_ipv6 and enable_ipv6:
-                post_up_lines.append(f"     #/usr/sbin/ip addr add {vip_ipv6}/128 dev lo")
+                post_up_lines.append(f"     /usr/sbin/ip addr add {vip_ipv6}/128 dev lo 2>/dev/null || true")
         post_up_lines.append("")
 
     post_up_lines.append("exit 0")
