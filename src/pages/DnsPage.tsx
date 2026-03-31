@@ -63,27 +63,62 @@ export default function DnsPage() {
       return 0;
     };
 
-    const byTs = new Map<string, { ts: string; qps: number; hits: number; misses: number; latency: number; servfail: number; nxdomain: number; count: number }>();
+    // Check if data is time-series (has timestamp) or per-instance snapshots
+    const hasTimestamps = allMetrics.some(m => m?.timestamp);
+
+    if (hasTimestamps) {
+      const byTs = new Map<string, { ts: string; qps: number; hits: number; misses: number; latency: number; servfail: number; nxdomain: number; count: number }>();
+      allMetrics.forEach(m => {
+        if (!m?.timestamp) return;
+        const key = m.timestamp.slice(0, 16);
+        const existing = byTs.get(key) || { ts: key, qps: 0, hits: 0, misses: 0, latency: 0, servfail: 0, nxdomain: 0, count: 0 };
+        existing.qps += asNumber(m.qps);
+        existing.hits += asNumber(m.cacheHits);
+        existing.misses += asNumber(m.cacheMisses);
+        existing.latency += asNumber(m.avgLatencyMs);
+        existing.servfail += asNumber(m.servfail);
+        existing.nxdomain += asNumber(m.nxdomain);
+        existing.count += 1;
+        byTs.set(key, existing);
+      });
+
+      return Array.from(byTs.values()).map(d => ({
+        ...d,
+        latency: d.count > 0 ? +(d.latency / d.count).toFixed(1) : 0,
+        hitRatio: d.hits + d.misses > 0 ? +((d.hits / (d.hits + d.misses)) * 100).toFixed(1) : 0,
+        time: d.ts.slice(11, 16),
+      }));
+    }
+
+    // Per-instance snapshots: aggregate into a single data point
+    let totalQps = 0, totalHits = 0, totalMisses = 0, totalLatency = 0, totalServfail = 0, totalNxdomain = 0, count = 0;
     allMetrics.forEach(m => {
-      if (!m?.timestamp) return;
-      const key = m.timestamp.slice(0, 16);
-      const existing = byTs.get(key) || { ts: key, qps: 0, hits: 0, misses: 0, latency: 0, servfail: 0, nxdomain: 0, count: 0 };
-      existing.qps += asNumber(m.qps);
-      existing.hits += asNumber(m.cacheHits);
-      existing.misses += asNumber(m.cacheMisses);
-      existing.latency += asNumber(m.avgLatencyMs);
-      existing.servfail += asNumber(m.servfail);
-      existing.nxdomain += asNumber(m.nxdomain);
-      existing.count += 1;
-      byTs.set(key, existing);
+      if (!m) return;
+      totalQps += asNumber(m.totalQueries ?? m.qps ?? m.queries_total);
+      totalHits += asNumber(m.cacheHits ?? m.cache_hits);
+      totalMisses += asNumber(m.cacheMisses ?? m.cache_misses);
+      totalLatency += asNumber(m.avgLatencyMs ?? m.avg_latency_ms ?? m.recursionTimeAvg);
+      totalServfail += asNumber(m.servfail);
+      totalNxdomain += asNumber(m.nxdomain);
+      count += 1;
     });
 
-    return Array.from(byTs.values()).map(d => ({
-      ...d,
-      latency: d.count > 0 ? +(d.latency / d.count).toFixed(1) : 0,
-      hitRatio: d.hits + d.misses > 0 ? +((d.hits / (d.hits + d.misses)) * 100).toFixed(1) : 0,
-      time: d.ts.slice(11, 16),
-    }));
+    if (count === 0) return [];
+
+    const now = new Date();
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    return [{
+      ts: timeStr,
+      qps: totalQps,
+      hits: totalHits,
+      misses: totalMisses,
+      latency: count > 0 ? +(totalLatency / count).toFixed(1) : 0,
+      servfail: totalServfail,
+      nxdomain: totalNxdomain,
+      count,
+      hitRatio: totalHits + totalMisses > 0 ? +((totalHits / (totalHits + totalMisses)) * 100).toFixed(1) : 0,
+      time: timeStr,
+    }];
   }, [allMetrics]);
 
   if (isLoading) return <LoadingState />;
