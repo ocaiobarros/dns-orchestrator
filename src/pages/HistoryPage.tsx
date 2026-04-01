@@ -4,7 +4,7 @@ import ApplyStepsViewer from '@/components/ApplyStepsViewer';
 import { LoadingState, ErrorState, EmptyState } from '@/components/DataStates';
 import { useHistory, useDeployBackups, useRollback, useHistoryDetail } from '@/lib/hooks';
 import { safeDate } from '@/lib/types';
-import { RotateCcw, ChevronDown, ChevronUp, Check, X, SkipForward, FileText, Shield } from 'lucide-react';
+import { RotateCcw, ChevronDown, ChevronUp, Check, X, SkipForward, FileText, Shield, Info } from 'lucide-react';
 
 /** Normalize a history item from real API (snake_case) or mock (camelCase) */
 function normalizeHistoryItem(raw: any) {
@@ -162,6 +162,7 @@ export default function HistoryPage() {
                           <div key={i} className="flex items-center gap-3 p-1.5 text-xs">
                             {check.status === 'pass' ? <Check size={10} className="text-success" /> :
                              check.status === 'fail' ? <X size={10} className="text-destructive" /> :
+                             check.status === 'warn' ? <Info size={10} className="text-accent" /> :
                              <SkipForward size={10} className="text-muted-foreground" />}
                             <span className="flex-1">{check.name}</span>
                             <span className="font-mono text-muted-foreground">{check.target}</span>

@@ -1502,8 +1502,8 @@ def _run_health_checks(payload: dict) -> list[dict]:
                 "durationMs": ip_dur,
             })
 
-    # Egress IP materialization (host-owned)
-    if egress_delivery == "host-owned":
+    # Egress IP materialization (host-owned) — skip in simple mode (no outgoing-interface)
+    if egress_delivery == "host-owned" and not is_simple_mode:
         for inst in instances:
             egress_ip = str(inst.get("exitIp", "") or inst.get("egressIpv4", "")).strip()
             name = inst.get("name", "unbound")
@@ -1514,15 +1514,26 @@ def _run_health_checks(payload: dict) -> list[dict]:
                     "detail": f"Egress IP {egress_ip} {'presente' if egress_ip in all_ips else 'AUSENTE'}",
                     "durationMs": 0,
                 })
+    elif egress_delivery == "host-owned" and is_simple_mode:
+        for inst in instances:
+            egress_ip = str(inst.get("exitIp", "") or inst.get("egressIpv4", "")).strip()
+            name = inst.get("name", "unbound")
+            if egress_ip:
+                checks.append({
+                    "name": f"{name} egress IP on loopback ({egress_ip})", "target": egress_ip,
+                    "status": "skip",
+                    "detail": "Não aplicável no modo simples (sem outgoing-interface dedicada)",
+                    "durationMs": 0,
+                })
 
-    # Legacy unbound detection
+    # Legacy unbound detection — warning only in simple mode
     t0 = time.monotonic()
     r = run_command("systemctl", ["is-active", "unbound"], timeout=5)
     if r["exit_code"] == 0 and "active" in (r.get("stdout") or ""):
         checks.append({
             "name": "Legacy unbound.service detection", "target": "unbound",
-            "status": "fail",
-            "detail": "unbound.service padrão ativo — pode interferir",
+            "status": "warn" if is_simple_mode else "fail",
+            "detail": "unbound.service padrão ativo — pode interferir" if not is_simple_mode else "unbound.service padrão ativo (não interfere no modo simples com balanceamento local)",
             "durationMs": int((time.monotonic() - t0) * 1000),
         })
 

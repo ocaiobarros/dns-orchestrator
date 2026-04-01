@@ -491,7 +491,7 @@ export interface GeneratedFile {
 export interface PostDeployCheck {
   name: string;
   target: string;
-  status: 'pass' | 'fail' | 'skip';
+  status: 'pass' | 'fail' | 'skip' | 'warn';
   detail: string;
   durationMs: number;
 }
