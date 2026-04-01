@@ -1,0 +1,6 @@
+{
+  "mode": "auto",
+  "frontend_ip": "",
+  "instances": [],
+  "query_log_enabled": true
+}

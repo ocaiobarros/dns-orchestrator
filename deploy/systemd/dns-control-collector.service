@@ -1,0 +1,16 @@
+[Unit]
+Description=DNS Control Telemetry Collector
+After=network.target
+
+[Service]
+Type=oneshot
+User=dns-control
+Group=dns-control
+ExecStart=/usr/bin/python3 /opt/dns-control/collector/collector.py
+WorkingDirectory=/opt/dns-control
+Environment=COLLECTOR_CONFIG=/opt/dns-control/collector/config.json
+Environment=COLLECTOR_OUTPUT_DIR=/var/lib/dns-control/telemetry
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dns-control-collector
+TimeoutStartSec=30

@@ -1,206 +1,322 @@
 import { useState } from 'react';
-import { BarChart3, Activity, Timer, AlertTriangle } from 'lucide-react';
+import { BarChart3, Activity, Timer, AlertTriangle, Search, Users, Globe, Database } from 'lucide-react';
 import MetricCard from '@/components/MetricCard';
 import { LoadingState } from '@/components/DataStates';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { useTelemetry, useTelemetryStatus } from '@/lib/hooks';
 
 function safeNum(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
 
+function formatBytes(b: number): string {
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function MetricsPage() {
-  const [selectedMetric, setSelectedMetric] = useState('dns_queries_total');
-
-  const { data: rawMetrics, isLoading } = useQuery({
-    queryKey: ['v2-metrics'],
-    queryFn: async () => {
-      const r = await api.getV2Metrics();
-      if (!r.success) throw new Error(r.error!);
-      return r.data;
-    },
-    refetchInterval: 10000,
-  });
-
-  const { data: rawInstanceStats } = useQuery({
-    queryKey: ['dns', 'instances'],
-    queryFn: async () => {
-      const r = await api.getInstanceStats();
-      if (!r.success) throw new Error(r.error!);
-      return r.data;
-    },
-    refetchInterval: 15000,
-  });
+  const { data: telemetry, isLoading } = useTelemetry();
+  const { data: telStatus } = useTelemetryStatus();
+  const [tab, setTab] = useState<'resolver' | 'traffic' | 'domains' | 'clients'>('resolver');
 
   if (isLoading) return <LoadingState />;
 
-  // Normalize metrics: accept [], { items: [] }, { data: [] }, etc.
-  const metrics: Array<Record<string, unknown>> = (() => {
-    if (Array.isArray(rawMetrics)) return rawMetrics;
-    if (rawMetrics && typeof rawMetrics === 'object') {
-      const r = rawMetrics as Record<string, unknown>;
-      if (Array.isArray(r.items)) return r.items;
-      if (Array.isArray(r.data)) return r.data;
-      if (Array.isArray(r.samples)) return r.samples;
-    }
-    return [];
-  })();
+  const collectorOk = telemetry?.health?.collector === 'ok';
+  const resolver = telemetry?.resolver ?? {};
+  const traffic = telemetry?.traffic ?? {};
+  const backends = telemetry?.backends ?? [];
+  const topDomains = telemetry?.top_domains ?? [];
+  const topClients = telemetry?.top_clients ?? [];
+  const recentQueries = telemetry?.recent_queries ?? [];
+  const queryAnalytics = telemetry?.query_analytics ?? {};
+  const collectorHealth = telemetry?.health ?? {};
 
-  // Normalize instance stats
-  const instanceStats = Array.isArray(rawInstanceStats) ? rawInstanceStats : [] as any[];
+  const telemetryConnected = collectorOk && safeNum(resolver.instances_live) > 0;
+  const totalQueries = safeNum(resolver.total_queries);
+  const cacheHitRatio = safeNum(resolver.cache_hit_ratio);
+  const avgLatency = safeNum(resolver.avg_latency_ms);
+  const qps = safeNum(resolver.qps);
+  const totalServfail = safeNum(resolver.servfail);
 
-  // Group metrics by instance
-  const byInstance: Record<string, Record<string, number>> = {};
-  for (const m of metrics) {
-    const instName = String(m.instance_name ?? m.instanceName ?? m.instance ?? 'unknown');
-    const metricName = String(m.metric_name ?? m.metricName ?? m.name ?? '');
-    const metricValue = safeNum(m.metric_value ?? m.metricValue ?? m.value);
-    if (!byInstance[instName]) byInstance[instName] = {};
-    if (metricName) byInstance[instName][metricName] = metricValue;
-  }
-
-  // If no collected metrics, synthesize from live instance stats
-  const useLiveFallback = Object.keys(byInstance).length === 0 && instanceStats.length > 0;
-  if (useLiveFallback) {
-    for (const inst of instanceStats) {
-      const name = String(inst.instance ?? inst.name ?? 'unknown');
-      byInstance[name] = {
-        dns_queries_total: safeNum(inst.totalQueries ?? inst.queries_total),
-        dns_cache_hit_ratio: (() => {
-          const ratio = safeNum(inst.cacheHitRatio ?? inst.cache_hit_ratio);
-          return ratio > 1 ? ratio / 100 : ratio;  // normalize to 0-1
-        })(),
-        dns_latency_ms: safeNum(inst.avgLatencyMs ?? inst.avg_latency_ms ?? inst.recursionTimeAvg),
-        dns_servfail_total: safeNum(inst.servfail),
-        dns_nxdomain_total: safeNum(inst.nxdomain),
-        dns_cache_hits: safeNum(inst.cacheHits ?? inst.cache_hits),
-        dns_cache_misses: safeNum(inst.cacheMisses ?? inst.cache_misses),
-      };
-    }
-  }
-
-  const instanceNames = Object.keys(byInstance);
-  const totalQueries = instanceNames.reduce((sum, n) => sum + safeNum(byInstance[n]?.dns_queries_total), 0);
-  const avgHitRatio = instanceNames.length > 0
-    ? instanceNames.reduce((sum, n) => sum + safeNum(byInstance[n]?.dns_cache_hit_ratio), 0) / instanceNames.length
-    : 0;
-  const avgLatency = instanceNames.length > 0
-    ? instanceNames.reduce((sum, n) => sum + safeNum(byInstance[n]?.dns_latency_ms), 0) / instanceNames.length
-    : 0;
-  const totalServfail = instanceNames.reduce((sum, n) => sum + safeNum(byInstance[n]?.dns_servfail_total), 0);
-
-  const metricOptions = [
-    { key: 'dns_queries_total', label: 'Total Queries' },
-    { key: 'dns_cache_hit_ratio', label: 'Cache Hit Ratio' },
-    { key: 'dns_latency_ms', label: 'Latência (ms)' },
-    { key: 'dns_servfail_total', label: 'SERVFAIL' },
-    { key: 'dns_nxdomain_total', label: 'NXDOMAIN' },
-  ];
-
-  const hasMetrics = metrics.length > 0;
+  const tabs = [
+    { key: 'resolver', label: 'Resolver', icon: <Database size={12} /> },
+    { key: 'traffic', label: 'Tráfego', icon: <Activity size={12} /> },
+    { key: 'domains', label: 'Domínios', icon: <Search size={12} /> },
+    { key: 'clients', label: 'Clientes', icon: <Users size={12} /> },
+  ] as const;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Métricas DNS</h1>
-        <p className="text-sm text-muted-foreground">Dados reais via unbound-control stats_noreset</p>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard label="Total Queries" value={totalQueries.toLocaleString()} sub="Todas as instâncias" icon={<BarChart3 size={16} />} />
-        <MetricCard label="Cache Hit" value={`${(safeNum(avgHitRatio) * 100).toFixed(1)}%`} sub="Média geral" icon={<Activity size={16} />} />
-        <MetricCard label="Latência" value={`${safeNum(avgLatency).toFixed(1)}ms`} sub="Recursion avg" icon={<Timer size={16} />} />
-        <MetricCard label="SERVFAIL" value={totalServfail.toLocaleString()} sub="Total" icon={<AlertTriangle size={16} />} />
-      </div>
-
-      {/* Metric selector */}
-      <div className="flex flex-wrap gap-1">
-        {metricOptions.map(m => (
-          <button
-            key={m.key}
-            onClick={() => setSelectedMetric(m.key)}
-            className={`px-3 py-1.5 text-xs rounded border transition-colors ${
-              selectedMetric === m.key
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'bg-secondary text-secondary-foreground border-border hover:bg-secondary/80'
-            }`}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Per-instance metrics table */}
-      <div className="noc-panel">
-        <div className="noc-panel-header">Métricas por Instância</div>
-        <div className="overflow-x-auto">
-          {!hasMetrics ? (
-            <div className="p-6 text-center text-muted-foreground text-sm">
-              Nenhuma métrica coletada ainda. O collector pode não ter executado ou as instâncias Unbound não estão reportando.
-            </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-muted-foreground border-b border-border">
-                  <th className="py-2 pr-4 font-medium">Instância</th>
-                  <th className="py-2 pr-4 font-medium text-right">Queries</th>
-                  <th className="py-2 pr-4 font-medium text-right">Cache Hit</th>
-                  <th className="py-2 pr-4 font-medium text-right">Latência</th>
-                  <th className="py-2 pr-4 font-medium text-right">SERVFAIL</th>
-                  <th className="py-2 pr-4 font-medium text-right">NXDOMAIN</th>
-                </tr>
-              </thead>
-              <tbody>
-                {instanceNames.map(name => {
-                  const m = byInstance[name];
-                  return (
-                    <tr key={name} className="border-b border-border last:border-0">
-                      <td className="py-2 pr-4 font-mono">{name}</td>
-                      <td className="py-2 pr-4 text-right font-mono">{safeNum(m.dns_queries_total).toLocaleString()}</td>
-                      <td className="py-2 pr-4 text-right font-mono text-emerald-500">{(safeNum(m.dns_cache_hit_ratio) * 100).toFixed(1)}%</td>
-                      <td className="py-2 pr-4 text-right font-mono">{safeNum(m.dns_latency_ms).toFixed(1)}ms</td>
-                      <td className="py-2 pr-4 text-right font-mono">{safeNum(m.dns_servfail_total).toLocaleString()}</td>
-                      <td className="py-2 pr-4 text-right font-mono">{safeNum(m.dns_nxdomain_total).toLocaleString()}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">Métricas DNS</h1>
+          <p className="text-sm text-muted-foreground">
+            Dados reais via collector (unbound-control + nftables)
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-[9px] font-mono">
+          <span className={`px-2 py-0.5 rounded border ${
+            collectorOk ? 'bg-success/10 text-success border-success/20' : 'bg-destructive/10 text-destructive border-destructive/20'
+          }`}>
+            Collector: {collectorOk ? 'OK' : 'INATIVO'}
+          </span>
+          {collectorHealth.last_update && (
+            <span className="text-muted-foreground/50">
+              Última coleta: {new Date(collectorHealth.last_update).toLocaleTimeString()}
+            </span>
+          )}
+          {telStatus?.file_age_seconds != null && (
+            <span className={telStatus.stale ? 'text-warning' : 'text-muted-foreground/50'}>
+              ({telStatus.file_age_seconds}s atrás)
+            </span>
           )}
         </div>
       </div>
 
-      {/* Instance stats from /dns/instances */}
-      {instanceStats.length > 0 && (
-        <div className="noc-panel">
-          <div className="noc-panel-header">Visão de Instâncias (Live Stats)</div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {instanceStats.map((inst, idx) => {
-              const name = String(inst.instance ?? inst.name ?? `inst-${idx}`);
-              const queries = safeNum(inst.totalQueries ?? inst.queries_total ?? inst.total_queries);
-              const cacheHit = safeNum(inst.cacheHitRatio ?? inst.cache_hit_ratio ?? inst.cache_entries);
-              const latency = safeNum(inst.avgLatencyMs ?? inst.avg_latency_ms ?? inst.latency);
-              return (
-                <div key={name} className="p-3 rounded border border-border bg-secondary/20">
-                  <div className="font-mono text-sm font-medium mb-2">{name}</div>
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div>
-                      <span className="text-muted-foreground block">Queries</span>
-                      <span className="font-mono">{queries.toLocaleString()}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block">Cache</span>
-                      <span className="font-mono text-emerald-500">{cacheHit}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block">Latência</span>
-                      <span className="font-mono">{latency}ms</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+      {/* Collector warning */}
+      {!collectorOk && (
+        <div className="p-3 rounded border border-destructive/30 bg-destructive/5 flex items-center gap-2 text-sm">
+          <AlertTriangle size={16} className="text-destructive flex-shrink-0" />
+          <div>
+            <span className="font-bold text-destructive">Collector inativo.</span>
+            <span className="text-muted-foreground ml-2">
+              {telStatus?.collector_status === 'not_running'
+                ? 'Habilite: systemctl enable --now dns-control-collector.timer'
+                : telStatus?.error ?? 'Verifique /var/lib/dns-control/telemetry/latest.json'}
+            </span>
           </div>
+        </div>
+      )}
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <MetricCard
+          label="Total Queries"
+          value={telemetryConnected ? totalQueries.toLocaleString() : '—'}
+          sub={telemetryConnected ? `QPS: ${qps}` : 'Collector inativo'}
+          icon={<BarChart3 size={16} />}
+        />
+        <MetricCard
+          label="Cache Hit"
+          value={telemetryConnected ? `${cacheHitRatio}%` : '—'}
+          sub={telemetryConnected ? `${safeNum(resolver.cache_hits)} hits` : 'Sem dados'}
+          icon={<Activity size={16} />}
+        />
+        <MetricCard
+          label="Latência"
+          value={telemetryConnected ? `${avgLatency}ms` : '—'}
+          sub={telemetryConnected ? 'Recursion avg' : 'Sem dados'}
+          icon={<Timer size={16} />}
+        />
+        <MetricCard
+          label="SERVFAIL"
+          value={telemetryConnected ? totalServfail.toLocaleString() : '—'}
+          sub={telemetryConnected ? `NXDOMAIN: ${safeNum(resolver.nxdomain)}` : 'Sem dados'}
+          icon={<AlertTriangle size={16} />}
+        />
+      </div>
+
+      {/* Tab selector */}
+      <div className="flex gap-1">
+        {tabs.map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-3 py-1.5 text-xs rounded border transition-colors flex items-center gap-1 ${
+              tab === t.key
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-secondary text-secondary-foreground border-border hover:bg-secondary/80'
+            }`}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ═══ RESOLVER TAB ═══ */}
+      {tab === 'resolver' && (
+        <div className="noc-panel">
+          <div className="noc-panel-header">Métricas por Backend (Fonte: unbound-control)</div>
+          <div className="overflow-x-auto">
+            {backends.length === 0 ? (
+              <div className="p-6 text-center text-muted-foreground text-sm">
+                {collectorOk
+                  ? 'Nenhum backend com dados de resolver disponível.'
+                  : 'Collector não ativo — métricas indisponíveis. Não são zeros reais.'}
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-muted-foreground border-b border-border">
+                    <th className="py-2 pr-4 font-medium">Backend</th>
+                    <th className="py-2 pr-4 font-medium text-right">Queries</th>
+                    <th className="py-2 pr-4 font-medium text-right">Cache Hit</th>
+                    <th className="py-2 pr-4 font-medium text-right">Latência</th>
+                    <th className="py-2 pr-4 font-medium text-right">SERVFAIL</th>
+                    <th className="py-2 pr-4 font-medium text-right">NXDOMAIN</th>
+                    <th className="py-2 pr-4 font-medium text-right">NOERROR</th>
+                    <th className="py-2 pr-4 font-medium">Fonte</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {backends.map((b: any) => (
+                    <tr key={b.name} className="border-b border-border last:border-0">
+                      <td className="py-2 pr-4 font-mono text-primary font-medium">{b.name} <span className="text-muted-foreground/50 text-xs">{b.ip}</span></td>
+                      <td className="py-2 pr-4 text-right font-mono">{safeNum(b.resolver?.total_queries).toLocaleString()}</td>
+                      <td className="py-2 pr-4 text-right font-mono text-success">{safeNum(b.resolver?.cache_hit_ratio)}%</td>
+                      <td className="py-2 pr-4 text-right font-mono">{safeNum(b.resolver?.recursion_avg_ms)}ms</td>
+                      <td className="py-2 pr-4 text-right font-mono">{safeNum(b.resolver?.servfail)}</td>
+                      <td className="py-2 pr-4 text-right font-mono">{safeNum(b.resolver?.nxdomain)}</td>
+                      <td className="py-2 pr-4 text-right font-mono">{safeNum(b.resolver?.noerror)}</td>
+                      <td className="py-2 pr-4 text-xs text-muted-foreground">{b.resolver?.source ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ TRAFFIC TAB ═══ */}
+      {tab === 'traffic' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <MetricCard label="Total Packets" value={traffic.available ? safeNum(traffic.total_packets).toLocaleString() : '—'} sub="nftables counters" icon={<Activity size={16} />} />
+            <MetricCard label="Total Bytes" value={traffic.available ? formatBytes(safeNum(traffic.total_bytes)) : '—'} sub="nftables" icon={<Activity size={16} />} />
+            <MetricCard label="QPS (nft)" value={traffic.available ? safeNum(traffic.qps).toString() : '—'} sub="Delta de pacotes" icon={<Timer size={16} />} />
+            <MetricCard label="Fonte" value={traffic.source ?? '—'} sub={traffic.available ? 'Ativo' : 'Indisponível'} />
+          </div>
+
+          <div className="noc-panel">
+            <div className="noc-panel-header">Distribuição por Backend (Fonte: nftables)</div>
+            <div className="overflow-x-auto">
+              {backends.length === 0 ? (
+                <div className="p-6 text-center text-muted-foreground text-sm">Nenhum dado de tráfego disponível</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-muted-foreground border-b border-border">
+                      <th className="py-2 pr-4 font-medium">Backend</th>
+                      <th className="py-2 pr-4 font-medium text-right">Packets</th>
+                      <th className="py-2 pr-4 font-medium text-right">Bytes</th>
+                      <th className="py-2 pr-4 font-medium text-right">Share</th>
+                      <th className="py-2 font-medium">Distribuição</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {backends.map((b: any) => (
+                      <tr key={b.name} className="border-b border-border last:border-0">
+                        <td className="py-2 pr-4 font-mono text-primary">{b.name}</td>
+                        <td className="py-2 pr-4 text-right font-mono">{safeNum(b.traffic?.packets).toLocaleString()}</td>
+                        <td className="py-2 pr-4 text-right font-mono">{formatBytes(safeNum(b.traffic?.bytes))}</td>
+                        <td className="py-2 pr-4 text-right font-mono">{safeNum(b.traffic?.share)}%</td>
+                        <td className="py-2">
+                          <div className="w-full bg-muted/30 rounded-full h-2">
+                            <div className="bg-primary rounded-full h-2 transition-all" style={{ width: `${safeNum(b.traffic?.share)}%` }} />
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ DOMAINS TAB ═══ */}
+      {tab === 'domains' && (
+        <div className="space-y-4">
+          <div className="noc-panel">
+            <div className="noc-panel-header flex items-center justify-between">
+              <span>Top Domínios Consultados</span>
+              <span className="text-xs text-muted-foreground font-normal">Fonte: {queryAnalytics.log_source ?? 'query log'} · {safeNum(queryAnalytics.queries_parsed)} queries parsed</span>
+            </div>
+            {topDomains.length === 0 ? (
+              <div className="p-6 text-center text-muted-foreground text-sm">
+                {collectorOk
+                  ? 'Nenhum domínio capturado ainda. Verifique se log-queries está habilitado no Unbound.'
+                  : 'Collector inativo — dados de domínios indisponíveis.'}
+              </div>
+            ) : (
+              <div className="p-4 space-y-2">
+                {topDomains.map((d: any, i: number) => {
+                  const maxCount = topDomains[0]?.count || 1;
+                  return (
+                    <div key={d.domain} className="flex items-center gap-3 text-sm font-mono">
+                      <span className="text-muted-foreground w-6 text-right">{i + 1}.</span>
+                      <div className="flex-1 relative h-6 flex items-center">
+                        <div className="absolute inset-y-0 left-0 bg-primary/10 rounded" style={{ width: `${(d.count / maxCount) * 100}%` }} />
+                        <span className="relative z-10 pl-2 text-foreground">{d.domain}</span>
+                      </div>
+                      <span className="text-muted-foreground w-16 text-right">{d.count}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Recent queries */}
+          {recentQueries.length > 0 && (
+            <div className="noc-panel">
+              <div className="noc-panel-header">Consultas Recentes</div>
+              <div className="overflow-x-auto max-h-64">
+                <table className="w-full text-sm font-mono">
+                  <thead>
+                    <tr className="text-left text-muted-foreground border-b border-border">
+                      <th className="py-1 pr-4">Hora</th>
+                      <th className="py-1 pr-4">Cliente</th>
+                      <th className="py-1 pr-4">Domínio</th>
+                      <th className="py-1">Tipo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentQueries.slice(-30).reverse().map((q: any, i: number) => (
+                      <tr key={i} className="border-b border-border last:border-0 text-xs">
+                        <td className="py-1 pr-4 text-muted-foreground">{q.time}</td>
+                        <td className="py-1 pr-4 text-accent">{q.client}</td>
+                        <td className="py-1 pr-4 text-foreground">{q.domain}</td>
+                        <td className="py-1 text-muted-foreground/60">{q.type}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ CLIENTS TAB ═══ */}
+      {tab === 'clients' && (
+        <div className="noc-panel">
+          <div className="noc-panel-header">Top Clientes DNS</div>
+          {topClients.length === 0 ? (
+            <div className="p-6 text-center text-muted-foreground text-sm">
+              {collectorOk
+                ? 'Nenhum cliente capturado ainda. Verifique se log-queries está habilitado.'
+                : 'Collector inativo — dados de clientes indisponíveis.'}
+            </div>
+          ) : (
+            <div className="p-4 space-y-2">
+              {topClients.map((c: any, i: number) => {
+                const maxQ = topClients[0]?.queries || 1;
+                return (
+                  <div key={c.ip} className="flex items-center gap-3 text-sm font-mono">
+                    <span className="text-muted-foreground w-6 text-right">{i + 1}.</span>
+                    <div className="flex-1 relative h-6 flex items-center">
+                      <div className="absolute inset-y-0 left-0 bg-accent/10 rounded" style={{ width: `${(c.queries / maxQ) * 100}%` }} />
+                      <span className="relative z-10 pl-2 text-foreground">{c.ip}</span>
+                    </div>
+                    <span className="text-muted-foreground w-16 text-right">{c.queries}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

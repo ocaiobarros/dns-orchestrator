@@ -1,0 +1,11 @@
+[Unit]
+Description=DNS Control Telemetry Collector Timer
+After=network.target
+
+[Timer]
+OnBootSec=10s
+OnUnitActiveSec=10s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

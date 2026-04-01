@@ -258,6 +258,10 @@ export const api = {
     apiCall<V2Instance[]>('GET', '/health/instances'),
   getV2Actions: () =>
     apiCall<V2Action[]>('GET', '/actions'),
+  // Telemetry (collector service)
+  getTelemetryLatest: () => apiCall<any>('GET', '/telemetry/latest'),
+  getTelemetryStatus: () => apiCall<any>('GET', '/telemetry/status'),
+
   removeBackend: (instanceId: string) =>
     apiCall<{ success: boolean }>('POST', `/actions/remove-backend/${instanceId}`),
   restoreBackend: (instanceId: string) =>
@@ -408,6 +412,10 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path.match(/\/api\/actions\/(remove|restore)-backend/)) return { success: true };
   if (path === '/api/actions/reconcile-now' && method === 'POST') return { instances_checked: 4, instances_failed: 0, backends_removed: 0, backends_restored: 0 };
 
+  // Telemetry mock
+  if (path === '/api/telemetry/latest') return mockTelemetryLatest();
+  if (path === '/api/telemetry/status') return { collector_status: 'ok', last_update: new Date().toISOString(), file_age_seconds: 5, stale: false, mode: 'recursive_simple' };
+
   // System
   if (path === '/api/system/self-test' && method === 'POST') {
     return {
@@ -425,6 +433,49 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   }
 
   return {};
+}
+
+function mockTelemetryLatest() {
+  return {
+    mode: 'recursive_simple',
+    timestamp: new Date().toISOString(),
+    epoch: Math.floor(Date.now() / 1000),
+    frontend: { ip: '172.250.40.100', port: 53, healthy: true },
+    resolver: {
+      total_queries: 1284, cache_hits: 920, cache_misses: 364,
+      cache_hit_ratio: 71.6, avg_latency_ms: 4.2, servfail: 2, nxdomain: 14,
+      qps: 12.4, instances_live: 2, instances_total: 2, source: 'unbound-control',
+    },
+    traffic: { total_packets: 1284, total_bytes: 84521, qps: 12.4, available: true, source: 'nftables' },
+    backends: [
+      {
+        name: 'unbound01', ip: '100.127.255.101', healthy: true,
+        resolver: { total_queries: 612, cache_hits: 440, cache_misses: 172, cache_hit_ratio: 71.9, recursion_avg_ms: 3.8, servfail: 1, nxdomain: 7, noerror: 604, refused: 0, uptime_seconds: 86400, source: 'unbound-control' },
+        traffic: { packets: 612, bytes: 40123, share: 47.6, source: 'nftables' },
+      },
+      {
+        name: 'unbound02', ip: '100.127.255.102', healthy: true,
+        resolver: { total_queries: 672, cache_hits: 480, cache_misses: 192, cache_hit_ratio: 71.4, recursion_avg_ms: 4.6, servfail: 1, nxdomain: 7, noerror: 664, refused: 0, uptime_seconds: 86400, source: 'unbound-control' },
+        traffic: { packets: 672, bytes: 44398, share: 52.4, source: 'nftables' },
+      },
+    ],
+    top_domains: [
+      { domain: 'google.com', count: 120 }, { domain: 'youtube.com', count: 98 },
+      { domain: 'cloudflare.com', count: 64 }, { domain: 'github.com', count: 42 },
+      { domain: 'uol.com.br', count: 38 },
+    ],
+    top_clients: [
+      { ip: '172.250.40.10', queries: 300 }, { ip: '172.250.40.11', queries: 210 },
+      { ip: '172.250.40.12', queries: 150 },
+    ],
+    recent_queries: [
+      { time: '13:40:01', client: '172.250.40.10', domain: 'uol.com.br', type: 'A' },
+      { time: '13:40:02', client: '172.250.40.11', domain: 'google.com', type: 'A' },
+      { time: '13:40:03', client: '172.250.40.10', domain: 'youtube.com', type: 'AAAA' },
+    ],
+    query_analytics: { log_source: 'journalctl', queries_parsed: 1284 },
+    health: { collector: 'ok', last_update: new Date().toISOString(), collection_duration_ms: 280 },
+  };
 }
 
 function mockDeployState(): DeployState & Record<string, unknown> {

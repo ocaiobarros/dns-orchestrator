@@ -596,9 +596,32 @@ else
     ERRORS=$((ERRORS+1))
 fi
 
+# ── Install collector service + timer ──
+COLLECTOR_SVC_SRC="${REPO_DIR}/deploy/systemd/dns-control-collector.service"
+COLLECTOR_TMR_SRC="${REPO_DIR}/deploy/systemd/dns-control-collector.timer"
+if [ -f "$COLLECTOR_SVC_SRC" ] && [ -f "$COLLECTOR_TMR_SRC" ]; then
+    cp "${COLLECTOR_SVC_SRC}" /usr/lib/systemd/system/dns-control-collector.service
+    cp "${COLLECTOR_TMR_SRC}" /usr/lib/systemd/system/dns-control-collector.timer
+    rm -f /etc/systemd/system/dns-control-collector.service /etc/systemd/system/dns-control-collector.timer
+    ok "Collector systemd units installed"
+fi
+# ── Install collector script ──
+mkdir -p "${INSTALL_DIR}/collector"
+if [ -f "${REPO_DIR}/backend/collector/collector.py" ]; then
+    cp "${REPO_DIR}/backend/collector/collector.py" "${INSTALL_DIR}/collector/collector.py"
+    cp "${REPO_DIR}/backend/collector/config.json" "${INSTALL_DIR}/collector/config.json" 2>/dev/null || true
+    ok "Collector script installed to ${INSTALL_DIR}/collector/"
+fi
+# ── Create telemetry output dir ──
+mkdir -p "${DATA_DIR}/telemetry"
+chown -R dns-control:dns-control "${DATA_DIR}/telemetry"
+
 systemctl daemon-reload
 systemctl enable dns-control-api
 systemctl restart dns-control-api
+# ── Enable collector timer ──
+systemctl enable dns-control-collector.timer 2>/dev/null || true
+systemctl start dns-control-collector.timer 2>/dev/null || true
 if ! systemctl is-active --quiet dns-control-api; then
     fail "dns-control-api did not start"
     echo ""
