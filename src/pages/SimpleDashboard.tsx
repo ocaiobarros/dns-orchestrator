@@ -386,6 +386,60 @@ export default function SimpleDashboard() {
       {/* ═══ DNS PATH FLOW ═══ */}
       <NocDnsPathFlow nodes={pathNodes} edges={pathEdges} layerLabels={{ vip: 'FRONTEND DNS', resolver: 'BACKENDS' }} />
 
+      {/* ═══ DNS NETWORK MAP ═══ */}
+      {(() => {
+        const mapNodes: MapNode[] = [];
+        const mapEdges: MapEdge[] = [];
+
+        // Frontend node
+        mapNodes.push({
+          id: 'frontend-dns',
+          label: frontendIp ? `Frontend ${frontendIp}` : 'Frontend DNS',
+          type: 'vip',
+          status: frontendHealthy ? 'ok' : frontendIp ? 'degraded' : 'inactive',
+          qps: telemetryConnected ? qps : undefined,
+          bindIp: frontendIp || undefined,
+        });
+
+        // Backend resolver nodes
+        backends.forEach((b: any) => {
+          const bLatency = b.resolver?.recursion_avg_ms ? Math.round(b.resolver.recursion_avg_ms) : undefined;
+          const bQps = b.resolver?.total_queries ?? undefined;
+          const bCacheHit = b.resolver?.cache_hit_ratio ? Math.round(b.resolver.cache_hit_ratio) : undefined;
+          mapNodes.push({
+            id: `resolver-${b.name}`,
+            label: b.name,
+            type: 'resolver',
+            status: b.healthy ? 'ok' : 'failed',
+            latency: bLatency,
+            qps: bQps,
+            cacheHit: bCacheHit,
+            bindIp: b.ip,
+          });
+          mapEdges.push({
+            from: 'frontend-dns',
+            to: `resolver-${b.name}`,
+            latency: bLatency,
+            qps: bQps ?? 0,
+          });
+        });
+
+        // Upstream
+        mapNodes.push({
+          id: 'upstream-primary',
+          label: 'Upstream DNS',
+          type: 'upstream',
+          status: 'ok',
+          bindIp: '8.8.8.8',
+        });
+        const resolverIds = mapNodes.filter(n => n.type === 'resolver').map(n => n.id);
+        resolverIds.forEach(rid => {
+          mapEdges.push({ from: rid, to: 'upstream-primary', latency: undefined, qps: 0 });
+        });
+
+        return <NocGeoMap nodes={mapNodes} edges={mapEdges} />;
+      })()}
+
       {/* ═══ TOP DOMAINS + TOP CLIENTS ═══ */}
       {(topDomains.length > 0 || topClients.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
