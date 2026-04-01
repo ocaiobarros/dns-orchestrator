@@ -1110,6 +1110,7 @@ export default function Wizard() {
   const stepRenderers: Record<string, () => React.ReactNode> = {
     'Topologia do Host': renderHostTopology,
     'Modo de Operação DNS': renderOperationMode,
+    'Frontend DNS': renderFrontendDns,
     'Modelo de Entrega do VIP': renderDeliverySubmode,
     'Instâncias Resolver': renderInstances,
     'VIPs de Serviço': renderServiceVips,
