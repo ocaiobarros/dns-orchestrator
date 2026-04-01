@@ -142,6 +142,9 @@ def normalize_payload(raw: dict[str, Any]) -> dict[str, Any]:
         "egressMode": raw.get("egressMode", "fixed-per-instance"),
         "egressDeliveryMode": raw.get("egressDeliveryMode", "host-owned"),
         "operationMode": operation_mode,
+        "frontendDnsIp": raw.get("frontendDnsIp", ""),
+        "ipv4Address": ipv4_address,
+        "stickyTimeout": raw.get("stickyTimeout", 0),
         # Preserve raw config for reference
         "_wizardConfig": raw,
     }

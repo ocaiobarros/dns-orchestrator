@@ -35,6 +35,7 @@ from app.core.config import settings
 from app.services.config_service import validate_config, generate_preview
 from app.services.payload_normalizer import normalize_payload
 from app.generators.nftables_generator import generate_nftables_config
+from app.generators.nftables_simple_generator import generate_simple_nftables_config
 from app.executors.command_runner import run_command
 from app.services.deploy_lock import deploy_lock
 from app.services.drift_service import write_version_manifest
@@ -293,25 +294,27 @@ def _execute_deploy_locked(
                     nc.write(".\t\t\t3600000\tNS\tA.ROOT-SERVERS.NET.\n"
                              "A.ROOT-SERVERS.NET.\t3600000\tA\t198.41.0.4\n")
 
-        # Generate nftables validation artifact — ONLY for interception mode
+        # Generate nftables validation artifact
         normalized_payload = normalize_payload(payload)
         is_simple_mode = normalized_payload.get("operationMode") == "simple"
-        if not is_simple_mode:
-            try:
+        try:
+            if is_simple_mode:
+                vfiles = generate_simple_nftables_config(normalized_payload, validation_mode=True)
+            else:
                 vfiles = generate_nftables_config(normalized_payload, validation_mode=True)
-                if vfiles:
-                    rel_path = vfiles[0]["path"].lstrip("/")
-                    nft_validation_staged_path = os.path.join(staging_dir, rel_path)
-                    os.makedirs(os.path.dirname(nft_validation_staged_path), exist_ok=True)
-                    with open(nft_validation_staged_path, "w") as vf:
-                        vf.write(vfiles[0]["content"])
-            except Exception as exc:
-                logger.warning(f"Failed to generate nftables validation artifact: {exc}")
+            if vfiles:
+                rel_path = vfiles[0]["path"].lstrip("/")
+                nft_validation_staged_path = os.path.join(staging_dir, rel_path)
+                os.makedirs(os.path.dirname(nft_validation_staged_path), exist_ok=True)
+                with open(nft_validation_staged_path, "w") as vf:
+                    vf.write(vfiles[0]["content"])
+        except Exception as exc:
+            logger.warning(f"Failed to generate nftables validation artifact: {exc}")
 
         # ── Structural guard: simple mode MUST NOT produce interception artifacts ──
         if is_simple_mode:
             nft_interception_patterns = ("DNS_ANYCAST_IP", "ipv4_tcp_dns", "ipv4_udp_dns",
-                                         "ipv6_tcp_dns", "ipv6_udp_dns", "dnat to", "users_unbound")
+                                         "ipv6_tcp_dns", "ipv6_udp_dns", "users_unbound")
             for f in files:
                 combined = f["path"] + "\n" + f.get("content", "")
                 if any(pat in combined for pat in nft_interception_patterns):
@@ -884,11 +887,21 @@ def _execute_deploy_locked(
     _is_simple_mode = _normalized_for_mode.get("operationMode") == "simple"
 
     if _is_simple_mode:
-        s_nft_skip = _step(order, "nftables (ignorado — modo simples)")
-        s_nft_skip["status"] = "skipped"
-        s_nft_skip["output"] = "Modo Recursivo Simples: nenhuma regra de interceptação aplicável"
-        steps.append(s_nft_skip)
+        # Simple mode: apply local balancing nftables (NOT interception)
+        s_nft_simple = _step(order, "Aplicar balanceamento local (nftables)", "nft -f /etc/nftables.conf")
+        def apply_nft_simple():
+            r = run_command("nft", ["-f", "/etc/nftables.conf"], timeout=15, use_privilege=True)
+            return {
+                "status": "success" if r["exit_code"] == 0 else "failed",
+                "output": r["stdout"][:500] or "Balanceamento local carregado",
+                "stderr": r["stderr"][:500],
+            }
+        _run_step(s_nft_simple, apply_nft_simple)
+        steps.append(s_nft_simple)
         _update_live_state(completedSteps=order)
+        if s_nft_simple["status"] == "failed":
+            _auto_rollback("Aplicar balanceamento local")
+            return _build_result(deploy_id, steps, False, dry_run, scope, operator, files, [], backup_id, validation_errors, validation_results)
         order += 1
     else:
         s_nft = _step(order, "Aplicar nftables", "nft -f /etc/nftables.conf")
@@ -1317,16 +1330,66 @@ def _run_health_checks(payload: dict) -> list[dict]:
                 "durationMs": int((time.monotonic() - t0) * 1000),
             })
 
-    # ── nftables checks: only for interception mode ──
+    # ── nftables checks: mode-dependent ──
     operation_mode = str(
         payload.get("operationMode")
         or payload.get("_wizardConfig", {}).get("operationMode", "")
         or ""
     ).lower()
-    is_simple_mode = operation_mode in ("simple", "recursivo_simples", "recursivo simples", "")
+    is_simple_mode = operation_mode in ("simple", "recursivo_simples", "recursivo simples")
+    is_no_mode = operation_mode == ""
 
     nft_ruleset = ""
-    if not is_simple_mode:
+
+    if is_simple_mode:
+        # ── Simple mode: check local balancing ──
+        frontend_ip = str(
+            payload.get("frontendDnsIp")
+            or payload.get("_wizardConfig", {}).get("frontendDnsIp", "")
+            or ""
+        ).strip()
+
+        # Check nftables local balancing loaded
+        t0 = time.monotonic()
+        r = run_command("nft", ["list", "tables"], timeout=5, use_privilege=True)
+        checks.append({
+            "name": "Balanceamento local (nftables) carregado", "target": "nftables",
+            "status": "pass" if r["exit_code"] == 0 and r["stdout"].strip() else "fail",
+            "detail": r["stdout"].strip()[:200] or "No tables",
+            "durationMs": int((time.monotonic() - t0) * 1000),
+        })
+
+        # Check DNAT rules for each backend
+        t0 = time.monotonic()
+        r = run_command("nft", ["list", "ruleset"], timeout=10, use_privilege=True)
+        nft_ruleset = r.get("stdout") or ""
+        nft_dur = int((time.monotonic() - t0) * 1000)
+
+        for inst in instances:
+            name = inst.get("name", "unbound")
+            bind_ip = inst.get("bindIp", "")
+            if bind_ip:
+                has_dnat = f"dnat to {bind_ip}:53" in nft_ruleset
+                checks.append({
+                    "name": f"Balanceamento local → {name} ({bind_ip})", "target": f"local/{name}",
+                    "status": "pass" if has_dnat else "fail",
+                    "detail": f"DNAT local para {bind_ip}:53 {'encontrada' if has_dnat else 'AUSENTE'}",
+                    "durationMs": nft_dur,
+                })
+
+        # Frontend DNS probe
+        if frontend_ip:
+            t0 = time.monotonic()
+            r = run_command("dig", [f"@{frontend_ip}", "localhost", "+short", "+time=2", "+tries=1"], timeout=5)
+            checks.append({
+                "name": f"Frontend DNS ({frontend_ip}) responde", "target": frontend_ip,
+                "status": "pass" if r["exit_code"] == 0 else "fail",
+                "detail": r["stdout"].strip()[:200] or "Sem resposta",
+                "durationMs": int((time.monotonic() - t0) * 1000),
+            })
+
+    elif not is_no_mode:
+        # ── Interception mode: full nftables checks ──
         # nftables loaded
         t0 = time.monotonic()
         r = run_command("nft", ["list", "tables"], timeout=5, use_privilege=True)

@@ -119,6 +119,9 @@ export interface WizardConfig {
   hostname: string;
   organization: string;
   project: string;
+
+  // Simple mode — Frontend DNS IP (the IP clients query)
+  frontendDnsIp: string;
   description: string;
   timezone: string;
   mainInterface: string;
@@ -656,6 +659,7 @@ export const DEFAULT_CONFIG: WizardConfig = {
   hostname: '',
   organization: '',
   project: '',
+  frontendDnsIp: '',
   description: '',
   timezone: 'America/Sao_Paulo',
   mainInterface: '',

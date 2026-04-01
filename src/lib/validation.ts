@@ -58,7 +58,7 @@ function findDuplicates(arr: string[]): string[] {
 // ═══ Step index resolver — maps step names to their current index ═══
 function getStepNames(mode: OperationMode, submode: VipDeliverySubmode): string[] {
   if (mode === 'simple') {
-    return ['Topologia do Host', 'Modo de Operação DNS', 'Instâncias Resolver', 'Segurança', 'Observabilidade', 'Revisão & Deploy'];
+    return ['Topologia do Host', 'Modo de Operação DNS', 'Frontend DNS', 'Instâncias Resolver', 'Segurança', 'Observabilidade', 'Revisão & Deploy'];
   }
   if (submode === 'interception-plus-own-vip') {
     return ['Topologia do Host', 'Modo de Operação DNS', 'Modelo de Entrega do VIP', 'Instâncias Resolver', 'VIPs de Serviço', 'VIP Interception', 'Egress Público', 'Mapeamento VIP→Instância', 'Segurança', 'Observabilidade', 'Revisão & Deploy'];
@@ -97,6 +97,21 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
     else if (!isValidIpv6Cidr(config.ipv6Address) && !isValidIpv6(config.ipv6Address)) e('ipv6Address', topStep, 'Endereço IPv6 inválido');
     if (!config.ipv6Gateway) e('ipv6Gateway', topStep, 'Gateway IPv6 é obrigatório quando IPv6 está habilitado');
     else if (!isValidIpv6(config.ipv6Gateway)) e('ipv6Gateway', topStep, 'Gateway IPv6 inválido');
+  }
+
+  // ═══ Frontend DNS (simple mode only) ═══
+  if (!isInterception) {
+    const frontendStep = s('Frontend DNS');
+    if (!config.frontendDnsIp.trim()) e('frontendDnsIp', frontendStep, 'Frontend DNS IP é obrigatório no modo simples');
+    else if (!isValidIpv4(config.frontendDnsIp)) e('frontendDnsIp', frontendStep, 'Frontend DNS IP inválido');
+    else {
+      // Frontend IP must not collide with backend bind IPs
+      config.instances.forEach((inst) => {
+        if (config.frontendDnsIp === inst.bindIp) {
+          e('frontendDnsIp', frontendStep, `Frontend DNS IP ${config.frontendDnsIp} conflita com listener da instância "${inst.name}" — o frontend não pode ser o mesmo IP do backend`);
+        }
+      });
+    }
   }
 
   // ═══ Instâncias Resolver ═══

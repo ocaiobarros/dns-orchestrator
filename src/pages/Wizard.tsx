@@ -31,8 +31,8 @@ import type { ApplyResult, ApplyRequest } from '@/lib/types';
 function getSteps(mode: OperationMode, submode: VipDeliverySubmode) {
   if (mode === 'simple') {
     return {
-      names: ['Topologia do Host', 'Modo de Operação DNS', 'Instâncias Resolver', 'Segurança', 'Observabilidade', 'Revisão & Deploy'],
-      icons: [Server, Network, Layers, Shield, BarChart3, FileText],
+      names: ['Topologia do Host', 'Modo de Operação DNS', 'Frontend DNS', 'Instâncias Resolver', 'Segurança', 'Observabilidade', 'Revisão & Deploy'],
+      icons: [Server, Network, Globe, Layers, Shield, BarChart3, FileText],
     };
   }
   if (submode === 'interception-plus-own-vip') {
@@ -427,7 +427,7 @@ export default function Wizard() {
           selected={config.operationMode === 'simple'}
           onClick={() => handleModeSwitch('simple')}
           label="Recursivo Simples"
-          desc="O Unbound responde diretamente no IP configurado. Sem VIP, sem nftables DNAT, sem interceptação, sem mapeamento VIP→instância. Uso apenas para laboratório, ambiente simples ou rede interna."
+          desc="O host recebe queries no IP principal (frontend DNS) e distribui localmente entre instâncias internas do Unbound via balanceamento local. Sem VIP fake, sem interceptação de terceiros."
         />
       </div>
 
@@ -440,9 +440,50 @@ export default function Wizard() {
         </div>
         {config.operationMode === 'simple' && (
           <div className="text-muted-foreground/60 mt-1">
-            Etapas removidas: VIP Interception, Egress Público, Mapeamento VIP→Instância
+            Etapas removidas: VIP Interception, Egress Público, Mapeamento VIP→Instância.
+            <br />Etapa adicionada: <strong>Frontend DNS</strong> — IP real que os clientes consultam.
           </div>
         )}
+      </div>
+    </div>
+  );
+
+  const renderFrontendDns = () => (
+    <div className="space-y-4">
+      <InfoBox>
+        Configure o <strong>Frontend DNS</strong> — o IP real que os clientes consultam para resolução DNS.
+        <br />O sistema criará automaticamente <strong>balanceamento local</strong> para distribuir as queries entre as instâncias internas do Unbound.
+        <br /><span className="text-accent/70 mt-1 block">
+          → <strong>Frontend</strong>: IP que o cliente consulta (ex: {config.ipv4Address ? config.ipv4Address.split('/')[0] : '172.250.40.100'})
+          <br />→ <strong>Backends</strong>: IPs internos onde o Unbound escuta (ex: 100.127.255.101, 100.127.255.102)
+        </span>
+      </InfoBox>
+
+      <FieldGroup label="Frontend DNS IP *" error={fieldError('frontendDnsIp')}
+        hint="IP real do servidor que os clientes consultam na porta 53. Ex: o IP principal do host.">
+        <Input value={config.frontendDnsIp} onChange={v => set('frontendDnsIp', v)}
+          placeholder={config.ipv4Address ? config.ipv4Address.split('/')[0] : '172.250.40.100'} />
+      </FieldGroup>
+
+      {config.frontendDnsIp && config.instances.length > 0 && (
+        <div className="p-3 rounded bg-primary/5 border border-primary/15 text-xs space-y-2">
+          <div className="font-medium text-primary">Modelo de distribuição local</div>
+          <div className="font-mono text-muted-foreground space-y-1">
+            <div>cliente → <span className="text-primary font-bold">{config.frontendDnsIp}:53</span></div>
+            <div className="pl-4">↓ balanceamento local (nftables round-robin)</div>
+            {config.instances.map((inst, i) => (
+              <div key={i} className="pl-8">→ <span className="text-accent font-bold">{inst.bindIp || '(não definido)'}:53</span> ({inst.name})</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="p-3 rounded bg-accent/5 border border-accent/15 text-xs text-muted-foreground space-y-1">
+        <div className="font-medium text-accent">Como funciona</div>
+        <div>• As instâncias do Unbound <strong>não</strong> escutam no Frontend IP — apenas nos IPs internos de backend</div>
+        <div>• O nftables local redireciona (DNAT) o tráfego do Frontend IP para os backends</div>
+        <div>• O balanceamento é transparente — o cliente vê apenas um único resolver</div>
+        <div>• Sem VIP fake, sem interceptação, sem anycast — apenas distribuição local</div>
       </div>
     </div>
   );
@@ -1061,7 +1102,10 @@ export default function Wizard() {
                 ['VIPs', `${config.interceptedVips.length} interceptados${hasOwnVip ? ` + ${config.serviceVips.length} próprios` : ''}`],
                 ['Egress', config.egressDeliveryMode === 'border-routed' ? 'Border-Routed' : 'Host-Owned'],
                 ['Distribuição', config.distributionPolicy],
-              ] : []),
+              ] : [
+                ['Frontend DNS', config.frontendDnsIp || '—'],
+                ['Balanceamento', 'Local (round-robin)'],
+              ]),
               ['Instâncias', String(config.instances.length)],
               ['IPv6', config.enableIpv6 ? 'Dual-stack' : 'IPv4 only'],
               ['ACLs', `${config.accessControlIpv4.length} IPv4`],
@@ -1109,6 +1153,7 @@ export default function Wizard() {
   const stepRenderers: Record<string, () => React.ReactNode> = {
     'Topologia do Host': renderHostTopology,
     'Modo de Operação DNS': renderOperationMode,
+    'Frontend DNS': renderFrontendDns,
     'Modelo de Entrega do VIP': renderDeliverySubmode,
     'Instâncias Resolver': renderInstances,
     'VIPs de Serviço': renderServiceVips,
@@ -1164,7 +1209,9 @@ export default function Wizard() {
             {isInterception ? 'DNS Recursivo — Interceptação' : 'DNS Recursivo — Simples'}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {isInterception ? 'Multi-instância · VIP → nftables DNAT → Unbound → Egress' : 'Unbound standalone · resolução direta'}
+            {isInterception
+              ? 'Multi-instância · VIP → nftables DNAT → Unbound → Egress'
+              : `Frontend local${config.frontendDnsIp ? ` (${config.frontendDnsIp})` : ''} · balanceamento local → backends internos`}
           </p>
         </div>
         <div className="flex gap-2">
