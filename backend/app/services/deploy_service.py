@@ -860,34 +860,45 @@ def _execute_deploy_locked(
         order += 1
 
     # ════════════════════════════════════════════════════════════════
-    # STEP N: Load nftables
+    # STEP N: Load nftables — ONLY for interception mode
     # ════════════════════════════════════════════════════════════════
-    s_nft = _step(order, "Aplicar nftables", "nft -f /etc/nftables.conf")
-    def apply_nft():
-        r = run_command("nft", ["-f", "/etc/nftables.conf"], timeout=15, use_privilege=True)
-        return {
-            "status": "success" if r["exit_code"] == 0 else "failed",
-            "output": r["stdout"][:500] or "nftables carregado",
-            "stderr": r["stderr"][:500],
-        }
-    _run_step(s_nft, apply_nft)
-    steps.append(s_nft)
-    _update_live_state(completedSteps=order)
-    if s_nft["status"] == "failed":
-        _auto_rollback("Aplicar nftables")
-        return _build_result(deploy_id, steps, False, dry_run, scope, operator, files, [], backup_id, validation_errors, validation_results)
-    order += 1
+    _normalized_for_mode = normalize_payload(payload)
+    _is_simple_mode = _normalized_for_mode.get("operationMode") == "simple"
 
-    # Enable + start nftables service
-    s_nft_enable = _step(order, "Habilitar nftables no boot", "systemctl enable nftables")
-    def enable_nft():
-        run_command("systemctl", ["enable", "nftables"], timeout=10, use_privilege=True)
-        r = run_command("systemctl", ["start", "nftables"], timeout=10, use_privilege=True)
-        return {"status": "success", "output": "nftables habilitado e ativo"}
-    _run_step(s_nft_enable, enable_nft)
-    steps.append(s_nft_enable)
-    _update_live_state(completedSteps=order)
-    order += 1
+    if _is_simple_mode:
+        s_nft_skip = _step(order, "nftables (ignorado — modo simples)")
+        s_nft_skip["status"] = "skipped"
+        s_nft_skip["output"] = "Modo Recursivo Simples: nenhuma regra de interceptação aplicável"
+        steps.append(s_nft_skip)
+        _update_live_state(completedSteps=order)
+        order += 1
+    else:
+        s_nft = _step(order, "Aplicar nftables", "nft -f /etc/nftables.conf")
+        def apply_nft():
+            r = run_command("nft", ["-f", "/etc/nftables.conf"], timeout=15, use_privilege=True)
+            return {
+                "status": "success" if r["exit_code"] == 0 else "failed",
+                "output": r["stdout"][:500] or "nftables carregado",
+                "stderr": r["stderr"][:500],
+            }
+        _run_step(s_nft, apply_nft)
+        steps.append(s_nft)
+        _update_live_state(completedSteps=order)
+        if s_nft["status"] == "failed":
+            _auto_rollback("Aplicar nftables")
+            return _build_result(deploy_id, steps, False, dry_run, scope, operator, files, [], backup_id, validation_errors, validation_results)
+        order += 1
+
+        # Enable + start nftables service
+        s_nft_enable = _step(order, "Habilitar nftables no boot", "systemctl enable nftables")
+        def enable_nft():
+            run_command("systemctl", ["enable", "nftables"], timeout=10, use_privilege=True)
+            r = run_command("systemctl", ["start", "nftables"], timeout=10, use_privilege=True)
+            return {"status": "success", "output": "nftables habilitado e ativo"}
+        _run_step(s_nft_enable, enable_nft)
+        steps.append(s_nft_enable)
+        _update_live_state(completedSteps=order)
+        order += 1
 
     # ════════════════════════════════════════════════════════════════
     # STEP N: Health checks
