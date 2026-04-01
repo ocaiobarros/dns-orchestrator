@@ -5,6 +5,7 @@
 // ---- Operation Mode (deterministic — only 2 modes) ----
 
 export type OperationMode = 'interception' | 'simple';
+export type VipDeliverySubmode = 'pure-interception' | 'interception-plus-own-vip';
 
 // ---- Deployment Mode (legacy compat — maps from operationMode) ----
 
