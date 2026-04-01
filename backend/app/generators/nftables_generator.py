@@ -132,9 +132,14 @@ def _generate_modular(
     # PREROUTING hooks (base chains inside table block)
     _file("/etc/nftables.d/0051-hook-ipv4-prerouting.nft",
           "table ip nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n")
+    # OUTPUT hooks — intercept locally-generated traffic (dig @VIP on this host)
+    _file("/etc/nftables.d/0053-hook-ipv4-output.nft",
+          "table ip nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n")
     if enable_ipv6:
         _file("/etc/nftables.d/0052-hook-ipv6-prerouting.nft",
               "table ip6 nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n")
+        _file("/etc/nftables.d/0054-hook-ipv6-output.nft",
+              "table ip6 nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n")
 
     # VIP definitions — 'define' stays at top level (outside table blocks)
     if vip_ipv4s:
@@ -159,6 +164,12 @@ def _generate_modular(
         _file(f"/etc/nftables.d/511{suffix}-nat-rule-ipv4_{proto}_dns.nft",
               f"table ip nat {{\n    chain PREROUTING {{\n        ip daddr $DNS_ANYCAST_IPV4 {proto} dport 53 counter packets 0 bytes 0 jump ipv4_{proto}_dns\n    }}\n}}\n")
 
+    # OUTPUT capture rules (IPv4) — same logic for locally-generated traffic
+    for proto in ("tcp", "udp"):
+        suffix = "3" if proto == "tcp" else "4"
+        _file(f"/etc/nftables.d/511{suffix}-nat-rule-output-ipv4_{proto}_dns.nft",
+              f"table ip nat {{\n    chain OUTPUT {{\n        ip daddr $DNS_ANYCAST_IPV4 {proto} dport 53 counter packets 0 bytes 0 jump ipv4_{proto}_dns\n    }}\n}}\n")
+
     # IPv6 dispatch chains + capture rules
     if enable_ipv6:
         for proto in ("tcp", "udp"):
@@ -169,6 +180,11 @@ def _generate_modular(
             suffix = "1" if proto == "tcp" else "2"
             _file(f"/etc/nftables.d/521{suffix}-nat-rule-ipv6_{proto}_dns.nft",
                   f"table ip6 nat {{\n    chain PREROUTING {{\n        ip6 daddr $DNS_ANYCAST_IPV6 {proto} dport 53 counter packets 0 bytes 0 jump ipv6_{proto}_dns\n    }}\n}}\n")
+        # OUTPUT capture rules (IPv6)
+        for proto in ("tcp", "udp"):
+            suffix = "3" if proto == "tcp" else "4"
+            _file(f"/etc/nftables.d/521{suffix}-nat-rule-output-ipv6_{proto}_dns.nft",
+                  f"table ip6 nat {{\n    chain OUTPUT {{\n        ip6 daddr $DNS_ANYCAST_IPV6 {proto} dport 53 counter packets 0 bytes 0 jump ipv6_{proto}_dns\n    }}\n}}\n")
 
     # Per-instance: sticky sets + backend chains (IPv4) — all inside table blocks
     ruleid = 6001
@@ -332,6 +348,9 @@ def _generate_monolithic_validation(
         "table ip nat {",
         "    chain PREROUTING {",
         "        type nat hook prerouting priority dstnat; policy accept;",
+        "    }",
+        "    chain OUTPUT {",
+        "        type nat hook output priority dstnat; policy accept;",
         "    }",
     ]
 
