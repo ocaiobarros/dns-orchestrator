@@ -494,8 +494,9 @@ def check_service_status(name: str) -> dict:
 # ── Network Info ──
 
 def get_listeners() -> list[dict]:
-    """Get DNS listeners from ss."""
+    """Get DNS listeners from ss, deduplicated."""
     code, stdout, _ = run_cmd(["ss", "-tulnp"])
+    seen: set[tuple[str, int]] = set()
     listeners = []
     if code != 0:
         return listeners
@@ -508,7 +509,10 @@ def get_listeners() -> list[dict]:
                     ip = part.rsplit(":", 1)[0]
                     if ip in ("*", "0.0.0.0", "[::]"):
                         continue
-                    listeners.append({"ip": ip, "port": 53})
+                    key = (ip, 53)
+                    if key not in seen:
+                        seen.add(key)
+                        listeners.append({"ip": ip, "port": 53})
     return listeners
 
 
