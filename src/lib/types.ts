@@ -130,7 +130,10 @@ export interface WizardConfig {
   vlanTag: string;
   behindFirewall: boolean;
 
-  // Step 2 - Modelo de Publicação DNS
+  // Step 2 - Modo de Operação DNS (deterministic)
+  operationMode: OperationMode;
+
+  // Legacy compat (derived from operationMode)
   deploymentMode: DeploymentMode;
 
   // Step 3 - VIPs de Serviço
