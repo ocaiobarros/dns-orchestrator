@@ -31,13 +31,12 @@ const STEPS_INTERCEPTION = [
   'Topologia do Host',        // 0
   'Modo de Operação DNS',     // 1
   'Instâncias Resolver',      // 2
-  'VIPs de Serviço',          // 3
-  'VIP Interception',         // 4
-  'Egress Público',           // 5
-  'Mapeamento VIP→Instância', // 6
-  'Segurança',                // 7
-  'Observabilidade',          // 8
-  'Revisão & Deploy',         // 9
+  'VIP Interception',         // 3
+  'Egress Público',           // 4
+  'Mapeamento VIP→Instância', // 5
+  'Segurança',                // 6
+  'Observabilidade',          // 7
+  'Revisão & Deploy',         // 8
 ];
 
 const STEPS_SIMPLE = [
@@ -49,7 +48,7 @@ const STEPS_SIMPLE = [
   'Revisão & Deploy',         // 5
 ];
 
-const ICONS_INTERCEPTION = [Server, Network, Layers, Globe, Crosshair, ExternalLink, Route, Shield, BarChart3, FileText];
+const ICONS_INTERCEPTION = [Server, Network, Layers, Crosshair, ExternalLink, Route, Shield, BarChart3, FileText];
 const ICONS_SIMPLE = [Server, Network, Layers, Shield, BarChart3, FileText];
 
 // ---- Reusable form components ----
@@ -439,7 +438,7 @@ export default function Wizard() {
             ))}
           </div>
           <div className="text-muted-foreground/60 mt-1">
-            Etapas removidas: VIPs de Serviço, VIP Interception, Egress Público, Mapeamento VIP→Instância
+            Etapas removidas: VIP Interception, Egress Público, Mapeamento VIP→Instância
           </div>
         </div>
       )}
@@ -756,7 +755,7 @@ export default function Wizard() {
 
   const renderMapping = () => (
     <div className="space-y-4">
-      <InfoBox>Define como o tráfego dos VIPs de serviço é distribuído entre as instâncias resolver via nftables.</InfoBox>
+      <InfoBox>Define como o tráfego dos VIPs interceptados é distribuído entre as instâncias resolver via nftables.</InfoBox>
       <div className="grid grid-cols-1 gap-3">
         {([
           { value: 'sticky-source', label: 'Sticky por Origem (Recomendado)', desc: 'Memoriza o resolver por IP de origem via nftables sets. Fallback nth balancing.' },
@@ -1071,13 +1070,12 @@ export default function Wizard() {
         case 0: return renderHostTopology();
         case 1: return renderOperationMode();
         case 2: return renderInstances();
-        case 3: return renderServiceVips();
-        case 4: return renderInterception();
-        case 5: return renderEgress();
-        case 6: return renderMapping();
-        case 7: return renderSecurity();
-        case 8: return renderObservability();
-        case 9: return renderReview();
+        case 3: return renderInterception();
+        case 4: return renderEgress();
+        case 5: return renderMapping();
+        case 6: return renderSecurity();
+        case 7: return renderObservability();
+        case 8: return renderReview();
       }
     } else {
       switch (step) {
