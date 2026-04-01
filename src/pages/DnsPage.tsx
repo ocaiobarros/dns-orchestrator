@@ -1,8 +1,8 @@
-import { useState, lazy, Suspense, useEffect } from 'react';
+import { useState, lazy, Suspense, useEffect, useMemo } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import MetricCard from '@/components/MetricCard';
 import { LoadingState, ErrorState } from '@/components/DataStates';
-import { useTelemetry } from '@/lib/hooks';
+import { useTelemetry, useTelemetryHistory } from '@/lib/hooks';
 
 const DnsTimeSeriesCharts = lazy(() => import('@/components/DnsTimeSeriesCharts'));
 const DnsTopDomains = lazy(() => import('@/components/DnsTopDomains'));
