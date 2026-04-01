@@ -719,6 +719,56 @@ include "/etc/nftables.d/*.nft"
 `;
 }
 
+export function generateSimpleNftablesModular(config: WizardConfig): { path: string; content: string }[] {
+  const files: { path: string; content: string }[] = [];
+  const frontendIp = config.frontendDnsIp;
+  if (!frontendIp) return files;
+
+  files.push({ path: '/etc/nftables.conf', content: `#!/usr/sbin/nft -f\n\nflush ruleset\ninclude "/etc/nftables.d/*.nft"\n` });
+  files.push({ path: '/etc/nftables.d/0002-table-ipv4-nat.nft', content: 'table ip nat {\n}\n' });
+  files.push({ path: '/etc/nftables.d/0051-hook-ipv4-prerouting.nft', content: `table ip nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n` });
+  files.push({ path: '/etc/nftables.d/0053-hook-ipv4-output.nft', content: `table ip nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n` });
+  files.push({ path: '/etc/nftables.d/5100-local-define-frontend.nft', content: `define DNS_FRONTEND_IP = { ${frontendIp} }\n` });
+
+  for (const proto of ['tcp', 'udp']) {
+    const suffix = proto === 'tcp' ? '2' : '3';
+    files.push({ path: `/etc/nftables.d/510${suffix}-local-chain-${proto}_dns.nft`, content: `table ip nat {\n    chain local_${proto}_dns {\n    }\n}\n` });
+  }
+  for (const proto of ['tcp', 'udp']) {
+    const suffix = proto === 'tcp' ? '1' : '2';
+    files.push({ path: `/etc/nftables.d/511${suffix}-local-rule-prerouting-${proto}.nft`, content: `table ip nat {\n    chain PREROUTING {\n        ip daddr $DNS_FRONTEND_IP ${proto} dport 53 counter packets 0 bytes 0 jump local_${proto}_dns\n    }\n}\n` });
+  }
+  for (const proto of ['tcp', 'udp']) {
+    const suffix = proto === 'tcp' ? '3' : '4';
+    files.push({ path: `/etc/nftables.d/511${suffix}-local-rule-output-${proto}.nft`, content: `table ip nat {\n    chain OUTPUT {\n        ip daddr $DNS_FRONTEND_IP ${proto} dport 53 counter packets 0 bytes 0 jump local_${proto}_dns\n    }\n}\n` });
+  }
+
+  let ruleid = 6001;
+  config.instances.forEach(inst => {
+    for (const proto of ['tcp', 'udp']) {
+      const subchain = `local_dns_${proto}_${inst.name}`;
+      files.push({
+        path: `/etc/nftables.d/${ruleid}-local-chain-${subchain}.nft`,
+        content: ['table ip nat {', `    chain ${subchain} {`, `        ${proto} dport 53 counter dnat to ${inst.bindIp}:53`, `    }`, '}'].join('\n') + '\n',
+      });
+      ruleid++;
+    }
+  });
+
+  ruleid = 7201;
+  for (const proto of ['tcp', 'udp']) {
+    const topchain = `local_${proto}_dns`;
+    const vmapEntries = config.instances.map((inst, i) => `${i} : jump local_dns_${proto}_${inst.name}`).join(', ');
+    files.push({
+      path: `/etc/nftables.d/${ruleid}-local-rule-rr-${proto}.nft`,
+      content: `table ip nat {\n    chain ${topchain} {\n        numgen inc mod ${config.instances.length} vmap { ${vmapEntries} }\n    }\n}\n`,
+    });
+    ruleid++;
+  }
+
+  return files;
+}
+
 export function generateNftablesModular(config: WizardConfig): { path: string; content: string }[] {
   const files: { path: string; content: string }[] = [];
 
