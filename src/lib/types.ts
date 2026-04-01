@@ -573,6 +573,8 @@ export interface DeployState {
   lastDeploymentId: string | null;
   totalDeployments: number;
   rollbackAvailable: boolean;
+  operationMode?: string;
+  frontendDnsIp?: string;
 }
 
 // ---- Troubleshoot Commands ----
