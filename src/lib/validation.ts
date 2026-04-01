@@ -58,7 +58,7 @@ function findDuplicates(arr: string[]): string[] {
 // ═══ Step index resolver — maps step names to their current index ═══
 function getStepNames(mode: OperationMode, submode: VipDeliverySubmode): string[] {
   if (mode === 'simple') {
-    return ['Topologia do Host', 'Modo de Operação DNS', 'Instâncias Resolver', 'Segurança', 'Observabilidade', 'Revisão & Deploy'];
+    return ['Topologia do Host', 'Modo de Operação DNS', 'Frontend DNS', 'Instâncias Resolver', 'Segurança', 'Observabilidade', 'Revisão & Deploy'];
   }
   if (submode === 'interception-plus-own-vip') {
     return ['Topologia do Host', 'Modo de Operação DNS', 'Modelo de Entrega do VIP', 'Instâncias Resolver', 'VIPs de Serviço', 'VIP Interception', 'Egress Público', 'Mapeamento VIP→Instância', 'Segurança', 'Observabilidade', 'Revisão & Deploy'];
