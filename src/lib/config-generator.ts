@@ -1348,9 +1348,11 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
     }
   }
 
-  // nftables — only for interception mode
+  // nftables — interception mode uses full VIP rules, simple mode uses local balancing
   if (isInterception) {
     files.push(...generateNftablesModular(config));
+  } else if (config.frontendDnsIp) {
+    files.push(...generateSimpleNftablesModular(config));
   }
 
   // Sysctl (complete)
