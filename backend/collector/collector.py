@@ -727,6 +727,7 @@ def collect_all() -> dict:
         "query_analytics": {
             "log_source": query_analytics.get("log_source", "none"),
             "queries_parsed": query_analytics.get("queries_parsed", 0),
+            "diag": query_analytics.get("diag", {}),
         },
 
         "services": service_checks,
