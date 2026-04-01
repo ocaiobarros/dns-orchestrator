@@ -448,6 +448,46 @@ export default function Wizard() {
     </div>
   );
 
+  const renderFrontendDns = () => (
+    <div className="space-y-4">
+      <InfoBox>
+        Configure o <strong>Frontend DNS</strong> — o IP real que os clientes consultam para resolução DNS.
+        <br />O sistema criará automaticamente <strong>balanceamento local</strong> para distribuir as queries entre as instâncias internas do Unbound.
+        <br /><span className="text-accent/70 mt-1 block">
+          → <strong>Frontend</strong>: IP que o cliente consulta (ex: {config.ipv4Address ? config.ipv4Address.split('/')[0] : '172.250.40.100'})
+          <br />→ <strong>Backends</strong>: IPs internos onde o Unbound escuta (ex: 100.127.255.101, 100.127.255.102)
+        </span>
+      </InfoBox>
+
+      <FieldGroup label="Frontend DNS IP *" error={fieldError('frontendDnsIp')}
+        hint="IP real do servidor que os clientes consultam na porta 53. Ex: o IP principal do host.">
+        <Input value={config.frontendDnsIp} onChange={v => set('frontendDnsIp', v)}
+          placeholder={config.ipv4Address ? config.ipv4Address.split('/')[0] : '172.250.40.100'} />
+      </FieldGroup>
+
+      {config.frontendDnsIp && config.instances.length > 0 && (
+        <div className="p-3 rounded bg-primary/5 border border-primary/15 text-xs space-y-2">
+          <div className="font-medium text-primary">Modelo de distribuição local</div>
+          <div className="font-mono text-muted-foreground space-y-1">
+            <div>cliente → <span className="text-primary font-bold">{config.frontendDnsIp}:53</span></div>
+            <div className="pl-4">↓ balanceamento local (nftables round-robin)</div>
+            {config.instances.map((inst, i) => (
+              <div key={i} className="pl-8">→ <span className="text-accent font-bold">{inst.bindIp || '(não definido)'}:53</span> ({inst.name})</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="p-3 rounded bg-accent/5 border border-accent/15 text-xs text-muted-foreground space-y-1">
+        <div className="font-medium text-accent">Como funciona</div>
+        <div>• As instâncias do Unbound <strong>não</strong> escutam no Frontend IP — apenas nos IPs internos de backend</div>
+        <div>• O nftables local redireciona (DNAT) o tráfego do Frontend IP para os backends</div>
+        <div>• O balanceamento é transparente — o cliente vê apenas um único resolver</div>
+        <div>• Sem VIP fake, sem interceptação, sem anycast — apenas distribuição local</div>
+      </div>
+    </div>
+  );
+
   const renderDeliverySubmode = () => (
     <div className="space-y-4">
       <InfoBox>
