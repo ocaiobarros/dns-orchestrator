@@ -427,7 +427,7 @@ export default function Wizard() {
           selected={config.operationMode === 'simple'}
           onClick={() => handleModeSwitch('simple')}
           label="Recursivo Simples"
-          desc="O Unbound responde diretamente no IP configurado. Sem VIP, sem nftables DNAT, sem interceptação, sem mapeamento VIP→instância. Uso apenas para laboratório, ambiente simples ou rede interna."
+          desc="O host recebe queries no IP principal (frontend DNS) e distribui localmente entre instâncias internas do Unbound via balanceamento local. Sem VIP fake, sem interceptação de terceiros."
         />
       </div>
 
