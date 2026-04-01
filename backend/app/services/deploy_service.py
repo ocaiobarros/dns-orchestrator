@@ -956,11 +956,13 @@ def _execute_deploy_locked(
         nonlocal health_checks
         health_checks = _run_health_checks(payload)
         passed = sum(1 for h in health_checks if h["status"] == "pass")
-        total = len(health_checks)
-        failed = total - passed
+        skipped = sum(1 for h in health_checks if h["status"] in ("skip", "warn"))
+        applicable = len(health_checks) - skipped
+        failed = applicable - passed
+        skip_note = f" · {skipped} ignorados" if skipped else ""
         if failed > 0:
-            return {"status": "failed", "output": f"{passed}/{total} checks OK — {failed} falharam"}
-        return {"status": "success", "output": f"{passed}/{total} checks OK"}
+            return {"status": "failed", "output": f"{passed}/{applicable} checks OK — {failed} falharam{skip_note}"}
+        return {"status": "success", "output": f"{passed}/{applicable} checks OK{skip_note}"}
     _run_step(s_health, verify)
     steps.append(s_health)
 
