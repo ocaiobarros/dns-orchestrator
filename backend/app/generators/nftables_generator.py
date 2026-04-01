@@ -313,7 +313,7 @@ def _generate_modular(
             f"{i} : jump ipv4_dns_{proto}_{b['name']}" for i, b in enumerate(backends)
         )
         _file(f"/etc/nftables.d/{ruleid}-nat-rule-nth-ipv4_{proto}_dns.nft",
-              f"table ip nat {{\n    chain {topchain} {{\n        numgen inc mod {len(backends)} vmap {{ {vmap_entries} }}\n    }}\n}}\n")
+              f"table ip nat {{\n    chain {topchain} {{\n        numgen random mod {len(backends)} vmap {{ {vmap_entries} }}\n    }}\n}}\n")
         ruleid += 1
 
     # Nth balancing fallback (IPv6)
@@ -327,7 +327,7 @@ def _generate_modular(
                 f"{i} : jump ipv6_dns_{proto}_{b['name']}" for i, b in enumerate(ipv6_backends)
             )
             _file(f"/etc/nftables.d/{ruleid}-nat-rule-nth-ipv6_{proto}_dns.nft",
-                  f"table ip6 nat {{\n    chain {topchain_v6} {{\n        numgen inc mod {num_backends_v6} vmap {{ {vmap_entries} }}\n    }}\n}}\n")
+                  f"table ip6 nat {{\n    chain {topchain_v6} {{\n        numgen random mod {num_backends_v6} vmap {{ {vmap_entries} }}\n    }}\n}}\n")
             ruleid += 1
 
     return files
@@ -376,7 +376,7 @@ def _generate_monolithic_validation(
         vmap_entries = ", ".join(
             f"{i} : jump ipv4_dns_{proto}_{b['name']}" for i, b in enumerate(backends)
         )
-        lines.append(f"        numgen inc mod {len(backends)} vmap {{ {vmap_entries} }}")
+        lines.append(f"        numgen random mod {len(backends)} vmap {{ {vmap_entries} }}")
         lines.append("    }")
 
     lines.append("}")
