@@ -405,7 +405,7 @@ export default function Wizard() {
           onClick={() => handleModeSwitch('interception')}
           label="Recursivo com Interceptação"
           badge="Padrão"
-          desc="Clientes usam VIPs públicos conhecidos ou definidos no projeto. O host intercepta tráfego DNS via nftables DNAT e redireciona para instâncias internas do Unbound (100.x.x.x). Balanceamento sticky por origem. Egress controlado. Este é o modo principal do script existente."
+          desc="O host intercepta tráfego DNS destinado a IPs externos (ex: 4.2.2.5, 4.2.2.6) via nftables DNAT e redireciona para instâncias internas do Unbound (100.x.x.x). Balanceamento sticky por origem. Egress controlado."
         />
         <ModeCard
           selected={config.operationMode === 'simple'}
@@ -415,28 +415,58 @@ export default function Wizard() {
         />
       </div>
 
-      {config.operationMode === 'interception' && (
-        <div className="p-3 rounded bg-primary/5 border border-primary/15 text-xs space-y-2">
-          <div className="font-medium text-primary">Etapas ativas neste modo:</div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-1 text-muted-foreground">
-            {STEPS_INTERCEPTION.map((s, i) => (
-              <div key={i} className="flex items-center gap-1"><Check size={10} className="text-primary" /> {s}</div>
-            ))}
-          </div>
+      <div className="p-3 rounded bg-primary/5 border border-primary/15 text-xs space-y-2">
+        <div className="font-medium text-primary">Etapas ativas neste modo:</div>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-1 text-muted-foreground">
+          {STEPS.map((s, i) => (
+            <div key={i} className="flex items-center gap-1"><Check size={10} className="text-primary" /> {s}</div>
+          ))}
         </div>
-      )}
-
-      {config.operationMode === 'simple' && (
-        <div className="p-3 rounded bg-secondary/50 border border-border text-xs space-y-2">
-          <div className="font-medium">Etapas ativas neste modo:</div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-1 text-muted-foreground">
-            {STEPS_SIMPLE.map((s, i) => (
-              <div key={i} className="flex items-center gap-1"><Check size={10} /> {s}</div>
-            ))}
-          </div>
+        {config.operationMode === 'simple' && (
           <div className="text-muted-foreground/60 mt-1">
             Etapas removidas: VIP Interception, Egress Público, Mapeamento VIP→Instância
           </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderDeliverySubmode = () => (
+    <div className="space-y-4">
+      <InfoBox>
+        Defina como o serviço DNS será exposto aos clientes. Esta escolha controla se o wizard exibirá a etapa de VIPs de serviço próprios.
+      </InfoBox>
+      <div className="grid grid-cols-1 gap-4">
+        <ModeCard
+          selected={config.vipDeliverySubmode === 'pure-interception'}
+          onClick={() => handleSubmodeSwitch('pure-interception')}
+          label="Interceptação Pura"
+          badge="Padrão"
+          desc="Os clientes consultam IPs DNS externos conhecidos (ex: 4.2.2.5, 4.2.2.6) que são interceptados localmente via nftables. O host NÃO possui VIP público próprio anunciado."
+        />
+        <ModeCard
+          selected={config.vipDeliverySubmode === 'interception-plus-own-vip'}
+          onClick={() => handleSubmodeSwitch('interception-plus-own-vip')}
+          label="Interceptação + VIP Próprio"
+          desc="Além da interceptação de IPs externos, a rede também possui e anuncia IPs públicos próprios para o serviço DNS. Use somente se você realmente anuncia IPs próprios na rede."
+        />
+      </div>
+
+      {config.vipDeliverySubmode === 'pure-interception' && (
+        <div className="p-3 rounded bg-accent/5 border border-accent/15 text-xs text-muted-foreground space-y-1">
+          <div className="font-medium text-accent">Neste submodo:</div>
+          <div>• Nenhum VIP de serviço próprio é necessário</div>
+          <div>• Os VIPs interceptados (ex: 4.2.2.5) são configurados na etapa <strong>VIP Interception</strong></div>
+          <div>• A etapa "VIPs de Serviço" está oculta</div>
+        </div>
+      )}
+
+      {config.vipDeliverySubmode === 'interception-plus-own-vip' && (
+        <div className="p-3 rounded bg-primary/5 border border-primary/15 text-xs text-muted-foreground space-y-1">
+          <div className="font-medium text-primary">Neste submodo:</div>
+          <div>• A etapa "VIPs de Serviço" estará disponível para cadastrar IPs <strong>próprios da sua rede</strong></div>
+          <div>• IPs de terceiros (8.8.8.8, 4.2.2.5) continuam sendo cadastrados em <strong>VIP Interception</strong></div>
+          <div>• Nunca use IPs de resolvedores públicos como VIP de serviço próprio</div>
         </div>
       )}
     </div>
