@@ -416,6 +416,7 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   // Telemetry mock
   if (path === '/api/telemetry/latest') return mockTelemetryLatest();
   if (path === '/api/telemetry/status') return { collector_status: 'ok', last_update: new Date().toISOString(), file_age_seconds: 5, stale: false, mode: 'recursive_simple' };
+  if (path === '/api/telemetry/history') return mockTelemetryHistory();
 
   // System
   if (path === '/api/system/self-test' && method === 'POST') {
