@@ -1,11 +1,15 @@
 import { useMemo, useState, lazy, Suspense, useEffect } from 'react';
+import { Activity, Database, Timer, AlertTriangle, Search, BarChart3 } from 'lucide-react';
 import MetricCard from '@/components/MetricCard';
 import { LoadingState, ErrorState } from '@/components/DataStates';
-import { useDnsMetrics, useTopDomains, useInstanceStats } from '@/lib/hooks';
-import { getInstanceName, getInstanceQueries, getInstanceCacheHit, getInstanceLatency } from '@/lib/types';
+import { useTelemetry } from '@/lib/hooks';
 
 const DnsTimeSeriesCharts = lazy(() => import('@/components/DnsTimeSeriesCharts'));
 const DnsTopDomains = lazy(() => import('@/components/DnsTopDomains'));
+
+function safeNum(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
 
 const ChartGridSkeleton = () => (
   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -20,23 +24,10 @@ const ChartGridSkeleton = () => (
   </div>
 );
 
-const BarChartSkeleton = () => (
-  <div className="noc-panel">
-    <div className="noc-panel-header"><div className="h-3 w-40 bg-muted rounded animate-pulse" /></div>
-    <div className="h-[300px] flex items-center justify-center">
-      <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-    </div>
-  </div>
-);
-
 export default function DnsPage() {
-  const [selectedInstance, setSelectedInstance] = useState<string | undefined>(undefined);
-  const [hours, setHours] = useState(6);
-  const { data: allMetrics, isLoading, error } = useDnsMetrics(hours, selectedInstance);
-  const { data: topDomains } = useTopDomains(10);
-  const { data: instanceStats } = useInstanceStats();
+  const { data: telemetry, isLoading, error } = useTelemetry();
 
-  // Idle prefetch: preload chart chunks after page shell mounts
+  // Idle prefetch
   useEffect(() => {
     const id = requestIdleCallback?.(() => {
       import('@/components/DnsTimeSeriesCharts');
@@ -51,122 +42,60 @@ export default function DnsPage() {
     };
   }, []);
 
-  const chartData = useMemo(() => {
-    if (!Array.isArray(allMetrics)) return [];
-
-    const asNumber = (value: unknown): number => {
-      if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-      if (typeof value === 'string') {
-        const parsed = Number(value.replace(',', '.'));
-        return Number.isFinite(parsed) ? parsed : 0;
-      }
-      return 0;
-    };
-
-    // Check if data is time-series (has timestamp) or per-instance snapshots
-    const hasTimestamps = allMetrics.some(m => m?.timestamp);
-
-    if (hasTimestamps) {
-      const byTs = new Map<string, { ts: string; qps: number; hits: number; misses: number; latency: number; servfail: number; nxdomain: number; count: number }>();
-      allMetrics.forEach(m => {
-        if (!m?.timestamp) return;
-        const key = m.timestamp.slice(0, 16);
-        const existing = byTs.get(key) || { ts: key, qps: 0, hits: 0, misses: 0, latency: 0, servfail: 0, nxdomain: 0, count: 0 };
-        existing.qps += asNumber(m.qps);
-        existing.hits += asNumber(m.cacheHits);
-        existing.misses += asNumber(m.cacheMisses);
-        existing.latency += asNumber(m.avgLatencyMs);
-        existing.servfail += asNumber(m.servfail);
-        existing.nxdomain += asNumber(m.nxdomain);
-        existing.count += 1;
-        byTs.set(key, existing);
-      });
-
-      return Array.from(byTs.values()).map(d => ({
-        ...d,
-        latency: d.count > 0 ? +(d.latency / d.count).toFixed(1) : 0,
-        hitRatio: d.hits + d.misses > 0 ? +((d.hits / (d.hits + d.misses)) * 100).toFixed(1) : 0,
-        time: d.ts.slice(11, 16),
-      }));
-    }
-
-    // Per-instance snapshots: aggregate into a single data point
-    let totalQps = 0, totalHits = 0, totalMisses = 0, totalLatency = 0, totalServfail = 0, totalNxdomain = 0, count = 0;
-    allMetrics.forEach((m: any) => {
-      if (!m) return;
-      totalQps += asNumber(m.totalQueries ?? m.qps ?? m.queries_total);
-      totalHits += asNumber(m.cacheHits ?? m.cache_hits);
-      totalMisses += asNumber(m.cacheMisses ?? m.cache_misses);
-      totalLatency += asNumber(m.avgLatencyMs ?? m.avg_latency_ms ?? m.recursionTimeAvg);
-      totalServfail += asNumber(m.servfail);
-      totalNxdomain += asNumber(m.nxdomain);
-      count += 1;
-    });
-
-    if (count === 0) return [];
-
-    const now = new Date();
-    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    return [{
-      ts: timeStr,
-      qps: totalQps,
-      hits: totalHits,
-      misses: totalMisses,
-      latency: count > 0 ? +(totalLatency / count).toFixed(1) : 0,
-      servfail: totalServfail,
-      nxdomain: totalNxdomain,
-      count,
-      hitRatio: totalHits + totalMisses > 0 ? +((totalHits / (totalHits + totalMisses)) * 100).toFixed(1) : 0,
-      time: timeStr,
-    }];
-  }, [allMetrics]);
-
   if (isLoading) return <LoadingState />;
   if (error) return <ErrorState message={error.message} />;
 
-  const lastPoint = chartData[chartData.length - 1];
-  const avgHitRatio = chartData.length > 0 ? (chartData.reduce((a, b) => a + b.hitRatio, 0) / chartData.length).toFixed(1) : '0';
-  const avgLatency = chartData.length > 0 ? (chartData.reduce((a, b) => a + b.latency, 0) / chartData.length).toFixed(1) : '0';
-  const totalServfail = chartData.reduce((a, b) => a + b.servfail, 0);
+  const collectorOk = telemetry?.health?.collector === 'ok';
+  const resolver = telemetry?.resolver ?? {};
+  const backends = telemetry?.backends ?? [];
+  const topDomains = telemetry?.top_domains ?? [];
+  const telemetryConnected = collectorOk && safeNum(resolver.instances_live) > 0;
 
-  const safeInstanceStats = Array.isArray(instanceStats) ? instanceStats.filter(Boolean) : [];
+  const totalQueries = safeNum(resolver.total_queries);
+  const cacheHitRatio = safeNum(resolver.cache_hit_ratio);
+  const avgLatency = safeNum(resolver.avg_latency_ms);
+  const totalServfail = safeNum(resolver.servfail);
+  const qps = safeNum(resolver.qps);
+
+  // Build chart data from backend stats (single point — collector provides snapshots)
+  const chartData = telemetryConnected ? [{
+    ts: new Date().toISOString().slice(11, 16),
+    time: new Date().toISOString().slice(11, 16),
+    qps: totalQueries,
+    hits: safeNum(resolver.cache_hits),
+    misses: safeNum(resolver.cache_misses),
+    latency: avgLatency,
+    servfail: totalServfail,
+    nxdomain: safeNum(resolver.nxdomain),
+    hitRatio: cacheHitRatio,
+    count: 1,
+  }] : [];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-semibold">DNS</h1>
-          <p className="text-sm text-muted-foreground">Métricas e análise do Unbound</p>
+          <p className="text-sm text-muted-foreground">Métricas reais via collector (unbound-control + nftables)</p>
         </div>
-        <div className="flex gap-2">
-          <select value={hours} onChange={e => setHours(Number(e.target.value))}
-            className="px-3 py-1.5 text-sm bg-secondary text-secondary-foreground border border-border rounded font-mono">
-            <option value={1}>1h</option>
-            <option value={6}>6h</option>
-            <option value={12}>12h</option>
-            <option value={24}>24h</option>
-          </select>
-          <select value={selectedInstance || 'all'} onChange={e => setSelectedInstance(e.target.value === 'all' ? undefined : e.target.value)}
-            className="px-3 py-1.5 text-sm bg-secondary text-secondary-foreground border border-border rounded font-mono">
-            <option value="all">Todas instâncias</option>
-            {safeInstanceStats.map((i, idx) => {
-              const name = getInstanceName(i);
-              return <option key={`${name}-${idx}`} value={name}>{name}</option>;
-            })}
-          </select>
-        </div>
+        {!collectorOk && (
+          <span className="px-2 py-1 text-xs rounded border bg-destructive/10 text-destructive border-destructive/20 font-mono">
+            Collector inativo
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard label="QPS Atual" value={lastPoint?.qps?.toLocaleString() ?? '0'} />
-        <MetricCard label="Cache Hit Ratio" value={`${avgHitRatio}%`} />
-        <MetricCard label="Latência Média" value={`${avgLatency}ms`} />
-        <MetricCard label="SERVFAIL Total" value={totalServfail.toLocaleString()} />
+        <MetricCard label="Total Queries" value={telemetryConnected ? totalQueries.toLocaleString() : '—'} sub={telemetryConnected ? `QPS: ${qps}` : 'Sem dados'} />
+        <MetricCard label="Cache Hit Ratio" value={telemetryConnected ? `${cacheHitRatio}%` : '—'} />
+        <MetricCard label="Latência Média" value={telemetryConnected ? `${avgLatency}ms` : '—'} />
+        <MetricCard label="SERVFAIL Total" value={telemetryConnected ? totalServfail.toLocaleString() : '—'} />
       </div>
 
-      {safeInstanceStats.length > 0 && (
+      {/* Per-instance table */}
+      {backends.length > 0 && (
         <div className="noc-panel">
-          <div className="noc-panel-header">Instâncias</div>
+          <div className="noc-panel-header">Instâncias (Fonte: unbound-control)</div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -176,43 +105,59 @@ export default function DnsPage() {
                   <th className="pb-2 font-medium text-right">Queries</th>
                   <th className="pb-2 font-medium text-right">Cache Hit</th>
                   <th className="pb-2 font-medium text-right">Latência</th>
-                  <th className="pb-2 font-medium">Uptime</th>
+                  <th className="pb-2 font-medium text-right">SERVFAIL</th>
+                  <th className="pb-2 font-medium">Fonte</th>
                 </tr>
               </thead>
               <tbody className="font-mono">
-                {safeInstanceStats.map(inst => {
-                  const name = getInstanceName(inst);
-                  const queries = getInstanceQueries(inst);
-                  const cacheHit = getInstanceCacheHit(inst);
-                  const latency = getInstanceLatency(inst);
-                  const status = inst.status ?? ((inst as any).source === 'live' ? 'running' : (inst as any).source === 'unavailable' ? 'stopped' : 'unknown');
-                  return (
-                    <tr key={name} className="border-b border-border last:border-0">
-                      <td className="py-2 text-primary">{name}</td>
-                      <td className="py-2">
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${
-                          status === 'running' ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive'
-                        }`}>{status}</span>
-                      </td>
-                      <td className="py-2 text-right">{queries.toLocaleString()}</td>
-                      <td className="py-2 text-right">{cacheHit > 0 ? `${cacheHit}%` : '—'}</td>
-                      <td className="py-2 text-right">{latency > 0 ? `${latency}ms` : '—'}</td>
-                      <td className="py-2 text-muted-foreground">{inst.uptime || '—'}</td>
-                    </tr>
-                  );
-                })}
+                {backends.map((b: any) => (
+                  <tr key={b.name} className="border-b border-border last:border-0">
+                    <td className="py-2 text-primary">{b.name} <span className="text-muted-foreground/50 text-xs">{b.ip}</span></td>
+                    <td className="py-2">
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${
+                        b.healthy ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive'
+                      }`}>{b.healthy ? 'live' : 'down'}</span>
+                    </td>
+                    <td className="py-2 text-right">{safeNum(b.resolver?.total_queries).toLocaleString()}</td>
+                    <td className="py-2 text-right text-success">{safeNum(b.resolver?.cache_hit_ratio)}%</td>
+                    <td className="py-2 text-right">{safeNum(b.resolver?.recursion_avg_ms)}ms</td>
+                    <td className="py-2 text-right">{safeNum(b.resolver?.servfail)}</td>
+                    <td className="py-2 text-xs text-muted-foreground">{b.resolver?.source ?? '—'}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      <Suspense fallback={<><ChartGridSkeleton /><ChartGridSkeleton /></>}>
-        <DnsTimeSeriesCharts chartData={chartData} />
-      </Suspense>
+      {!telemetryConnected && (
+        <div className="noc-panel">
+          <div className="p-8 text-center space-y-2">
+            <AlertTriangle size={24} className="text-warning mx-auto" />
+            <div className="text-sm font-medium">
+              {collectorOk ? 'Instâncias Unbound não reportando' : 'Collector de telemetria não ativo'}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {collectorOk
+                ? 'O collector está rodando mas nenhuma instância Unbound respondeu a unbound-control stats_noreset.'
+                : 'Habilite o collector: systemctl enable --now dns-control-collector.timer'}
+            </div>
+            <div className="text-xs text-muted-foreground mt-2">
+              <strong>Nota:</strong> Valores zerados NÃO são exibidos para evitar diagnósticos incorretos.
+            </div>
+          </div>
+        </div>
+      )}
 
-      {Array.isArray(topDomains) && topDomains.length > 0 && (
-        <Suspense fallback={<BarChartSkeleton />}>
+      {chartData.length > 0 && (
+        <Suspense fallback={<ChartGridSkeleton />}>
+          <DnsTimeSeriesCharts chartData={chartData} />
+        </Suspense>
+      )}
+
+      {topDomains.length > 0 && (
+        <Suspense fallback={<ChartGridSkeleton />}>
           <DnsTopDomains topDomains={topDomains} />
         </Suspense>
       )}
