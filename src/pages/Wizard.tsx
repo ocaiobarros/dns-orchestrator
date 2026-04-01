@@ -610,8 +610,8 @@ export default function Wizard() {
   const renderServiceVips = () => (
     <div className="space-y-4">
       <InfoBox>
-        Configure os IPs que a sua rede <strong>anuncia/possui</strong> e que os clientes usarão como servidor DNS.
-        <strong> Não use IPs de resolvedores públicos conhecidos aqui</strong> (Google 8.8.8.8, Level3 4.2.2.5) — esses vão na etapa "VIP Interception".
+        Configure apenas os IPs públicos <strong>próprios da sua rede</strong> que serão usados como identidade do serviço DNS.
+        <strong> Não use aqui IPs interceptados de terceiros.</strong> IPs como 4.2.2.5 e 4.2.2.6 pertencem exclusivamente à etapa "VIP Interception".
       </InfoBox>
       <div className="space-y-3">
         {config.serviceVips.map((vip, i) => (
