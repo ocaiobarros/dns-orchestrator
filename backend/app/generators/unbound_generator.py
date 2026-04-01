@@ -178,11 +178,9 @@ server:
         elif public_listener_ip and is_border_routed:
             config += f"    # interface: {public_listener_ip}  # SUPPRESSED — border-routed mode\n"
 
-        # In host-owned mode, also bind on egress IP for direct DNS queries
-        if not is_border_routed and exit_ip and exit_ip != bind_ip:
-            config += f"\n    interface: {exit_ip}  # egress IP — also listening (host-owned mode)\n"
-        if not is_border_routed and enable_ipv6 and exit_ipv6 and exit_ipv6 != bind_ipv6:
-            config += f"    interface: {exit_ipv6}  # egress IPv6 — also listening (host-owned mode)\n"
+        # Egress IPs are NOT listeners — they are only used as outgoing-interface.
+        # VIPs reach backends via DNAT (PREROUTING + OUTPUT), not via direct bind.
+        # Do NOT add interface: <egress-ip> here.
 
         # Egress outgoing-interface
         config += "\n"

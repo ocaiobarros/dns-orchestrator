@@ -180,6 +180,11 @@ def _generate_modular(
             suffix = "1" if proto == "tcp" else "2"
             _file(f"/etc/nftables.d/521{suffix}-nat-rule-ipv6_{proto}_dns.nft",
                   f"table ip6 nat {{\n    chain PREROUTING {{\n        ip6 daddr $DNS_ANYCAST_IPV6 {proto} dport 53 counter packets 0 bytes 0 jump ipv6_{proto}_dns\n    }}\n}}\n")
+        # OUTPUT capture rules (IPv6)
+        for proto in ("tcp", "udp"):
+            suffix = "3" if proto == "tcp" else "4"
+            _file(f"/etc/nftables.d/521{suffix}-nat-rule-output-ipv6_{proto}_dns.nft",
+                  f"table ip6 nat {{\n    chain OUTPUT {{\n        ip6 daddr $DNS_ANYCAST_IPV6 {proto} dport 53 counter packets 0 bytes 0 jump ipv6_{proto}_dns\n    }}\n}}\n")
 
     # Per-instance: sticky sets + backend chains (IPv4) — all inside table blocks
     ruleid = 6001
