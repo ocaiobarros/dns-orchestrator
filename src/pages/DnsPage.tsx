@@ -1,8 +1,8 @@
-import { useState, lazy, Suspense, useEffect } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { useState, lazy, Suspense, useEffect, useMemo } from 'react';
+import { AlertTriangle, Clock } from 'lucide-react';
 import MetricCard from '@/components/MetricCard';
 import { LoadingState, ErrorState } from '@/components/DataStates';
-import { useTelemetry } from '@/lib/hooks';
+import { useTelemetry, useTelemetryHistory } from '@/lib/hooks';
 
 const DnsTimeSeriesCharts = lazy(() => import('@/components/DnsTimeSeriesCharts'));
 const DnsTopDomains = lazy(() => import('@/components/DnsTopDomains'));
@@ -26,6 +26,7 @@ const ChartGridSkeleton = () => (
 
 export default function DnsPage() {
   const { data: telemetry, isLoading, error } = useTelemetry();
+  const { data: historyData } = useTelemetryHistory();
 
   // Idle prefetch
   useEffect(() => {
@@ -41,6 +42,23 @@ export default function DnsPage() {
       else clearTimeout(id as number);
     };
   }, []);
+
+  // Build chart data from history endpoint (real time-series)
+  const chartData = useMemo(() => {
+    const history = Array.isArray(historyData) ? historyData : [];
+    if (history.length === 0) return [];
+    return history.map((p: any) => {
+      const ts = p.timestamp ? new Date(p.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
+      return {
+        time: ts,
+        qps: safeNum(p.qps),
+        latency: safeNum(p.latency_ms),
+        servfail: safeNum(p.servfail),
+        nxdomain: safeNum(p.nxdomain),
+        hitRatio: safeNum(p.cache_hit_ratio),
+      };
+    });
+  }, [historyData]);
 
   if (isLoading) return <LoadingState />;
   if (error) return <ErrorState message={error.message} />;
@@ -60,20 +78,6 @@ export default function DnsPage() {
   const avgLatency = safeNum(resolver.avg_latency_ms);
   const totalServfail = safeNum(resolver.servfail);
   const qps = safeNum(resolver.qps);
-
-  // Build chart data from backend stats (single point — collector provides snapshots)
-  const chartData = telemetryConnected ? [{
-    ts: new Date().toISOString().slice(11, 16),
-    time: new Date().toISOString().slice(11, 16),
-    qps: totalQueries,
-    hits: safeNum(resolver.cache_hits),
-    misses: safeNum(resolver.cache_misses),
-    latency: avgLatency,
-    servfail: totalServfail,
-    nxdomain: safeNum(resolver.nxdomain),
-    hitRatio: cacheHitRatio,
-    count: 1,
-  }] : [];
 
   return (
     <div className="space-y-6">
@@ -154,11 +158,21 @@ export default function DnsPage() {
         </div>
       )}
 
-      {chartData.length > 0 && (
-        <Suspense fallback={<ChartGridSkeleton />}>
+      <Suspense fallback={<ChartGridSkeleton />}>
+        {chartData.length > 0 ? (
           <DnsTimeSeriesCharts chartData={chartData} />
-        </Suspense>
-      )}
+        ) : telemetryConnected ? (
+          <div className="noc-panel">
+            <div className="p-8 text-center space-y-2">
+              <Clock size={20} className="text-muted-foreground mx-auto" />
+              <div className="text-sm font-medium text-muted-foreground">Aguardando dados históricos…</div>
+              <div className="text-xs text-muted-foreground/60">
+                O collector está ativo. Os gráficos aparecerão após algumas coletas (~30s).
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </Suspense>
 
       {(topDomains.length > 0 || topDomainsFromAnalytics.length > 0) && (
         <Suspense fallback={<ChartGridSkeleton />}>

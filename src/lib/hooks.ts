@@ -272,3 +272,11 @@ export function useTelemetryStatus() {
     refetchInterval: 30000,
   });
 }
+
+export function useTelemetryHistory() {
+  return useQuery({
+    queryKey: ['telemetry', 'history'],
+    queryFn: async () => { const r = await api.getTelemetryHistory(); if (!r.success) throw new Error(r.error!); return r.data; },
+    refetchInterval: 10000,
+  });
+}

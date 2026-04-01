@@ -53,6 +53,22 @@ def telemetry_interception(_: User = Depends(get_current_user)):
     return _read_telemetry("recursive-interception.json")
 
 
+@router.get("/history")
+def telemetry_history(_: User = Depends(get_current_user)):
+    """Get metrics time-series history (circular buffer from collector)."""
+    path = TELEMETRY_DIR / "history.json"
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return data
+        return []
+    except FileNotFoundError:
+        return []
+    except json.JSONDecodeError:
+        return []
+
+
 @router.get("/status")
 def telemetry_status(_: User = Depends(get_current_user)):
     """Quick status check of collector health."""

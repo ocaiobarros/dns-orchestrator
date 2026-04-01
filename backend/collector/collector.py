@@ -26,6 +26,8 @@ STATE_FILE = OUTPUT_DIR / ".collector_state.json"
 MAX_RECENT_QUERIES = 200
 MAX_TOP_ENTRIES = 20
 HISTORY_FILE = OUTPUT_DIR / ".query_history.json"
+METRICS_HISTORY_FILE = OUTPUT_DIR / "history.json"
+MAX_HISTORY_POINTS = 300
 
 
 def load_config() -> dict:
@@ -735,6 +737,48 @@ def collect_all() -> dict:
     return output
 
 
+def append_metrics_history(data: dict):
+    """Append a metrics snapshot to history.json (circular buffer)."""
+    resolver = data.get("resolver", {})
+    point = {
+        "timestamp": data.get("timestamp", datetime.now(timezone.utc).isoformat()),
+        "epoch": data.get("epoch", int(time.time())),
+        "qps": resolver.get("qps", 0),
+        "latency_ms": resolver.get("avg_latency_ms", 0),
+        "cache_hit_ratio": resolver.get("cache_hit_ratio", 0),
+        "servfail": resolver.get("servfail", 0),
+        "nxdomain": resolver.get("nxdomain", 0),
+        "total_queries": resolver.get("total_queries", 0),
+        "cache_hits": resolver.get("cache_hits", 0),
+        "cache_misses": resolver.get("cache_misses", 0),
+        "instances_live": resolver.get("instances_live", 0),
+        "nft_qps": data.get("traffic", {}).get("qps", 0),
+        "nft_packets": data.get("traffic", {}).get("total_packets", 0),
+    }
+
+    history = []
+    try:
+        with open(METRICS_HISTORY_FILE) as f:
+            history = json.load(f)
+        if not isinstance(history, list):
+            history = []
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+    history.append(point)
+    # Keep only last N points
+    if len(history) > MAX_HISTORY_POINTS:
+        history = history[-MAX_HISTORY_POINTS:]
+
+    try:
+        tmp = METRICS_HISTORY_FILE.with_suffix(".tmp")
+        with open(tmp, "w") as f:
+            json.dump(history, f)
+        tmp.rename(METRICS_HISTORY_FILE)
+    except Exception:
+        pass
+
+
 def main():
     """Entry point for systemd timer execution."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -760,6 +804,9 @@ def main():
             with open(tmp, "w") as fh:
                 json.dump(data, fh, indent=2)
             tmp.rename(f)
+
+        # Append to metrics history (circular buffer)
+        append_metrics_history(data)
 
         print(f"OK: collected in {duration_ms}ms, mode={mode}, queries={data['resolver']['total_queries']}, "
               f"qps={data['resolver']['qps']}, nft_pkts={data['traffic']['total_packets']}")
