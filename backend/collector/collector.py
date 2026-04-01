@@ -763,6 +763,9 @@ def main():
                 json.dump(data, fh, indent=2)
             tmp.rename(f)
 
+        # Append to metrics history (circular buffer)
+        append_metrics_history(data)
+
         print(f"OK: collected in {duration_ms}ms, mode={mode}, queries={data['resolver']['total_queries']}, "
               f"qps={data['resolver']['qps']}, nft_pkts={data['traffic']['total_packets']}")
 
