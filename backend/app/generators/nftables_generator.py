@@ -349,6 +349,9 @@ def _generate_monolithic_validation(
         "    chain PREROUTING {",
         "        type nat hook prerouting priority dstnat; policy accept;",
         "    }",
+        "    chain OUTPUT {",
+        "        type nat hook output priority dstnat; policy accept;",
+        "    }",
     ]
 
     # Sets
