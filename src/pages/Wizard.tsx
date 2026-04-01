@@ -440,7 +440,8 @@ export default function Wizard() {
         </div>
         {config.operationMode === 'simple' && (
           <div className="text-muted-foreground/60 mt-1">
-            Etapas removidas: VIP Interception, Egress Público, Mapeamento VIP→Instância
+            Etapas removidas: VIP Interception, Egress Público, Mapeamento VIP→Instância.
+            <br />Etapa adicionada: <strong>Frontend DNS</strong> — IP real que os clientes consultam.
           </div>
         )}
       </div>
