@@ -417,8 +417,13 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60) -> dict:
         ),
     ]
 
+    # Debug: capture sample lines for diagnostics
+    all_lines = stdout.split("\n")
+    info_lines = [l for l in all_lines if "info:" in l]
+    sample_lines = info_lines[:5] if info_lines else all_lines[:5]
+
     parsed_count = 0
-    for line in stdout.split("\n"):
+    for line in all_lines:
         # Quick pre-filter: must contain "info:" to be a query log line
         if "info:" not in line:
             continue
@@ -481,6 +486,13 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60) -> dict:
         "recent_queries": list(recent),
         "log_source": log_source,
         "queries_parsed": parsed_count,
+        "diag": {
+            "total_lines": len(all_lines),
+            "info_lines": len(info_lines),
+            "sample_lines": sample_lines,
+            "unit_args": unit_args,
+            **diag_info,
+        },
     }
 
 
