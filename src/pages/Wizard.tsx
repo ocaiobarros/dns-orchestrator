@@ -10,6 +10,7 @@ import {
   type VipDistributionPolicy,
   type ObservabilityConfig,
   type OperationMode,
+  type VipDeliverySubmode,
 } from '@/lib/types';
 import { validateConfig, getStepErrors, isConfigValid, getValidationSummary } from '@/lib/validation';
 import { generateAllFiles, createDefaultInstance } from '@/lib/config-generator';
