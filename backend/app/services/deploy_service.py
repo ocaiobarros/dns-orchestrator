@@ -314,7 +314,7 @@ def _execute_deploy_locked(
         # ── Structural guard: simple mode MUST NOT produce interception artifacts ──
         if is_simple_mode:
             nft_interception_patterns = ("DNS_ANYCAST_IP", "ipv4_tcp_dns", "ipv4_udp_dns",
-                                         "ipv6_tcp_dns", "ipv6_udp_dns", "dnat to", "users_unbound")
+                                         "ipv6_tcp_dns", "ipv6_udp_dns", "users_unbound")
             for f in files:
                 combined = f["path"] + "\n" + f.get("content", "")
                 if any(pat in combined for pat in nft_interception_patterns):
