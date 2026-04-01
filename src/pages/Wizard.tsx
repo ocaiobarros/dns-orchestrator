@@ -1018,7 +1018,7 @@ export default function Wizard() {
               ? <div>Clients → Service VIPs → nftables PREROUTING (DNAT) → Unbound Resolvers → Public Egress → Global DNS</div>
               : <div>Clients → Unbound Resolver → Global DNS</div>}
             <div className="text-[10px] text-muted-foreground/60">
-              {config.instances.length} resolvers{isInterception ? ` · ${config.serviceVips.length} VIPs · ${config.distributionPolicy} · ${config.egressDeliveryMode} egress` : ''}
+              {config.instances.length} resolvers{isInterception ? ` · ${config.interceptedVips.length} interceptados${hasOwnVip ? ` + ${config.serviceVips.length} próprios` : ''} · ${config.distributionPolicy} · ${config.egressDeliveryMode} egress` : ''}
             </div>
           </div>
           <TopologySummary config={config} />
