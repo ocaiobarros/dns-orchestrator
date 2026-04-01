@@ -660,8 +660,7 @@ export default function Wizard() {
   const renderInterception = () => (
     <div className="space-y-4">
       <InfoBox>
-        Configure quais IPs DNS públicos conhecidos serão "sequestrados" dentro da rede.
-        Clientes acreditam estar usando o DNS público, mas a resolução é local.
+        Configure aqui os IPs DNS externos que serão <strong>interceptados localmente</strong> e redirecionados via nftables para instâncias internas do Unbound.
         <strong> Esta é a feature principal do DNS Control.</strong>
       </InfoBox>
 
