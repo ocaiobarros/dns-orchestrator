@@ -26,6 +26,7 @@ const ChartGridSkeleton = () => (
 
 export default function DnsPage() {
   const { data: telemetry, isLoading, error } = useTelemetry();
+  const { data: historyData } = useTelemetryHistory();
 
   // Idle prefetch
   useEffect(() => {
