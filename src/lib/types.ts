@@ -122,6 +122,8 @@ export interface WizardConfig {
 
   // Simple mode — Frontend DNS IP (the IP clients query)
   frontendDnsIp: string;
+  simpleDistributionStrategy: 'round-robin' | 'sticky-source';
+  simpleStickyTimeout: number;
   description: string;
   timezone: string;
   mainInterface: string;
