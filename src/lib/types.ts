@@ -134,6 +134,9 @@ export interface WizardConfig {
   // Step 2 - Modo de Operação DNS (deterministic)
   operationMode: OperationMode;
 
+  // Step 2b - Modelo de Entrega do VIP (only when interception)
+  vipDeliverySubmode: VipDeliverySubmode;
+
   // Legacy compat (derived from operationMode)
   deploymentMode: DeploymentMode;
 
