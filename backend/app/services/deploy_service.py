@@ -961,7 +961,9 @@ def _execute_deploy_locked(
         failed = applicable - passed
         skip_note = f" · {skipped} ignorados" if skipped else ""
         if failed > 0:
-            return {"status": "failed", "output": f"{passed}/{applicable} checks OK — {failed} falharam{skip_note}"}
+            failed_names = [h["name"] for h in health_checks if h["status"] == "fail"]
+            detail = "; ".join(failed_names[:5])
+            return {"status": "failed", "output": f"{passed}/{applicable} checks OK — {failed} falharam ({detail}){skip_note}"}
         return {"status": "success", "output": f"{passed}/{applicable} checks OK{skip_note}"}
     _run_step(s_health, verify)
     steps.append(s_health)
