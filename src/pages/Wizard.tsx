@@ -1070,13 +1070,12 @@ export default function Wizard() {
         case 0: return renderHostTopology();
         case 1: return renderOperationMode();
         case 2: return renderInstances();
-        case 3: return renderServiceVips();
-        case 4: return renderInterception();
-        case 5: return renderEgress();
-        case 6: return renderMapping();
-        case 7: return renderSecurity();
-        case 8: return renderObservability();
-        case 9: return renderReview();
+        case 3: return renderInterception();
+        case 4: return renderEgress();
+        case 5: return renderMapping();
+        case 6: return renderSecurity();
+        case 7: return renderObservability();
+        case 8: return renderReview();
       }
     } else {
       switch (step) {
