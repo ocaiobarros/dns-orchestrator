@@ -31,8 +31,8 @@ import type { ApplyResult, ApplyRequest } from '@/lib/types';
 function getSteps(mode: OperationMode, submode: VipDeliverySubmode) {
   if (mode === 'simple') {
     return {
-      names: ['Topologia do Host', 'Modo de Operação DNS', 'Instâncias Resolver', 'Segurança', 'Observabilidade', 'Revisão & Deploy'],
-      icons: [Server, Network, Layers, Shield, BarChart3, FileText],
+      names: ['Topologia do Host', 'Modo de Operação DNS', 'Frontend DNS', 'Instâncias Resolver', 'Segurança', 'Observabilidade', 'Revisão & Deploy'],
+      icons: [Server, Network, Globe, Layers, Shield, BarChart3, FileText],
     };
   }
   if (submode === 'interception-plus-own-vip') {
