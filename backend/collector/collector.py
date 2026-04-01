@@ -424,8 +424,10 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60) -> dict:
                 continue
 
             if i == 0:
-                # info: <client> <domain> <type> <class>
-                client, domain, qtype, _qclass = m.groups()
+                # info: <client> <domain> <qtype> <qclass>
+                raw_client, domain, qtype, _qclass = m.groups()
+                # Strip optional #port from client (e.g. 172.250.40.100#12345)
+                client = raw_client.split("#")[0]
             else:
                 # query: <domain> <class> <type> from <client>
                 domain, _qclass, qtype, client = m.groups()
