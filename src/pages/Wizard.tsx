@@ -465,12 +465,40 @@ export default function Wizard() {
           placeholder={config.ipv4Address ? config.ipv4Address.split('/')[0] : '172.250.40.100'} />
       </FieldGroup>
 
+      {/* Distribution Strategy */}
+      <div className="border-t border-border pt-4">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Estratégia de Distribuição</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <ModeCard
+            selected={config.simpleDistributionStrategy === 'round-robin'}
+            onClick={() => set('simpleDistributionStrategy', 'round-robin')}
+            label="Round-robin"
+            badge="Padrão"
+            desc="Distribuição uniforme entre backends. Cada query vai para o próximo backend na fila. Comportamento previsível e equilibrado."
+          />
+          <ModeCard
+            selected={config.simpleDistributionStrategy === 'sticky-source'}
+            onClick={() => set('simpleDistributionStrategy', 'sticky-source')}
+            label="Afinidade por cliente (sticky)"
+            desc="Queries do mesmo IP de origem são enviadas ao mesmo backend por um período configurável. Melhor para cache hit ratio por instância."
+          />
+        </div>
+        {config.simpleDistributionStrategy === 'sticky-source' && (
+          <div className="mt-3">
+            <FieldGroup label="Sticky Timeout (minutos)" hint="Tempo que o mapeamento cliente→backend permanece ativo">
+              <Input type="number" value={Math.floor(config.simpleStickyTimeout / 60)}
+                onChange={v => set('simpleStickyTimeout', (parseInt(v) || 20) * 60)} />
+            </FieldGroup>
+          </div>
+        )}
+      </div>
+
       {config.frontendDnsIp && config.instances.length > 0 && (
         <div className="p-3 rounded bg-primary/5 border border-primary/15 text-xs space-y-2">
           <div className="font-medium text-primary">Modelo de distribuição local</div>
           <div className="font-mono text-muted-foreground space-y-1">
             <div>cliente → <span className="text-primary font-bold">{config.frontendDnsIp}:53</span></div>
-            <div className="pl-4">↓ balanceamento local (nftables round-robin)</div>
+            <div className="pl-4">↓ balanceamento local (nftables {config.simpleDistributionStrategy === 'sticky-source' ? 'sticky-source' : 'round-robin'})</div>
             {config.instances.map((inst, i) => (
               <div key={i} className="pl-8">→ <span className="text-accent font-bold">{inst.bindIp || '(não definido)'}:53</span> ({inst.name})</div>
             ))}
