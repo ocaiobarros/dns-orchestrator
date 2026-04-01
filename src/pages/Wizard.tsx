@@ -1011,7 +1011,7 @@ export default function Wizard() {
             <div className="noc-panel"><div className="noc-panel-header"><Activity size={12} /> Verificação Pós-Deploy ({applyResult.healthResult.filter(h => h.status === 'pass').length}/{applyResult.healthResult.filter(h => h.status !== 'skip' && h.status !== 'warn').length}{applyResult.healthResult.some(h => h.status === 'skip' || h.status === 'warn') ? ` · ${applyResult.healthResult.filter(h => h.status === 'skip' || h.status === 'warn').length} ignorados` : ''})</div>
               {applyResult.healthResult.map((check, i) => (
                 <div key={i} className={`flex items-center gap-3 p-2 rounded text-xs ${check.status === 'fail' ? 'bg-destructive/5' : ''}`}>
-                  {check.status === 'pass' ? <Check size={12} className="text-success" /> : check.status === 'fail' ? <X size={12} className="text-destructive" /> : check.status === 'warn' ? <Info size={12} className="text-yellow-500" /> : <SkipForward size={12} className="text-muted-foreground" />}
+                  {check.status === 'pass' ? <Check size={12} className="text-success" /> : check.status === 'fail' ? <X size={12} className="text-destructive" /> : check.status === 'warn' ? <Info size={12} className="text-accent" /> : <SkipForward size={12} className="text-muted-foreground" />}
                   <span className="font-medium flex-1">{check.name}</span><span className="font-mono text-muted-foreground">{check.target}</span><span className="font-mono text-muted-foreground">{check.durationMs}ms</span>
                 </div>
               ))}
