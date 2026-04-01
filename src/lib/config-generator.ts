@@ -724,46 +724,81 @@ export function generateSimpleNftablesModular(config: WizardConfig): { path: str
   const frontendIp = config.frontendDnsIp;
   if (!frontendIp) return files;
 
+  const useSticky = config.simpleDistributionStrategy === 'sticky-source';
+  const stickyTimeoutMin = Math.max(1, Math.floor((config.simpleStickyTimeout || 1200) / 60));
+
   files.push({ path: '/etc/nftables.conf', content: `#!/usr/sbin/nft -f\n\nflush ruleset\ninclude "/etc/nftables.d/*.nft"\n` });
-  files.push({ path: '/etc/nftables.d/0002-table-ipv4-nat.nft', content: 'table ip nat {\n}\n' });
-  files.push({ path: '/etc/nftables.d/0051-hook-ipv4-prerouting.nft', content: `table ip nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n` });
-  files.push({ path: '/etc/nftables.d/0053-hook-ipv4-output.nft', content: `table ip nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n` });
+  files.push({ path: '/etc/nftables.d/5000-local-table.nft', content: 'table ip nat {\n}\n' });
+  files.push({ path: '/etc/nftables.d/5010-local-hook-prerouting.nft', content: `table ip nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n` });
+  files.push({ path: '/etc/nftables.d/5011-local-hook-output.nft', content: `table ip nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n` });
   files.push({ path: '/etc/nftables.d/5100-local-define-frontend.nft', content: `define DNS_FRONTEND_IP = { ${frontendIp} }\n` });
 
-  for (const proto of ['tcp', 'udp']) {
-    const suffix = proto === 'tcp' ? '2' : '3';
-    files.push({ path: `/etc/nftables.d/510${suffix}-local-chain-${proto}_dns.nft`, content: `table ip nat {\n    chain local_${proto}_dns {\n    }\n}\n` });
-  }
-  for (const proto of ['tcp', 'udp']) {
-    const suffix = proto === 'tcp' ? '1' : '2';
-    files.push({ path: `/etc/nftables.d/511${suffix}-local-rule-prerouting-${proto}.nft`, content: `table ip nat {\n    chain PREROUTING {\n        ip daddr $DNS_FRONTEND_IP ${proto} dport 53 counter packets 0 bytes 0 jump local_${proto}_dns\n    }\n}\n` });
-  }
-  for (const proto of ['tcp', 'udp']) {
-    const suffix = proto === 'tcp' ? '3' : '4';
-    files.push({ path: `/etc/nftables.d/511${suffix}-local-rule-output-${proto}.nft`, content: `table ip nat {\n    chain OUTPUT {\n        ip daddr $DNS_FRONTEND_IP ${proto} dport 53 counter packets 0 bytes 0 jump local_${proto}_dns\n    }\n}\n` });
+  // Sets (only for sticky)
+  if (useSticky) {
+    config.instances.forEach(inst => {
+      const setName = `local_users_${inst.name}`;
+      files.push({
+        path: `/etc/nftables.d/5200-local-set-${setName}.nft`,
+        content: ['table ip nat {', `    set ${setName} {`, `        type ipv4_addr`, `        size 8192`, `        flags dynamic, timeout`, `        timeout ${stickyTimeoutMin}m`, `    }`, '}'].join('\n') + '\n',
+      });
+    });
   }
 
-  let ruleid = 6001;
-  config.instances.forEach(inst => {
+  // Dispatch chains
+  for (const proto of ['tcp', 'udp']) {
+    files.push({ path: `/etc/nftables.d/5300-local-chain-${proto}_dns.nft`, content: `table ip nat {\n    chain local_${proto}_dns {\n    }\n}\n` });
+  }
+
+  // Backend sub-chains
+  config.instances.forEach((inst, idx) => {
     for (const proto of ['tcp', 'udp']) {
       const subchain = `local_dns_${proto}_${inst.name}`;
-      files.push({
-        path: `/etc/nftables.d/${ruleid}-local-chain-${subchain}.nft`,
-        content: ['table ip nat {', `    chain ${subchain} {`, `        ${proto} dport 53 counter dnat to ${inst.bindIp}:53`, `    }`, '}'].join('\n') + '\n',
-      });
-      ruleid++;
+      const lines = ['table ip nat {', `    chain ${subchain} {`];
+      if (useSticky) {
+        const setName = `local_users_${inst.name}`;
+        lines.push(`        add @${setName} { ip saddr } counter`);
+        lines.push(`        set update ip saddr timeout 0s @${setName} counter`);
+      }
+      lines.push(`        ${proto} dport 53 counter dnat to ${inst.bindIp}:53`, `    }`, '}');
+      files.push({ path: `/etc/nftables.d/5400-local-chain-${subchain}.nft`, content: lines.join('\n') + '\n' });
     }
   });
 
-  ruleid = 7201;
+  // Sticky memorized-source rules
+  if (useSticky) {
+    config.instances.forEach(inst => {
+      const setName = `local_users_${inst.name}`;
+      for (const proto of ['tcp', 'udp']) {
+        const topchain = `local_${proto}_dns`;
+        const subchain = `local_dns_${proto}_${inst.name}`;
+        files.push({
+          path: `/etc/nftables.d/5500-local-rule-sticky-${subchain}.nft`,
+          content: `table ip nat {\n    chain ${topchain} {\n        ip saddr @${setName} counter jump ${subchain}\n    }\n}\n`,
+        });
+      }
+    });
+  }
+
+  // Round-robin fallback (always present)
   for (const proto of ['tcp', 'udp']) {
     const topchain = `local_${proto}_dns`;
     const vmapEntries = config.instances.map((inst, i) => `${i} : jump local_dns_${proto}_${inst.name}`).join(', ');
     files.push({
-      path: `/etc/nftables.d/${ruleid}-local-rule-rr-${proto}.nft`,
+      path: `/etc/nftables.d/5600-local-rule-rr-${proto}.nft`,
       content: `table ip nat {\n    chain ${topchain} {\n        numgen inc mod ${config.instances.length} vmap { ${vmapEntries} }\n    }\n}\n`,
     });
-    ruleid++;
+  }
+
+  // Capture rules
+  for (const proto of ['tcp', 'udp']) {
+    files.push({
+      path: `/etc/nftables.d/5700-local-capture-prerouting-${proto}.nft`,
+      content: `table ip nat {\n    chain PREROUTING {\n        ip daddr $DNS_FRONTEND_IP ${proto} dport 53 counter packets 0 bytes 0 jump local_${proto}_dns\n    }\n}\n`,
+    });
+    files.push({
+      path: `/etc/nftables.d/5701-local-capture-output-${proto}.nft`,
+      content: `table ip nat {\n    chain OUTPUT {\n        ip daddr $DNS_FRONTEND_IP ${proto} dport 53 counter packets 0 bytes 0 jump local_${proto}_dns\n    }\n}\n`,
+    });
   }
 
   return files;
