@@ -244,6 +244,9 @@ export default function SimpleDashboard() {
             Frontend: {frontendIp}:53
           </span>
         )}
+        <span className="px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider rounded bg-secondary text-secondary-foreground border border-border">
+          Distribuição: {deployState?.simpleDistributionStrategy === 'sticky-source' ? 'Sticky por origem' : 'Round-robin'}
+        </span>
         <span className={`px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider rounded border ${
           collectorOk && !collectorStale ? 'bg-success/10 text-success border-success/20' :
           collectorStale ? 'bg-warning/10 text-warning border-warning/20' :
