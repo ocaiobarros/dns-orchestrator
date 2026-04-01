@@ -158,7 +158,7 @@ def _generate_modular(
             f"{i} : jump local_dns_{proto}_{b['name']}" for i, b in enumerate(backends)
         )
         _file(f"/etc/nftables.d/5600-local-rule-rr-{proto}.nft",
-              f"table ip nat {{\n    chain {topchain} {{\n        numgen inc mod {len(backends)} vmap {{ {vmap_entries} }}\n    }}\n}}\n")
+              f"table ip nat {{\n    chain {topchain} {{\n        numgen random mod {len(backends)} vmap {{ {vmap_entries} }}\n    }}\n}}\n")
 
     # ── 5700: Capture rules (prerouting + output → dispatch) ──
     for proto in ("tcp", "udp"):
