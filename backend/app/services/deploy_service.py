@@ -1167,6 +1167,8 @@ def get_deploy_state() -> dict:
         "lastDeploymentId": None,
         "totalDeployments": 0,
         "rollbackAvailable": False,
+        "operationMode": "",
+        "frontendDnsIp": "",
     }
 
 

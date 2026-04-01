@@ -258,6 +258,12 @@ def get_dashboard_summary() -> dict:
     # nftables state from ruleset, not service
     nft_state = _get_nftables_state()
 
+    # Get operation mode from deploy state
+    from app.services.deploy_service import get_deploy_state
+    deploy_state = get_deploy_state()
+    operation_mode = deploy_state.get("operationMode", "")
+    frontend_dns_ip = deploy_state.get("frontendDnsIp", "")
+
     return {
         "total_queries": dns_metrics.get("total_queries", 0),
         "cache_hit_ratio": dns_metrics.get("cache_hit_ratio", 0.0),
@@ -292,6 +298,8 @@ def get_dashboard_summary() -> dict:
         "last_apply_at": sys_info.get("last_apply_at") or "",
         "last_apply_available": sys_info.get("last_apply_available", False),
         "last_apply_status": sys_info.get("last_apply_status", "unknown"),
+        "operation_mode": operation_mode,
+        "frontend_dns_ip": frontend_dns_ip,
     }
 
 
