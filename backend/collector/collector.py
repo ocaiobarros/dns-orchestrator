@@ -26,6 +26,8 @@ STATE_FILE = OUTPUT_DIR / ".collector_state.json"
 MAX_RECENT_QUERIES = 200
 MAX_TOP_ENTRIES = 20
 HISTORY_FILE = OUTPUT_DIR / ".query_history.json"
+METRICS_HISTORY_FILE = OUTPUT_DIR / "history.json"
+MAX_HISTORY_POINTS = 300
 
 
 def load_config() -> dict:
