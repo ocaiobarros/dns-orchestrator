@@ -308,7 +308,7 @@ def compute_qps(current_total: int, prev_state: dict) -> float:
 
 # ── Query Log Parsing ──
 
-def collect_query_logs(instances: list[dict], since_seconds: int = 30) -> dict:
+def collect_query_logs(instances: list[dict], since_seconds: int = 60) -> dict:
     """Parse unbound query logs from journalctl for top domains/clients."""
     domains: Counter = Counter()
     clients: Counter = Counter()
@@ -324,50 +324,103 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 30) -> dict:
     unit_args = []
     for inst in instances:
         unit_args.extend(["-u", inst["name"]])
-
     if not unit_args:
         unit_args = ["-u", "unbound01", "-u", "unbound02"]
 
-    code, stdout, stderr = run_cmd([
+    # Try journalctl WITHOUT --grep (which fails on many systems)
+    # Instead, fetch all lines and filter in Python
+    stdout = ""
+    log_source = "none"
+
+    code, raw_out, stderr = run_cmd([
         "journalctl", *unit_args,
         "--since", f"{since_seconds} seconds ago",
         "--no-pager", "-o", "short-iso",
-        "--grep", "query:",
+        "-n", "5000",
     ], timeout=15)
 
-    if code != 0 and "No journal files" not in stderr:
-        # Try alternative: grep log file
-        code2, stdout2, _ = run_cmd([
-            "sudo", "tail", "-n", "500", "/var/log/unbound/queries.log"
-        ], timeout=10)
-        if code2 == 0:
-            stdout = stdout2
+    if code == 0 and raw_out.strip():
+        stdout = raw_out
+        log_source = "journalctl"
 
-    # Parse lines like: [timestamp] unbound01[pid]: info: 172.250.40.10 google.com. A IN
-    query_re = re.compile(
-        r'(\d{4}-\d{2}-\d{2}T[\d:]+\S*|\w+\s+\d+\s+[\d:]+)\s+\S+\s+\S+\[\d+\]:\s+'
-        r'(?:\[[\d:]+\]\s+)?'  # optional thread id
-        r'(?:info:\s+)?'
-        r'(\d+\.\d+\.\d+\.\d+)\s+'  # client IP
-        r'(\S+)\s+'                   # domain
-        r'(\S+)\s+'                   # query type
-        r'(\S+)'                      # class
-    )
+    if not stdout.strip():
+        # Fallback: try without --since (get last N lines)
+        code2, raw_out2, _ = run_cmd([
+            "journalctl", *unit_args,
+            "--no-pager", "-o", "short-iso",
+            "-n", "2000",
+        ], timeout=15)
+        if code2 == 0 and raw_out2.strip():
+            stdout = raw_out2
+            log_source = "journalctl"
 
+    # Multiple regex patterns to match different Unbound log formats
+    # Format 1: 2026-04-01T14:00:01+0000 host unbound01[123]: [1234:0] info: 172.250.40.10 google.com. A IN
+    # Format 2: 2026-04-01T14:00:01+0000 host unbound01[123]: info: 172.250.40.10 google.com. A IN
+    # Format 3: Apr 01 14:00:01 host unbound01[123]: [1234:0] info: 172.250.40.10 google.com. A IN
+    # Format 4: ...unbound01[123]: 172.250.40.10 google.com. A IN
+    query_patterns = [
+        # Standard with optional thread id and info prefix
+        re.compile(
+            r'(\S+)\s+\S+\s+\S+\[\d+\]:\s+'
+            r'(?:\[\d+:\d+\]\s+)?'
+            r'(?:info:\s+)?'
+            r'(\d+\.\d+\.\d+\.\d+)\s+'
+            r'(\S+)\s+'
+            r'(\S+)\s+'
+            r'(\S+)'
+        ),
+        # Simpler: just IP domain type class after the process name
+        re.compile(
+            r'\[\d+\]:\s+(?:info:\s+)?(\d+\.\d+\.\d+\.\d+)\s+(\S+)\s+(\S+)\s+(\S+)'
+        ),
+    ]
+
+    parsed_count = 0
     for line in stdout.split("\n"):
-        m = query_re.search(line)
-        if m:
-            ts_str, client, domain, qtype, _ = m.groups()
-            domain = domain.rstrip(".")
-            domains[domain] += 1
-            clients[client] += 1
-            query_types[qtype] += 1
-            recent.append({
-                "time": ts_str[-8:] if len(ts_str) > 8 else ts_str,
-                "client": client,
-                "domain": domain,
-                "type": qtype,
-            })
+        # Skip lines that don't look like queries
+        if "query:" not in line.lower() and " info: " not in line and not re.search(r'\d+\.\d+\.\d+\.\d+\s+\S+\.\s+\w+\s+IN', line):
+            continue
+
+        matched = False
+        for i, pat in enumerate(query_patterns):
+            m = pat.search(line)
+            if m:
+                groups = m.groups()
+                if i == 0:
+                    ts_str, client, domain, qtype, _ = groups
+                else:
+                    client, domain, qtype, _ = groups
+                    ts_str = ""
+
+                domain = domain.rstrip(".")
+                if not domain or domain == ".":
+                    continue
+
+                domains[domain] += 1
+                clients[client] += 1
+                query_types[qtype] += 1
+
+                # Extract time from line start for recent queries
+                time_str = ts_str[-8:] if ts_str and len(ts_str) > 8 else ""
+                if not time_str:
+                    tm = re.match(r'(\d{4}-\d{2}-\d{2}T[\d:]+)', line)
+                    if tm:
+                        time_str = tm.group(1)[-8:]
+                    else:
+                        tm2 = re.match(r'\w+\s+\d+\s+([\d:]+)', line)
+                        if tm2:
+                            time_str = tm2.group(1)
+
+                recent.append({
+                    "time": time_str or "??:??:??",
+                    "client": client,
+                    "domain": domain,
+                    "type": qtype,
+                })
+                parsed_count += 1
+                matched = True
+                break
 
     # Merge with history
     hist_domains.update(domains)
@@ -386,8 +439,8 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 30) -> dict:
         "top_clients": [{"ip": ip, "queries": c} for ip, c in hist_clients.most_common(MAX_TOP_ENTRIES)],
         "top_query_types": [{"type": t, "count": c} for t, c in hist_types.most_common(10)],
         "recent_queries": list(recent),
-        "log_source": "journalctl" if code == 0 else "logfile",
-        "queries_parsed": sum(domains.values()),
+        "log_source": log_source,
+        "queries_parsed": parsed_count,
     }
 
 
@@ -441,8 +494,9 @@ def check_service_status(name: str) -> dict:
 # ── Network Info ──
 
 def get_listeners() -> list[dict]:
-    """Get DNS listeners from ss."""
+    """Get DNS listeners from ss, deduplicated."""
     code, stdout, _ = run_cmd(["ss", "-tulnp"])
+    seen: set[tuple[str, int]] = set()
     listeners = []
     if code != 0:
         return listeners
@@ -455,7 +509,10 @@ def get_listeners() -> list[dict]:
                     ip = part.rsplit(":", 1)[0]
                     if ip in ("*", "0.0.0.0", "[::]"):
                         continue
-                    listeners.append({"ip": ip, "port": 53})
+                    key = (ip, 53)
+                    if key not in seen:
+                        seen.add(key)
+                        listeners.append({"ip": ip, "port": 53})
     return listeners
 
 
