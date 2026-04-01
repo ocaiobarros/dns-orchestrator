@@ -47,8 +47,12 @@ export default function DnsPage() {
 
   const collectorOk = telemetry?.health?.collector === 'ok';
   const resolver = telemetry?.resolver ?? {};
-  const backends = telemetry?.backends ?? [];
-  const topDomains = telemetry?.top_domains ?? [];
+  const backends = Array.isArray(telemetry?.backends) ? telemetry.backends : [];
+  const topDomains = Array.isArray(telemetry?.top_domains) ? telemetry.top_domains : [];
+  const queryAnalytics = telemetry?.query_analytics ?? {};
+  const topDomainsFromAnalytics = Array.isArray(queryAnalytics?.top_domains) ? queryAnalytics.top_domains : [];
+  const topClients = Array.isArray(queryAnalytics?.top_clients) ? queryAnalytics.top_clients : [];
+  const recentQueries = Array.isArray(queryAnalytics?.recent_queries) ? queryAnalytics.recent_queries : [];
   const telemetryConnected = collectorOk && safeNum(resolver.instances_live) > 0;
 
   const totalQueries = safeNum(resolver.total_queries);
