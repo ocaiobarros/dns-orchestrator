@@ -118,6 +118,16 @@ def normalize_payload(raw: dict[str, Any]) -> dict[str, Any]:
 
     intercepted_vips = raw.get("interceptedVips", [])
 
+    # Determine operation mode — simple mode disables all interception/nftables
+    operation_mode = raw.get("operationMode", "interception")
+
+    # In simple mode, force-clear interception data to prevent leakage
+    if operation_mode == "simple":
+        intercepted_vips = []
+        nat["serviceVips"] = []
+        nat["vipMappings"] = []
+        loopback["vip"] = ""
+
     return {
         "environment": environment,
         "instances": instances,
@@ -131,6 +141,7 @@ def normalize_payload(raw: dict[str, Any]) -> dict[str, Any]:
         "observability": raw.get("observability", {}),
         "egressMode": raw.get("egressMode", "fixed-per-instance"),
         "egressDeliveryMode": raw.get("egressDeliveryMode", "host-owned"),
+        "operationMode": operation_mode,
         # Preserve raw config for reference
         "_wizardConfig": raw,
     }

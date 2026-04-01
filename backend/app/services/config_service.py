@@ -49,15 +49,18 @@ def validate_config(payload: dict[str, Any]) -> dict:
 def generate_preview(payload: dict[str, Any]) -> list[dict]:
     """Generate file previews. Accepts both WizardConfig and internal formats."""
     normalized = normalize_payload(payload)
+    is_simple = normalized.get("operationMode") == "simple"
     files = []
     try:
         files.extend(generate_unbound_configs(normalized))
     except Exception:
         pass
-    try:
-        files.extend(generate_nftables_config(normalized))
-    except Exception:
-        pass
+    # nftables interception artifacts — ONLY for interception mode
+    if not is_simple:
+        try:
+            files.extend(generate_nftables_config(normalized))
+        except Exception:
+            pass
     try:
         files.extend(generate_frr_config(normalized))
     except Exception:
