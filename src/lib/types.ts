@@ -2,7 +2,11 @@
 // DNS Control — Complete Type System
 // ============================================================
 
-// ---- Deployment Mode ----
+// ---- Operation Mode (deterministic — only 2 modes) ----
+
+export type OperationMode = 'interception' | 'simple';
+
+// ---- Deployment Mode (legacy compat — maps from operationMode) ----
 
 export type DeploymentMode =
   | 'internal-recursive'
@@ -126,7 +130,10 @@ export interface WizardConfig {
   vlanTag: string;
   behindFirewall: boolean;
 
-  // Step 2 - Modelo de Publicação DNS
+  // Step 2 - Modo de Operação DNS (deterministic)
+  operationMode: OperationMode;
+
+  // Legacy compat (derived from operationMode)
   deploymentMode: DeploymentMode;
 
   // Step 3 - VIPs de Serviço
@@ -657,7 +664,8 @@ export const DEFAULT_CONFIG: WizardConfig = {
   vlanTag: '',
   behindFirewall: true,
 
-  // Step 2 - Modelo de Publicação
+  // Step 2 - Modo de Operação DNS
+  operationMode: 'interception',
   deploymentMode: 'vip-routed-border',
 
   // Step 3 - VIPs de Serviço

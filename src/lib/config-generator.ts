@@ -1313,13 +1313,14 @@ export function createDefaultInstance(index: number) {
 
 export function generateAllFiles(config: WizardConfig): { path: string; content: string }[] {
   const files: { path: string; content: string }[] = [];
+  const isInterception = config.operationMode === 'interception';
 
   // Network
   files.push({ path: '/etc/network/interfaces', content: generateNetworkInterfacesConf(config) });
   files.push({ path: '/etc/network/interfaces.d/dns-control-loopback', content: generateLoopbackInterfacesConf(config) });
   files.push({ path: '/etc/network/post-up.sh', content: generatePostUpScript(config) });
 
-  // Unbound — per-instance standalone configs (each systemd unit references its own)
+  // Unbound — per-instance standalone configs
   config.instances.forEach((_, i) => {
     files.push({
       path: `/etc/unbound/${config.instances[i].name}.conf`,
@@ -1327,21 +1328,18 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
     });
   });
 
-  // Blocklist / AnaBlock — generate include targets + sync infrastructure when enabled
+  // Blocklist / AnaBlock
   if (config.enableBlocklist) {
     files.push({ path: '/etc/unbound/unbound-block-domains.conf', content: generateBlocklistConf() });
-    files.push({ path: '/etc/unbound/anablock.conf', content: `# DNS Control — AnaBlock placeholder
-# Este arquivo será populado automaticamente pelo script de sincronização.
-# Primeira execução: systemctl start anablock-sync.service
-` });
+    files.push({ path: '/etc/unbound/anablock.conf', content: `# DNS Control — AnaBlock placeholder\n# Populado pelo script de sync.\n` });
     files.push({ path: '/opt/dns-control/scripts/anablock-sync.sh', content: generateAnablockSyncScript(config) });
     files.push({ path: '/etc/systemd/system/anablock-sync.service', content: generateAnablockService() });
     if (config.blocklistAutoSync) {
-    files.push({ path: '/etc/systemd/system/anablock-sync.timer', content: generateAnablockTimer(config) });
+      files.push({ path: '/etc/systemd/system/anablock-sync.timer', content: generateAnablockTimer(config) });
     }
   }
 
-  // IP Blocking (blackhole routes — NOT nftables)
+  // IP Blocking
   if (config.enableIpBlocking) {
     files.push({ path: '/usr/local/bin/anablock-ip-sync.sh', content: generateIpBlockingSyncScript(config) });
     files.push({ path: '/etc/systemd/system/anablock-ip-sync.service', content: generateIpBlockingService() });
@@ -1350,13 +1348,15 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
     }
   }
 
-  // nftables (modular)
-  files.push(...generateNftablesModular(config));
+  // nftables — only for interception mode
+  if (isInterception) {
+    files.push(...generateNftablesModular(config));
+  }
 
   // Sysctl (complete)
   files.push(...generateSysctlFiles(config));
 
-  // FRR
+  // FRR — only if explicitly configured
   if (config.routingMode === 'frr-ospf') {
     files.push({ path: '/etc/frr/frr.conf', content: generateFrrConf(config) });
   }

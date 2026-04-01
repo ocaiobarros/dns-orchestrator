@@ -7,10 +7,9 @@ import {
   type ServiceVip,
   type InterceptedVip,
   type AccessControlEntry,
-  type DeploymentMode,
   type VipDistributionPolicy,
-  type RoutingMode,
   type ObservabilityConfig,
+  type OperationMode,
 } from '@/lib/types';
 import { validateConfig, getStepErrors, isConfigValid, getValidationSummary } from '@/lib/validation';
 import { generateAllFiles, createDefaultInstance } from '@/lib/config-generator';
@@ -27,22 +26,31 @@ import {
 } from 'lucide-react';
 import type { ApplyResult, ApplyRequest } from '@/lib/types';
 
-const STEPS = [
-  'Topologia do Host',
-  'Publicação DNS',
-  'VIPs de Serviço',
-  'Instâncias Resolver',
-  'VIP Interception',
-  'Egress Público',
-  'Mapeamento VIP→Instância',
-  'Roteamento',
-  'Segurança',
-  'Observabilidade',
-  'Revisão & Deploy',
+// ═══ Step definitions per mode ═══
+const STEPS_INTERCEPTION = [
+  'Topologia do Host',        // 0
+  'Modo de Operação DNS',     // 1
+  'Instâncias Resolver',      // 2
+  'VIPs de Serviço',          // 3
+  'VIP Interception',         // 4
+  'Egress Público',           // 5
+  'Mapeamento VIP→Instância', // 6
+  'Segurança',                // 7
+  'Observabilidade',          // 8
+  'Revisão & Deploy',         // 9
 ];
 
-const STEP_ICONS = [Server, Network, Globe, Layers, Crosshair, ExternalLink, Route, Settings, Shield, BarChart3, FileText];
-const LAST_STEP = STEPS.length - 1;
+const STEPS_SIMPLE = [
+  'Topologia do Host',        // 0
+  'Modo de Operação DNS',     // 1
+  'Instâncias Resolver',      // 2
+  'Segurança',                // 3
+  'Observabilidade',          // 4
+  'Revisão & Deploy',         // 5
+];
+
+const ICONS_INTERCEPTION = [Server, Network, Layers, Globe, Crosshair, ExternalLink, Route, Shield, BarChart3, FileText];
+const ICONS_SIMPLE = [Server, Network, Layers, Shield, BarChart3, FileText];
 
 // ---- Reusable form components ----
 
@@ -119,7 +127,7 @@ function ListInput({ items, onChange, placeholder }: { items: string[]; onChange
   );
 }
 
-function ModeCard({ selected, onClick, label, desc, disabled = false }: { selected: boolean; onClick: () => void; label: string; desc: string; disabled?: boolean }) {
+function ModeCard({ selected, onClick, label, desc, disabled = false, badge }: { selected: boolean; onClick: () => void; label: string; desc: string; disabled?: boolean; badge?: string }) {
   return (
     <button onClick={onClick} disabled={disabled}
       className={`text-left p-4 rounded border transition-all ${
@@ -127,7 +135,10 @@ function ModeCard({ selected, onClick, label, desc, disabled = false }: { select
         disabled ? 'border-border bg-secondary/50 opacity-50 cursor-not-allowed' :
         'border-border bg-secondary hover:border-muted-foreground/30'
       }`}>
-      <div className="font-medium text-sm">{label}</div>
+      <div className="flex items-center gap-2">
+        <div className="font-medium text-sm">{label}</div>
+        {badge && <span className="px-1.5 py-0.5 text-[10px] rounded bg-primary/20 text-primary font-medium">{badge}</span>}
+      </div>
       <div className="text-xs text-muted-foreground mt-1">{desc}</div>
     </button>
   );
@@ -147,6 +158,11 @@ export default function Wizard() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const applyMutation = useApplyConfig();
   const navigate = useNavigate();
+
+  const isInterception = config.operationMode === 'interception';
+  const STEPS = isInterception ? STEPS_INTERCEPTION : STEPS_SIMPLE;
+  const STEP_ICONS = isInterception ? ICONS_INTERCEPTION : ICONS_SIMPLE;
+  const LAST_STEP = STEPS.length - 1;
 
   const validationErrors = validateConfig(config);
   const validationSummary = getValidationSummary(validationErrors);
@@ -183,7 +199,38 @@ export default function Wizard() {
     return validationErrors.find(e => e.field === field && e.severity === 'error')?.message;
   };
 
-  // Cleanup polling on unmount
+  // Handle mode switch with data cleanup
+  const handleModeSwitch = (mode: OperationMode) => {
+    if (mode === config.operationMode) return;
+    
+    const hasInterceptionData = config.serviceVips.length > 0 || config.interceptedVips.length > 0 || config.instances.some(i => i.egressIpv4);
+    
+    if (mode === 'simple' && hasInterceptionData) {
+      if (!confirm('Trocar para Recursivo Simples vai limpar VIPs, interceptação e egress. Continuar?')) return;
+    }
+
+    const newConfig: Partial<WizardConfig> = {
+      operationMode: mode,
+      deploymentMode: mode === 'interception' ? 'vip-routed-border' : 'internal-recursive',
+    };
+
+    if (mode === 'simple') {
+      newConfig.serviceVips = [];
+      newConfig.interceptedVips = [];
+      newConfig.vipMappings = [];
+      newConfig.instances = config.instances.map(inst => ({
+        ...inst,
+        egressIpv4: '',
+        egressIpv6: '',
+        publicListenerIp: '',
+      }));
+    }
+
+    setConfig(prev => ({ ...prev, ...newConfig }));
+    // Reset to step 1 after mode change
+    setStep(1);
+  };
+
   useEffect(() => {
     return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
   }, []);
@@ -202,7 +249,6 @@ export default function Wizard() {
             totalSteps: d.totalSteps || 0,
             lastMessage: d.lastMessage || '',
           });
-          // Stop polling when done
           if (['idle', 'success', 'failed', 'rollback_success', 'rollback_failed'].includes(d.phase)) {
             if (pollingRef.current) clearInterval(pollingRef.current);
             pollingRef.current = null;
@@ -216,64 +262,44 @@ export default function Wizard() {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const handleApply = async (dryRun: boolean) => {
-    const mode = dryRun ? 'dry-run' : 'apply';
-    console.info(`[DNS Control] Deploy submit: mode=${mode}`, {
-      configHostname: config.hostname,
-      instances: config.instances.length,
-      vips: config.serviceVips.length,
-      deploymentMode: config.deploymentMode,
-    });
-
     setShowValidation(true);
     setSubmitError(null);
     setSubmitState('validating');
 
     if (!isConfigValid(validationErrors) && !dryRun) {
       const blocking = validationErrors.filter(e => e.severity === 'error');
-      const msg = `Deploy bloqueado: ${blocking.length} erro(s) de validação. Primeiro: [${STEPS[blocking[0]?.step]}] ${blocking[0]?.message}`;
-      console.error(`[DNS Control] ${msg}`);
+      const msg = `Deploy bloqueado: ${blocking.length} erro(s). Primeiro: [${STEPS[blocking[0]?.step]}] ${blocking[0]?.message}`;
       setSubmitError(msg);
       setSubmitState('error');
       return;
     }
 
     setSubmitState('dispatching');
-    console.info(`[DNS Control] Dispatching ${mode} request to backend...`);
-
     setDeployProgress({
       phase: dryRun ? 'dry_run_validating' : 'applying',
-      currentStep: 'Iniciando...',
-      completedSteps: 0, totalSteps: 0, lastMessage: '',
+      currentStep: 'Iniciando...', completedSteps: 0, totalSteps: 0, lastMessage: '',
     });
     startPolling();
 
     try {
-      // Use dedicated endpoint for dry-run vs apply
       const apiCall = dryRun ? api.dryRunConfig : api.applyConfig;
       const request: ApplyRequest = { config, scope: 'full', dryRun, comment: '' };
-      console.info(`[DNS Control] Calling ${dryRun ? 'POST /api/deploy/dry-run' : 'POST /api/deploy/apply'}`, { payloadKeys: Object.keys(config) });
-
       const result = await apiCall(request);
 
       if (!result.success) {
-        const errMsg = result.error || 'Erro desconhecido na API';
-        console.error(`[DNS Control] API error:`, errMsg);
-        setSubmitError(`Erro da API: ${errMsg}`);
+        setSubmitError(`Erro da API: ${result.error || 'Erro desconhecido'}`);
         setSubmitState('error');
         setDeployProgress(null);
         if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
         return;
       }
 
-      console.info(`[DNS Control] ${mode} success:`, { id: result.data?.id, status: result.data?.status });
       setApplyResult(result.data);
       setSubmitState('done');
       setDeployProgress(null);
       if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
     } catch (err: any) {
-      const errMsg = err?.message || String(err);
-      console.error(`[DNS Control] ${mode} exception:`, errMsg);
-      setSubmitError(`Exceção: ${errMsg}`);
+      setSubmitError(`Exceção: ${err?.message || String(err)}`);
       setSubmitState('error');
       setDeployProgress(null);
       if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
@@ -282,49 +308,25 @@ export default function Wizard() {
 
   const handleTestConnectivity = async () => {
     try {
-      console.info('[DNS Control] Testing API connectivity...');
       const r = await api.getDeployState();
-      if (r.success) {
-        setSubmitError(null);
-        alert('✅ API acessível — GET /api/deploy/state respondeu com sucesso.');
-        console.info('[DNS Control] API connectivity OK', r.data);
-      } else {
-        setSubmitError(`API inacessível: ${r.error}`);
-        console.error('[DNS Control] API connectivity failed:', r.error);
-      }
-    } catch (err: any) {
-      setSubmitError(`API inacessível: ${err.message}`);
-      console.error('[DNS Control] API connectivity exception:', err);
-    }
+      if (r.success) { setSubmitError(null); alert('✅ API acessível.'); }
+      else setSubmitError(`API inacessível: ${r.error}`);
+    } catch (err: any) { setSubmitError(`API inacessível: ${err.message}`); }
   };
 
   const handleCopyPayload = () => {
-    const payload = { config, scope: 'full', dry_run: false, comment: '' };
-    navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+    navigator.clipboard.writeText(JSON.stringify({ config, scope: 'full', dry_run: false, comment: '' }, null, 2));
     alert('Payload JSON copiado para clipboard.');
-    console.info('[DNS Control] Payload copied to clipboard');
   };
 
   const handleForceDryRun = async () => {
-    console.info('[DNS Control] Force dry-run bypass...');
     setSubmitError(null);
     setSubmitState('dispatching');
     try {
       const r = await api.dryRunConfig({ config, scope: 'full', dryRun: true, comment: '' });
-      if (r.success) {
-        console.info('[DNS Control] Force dry-run success:', r.data);
-        setApplyResult(r.data);
-        setSubmitState('done');
-      } else {
-        setSubmitError(`Dry-run falhou: ${r.error}`);
-        setSubmitState('error');
-        console.error('[DNS Control] Force dry-run failed:', r.error);
-      }
-    } catch (err: any) {
-      setSubmitError(`Dry-run exceção: ${err.message}`);
-      setSubmitState('error');
-      console.error('[DNS Control] Force dry-run exception:', err);
-    }
+      if (r.success) { setApplyResult(r.data); setSubmitState('done'); }
+      else { setSubmitError(`Dry-run falhou: ${r.error}`); setSubmitState('error'); }
+    } catch (err: any) { setSubmitError(`Dry-run exceção: ${err.message}`); setSubmitState('error'); }
   };
 
   const handleNext = () => {
@@ -347,1241 +349,745 @@ export default function Wizard() {
     const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = `dns-control-${config.hostname || 'config'}-${new Date().toISOString().slice(0,10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    a.href = url; a.download = `dns-control-${config.hostname || 'config'}-${new Date().toISOString().slice(0,10)}.json`;
+    a.click(); URL.revokeObjectURL(url);
   };
 
+  // ═══ Step renderers ═══
+
+  const renderHostTopology = () => (
+    <div className="space-y-4">
+      <InfoBox>Configure a topologia de rede do host. IP privado, gateway, interface física.</InfoBox>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <FieldGroup label="Hostname *" error={fieldError('hostname')} hint="FQDN do servidor">
+          <Input value={config.hostname} onChange={v => set('hostname', v)} placeholder="dns-rec-01.example.com" />
+        </FieldGroup>
+        <FieldGroup label="Organização *" error={fieldError('organization')}>
+          <Input value={config.organization} onChange={v => set('organization', v)} placeholder="MinhaOperadora" />
+        </FieldGroup>
+        <FieldGroup label="Interface principal *" error={fieldError('mainInterface')} hint="NIC primária do host">
+          <Input value={config.mainInterface} onChange={v => set('mainInterface', v)} placeholder="ens192" />
+        </FieldGroup>
+        <FieldGroup label="VLAN Tag" hint="Opcional">
+          <Input value={config.vlanTag} onChange={v => set('vlanTag', v)} placeholder="100" />
+        </FieldGroup>
+        <FieldGroup label="Endereço IPv4 (CIDR) *" error={fieldError('ipv4Address')} hint="IP privado do host com máscara">
+          <Input value={config.ipv4Address} onChange={v => set('ipv4Address', v)} placeholder="172.29.22.6/30" />
+        </FieldGroup>
+        <FieldGroup label="Gateway IPv4 *" error={fieldError('ipv4Gateway')}>
+          <Input value={config.ipv4Gateway} onChange={v => set('ipv4Gateway', v)} placeholder="172.29.22.5" />
+        </FieldGroup>
+      </div>
+      <Toggle checked={config.enableIpv6} onChange={v => set('enableIpv6', v)} label="Habilitar dual-stack IPv6" />
+      {config.enableIpv6 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FieldGroup label="Endereço IPv6 (CIDR)" error={fieldError('ipv6Address')}>
+            <Input value={config.ipv6Address} onChange={v => set('ipv6Address', v)} placeholder="2804:4AFC:8844::2/64" />
+          </FieldGroup>
+          <FieldGroup label="Gateway IPv6" error={fieldError('ipv6Gateway')}>
+            <Input value={config.ipv6Gateway} onChange={v => set('ipv6Gateway', v)} placeholder="2804:4AFC:8844::1" />
+          </FieldGroup>
+        </div>
+      )}
+      <Toggle checked={config.behindFirewall} onChange={v => set('behindFirewall', v)} label="Host atrás de firewall / borda" />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <FieldGroup label="Projeto"><Input value={config.project} onChange={v => set('project', v)} placeholder="DNS Recursivo Produção" /></FieldGroup>
+        <FieldGroup label="Timezone"><Input value={config.timezone} onChange={v => set('timezone', v)} /></FieldGroup>
+      </div>
+    </div>
+  );
+
+  const renderOperationMode = () => (
+    <div className="space-y-4">
+      <InfoBox>
+        Selecione o modo de operação do resolver DNS. Esta escolha define quais etapas estarão disponíveis no wizard
+        e qual configuração será gerada.
+      </InfoBox>
+      <div className="grid grid-cols-1 gap-4">
+        <ModeCard
+          selected={config.operationMode === 'interception'}
+          onClick={() => handleModeSwitch('interception')}
+          label="Recursivo com Interceptação"
+          badge="Padrão"
+          desc="Clientes usam VIPs públicos conhecidos ou definidos no projeto. O host intercepta tráfego DNS via nftables DNAT e redireciona para instâncias internas do Unbound (100.x.x.x). Balanceamento sticky por origem. Egress controlado. Este é o modo principal do script existente."
+        />
+        <ModeCard
+          selected={config.operationMode === 'simple'}
+          onClick={() => handleModeSwitch('simple')}
+          label="Recursivo Simples"
+          desc="O Unbound responde diretamente no IP configurado. Sem VIP, sem nftables DNAT, sem interceptação, sem mapeamento VIP→instância. Uso apenas para laboratório, ambiente simples ou rede interna."
+        />
+      </div>
+
+      {config.operationMode === 'interception' && (
+        <div className="p-3 rounded bg-primary/5 border border-primary/15 text-xs space-y-2">
+          <div className="font-medium text-primary">Etapas ativas neste modo:</div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-1 text-muted-foreground">
+            {STEPS_INTERCEPTION.map((s, i) => (
+              <div key={i} className="flex items-center gap-1"><Check size={10} className="text-primary" /> {s}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {config.operationMode === 'simple' && (
+        <div className="p-3 rounded bg-secondary/50 border border-border text-xs space-y-2">
+          <div className="font-medium">Etapas ativas neste modo:</div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-1 text-muted-foreground">
+            {STEPS_SIMPLE.map((s, i) => (
+              <div key={i} className="flex items-center gap-1"><Check size={10} /> {s}</div>
+            ))}
+          </div>
+          <div className="text-muted-foreground/60 mt-1">
+            Etapas removidas: VIPs de Serviço, VIP Interception, Egress Público, Mapeamento VIP→Instância
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderInstances = () => (
+    <div className="space-y-4">
+      <InfoBox>
+        Cada instância é um processo Unbound independente com listener e interface de controle próprios.
+        <br /><span className="text-accent/70 mt-1 block">→ <strong>Listener Privado</strong>: IP interno (RFC 6598, ex: 100.127.255.101) onde o Unbound faz bind. Materializado em <code className="font-mono bg-accent/20 px-1 rounded">lo0</code> (dummy).</span>
+        {isInterception && <span className="text-accent/70 block">→ No modo Interceptação, o Unbound <strong>não</strong> escuta em IP público — o IP público é tratado como VIP via nftables.</span>}
+      </InfoBox>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <FieldGroup label="Threads por instância *" error={fieldError('threads')}>
+          <Input type="number" value={config.threads} onChange={v => set('threads', parseInt(v) || 1)} />
+        </FieldGroup>
+        <FieldGroup label="Msg Cache"><Input value={config.msgCacheSize} onChange={v => set('msgCacheSize', v)} /></FieldGroup>
+        <FieldGroup label="RRset Cache"><Input value={config.rrsetCacheSize} onChange={v => set('rrsetCacheSize', v)} /></FieldGroup>
+        <FieldGroup label="Max TTL"><Input type="number" value={config.maxTtl} onChange={v => set('maxTtl', parseInt(v) || 0)} /></FieldGroup>
+        <FieldGroup label="Root Hints"><Input value={config.rootHintsPath} onChange={v => set('rootHintsPath', v)} /></FieldGroup>
+        <FieldGroup label="DNS Identity" hint="Valor do campo identity">
+          <Input value={config.dnsIdentity} onChange={v => set('dnsIdentity', v)} placeholder="67-DNS" />
+        </FieldGroup>
+      </div>
+      <div className="flex gap-4 flex-wrap">
+        <Toggle checked={config.enableDetailedLogs} onChange={v => set('enableDetailedLogs', v)} label="Logs detalhados" />
+        <Toggle checked={config.enableBlocklist} onChange={v => set('enableBlocklist', v)} label="AnaBlock (Blocklist Judicial)" />
+      </div>
+
+      {config.enableBlocklist && (
+        <div className="p-4 rounded bg-secondary/50 border border-border space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground"><Shield size={14} /> Configuração AnaBlock</div>
+          <FieldGroup label="Modo de bloqueio *">
+            <Select value={config.blocklistMode} onChange={v => set('blocklistMode', v as any)} options={[
+              { value: 'always_nxdomain', label: 'always_nxdomain — domínio retorna NXDOMAIN' },
+              { value: 'redirect_cname', label: 'redirect_cname — redireciona para FQDN' },
+              { value: 'redirect_ip', label: 'redirect_ip — redireciona para IPv4' },
+              { value: 'redirect_ip_dualstack', label: 'redirect_ip_dualstack — IPv4 + IPv6' },
+            ]} />
+          </FieldGroup>
+          {config.blocklistMode === 'redirect_cname' && (
+            <FieldGroup label="CNAME de redirecionamento *"><Input value={config.blocklistCnameTarget} onChange={v => set('blocklistCnameTarget', v)} placeholder="anatel.gov.br" /></FieldGroup>
+          )}
+          {(config.blocklistMode === 'redirect_ip' || config.blocklistMode === 'redirect_ip_dualstack') && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FieldGroup label="IPv4 de redirecionamento *"><Input value={config.blocklistRedirectIpv4} onChange={v => set('blocklistRedirectIpv4', v)} placeholder="10.255.128.2" /></FieldGroup>
+              {config.blocklistMode === 'redirect_ip_dualstack' && (
+                <FieldGroup label="IPv6 de redirecionamento *"><Input value={config.blocklistRedirectIpv6} onChange={v => set('blocklistRedirectIpv6', v)} placeholder="2001:db8::1" /></FieldGroup>
+              )}
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FieldGroup label="URL base da API AnaBlock *"><Input value={config.blocklistApiUrl} onChange={v => set('blocklistApiUrl', v)} placeholder="https://api.anablock.net.br" /></FieldGroup>
+            <FieldGroup label="Intervalo de sync (horas)"><Input type="number" value={config.blocklistSyncIntervalHours} onChange={v => set('blocklistSyncIntervalHours', parseInt(v) || 1)} /></FieldGroup>
+          </div>
+          <div className="flex gap-4 flex-wrap">
+            <Toggle checked={config.blocklistAutoSync} onChange={v => set('blocklistAutoSync', v)} label="Sync automático" />
+            <Toggle checked={config.blocklistValidateBeforeReload} onChange={v => set('blocklistValidateBeforeReload', v)} label="Validar antes de reload" />
+            <Toggle checked={config.blocklistAutoReload} onChange={v => set('blocklistAutoReload', v)} label="Reload automático" />
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-4 flex-wrap">
+        <Toggle checked={config.enableIpBlocking} onChange={v => set('enableIpBlocking', v)} label="AnaBlock IP Blocking (rotas blackhole)" />
+      </div>
+
+      {config.enableIpBlocking && (
+        <div className="p-4 rounded bg-secondary/50 border border-border space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground"><Route size={14} /> Bloqueio de IPs — Rotas Blackhole</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FieldGroup label="URL base da API"><Input value={config.ipBlockingApiUrl} onChange={v => set('ipBlockingApiUrl', v)} placeholder="https://api.anablock.net.br" /></FieldGroup>
+            <FieldGroup label="Intervalo de sync (horas)"><Input type="number" value={config.ipBlockingSyncIntervalHours} onChange={v => set('ipBlockingSyncIntervalHours', parseInt(v) || 1)} /></FieldGroup>
+          </div>
+          <Toggle checked={config.ipBlockingAutoSync} onChange={v => set('ipBlockingAutoSync', v)} label="Sync automático" />
+        </div>
+      )}
+
+      <div className="border-t border-border pt-4">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-medium">Instâncias ({config.instances.length})</span>
+          <button onClick={addInstance}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
+            <Plus size={12} /> Adicionar instância
+          </button>
+        </div>
+        <div className="space-y-3">
+          {config.instances.map((inst, i) => (
+            <div key={i} className="p-4 rounded bg-secondary border border-border space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-primary uppercase">Instância {i + 1}</span>
+                {config.instances.length > 1 && (
+                  <button onClick={() => set('instances', config.instances.filter((_, j) => j !== i))}
+                    className="text-xs text-destructive hover:text-destructive/80 flex items-center gap-1">
+                    <Trash2 size={12} /> Remover
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <FieldGroup label="Nome *" error={fieldError(`instances[${i}].name`)}>
+                  <Input value={inst.name} onChange={v => updateInstance(i, 'name', v)} />
+                </FieldGroup>
+                <FieldGroup label="Listener Privado *" error={fieldError(`instances[${i}].bindIp`)} hint="IP interno do Unbound (lo0)">
+                  <Input value={inst.bindIp} onChange={v => updateInstance(i, 'bindIp', v)} placeholder="100.127.255.101" />
+                </FieldGroup>
+                {config.enableIpv6 && (
+                  <FieldGroup label="Listener IPv6">
+                    <Input value={inst.bindIpv6} onChange={v => updateInstance(i, 'bindIpv6', v)} />
+                  </FieldGroup>
+                )}
+                <FieldGroup label="Control Interface" error={fieldError(`instances[${i}].controlInterface`)} hint="IP do remote-control">
+                  <Input value={inst.controlInterface} onChange={v => updateInstance(i, 'controlInterface', v)} placeholder="127.0.0.11" />
+                </FieldGroup>
+                <FieldGroup label="Control Port">
+                  <Input type="number" value={inst.controlPort} onChange={v => updateInstance(i, 'controlPort', parseInt(v) || 8953)} />
+                </FieldGroup>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderServiceVips = () => (
+    <div className="space-y-4">
+      <InfoBox>
+        Configure os IPs que a sua rede <strong>anuncia/possui</strong> e que os clientes usarão como servidor DNS.
+        <strong> Não use IPs de resolvedores públicos conhecidos aqui</strong> (Google 8.8.8.8, Level3 4.2.2.5) — esses vão na etapa "VIP Interception".
+      </InfoBox>
+      <div className="space-y-3">
+        {config.serviceVips.map((vip, i) => (
+          <div key={i} className="p-4 rounded bg-secondary border border-border space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground uppercase">VIP {i + 1}</span>
+              <button onClick={() => set('serviceVips', config.serviceVips.filter((_, j) => j !== i))}
+                className="text-xs text-destructive hover:text-destructive/80 flex items-center gap-1"><Trash2 size={12} /> Remover</button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              <FieldGroup label="IPv4 *" error={fieldError(`serviceVips[${i}].ipv4`)}>
+                <Input value={vip.ipv4} onChange={v => updateVip(i, 'ipv4', v)} placeholder="IP do serviço DNS" />
+              </FieldGroup>
+              {config.vipIpv6Enabled && (
+                <FieldGroup label="IPv6"><Input value={vip.ipv6} onChange={v => updateVip(i, 'ipv6', v)} /></FieldGroup>
+              )}
+              <FieldGroup label="Porta"><Input type="number" value={vip.port} onChange={v => updateVip(i, 'port', v)} placeholder="53" /></FieldGroup>
+              <FieldGroup label="Protocolo">
+                <Select value={vip.protocol} onChange={v => updateVip(i, 'protocol', v)} options={[
+                  { value: 'udp+tcp', label: 'UDP + TCP' }, { value: 'udp', label: 'UDP' }, { value: 'tcp', label: 'TCP' },
+                ]} />
+              </FieldGroup>
+              <FieldGroup label="Descrição"><Input value={vip.description} onChange={v => updateVip(i, 'description', v)} placeholder="DNS Público" /></FieldGroup>
+            </div>
+            <div className="border-t border-border pt-3 mt-2">
+              <Toggle checked={vip.healthCheckEnabled} onChange={v => {
+                const vips = [...config.serviceVips]; vips[i] = { ...vips[i], healthCheckEnabled: v }; set('serviceVips', vips);
+              }} label="Health check ativo" />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-3 flex-wrap">
+        <button onClick={() => set('serviceVips', [...config.serviceVips, {
+          ipv4: '', ipv6: '', port: 53, protocol: 'udp+tcp' as const, description: '', label: '',
+          vipType: 'owned' as const, deliveryMode: 'firewall-delivered' as const,
+          healthCheckEnabled: true, healthCheckDomain: 'google.com', healthCheckInterval: 30,
+        }])} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
+          <Plus size={12} /> Adicionar VIP
+        </button>
+        <Toggle checked={config.vipIpv6Enabled} onChange={v => set('vipIpv6Enabled', v)} label="VIPs IPv6" />
+      </div>
+    </div>
+  );
+
+  const renderInterception = () => (
+    <div className="space-y-4">
+      <InfoBox>
+        Configure quais IPs DNS públicos conhecidos serão "sequestrados" dentro da rede.
+        Clientes acreditam estar usando o DNS público, mas a resolução é local.
+        <strong> Esta é a feature principal do DNS Control.</strong>
+      </InfoBox>
+
+      {config.interceptedVips.some(v => v.vipIp === config.bootstrapDns) && (
+        <div className="flex gap-2 p-3 rounded bg-destructive/10 border border-destructive/30 text-xs text-destructive">
+          <AlertCircle size={14} className="shrink-0 mt-0.5" />
+          <div>
+            <strong>Atenção:</strong> O IP <code className="font-mono bg-destructive/20 px-1 rounded">{config.bootstrapDns}</code> está sendo interceptado 
+            E é o Bootstrap DNS do host. Durante o boot, antes do Unbound iniciar, o host não conseguirá resolver DNS.
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {config.interceptedVips.map((vip, i) => (
+          <div key={i} className="p-4 rounded bg-secondary border border-border space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-accent uppercase flex items-center gap-1.5">
+                <Crosshair size={12} /> VIP Interceptado {i + 1}
+              </span>
+              <button onClick={() => set('interceptedVips', config.interceptedVips.filter((_, j) => j !== i))}
+                className="text-xs text-destructive hover:text-destructive/80 flex items-center gap-1"><Trash2 size={12} /> Remover</button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              <FieldGroup label="VIP IP *" error={fieldError(`interceptedVips[${i}].vipIp`)} hint="DNS público a ser sequestrado">
+                <Input value={vip.vipIp} onChange={v => {
+                  const vips = [...config.interceptedVips]; vips[i] = { ...vips[i], vipIp: v }; set('interceptedVips', vips);
+                }} placeholder="4.2.2.5" />
+              </FieldGroup>
+              <FieldGroup label="Backend Instance *" error={fieldError(`interceptedVips[${i}].backendInstance`)} hint="Instância que atende">
+                <Select value={vip.backendInstance} onChange={v => {
+                  const vips = [...config.interceptedVips];
+                  const inst = config.instances.find(inst => inst.name === v);
+                  vips[i] = { ...vips[i], backendInstance: v, backendTargetIp: inst?.bindIp || vip.backendTargetIp };
+                  set('interceptedVips', vips);
+                }} options={[
+                  { value: '', label: '— Selecionar —' },
+                  ...config.instances.map(inst => ({ value: inst.name, label: `${inst.name} (${inst.bindIp || '?'})` })),
+                ]} />
+              </FieldGroup>
+              <FieldGroup label="Backend Target IP" error={fieldError(`interceptedVips[${i}].backendTargetIp`)} hint="IP real da instância">
+                <Input value={vip.backendTargetIp} onChange={v => {
+                  const vips = [...config.interceptedVips]; vips[i] = { ...vips[i], backendTargetIp: v }; set('interceptedVips', vips);
+                }} placeholder="100.127.255.101" />
+              </FieldGroup>
+              <FieldGroup label="Protocolo">
+                <Select value={vip.protocol} onChange={v => {
+                  const vips = [...config.interceptedVips]; vips[i] = { ...vips[i], protocol: v as any }; set('interceptedVips', vips);
+                }} options={[
+                  { value: 'udp+tcp', label: 'UDP + TCP' }, { value: 'udp', label: 'UDP' }, { value: 'tcp', label: 'TCP' },
+                ]} />
+              </FieldGroup>
+            </div>
+            <FieldGroup label="Descrição">
+              <Input value={vip.description} onChange={v => {
+                const vips = [...config.interceptedVips]; vips[i] = { ...vips[i], description: v }; set('interceptedVips', vips);
+              }} placeholder="DNS público Level3 sequestrado" />
+            </FieldGroup>
+          </div>
+        ))}
+      </div>
+
+      <button onClick={() => set('interceptedVips', [...config.interceptedVips, {
+        vipIp: '', vipIpv6: '', vipType: 'intercepted', captureMode: 'dnat',
+        backendInstance: config.instances[0]?.name || '', backendTargetIp: config.instances[0]?.bindIp || '',
+        description: '', expectedLocalLatencyMs: 1, validationMode: 'strict', protocol: 'udp+tcp', port: 53,
+      } as InterceptedVip])}
+        className="flex items-center gap-1 px-3 py-1.5 text-xs bg-accent/20 text-accent rounded border border-accent/30 hover:bg-accent/30">
+        <Plus size={12} /> Adicionar VIP Interceptado
+      </button>
+
+      {config.interceptedVips.length > 0 && (
+        <div className="p-3 rounded bg-accent/5 border border-accent/15 text-xs space-y-1">
+          <div className="font-bold text-accent flex items-center gap-1.5"><Crosshair size={12} /> Resumo</div>
+          {config.interceptedVips.map((v, i) => (
+            <div key={i} className="font-mono text-muted-foreground">
+              VIP <span className="text-accent font-bold">{v.vipIp || '?'}</span>
+              {' → '}<span className="text-primary">{v.backendInstance || '?'}</span>
+              {' ('}{v.backendTargetIp || '?'}{') '}
+              <span className="text-muted-foreground/50">[DNAT]</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderEgress = () => (
+    <div className="space-y-4">
+      <InfoBox>
+        Configure o IP público de saída (<code className="font-mono bg-accent/20 px-1 rounded">outgoing-interface</code>) de cada instância.
+        Este é o IP que os servidores autoritativos verão ao receber queries recursivas.
+        <br /><span className="text-accent/70 mt-1 block">→ Esses IPs são materializados na interface <code className="font-mono bg-accent/20 px-1 rounded">lo</code> (loopback real) do host.</span>
+      </InfoBox>
+
+      <div className="space-y-3">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Modo de Entrega do Egress</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <ModeCard selected={config.egressDeliveryMode === 'host-owned'} onClick={() => set('egressDeliveryMode', 'host-owned')}
+            label="Host-Owned" badge="Recomendado" desc="IP público de egress configurado na loopback (lo). Unbound usa outgoing-interface." />
+          <ModeCard selected={config.egressDeliveryMode === 'border-routed'} onClick={() => set('egressDeliveryMode', 'border-routed')}
+            label="Border-Routed" badge="Avançado" desc="IP de egress NÃO configurado no host. Identidade de saída imposta pelo dispositivo de borda (SNAT)." />
+        </div>
+        {config.egressDeliveryMode === 'border-routed' && (
+          <div className="flex gap-2 p-3 rounded bg-accent/10 border border-accent/20 text-xs text-accent">
+            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+            <div><strong>Border-Routed:</strong> O IP de egress <strong>não será configurado</strong> no host e <code>outgoing-interface</code> será <strong>suprimido</strong> no Unbound. A identidade pública é imposta pelo dispositivo de borda.</div>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        {config.instances.map((inst, i) => (
+          <div key={i} className="p-4 rounded bg-secondary border border-border">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-xs font-medium text-primary uppercase">{inst.name}</span>
+              <span className="text-xs text-muted-foreground font-mono">listener: {inst.bindIp || '(não definido)'}</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <FieldGroup label="Egress IPv4 *" error={fieldError(`instances[${i}].egressIpv4`)} hint="IP público de saída para recursão">
+                <Input value={inst.egressIpv4} onChange={v => updateInstance(i, 'egressIpv4', v)} placeholder="IP público do bloco /29" />
+              </FieldGroup>
+              {config.enableIpv6 && (
+                <FieldGroup label="Egress IPv6">
+                  <Input value={inst.egressIpv6} onChange={v => updateInstance(i, 'egressIpv6', v)} placeholder="IPv6 de saída" />
+                </FieldGroup>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderMapping = () => (
+    <div className="space-y-4">
+      <InfoBox>Define como o tráfego dos VIPs de serviço é distribuído entre as instâncias resolver via nftables.</InfoBox>
+      <div className="grid grid-cols-1 gap-3">
+        {([
+          { value: 'sticky-source', label: 'Sticky por Origem (Recomendado)', desc: 'Memoriza o resolver por IP de origem via nftables sets. Fallback nth balancing.' },
+          { value: 'round-robin', label: 'Round Robin (numgen)', desc: 'Distribuição sequencial entre todas as instâncias.' },
+          { value: 'nth-balancing', label: 'Nth Balancing', desc: 'Balanceamento nth com numgen e decrementação progressiva.' },
+          { value: 'active-passive', label: 'Ativo / Passivo', desc: 'Uma instância primária, demais em standby.' },
+        ] as { value: VipDistributionPolicy; label: string; desc: string }[]).map(policy => (
+          <ModeCard key={policy.value} selected={config.distributionPolicy === policy.value}
+            onClick={() => set('distributionPolicy', policy.value)} label={policy.label} desc={policy.desc} />
+        ))}
+      </div>
+      {config.distributionPolicy === 'sticky-source' && (
+        <FieldGroup label="Sticky Timeout (minutos)">
+          <Input type="number" value={Math.floor(config.stickyTimeout / 60)} onChange={v => set('stickyTimeout', (parseInt(v) || 20) * 60)} />
+        </FieldGroup>
+      )}
+    </div>
+  );
+
+  const renderSecurity = () => (
+    <div className="space-y-4">
+      <InfoBox>Configure controle de acesso, proteção contra amplificação e autenticação do painel.</InfoBox>
+      <div className="space-y-3">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">ACLs IPv4 (access-control do Unbound)</div>
+        {config.accessControlIpv4.map((acl, i) => (
+          <div key={i} className="grid grid-cols-3 md:grid-cols-4 gap-3 p-3 rounded bg-secondary border border-border">
+            <FieldGroup label="Rede" error={fieldError(`accessControlIpv4[${i}].network`)}>
+              <Input value={acl.network} onChange={v => updateAcl('ipv4', i, 'network', v)} placeholder="172.16.0.0/12" />
+            </FieldGroup>
+            <FieldGroup label="Ação">
+              <Select value={acl.action} onChange={v => updateAcl('ipv4', i, 'action', v)} options={[
+                { value: 'allow', label: 'allow' }, { value: 'refuse', label: 'refuse' },
+                { value: 'deny', label: 'deny' }, { value: 'allow_snoop', label: 'allow_snoop' },
+              ]} />
+            </FieldGroup>
+            <FieldGroup label="Label"><Input value={acl.label} onChange={v => updateAcl('ipv4', i, 'label', v)} placeholder="Rede interna" /></FieldGroup>
+            <div className="flex items-end">
+              <button onClick={() => set('accessControlIpv4', config.accessControlIpv4.filter((_, j) => j !== i))}
+                className="px-2 py-2 text-xs text-destructive hover:bg-destructive/10 rounded"><Trash2 size={12} /></button>
+            </div>
+          </div>
+        ))}
+        <button onClick={() => set('accessControlIpv4', [...config.accessControlIpv4, { network: '', action: 'allow', label: '' }])}
+          className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
+          <Plus size={12} /> Adicionar ACL IPv4
+        </button>
+      </div>
+
+      {config.enableIpv6 && (
+        <div className="space-y-3">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">ACLs IPv6</div>
+          {config.accessControlIpv6.map((acl, i) => (
+            <div key={i} className="grid grid-cols-3 md:grid-cols-4 gap-3 p-3 rounded bg-secondary border border-border">
+              <FieldGroup label="Rede"><Input value={acl.network} onChange={v => updateAcl('ipv6', i, 'network', v)} /></FieldGroup>
+              <FieldGroup label="Ação">
+                <Select value={acl.action} onChange={v => updateAcl('ipv6', i, 'action', v)} options={[
+                  { value: 'allow', label: 'allow' }, { value: 'refuse', label: 'refuse' }, { value: 'deny', label: 'deny' },
+                ]} />
+              </FieldGroup>
+              <FieldGroup label="Label"><Input value={acl.label} onChange={v => updateAcl('ipv6', i, 'label', v)} /></FieldGroup>
+              <div className="flex items-end">
+                <button onClick={() => set('accessControlIpv6', config.accessControlIpv6.filter((_, j) => j !== i))}
+                  className="px-2 py-2 text-xs text-destructive hover:bg-destructive/10 rounded"><Trash2 size={12} /></button>
+              </div>
+            </div>
+          ))}
+          <button onClick={() => set('accessControlIpv6', [...config.accessControlIpv6, { network: '', action: 'allow', label: '' }])}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
+            <Plus size={12} /> Adicionar ACL IPv6
+          </button>
+        </div>
+      )}
+
+      {config.accessControlIpv4.some(a => a.network === '0.0.0.0/0' && a.action === 'allow') && (
+        <div className="p-3 rounded bg-destructive/10 border border-destructive/30 space-y-2">
+          <div className="flex items-center gap-2 text-sm text-destructive font-medium"><AlertTriangle size={14} /> Open Resolver Detectado</div>
+          <p className="text-xs text-destructive/80">A ACL 0.0.0.0/0 allow configura um open resolver. Risco de amplificação DNS.</p>
+          <Toggle checked={config.openResolverConfirmed} onChange={v => set('openResolverConfirmed', v)} label="Confirmo que quero operar como open resolver" />
+        </div>
+      )}
+
+      <div className="border-t border-border pt-4 space-y-3">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Proteção</div>
+        <div className="flex gap-4 flex-wrap">
+          <Toggle checked={config.enableDnsProtection} onChange={v => set('enableDnsProtection', v)} label="Rate limiting via nftables" />
+          <Toggle checked={config.enableAntiAmplification} onChange={v => set('enableAntiAmplification', v)} label="Anti-amplificação DNS" />
+        </div>
+      </div>
+
+      <div className="border-t border-border pt-4 space-y-3">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Painel de Controle</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FieldGroup label="Usuário Admin *" error={fieldError('adminUser')}><Input value={config.adminUser} onChange={v => set('adminUser', v)} /></FieldGroup>
+          <FieldGroup label="Senha Inicial"><Input value={config.adminPassword} onChange={v => set('adminPassword', v)} type="password" placeholder="Definida no primeiro acesso" /></FieldGroup>
+          <FieldGroup label="Bind do Painel" error={fieldError('panelBind')}>
+            <Select value={config.panelBind} onChange={v => set('panelBind', v)} options={[
+              { value: '127.0.0.1', label: '127.0.0.1 (local only)' }, { value: '0.0.0.0', label: '0.0.0.0 (all interfaces)' },
+            ]} />
+          </FieldGroup>
+          <FieldGroup label="Porta *" error={fieldError('panelPort')}><Input type="number" value={config.panelPort} onChange={v => set('panelPort', parseInt(v) || 8443)} /></FieldGroup>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderObservability = () => (
+    <div className="space-y-4">
+      <InfoBox>Configure quais métricas e sinais operacionais o DNS Control deve coletar.</InfoBox>
+      <div className="space-y-3">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Métricas de Tráfego</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {isInterception && <Toggle checked={config.observability.metricsPerVip} onChange={v => updateObs('metricsPerVip', v)} label="Métricas por VIP de serviço" />}
+          <Toggle checked={config.observability.metricsPerInstance} onChange={v => updateObs('metricsPerInstance', v)} label="Métricas por instância resolver" />
+          {isInterception && <Toggle checked={config.observability.metricsPerEgress} onChange={v => updateObs('metricsPerEgress', v)} label="Métricas por IP de saída (egress)" />}
+          {isInterception && <Toggle checked={config.observability.nftablesCounters} onChange={v => updateObs('nftablesCounters', v)} label="Counters nftables" />}
+        </div>
+      </div>
+      <div className="space-y-3">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Saúde & Status</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <Toggle checked={config.observability.systemdStatus} onChange={v => updateObs('systemdStatus', v)} label="Status systemd por instância" />
+          <Toggle checked={config.observability.healthChecks} onChange={v => updateObs('healthChecks', v)} label="Health checks ativos" />
+        </div>
+      </div>
+      <div className="space-y-3">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Performance DNS</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <Toggle checked={config.observability.latencyTracking} onChange={v => updateObs('latencyTracking', v)} label="Latência média" />
+          <Toggle checked={config.observability.cacheHitTracking} onChange={v => updateObs('cacheHitTracking', v)} label="Cache hit ratio" />
+          <Toggle checked={config.observability.recursionTimeTracking} onChange={v => updateObs('recursionTimeTracking', v)} label="Recursion time" />
+        </div>
+      </div>
+      <Toggle checked={config.observability.operationalEvents} onChange={v => updateObs('operationalEvents', v)} label="Eventos operacionais" />
+    </div>
+  );
+
+  const renderReview = () => {
+    if (applyResult) {
+      const deployValidationErrors = applyResult.validationErrors ?? [];
+      const deployValidationResults = applyResult.validationResults;
+      const isSuccess = applyResult.success ?? (applyResult.status === 'success' || (applyResult.status === 'dry-run' && deployValidationErrors.length === 0));
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 mb-2">
+            {isSuccess ? <><Check size={20} className="text-success" /><span className="font-medium text-success">{applyResult.dryRun ? 'Dry-run concluído' : 'Deploy concluído com sucesso'}</span></>
+            : <><AlertCircle size={20} className="text-destructive" /><span className="font-medium text-destructive">Falha no deploy</span></>}
+            <span className="text-xs text-muted-foreground ml-auto font-mono">{applyResult.duration}ms · {applyResult.configVersion}</span>
+          </div>
+          <div className="noc-panel"><div className="noc-panel-header">Pipeline de Execução ({applyResult.steps.length} etapas)</div><ApplyStepsViewer steps={applyResult.steps} /></div>
+          {deployValidationResults && (
+            <div className="noc-panel"><div className="noc-panel-header">Resultado da Validação</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                {[['Unbound', deployValidationResults.unbound || []], ['nftables', deployValidationResults.nftables || []], ['network', deployValidationResults.network || []], ['IP collision', deployValidationResults.ipCollision || []]].map(([label, items]) => {
+                  const list = items as Array<{ status: string }>;
+                  return (<div key={label as string} className={`p-2 rounded border ${list.some(i => i.status === 'fail') ? 'border-destructive/30 bg-destructive/5' : 'border-border bg-secondary/30'}`}>
+                    <div className="font-medium">{label as string}</div><div className="text-muted-foreground font-mono">{list.filter(i => i.status === 'pass').length} ok · {list.filter(i => i.status === 'fail').length} falha</div>
+                  </div>);
+                })}
+              </div>
+            </div>
+          )}
+          {deployValidationErrors.length > 0 && (
+            <div className="noc-panel border-destructive/30"><div className="noc-panel-header text-destructive"><AlertCircle size={12} /> Erros ({deployValidationErrors.length})</div>
+              {deployValidationErrors.map((ve, i) => (
+                <div key={i} className="p-2 rounded bg-destructive/5 border border-destructive/10 text-xs"><pre className="font-mono text-destructive whitespace-pre-wrap">{ve.stderr}</pre></div>
+              ))}
+            </div>
+          )}
+          {applyResult.healthResult?.length > 0 && (
+            <div className="noc-panel"><div className="noc-panel-header"><Activity size={12} /> Verificação Pós-Deploy ({applyResult.healthResult.filter(h => h.status === 'pass').length}/{applyResult.healthResult.length})</div>
+              {applyResult.healthResult.map((check, i) => (
+                <div key={i} className={`flex items-center gap-3 p-2 rounded text-xs ${check.status === 'fail' ? 'bg-destructive/5' : ''}`}>
+                  {check.status === 'pass' ? <Check size={12} className="text-success" /> : check.status === 'fail' ? <X size={12} className="text-destructive" /> : <SkipForward size={12} className="text-muted-foreground" />}
+                  <span className="font-medium flex-1">{check.name}</span><span className="font-mono text-muted-foreground">{check.target}</span><span className="font-mono text-muted-foreground">{check.durationMs}ms</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {applyResult.rollbackAvailable && applyResult.backupId && (
+            <div className="noc-panel border-accent/20"><Shield size={12} className="text-accent" /><span className="text-accent font-medium text-xs">Rollback disponível: {applyResult.backupId}</span></div>
+          )}
+          <div className="flex gap-2 mt-4">
+            <button onClick={() => { setApplyResult(null); setStep(0); }} className="px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border">Novo Wizard</button>
+            <button onClick={() => navigate('/history')} className="px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border">Ver Histórico</button>
+            <button onClick={() => navigate('/')} className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded font-medium">Ir ao Dashboard</button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {validationErrors.length > 0 && (
+          <div className={`noc-panel ${validationSummary.totalErrors > 0 ? 'border-destructive/30' : 'border-warning/30'}`}>
+            <div className="noc-panel-header flex items-center gap-3">
+              {validationSummary.totalErrors > 0 ? <AlertCircle size={14} className="text-destructive" /> : <AlertTriangle size={14} className="text-warning" />}
+              Validação — {validationSummary.totalErrors} erro{validationSummary.totalErrors !== 1 ? 's' : ''}, {validationSummary.totalWarnings} aviso{validationSummary.totalWarnings !== 1 ? 's' : ''}
+            </div>
+            <div className="space-y-1 max-h-[200px] overflow-y-auto">
+              {validationErrors.map((e, i) => (
+                <div key={i} className={`flex items-center gap-2 text-xs py-1 ${e.severity === 'error' ? 'text-destructive' : 'text-warning'}`}>
+                  {e.severity === 'error' ? <AlertCircle size={10} /> : <AlertTriangle size={10} />}
+                  <span className="font-mono text-muted-foreground">[{STEPS[e.step]?.slice(0, 12)}]</span>
+                  <span className="flex-1">{e.message}</span>
+                  <button onClick={() => { setStep(e.step); setShowValidation(true); }} className="text-accent underline shrink-0">Ir</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="noc-panel">
+          <div className="noc-panel-header">
+            {isInterception ? 'Recursive DNS Node — Interceptação' : 'Recursive DNS Node — Simples'}
+          </div>
+          <div className="text-xs text-muted-foreground mb-3 font-mono space-y-1">
+            {isInterception
+              ? <div>Clients → Service VIPs → nftables PREROUTING (DNAT) → Unbound Resolvers → Public Egress → Global DNS</div>
+              : <div>Clients → Unbound Resolver → Global DNS</div>}
+            <div className="text-[10px] text-muted-foreground/60">
+              {config.instances.length} resolvers{isInterception ? ` · ${config.serviceVips.length} VIPs · ${config.distributionPolicy} · ${config.egressDeliveryMode} egress` : ''}
+            </div>
+          </div>
+          <TopologySummary config={config} />
+        </div>
+
+        <div className="noc-panel">
+          <div className="noc-panel-header">Backend Resolver Layer ({config.instances.length} instâncias)</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs font-mono">
+              <thead><tr className="text-muted-foreground border-b border-border">
+                <th className="text-left py-2 pr-4">Nome</th>
+                <th className="text-left py-2 pr-4">Listener Privado</th>
+                {isInterception && <th className="text-left py-2 pr-4">Egress</th>}
+                <th className="text-left py-2 pr-4">Control</th>
+              </tr></thead>
+              <tbody>
+                {config.instances.map((inst, i) => (
+                  <tr key={i} className="border-b border-border last:border-0">
+                    <td className="py-2 pr-4 text-primary">{inst.name}</td>
+                    <td className="py-2 pr-4">{inst.bindIp || '—'}</td>
+                    {isInterception && <td className="py-2 pr-4">
+                      {config.egressDeliveryMode === 'border-routed' ? <span className="text-muted-foreground/50 line-through">{inst.egressIpv4 || '—'}</span> : (inst.egressIpv4 || '—')}
+                    </td>}
+                    <td className="py-2 pr-4 text-muted-foreground">{inst.controlInterface}:{inst.controlPort}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="noc-panel">
+          <div className="noc-panel-header">Resumo do Deploy</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+            {[
+              ['Modo', isInterception ? 'Interceptação' : 'Simples'],
+              ['Hostname', config.hostname || '—'],
+              ['Interface', `${config.mainInterface} — ${config.ipv4Address}`],
+              ...(isInterception ? [
+                ['VIPs', `${config.serviceVips.length} serviço + ${config.interceptedVips.length} interceptados`],
+                ['Egress', config.egressDeliveryMode === 'border-routed' ? 'Border-Routed' : 'Host-Owned'],
+                ['Distribuição', config.distributionPolicy],
+              ] : []),
+              ['Instâncias', String(config.instances.length)],
+              ['IPv6', config.enableIpv6 ? 'Dual-stack' : 'IPv4 only'],
+              ['ACLs', `${config.accessControlIpv4.length} IPv4`],
+              ['Arquivos', `${generatedFiles.length}`],
+            ].map(([k, v]) => (
+              <div key={k} className="py-1"><div className="text-muted-foreground uppercase tracking-wider text-[10px]">{k}</div><div className="font-mono font-medium">{v}</div></div>
+            ))}
+          </div>
+        </div>
+
+        <div className="noc-panel">
+          <div className="noc-panel-header flex items-center justify-between">
+            <span>Artefatos ({generatedFiles.length} arquivos)</span>
+            <button onClick={() => setShowFiles(!showFiles)} className="text-[10px] text-accent hover:underline">{showFiles ? 'Ocultar' : 'Mostrar'}</button>
+          </div>
+          {showFiles ? <FilePreviewAccordion files={generatedFiles} /> : (
+            <div className="flex flex-wrap gap-1 max-h-[150px] overflow-y-auto">
+              {generatedFiles.map(f => <span key={f.path} className="text-xs font-mono px-2 py-0.5 bg-secondary text-secondary-foreground rounded border border-border">{f.path}</span>)}
+            </div>
+          )}
+        </div>
+
+        {(submitState !== 'idle' || submitError) && (
+          <div className={`noc-panel ${submitError ? 'border-destructive/30' : 'border-primary/30'}`}>
+            <div className="noc-panel-header"><Settings size={12} /> Estado</div>
+            <div className="space-y-2 text-xs">
+              {submitError && <div className="p-2 bg-destructive/10 border border-destructive/20 rounded text-destructive font-mono">{submitError}</div>}
+            </div>
+          </div>
+        )}
+
+        <div className="noc-panel border-border/50">
+          <div className="noc-panel-header text-muted-foreground"><Settings size={12} /> Diagnóstico</div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={handleCopyPayload} className="px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border">📋 Copiar Payload</button>
+            <button onClick={handleTestConnectivity} className="px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border">🔗 Testar API</button>
+            <button onClick={handleForceDryRun} className="px-3 py-1.5 text-xs bg-accent/20 text-accent rounded border border-accent/30">⚡ Dry-Run Direto</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ═══ Step router ═══
   const renderStep = () => {
-    switch (step) {
-      // ═══ STEP 1: Topologia do Host ═══
-      case 0:
-        return (
-          <div className="space-y-4">
-            <InfoBox>
-              Configure a topologia de rede do host. IP privado, gateway, interface física.
-              Se o host está atrás de firewall, os IPs públicos permanecem no equipamento de borda.
-            </InfoBox>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FieldGroup label="Hostname *" error={fieldError('hostname')} hint="FQDN do servidor">
-                <Input value={config.hostname} onChange={v => set('hostname', v)} placeholder="dns-rec-01.example.com" />
-              </FieldGroup>
-              <FieldGroup label="Organização *" error={fieldError('organization')}>
-                <Input value={config.organization} onChange={v => set('organization', v)} placeholder="MinhaOperadora" />
-              </FieldGroup>
-              <FieldGroup label="Interface principal *" error={fieldError('mainInterface')} hint="NIC primária do host">
-                <Input value={config.mainInterface} onChange={v => set('mainInterface', v)} placeholder="ens192" />
-              </FieldGroup>
-              <FieldGroup label="VLAN Tag" hint="Opcional — deixe vazio se não usar VLAN">
-                <Input value={config.vlanTag} onChange={v => set('vlanTag', v)} placeholder="100" />
-              </FieldGroup>
-              <FieldGroup label="Endereço IPv4 (CIDR) *" error={fieldError('ipv4Address')} hint="IP privado do host com máscara">
-                <Input value={config.ipv4Address} onChange={v => set('ipv4Address', v)} placeholder="172.29.22.6/30" />
-              </FieldGroup>
-              <FieldGroup label="Gateway IPv4 *" error={fieldError('ipv4Gateway')}>
-                <Input value={config.ipv4Gateway} onChange={v => set('ipv4Gateway', v)} placeholder="172.29.22.5" />
-              </FieldGroup>
-            </div>
-            <Toggle checked={config.enableIpv6} onChange={v => set('enableIpv6', v)} label="Habilitar dual-stack IPv6" />
-            {config.enableIpv6 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FieldGroup label="Endereço IPv6 (CIDR)" error={fieldError('ipv6Address')}>
-                  <Input value={config.ipv6Address} onChange={v => set('ipv6Address', v)} placeholder="2804:4AFC:8844::2/64" />
-                </FieldGroup>
-                <FieldGroup label="Gateway IPv6" error={fieldError('ipv6Gateway')}>
-                  <Input value={config.ipv6Gateway} onChange={v => set('ipv6Gateway', v)} placeholder="2804:4AFC:8844::1" />
-                </FieldGroup>
-              </div>
-            )}
-            <Toggle checked={config.behindFirewall} onChange={v => set('behindFirewall', v)} label="Host atrás de firewall / borda (IPs públicos ficam no equipamento de borda)" />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FieldGroup label="Projeto" hint="Nome do projeto de deploy">
-                <Input value={config.project} onChange={v => set('project', v)} placeholder="DNS Recursivo Produção" />
-              </FieldGroup>
-              <FieldGroup label="Timezone">
-                <Input value={config.timezone} onChange={v => set('timezone', v)} />
-              </FieldGroup>
-            </div>
-          </div>
-        );
-
-      // ═══ STEP 2: Modelo de Publicação DNS ═══
-      case 1:
-        return (
-          <div className="space-y-4">
-            <InfoBox>
-              Defina como o serviço DNS será publicado e alcançado pelos clientes.
-              Este modo determina a arquitetura de entrega do tráfego DNS.
-            </InfoBox>
-            <div className="grid grid-cols-1 gap-3">
-              {([
-                { value: 'internal-recursive', label: 'DNS Recursivo Interno', desc: 'Resolvers acessíveis apenas na rede interna. Sem VIP público.' },
-                { value: 'public-controlled', label: 'DNS Público Controlado', desc: 'Resolvers com IPs públicos atribuídos diretamente. Sem VIP ou NAT intermediário.' },
-                { value: 'pseudo-anycast-local', label: 'Pseudo-Anycast com VIP Local', desc: 'VIP na dummy interface do host. Tráfego entregue via nftables DNAT.' },
-                { value: 'vip-routed-border', label: 'VIP Roteado via Borda / Firewall', desc: 'VIPs no firewall/router. Tráfego entregue ao host via rota estática ou NAT. Recomendado para ISP.' },
-                { value: 'vip-local-dummy', label: 'VIP Local em Dummy Interface', desc: 'VIPs em dummy interface. Host responde diretamente.' },
-                { value: 'anycast-frr-ospf', label: 'Anycast com FRR / OSPF', desc: 'VIPs anunciados via OSPF usando FRR.' },
-                { value: 'anycast-frr-bgp', label: 'Anycast com FRR / BGP (futuro)', desc: 'VIPs anunciados via BGP usando FRR. Em desenvolvimento.' },
-              ] as { value: DeploymentMode; label: string; desc: string }[]).map(mode => (
-                <ModeCard key={mode.value}
-                  selected={config.deploymentMode === mode.value}
-                  onClick={() => mode.value !== 'anycast-frr-bgp' && set('deploymentMode', mode.value)}
-                  label={mode.label} desc={mode.desc}
-                  disabled={mode.value === 'anycast-frr-bgp'} />
-              ))}
-            </div>
-          </div>
-        );
-
-      // ═══ STEP 3: VIPs de Serviço ═══
-      case 2:
-        return (
-          <div className="space-y-4">
-            <InfoBox>
-              Configure os IPs Anycast que a sua rede <strong>anuncia/possui</strong> e que os clientes usarão como servidor DNS.
-              <strong>Não confunda com DNS públicos interceptados</strong> (Google 8.8.8.8, Level3 4.2.2.5) — esses vão na etapa "VIP Interception".
-              <br /><span className="text-accent/70 mt-1 block">→ Exemplo: se você possui o bloco 191.243.128.0/24, o VIP de serviço pode ser 191.243.128.1</span>
-            </InfoBox>
-            {config.serviceVips.some(v => v.ipv4 === config.bootstrapDns) && (
-              <div className="flex gap-2 p-3 rounded bg-destructive/10 border border-destructive/30 text-xs text-destructive">
-                <AlertCircle size={14} className="shrink-0 mt-0.5" />
-                <div>
-                  <strong>Atenção:</strong> O IP <code className="font-mono bg-destructive/20 px-1 rounded">{config.bootstrapDns}</code> está configurado como VIP de serviço 
-                  E como Bootstrap DNS do host. Isso pode causar loop de resolução — o host tentará resolver DNS via um IP que ele mesmo intercepta.
-                  <br />Considere mover este IP para a etapa <strong>"VIP Interception"</strong> ou alterar o Bootstrap DNS na etapa 1.
-                </div>
-              </div>
-            )}
-            <div className="space-y-3">
-              {config.serviceVips.map((vip, i) => (
-                <div key={i} className="p-4 rounded bg-secondary border border-border space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground uppercase">VIP {i + 1}</span>
-                    <button onClick={() => set('serviceVips', config.serviceVips.filter((_, j) => j !== i))}
-                      className="text-xs text-destructive hover:text-destructive/80 flex items-center gap-1">
-                      <Trash2 size={12} /> Remover
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                    <FieldGroup label="IPv4 *" error={fieldError(`serviceVips[${i}].ipv4`)}>
-                      <Input value={vip.ipv4} onChange={v => updateVip(i, 'ipv4', v)} placeholder="IP do serviço DNS" />
-                    </FieldGroup>
-                    {config.vipIpv6Enabled && (
-                      <FieldGroup label="IPv6">
-                        <Input value={vip.ipv6} onChange={v => updateVip(i, 'ipv6', v)} placeholder="IPv6 do serviço DNS" />
-                      </FieldGroup>
-                    )}
-                    <FieldGroup label="Porta" hint="Default: 53">
-                      <Input type="number" value={vip.port} onChange={v => updateVip(i, 'port', v)} placeholder="53" />
-                    </FieldGroup>
-                    <FieldGroup label="Protocolo">
-                      <Select value={vip.protocol} onChange={v => updateVip(i, 'protocol', v)}
-                        options={[
-                          { value: 'udp+tcp', label: 'UDP + TCP' },
-                          { value: 'udp', label: 'UDP only' },
-                          { value: 'tcp', label: 'TCP only' },
-                        ]} />
-                    </FieldGroup>
-                    <FieldGroup label="Descrição">
-                      <Input value={vip.description} onChange={v => updateVip(i, 'description', v)} placeholder="DNS Público" />
-                    </FieldGroup>
-                    <FieldGroup label="Modo de Entrega">
-                      <Select value={vip.deliveryMode} onChange={v => updateVip(i, 'deliveryMode', v)}
-                        options={[
-                          { value: 'local-vip', label: 'VIP Local (dummy)' },
-                          { value: 'routed-vip', label: 'VIP Roteado' },
-                          { value: 'firewall-delivered', label: 'Entregue via Firewall' },
-                        ]} />
-                    </FieldGroup>
-                  </div>
-                  {/* Health Check Config */}
-                  <div className="border-t border-border pt-3 mt-2">
-                    <Toggle checked={vip.healthCheckEnabled} onChange={v => {
-                      const vips = [...config.serviceVips];
-                      vips[i] = { ...vips[i], healthCheckEnabled: v };
-                      set('serviceVips', vips);
-                    }} label="Health check ativo para este VIP" />
-                    {vip.healthCheckEnabled && (
-                      <div className="grid grid-cols-2 gap-3 mt-2">
-                        <FieldGroup label="Domínio de probe" hint="dig @VIP <domínio>">
-                          <Input value={vip.healthCheckDomain} onChange={v => {
-                            const vips = [...config.serviceVips];
-                            vips[i] = { ...vips[i], healthCheckDomain: v };
-                            set('serviceVips', vips);
-                          }} placeholder="google.com" />
-                        </FieldGroup>
-                        <FieldGroup label="Intervalo (s)">
-                          <Input type="number" value={vip.healthCheckInterval} onChange={v => {
-                            const vips = [...config.serviceVips];
-                            vips[i] = { ...vips[i], healthCheckInterval: parseInt(v) || 30 };
-                            set('serviceVips', vips);
-                          }} placeholder="30" />
-                        </FieldGroup>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-3 flex-wrap">
-              <button onClick={() => set('serviceVips', [...config.serviceVips, { ipv4: '', ipv6: '', port: 53, protocol: 'udp+tcp' as const, description: '', label: '', vipType: 'owned' as const, deliveryMode: 'firewall-delivered' as const, healthCheckEnabled: true, healthCheckDomain: 'google.com', healthCheckInterval: 30 }])}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
-                <Plus size={12} /> Adicionar VIP
-              </button>
-              <Toggle checked={config.vipIpv6Enabled} onChange={v => set('vipIpv6Enabled', v)} label="VIPs IPv6" />
-            </div>
-          </div>
-        );
-
-      // ═══ STEP 4: Instâncias de Resolução ═══
-      case 3:
-        return (
-          <div className="space-y-4">
-            <InfoBox>
-              Cada instância é um processo Unbound independente com listener e interface de controle próprios.
-              <br /><span className="text-accent/70 mt-1 block">→ <strong>Listener Privado</strong>: IP interno (RFC 6598, ex: 100.127.255.101) onde o Unbound faz bind. Materializado em <code className="font-mono bg-accent/20 px-1 rounded">lo0</code> (dummy).</span>
-              <span className="text-accent/70 block">→ <strong>Listener Público</strong>: IP público da instância (opcional). Também em lo0. Usado se clientes se conectam diretamente.</span>
-              <span className="text-accent/70 block">→ Os IPs de <strong>egress</strong> (saída para recursão) são configurados na próxima etapa.</span>
-            </InfoBox>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <FieldGroup label="Threads por instância *" error={fieldError('threads')}>
-                <Input type="number" value={config.threads} onChange={v => set('threads', parseInt(v) || 1)} />
-              </FieldGroup>
-              <FieldGroup label="Msg Cache"><Input value={config.msgCacheSize} onChange={v => set('msgCacheSize', v)} /></FieldGroup>
-              <FieldGroup label="RRset Cache"><Input value={config.rrsetCacheSize} onChange={v => set('rrsetCacheSize', v)} /></FieldGroup>
-              <FieldGroup label="Max TTL"><Input type="number" value={config.maxTtl} onChange={v => set('maxTtl', parseInt(v) || 0)} /></FieldGroup>
-              <FieldGroup label="Root Hints"><Input value={config.rootHintsPath} onChange={v => set('rootHintsPath', v)} /></FieldGroup>
-              <FieldGroup label="DNS Identity" hint="Valor do campo identity">
-                <Input value={config.dnsIdentity} onChange={v => set('dnsIdentity', v)} placeholder="67-DNS" />
-              </FieldGroup>
-            </div>
-            <div className="flex gap-4 flex-wrap">
-              <Toggle checked={config.enableDetailedLogs} onChange={v => set('enableDetailedLogs', v)} label="Logs detalhados" />
-              <Toggle checked={config.enableBlocklist} onChange={v => set('enableBlocklist', v)} label="AnaBlock (Blocklist Judicial)" />
-            </div>
-
-            {config.enableBlocklist && (
-              <div className="p-4 rounded bg-secondary/50 border border-border space-y-4">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <Shield size={14} />
-                  Configuração AnaBlock — Blocklist Judicial
-                </div>
-                <InfoBox>
-                  O AnaBlock sincroniza automaticamente domínios bloqueados por ordem judicial (Anatel/Judiciário).
-                  Artefatos gerados: script de sync, service e timer systemd.
-                </InfoBox>
-
-                <FieldGroup label="Modo de bloqueio *">
-                  <Select value={config.blocklistMode} onChange={v => set('blocklistMode', v as 'always_nxdomain' | 'redirect_cname' | 'redirect_ip' | 'redirect_ip_dualstack')} options={[
-                    { value: 'always_nxdomain', label: 'always_nxdomain — domínio retorna NXDOMAIN' },
-                    { value: 'redirect_cname', label: 'redirect_cname — redireciona para FQDN (ex: anatel.gov.br)' },
-                    { value: 'redirect_ip', label: 'redirect_ip — redireciona para IPv4 específico' },
-                    { value: 'redirect_ip_dualstack', label: 'redirect_ip_dualstack — redireciona para IPv4 + IPv6' },
-                  ]} />
-                </FieldGroup>
-
-                {config.blocklistMode === 'redirect_cname' && (
-                  <FieldGroup label="CNAME de redirecionamento *" hint="FQDN válido — não aceita IP">
-                    <Input value={config.blocklistCnameTarget} onChange={v => set('blocklistCnameTarget', v)} placeholder="anatel.gov.br" />
-                  </FieldGroup>
-                )}
-
-                {(config.blocklistMode === 'redirect_ip' || config.blocklistMode === 'redirect_ip_dualstack') && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FieldGroup label="IPv4 de redirecionamento *" hint="Ex: 10.255.128.2">
-                      <Input value={config.blocklistRedirectIpv4} onChange={v => set('blocklistRedirectIpv4', v)} placeholder="10.255.128.2" />
-                    </FieldGroup>
-                    {config.blocklistMode === 'redirect_ip_dualstack' && (
-                      <FieldGroup label="IPv6 de redirecionamento *" hint="Ex: 2001:db8::1">
-                        <Input value={config.blocklistRedirectIpv6} onChange={v => set('blocklistRedirectIpv6', v)} placeholder="2001:db8::1" />
-                      </FieldGroup>
-                    )}
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FieldGroup label="URL base da API AnaBlock *" hint="HTTPS obrigatório">
-                    <Input value={config.blocklistApiUrl} onChange={v => set('blocklistApiUrl', v)} placeholder="https://api.anablock.net.br" />
-                  </FieldGroup>
-                  <FieldGroup label="Intervalo de sincronização (horas)">
-                    <Input type="number" value={config.blocklistSyncIntervalHours} onChange={v => set('blocklistSyncIntervalHours', parseInt(v) || 1)} />
-                  </FieldGroup>
-                </div>
-
-                <div className="flex gap-4 flex-wrap">
-                  <Toggle checked={config.blocklistAutoSync} onChange={v => set('blocklistAutoSync', v)} label="Sincronização automática (timer)" />
-                  <Toggle checked={config.blocklistValidateBeforeReload} onChange={v => set('blocklistValidateBeforeReload', v)} label="Validar config antes de reload" />
-                  <Toggle checked={config.blocklistAutoReload} onChange={v => set('blocklistAutoReload', v)} label="Reload automático do Unbound" />
-                </div>
-
-                <div className="p-3 rounded bg-muted/50 border border-border">
-                  <p className="text-xs text-muted-foreground font-mono">
-                    URL final: {(() => {
-                      const base = (config.blocklistApiUrl || 'https://api.anablock.net.br').replace(/\/$/, '');
-                      let url = `${base}/domains/all?output=unbound`;
-                      if (config.blocklistMode === 'redirect_cname' && config.blocklistCnameTarget) url += `&cname=${config.blocklistCnameTarget}`;
-                      else if (config.blocklistMode === 'redirect_ip' && config.blocklistRedirectIpv4) url += `&ipv4=${config.blocklistRedirectIpv4}`;
-                      else if (config.blocklistMode === 'redirect_ip_dualstack' && config.blocklistRedirectIpv4) {
-                        url += `&ipv4=${config.blocklistRedirectIpv4}`;
-                        if (config.blocklistRedirectIpv6) url += `&ipv6=${config.blocklistRedirectIpv6}`;
-                      }
-                      return url;
-                    })()}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* ═══ IP Blocking (blackhole routes) ═══ */}
-            <div className="flex gap-4 flex-wrap">
-              <Toggle checked={config.enableIpBlocking} onChange={v => set('enableIpBlocking', v)} label="AnaBlock IP Blocking (rotas blackhole)" />
-            </div>
-
-            {config.enableIpBlocking && (
-              <div className="p-4 rounded bg-secondary/50 border border-border space-y-4">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <Route size={14} />
-                  Bloqueio de IPs — Rotas Blackhole
-                </div>
-                <InfoBox>
-                  Sincroniza IPs bloqueados judicialmente via rotas blackhole (ip route add blackhole).
-                  NÃO usa nftables — nftables permanece exclusivo para DNAT/load balancing.
-                  Suporta IPv4{config.enableIpv6 ? ' e IPv6' : ''}, diff incremental e rollback automático.
-                </InfoBox>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FieldGroup label="URL base da API AnaBlock *" hint="HTTPS obrigatório">
-                    <Input value={config.ipBlockingApiUrl} onChange={v => set('ipBlockingApiUrl', v)} placeholder="https://api.anablock.net.br" />
-                  </FieldGroup>
-                  <FieldGroup label="Intervalo de sincronização (horas)">
-                    <Input type="number" value={config.ipBlockingSyncIntervalHours} onChange={v => set('ipBlockingSyncIntervalHours', parseInt(v) || 1)} />
-                  </FieldGroup>
-                </div>
-
-                <div className="flex gap-4 flex-wrap">
-                  <Toggle checked={config.ipBlockingAutoSync} onChange={v => set('ipBlockingAutoSync', v)} label="Sincronização automática (timer)" />
-                </div>
-
-                <div className="p-3 rounded bg-muted/50 border border-border space-y-1">
-                  <p className="text-xs text-muted-foreground font-mono">
-                    Endpoint IPv4: {(config.ipBlockingApiUrl || 'https://api.anablock.net.br').replace(/\/$/, '')}/ipv4/block
-                  </p>
-                  {config.enableIpv6 && (
-                    <p className="text-xs text-muted-foreground font-mono">
-                      Endpoint IPv6: {(config.ipBlockingApiUrl || 'https://api.anablock.net.br').replace(/\/$/, '')}/ipv6/block
-                    </p>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    Script: /usr/local/bin/anablock-ip-sync.sh · Método: ip -batch (blackhole)
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="border-t border-border pt-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-medium">Instâncias ({config.instances.length})</span>
-                <button onClick={addInstance}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
-                  <Plus size={12} /> Adicionar instância
-                </button>
-              </div>
-              <div className="space-y-3">
-                {config.instances.map((inst, i) => (
-                  <div key={i} className="p-4 rounded bg-secondary border border-border space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-primary uppercase">Instância {i + 1}</span>
-                      {config.instances.length > 1 && (
-                        <button onClick={() => set('instances', config.instances.filter((_, j) => j !== i))}
-                          className="text-xs text-destructive hover:text-destructive/80 flex items-center gap-1">
-                          <Trash2 size={12} /> Remover
-                        </button>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <FieldGroup label="Nome *" error={fieldError(`instances[${i}].name`)}>
-                        <Input value={inst.name} onChange={v => updateInstance(i, 'name', v)} />
-                      </FieldGroup>
-                      <FieldGroup label="Listener Privado *" error={fieldError(`instances[${i}].bindIp`)} hint="IP interno (loopback)">
-                        <Input value={inst.bindIp} onChange={v => updateInstance(i, 'bindIp', v)} placeholder="100.127.255.101" />
-                      </FieldGroup>
-                      <FieldGroup label="Listener Público" hint="IP público da instância (identidade)">
-                        <Input value={inst.publicListenerIp} onChange={v => updateInstance(i, 'publicListenerIp', v)} placeholder="191.243.128.205" />
-                      </FieldGroup>
-                      {config.enableIpv6 && (
-                        <FieldGroup label="Listener IPv6">
-                          <Input value={inst.bindIpv6} onChange={v => updateInstance(i, 'bindIpv6', v)} />
-                        </FieldGroup>
-                      )}
-                      <FieldGroup label="Control Interface" error={fieldError(`instances[${i}].controlInterface`)} hint="IP do remote-control">
-                        <Input value={inst.controlInterface} onChange={v => updateInstance(i, 'controlInterface', v)} placeholder="127.0.0.11" />
-                      </FieldGroup>
-                      <FieldGroup label="Control Port">
-                        <Input type="number" value={inst.controlPort} onChange={v => updateInstance(i, 'controlPort', parseInt(v) || 8953)} />
-                      </FieldGroup>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        );
-
-      // ═══ STEP 5: VIP Interception / DNS Seizure ═══
-      case 4:
-        return (
-          <div className="space-y-4">
-            <InfoBox>
-              Configure quais IPs DNS públicos conhecidos serão "sequestrados" dentro da rede.
-              Clientes acreditam estar usando o DNS público, mas a resolução é local.
-              <strong> Esta é a feature principal do DNS Control.</strong>
-              <br /><span className="text-accent/70 mt-1 block">→ Exemplo: interceptar 4.2.2.5 (Level3) e 8.8.8.8 (Google) para que clientes internos usem seu resolver local.</span>
-            </InfoBox>
-
-            {config.interceptedVips.some(v => v.vipIp === config.bootstrapDns) && (
-              <div className="flex gap-2 p-3 rounded bg-destructive/10 border border-destructive/30 text-xs text-destructive">
-                <AlertCircle size={14} className="shrink-0 mt-0.5" />
-                <div>
-                  <strong>Atenção:</strong> O IP <code className="font-mono bg-destructive/20 px-1 rounded">{config.bootstrapDns}</code> está sendo interceptado 
-                  E é o Bootstrap DNS do host (etapa 1). Durante o boot, antes do Unbound iniciar, o host não conseguirá resolver DNS.
-                  <br />Considere usar um Bootstrap DNS diferente (ex: IP de outro resolver na rede ou 1.1.1.1).
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-3">
-              {config.interceptedVips.map((vip, i) => (
-                <div key={i} className="p-4 rounded bg-secondary border border-border space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-accent uppercase flex items-center gap-1.5">
-                      <Crosshair size={12} /> Intercepted VIP {i + 1}
-                    </span>
-                    <button onClick={() => set('interceptedVips', config.interceptedVips.filter((_, j) => j !== i))}
-                      className="text-xs text-destructive hover:text-destructive/80 flex items-center gap-1">
-                      <Trash2 size={12} /> Remover
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    <FieldGroup label="VIP IP *" hint="DNS público a ser sequestrado">
-                      <Input value={vip.vipIp} onChange={v => {
-                        const vips = [...config.interceptedVips];
-                        vips[i] = { ...vips[i], vipIp: v };
-                        set('interceptedVips', vips);
-                      }} placeholder="4.2.2.5" />
-                    </FieldGroup>
-                    <FieldGroup label="Tipo">
-                      <Select value={vip.vipType} onChange={v => {
-                        const vips = [...config.interceptedVips];
-                        vips[i] = { ...vips[i], vipType: v as 'owned' | 'intercepted' };
-                        set('interceptedVips', vips);
-                      }} options={[
-                        { value: 'intercepted', label: 'Intercepted (sequestrado)' },
-                        { value: 'owned', label: 'Owned (próprio)' },
-                      ]} />
-                    </FieldGroup>
-                    <FieldGroup label="Modo de Captura">
-                      <Select value={vip.captureMode} onChange={v => {
-                        const vips = [...config.interceptedVips];
-                        vips[i] = { ...vips[i], captureMode: v as 'dnat' | 'route' | 'bind' };
-                        set('interceptedVips', vips);
-                      }} options={[
-                        { value: 'dnat', label: 'DNAT (nftables)' },
-                        { value: 'route', label: 'Route (rota local)' },
-                        { value: 'bind', label: 'Bind (listener direto)' },
-                      ]} />
-                    </FieldGroup>
-                    <FieldGroup label="Backend Instance *" hint="Instância que atende este VIP">
-                      <Select value={vip.backendInstance} onChange={v => {
-                        const vips = [...config.interceptedVips];
-                        const inst = config.instances.find(inst => inst.name === v);
-                        vips[i] = { ...vips[i], backendInstance: v, backendTargetIp: inst?.bindIp || vip.backendTargetIp };
-                        set('interceptedVips', vips);
-                      }} options={[
-                        { value: '', label: '— Selecionar —' },
-                        ...config.instances.map(inst => ({
-                          value: inst.name,
-                          label: `${inst.name} (${inst.bindIp || '?'})`,
-                        })),
-                      ]} />
-                    </FieldGroup>
-                    <FieldGroup label="Backend Target IP" hint="IP de destino do DNAT">
-                      <Input value={vip.backendTargetIp} onChange={v => {
-                        const vips = [...config.interceptedVips];
-                        vips[i] = { ...vips[i], backendTargetIp: v };
-                        set('interceptedVips', vips);
-                      }} placeholder="100.127.255.101" />
-                    </FieldGroup>
-                    <FieldGroup label="Protocolo">
-                      <Select value={vip.protocol} onChange={v => {
-                        const vips = [...config.interceptedVips];
-                        vips[i] = { ...vips[i], protocol: v as 'udp+tcp' | 'udp' | 'tcp' };
-                        set('interceptedVips', vips);
-                      }} options={[
-                        { value: 'udp+tcp', label: 'UDP + TCP' },
-                        { value: 'udp', label: 'UDP only' },
-                        { value: 'tcp', label: 'TCP only' },
-                      ]} />
-                    </FieldGroup>
-                    <FieldGroup label="Latência esperada (ms)" hint="< 1ms = local">
-                      <Input type="number" value={vip.expectedLocalLatencyMs} onChange={v => {
-                        const vips = [...config.interceptedVips];
-                        vips[i] = { ...vips[i], expectedLocalLatencyMs: parseFloat(v) || 1 };
-                        set('interceptedVips', vips);
-                      }} placeholder="1" />
-                    </FieldGroup>
-                    <FieldGroup label="Validação">
-                      <Select value={vip.validationMode} onChange={v => {
-                        const vips = [...config.interceptedVips];
-                        vips[i] = { ...vips[i], validationMode: v as 'strict' | 'relaxed' };
-                        set('interceptedVips', vips);
-                      }} options={[
-                        { value: 'strict', label: 'Strict (todas as camadas)' },
-                        { value: 'relaxed', label: 'Relaxed (DNS probe only)' },
-                      ]} />
-                    </FieldGroup>
-                  </div>
-                  <FieldGroup label="Descrição">
-                    <Input value={vip.description} onChange={v => {
-                      const vips = [...config.interceptedVips];
-                      vips[i] = { ...vips[i], description: v };
-                      set('interceptedVips', vips);
-                    }} placeholder="DNS público Level3 sequestrado para resolver local" />
-                  </FieldGroup>
-                </div>
-              ))}
-            </div>
-
-            <button onClick={() => set('interceptedVips', [...config.interceptedVips, {
-              vipIp: '', vipIpv6: '', vipType: 'intercepted', captureMode: 'dnat',
-              backendInstance: config.instances[0]?.name || '', backendTargetIp: config.instances[0]?.bindIp || '',
-              description: '', expectedLocalLatencyMs: 1, validationMode: 'strict',
-              protocol: 'udp+tcp', port: 53,
-            } as InterceptedVip])}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-accent/20 text-accent rounded border border-accent/30 hover:bg-accent/30">
-              <Plus size={12} /> Adicionar VIP Interceptado
-            </button>
-
-            {config.interceptedVips.length > 0 && (
-              <div className="p-3 rounded bg-accent/5 border border-accent/15 text-xs space-y-1">
-                <div className="font-bold text-accent flex items-center gap-1.5">
-                  <Crosshair size={12} /> Resumo de Interception
-                </div>
-                {config.interceptedVips.map((v, i) => (
-                  <div key={i} className="font-mono text-muted-foreground">
-                    VIP <span className="text-accent font-bold">{v.vipIp || '?'}</span>
-                    {' → '}<span className="text-primary">{v.backendInstance || '?'}</span>
-                    {' ('}{v.backendTargetIp || '?'}{') '}
-                    <span className="text-muted-foreground/50">[{v.captureMode}] [{v.vipType}]</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-
-      // ═══ STEP 6: Egress Público ═══
-      case 5:
-        return (
-          <div className="space-y-4">
-            <InfoBox>
-              Configure o IP público de saída (<code className="font-mono bg-accent/20 px-1 rounded">outgoing-interface</code>) de cada instância.
-              Este é o IP que os servidores autoritativos verão ao receber queries recursivas.
-              <br /><span className="text-accent/70 mt-1 block">→ No modelo de referência, cada instância tem um IP público exclusivo (ex: 45.232.215.20 para unbound01, 45.232.215.21 para unbound02).</span>
-              <span className="text-accent/70 block">→ Esses IPs são materializados na interface <code className="font-mono bg-accent/20 px-1 rounded">lo</code> (loopback real) do host.</span>
-            </InfoBox>
-
-            {/* Egress Delivery Mode */}
-            <div className="space-y-3">
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Modo de Entrega do Egress</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <ModeCard selected={config.egressDeliveryMode === 'host-owned'}
-                  onClick={() => set('egressDeliveryMode', 'host-owned')}
-                  label="⭐ Host-Owned (Recomendado)" desc="O IP público de egress é configurado na loopback (lo) do host. O Unbound usa outgoing-interface para selecionar a identidade de saída. Padrão para a maioria dos ISPs." />
-                <ModeCard selected={config.egressDeliveryMode === 'border-routed'}
-                  onClick={() => set('egressDeliveryMode', 'border-routed')}
-                  label="Border-Routed (Avançado)" desc="O IP de egress NÃO é configurado no host. A identidade de saída é imposta pelo dispositivo de borda (SNAT). Apenas para arquiteturas com NAT centralizado no gateway." />
-              </div>
-              {config.egressDeliveryMode === 'host-owned' && (
-                <div className="flex gap-2 p-3 rounded bg-primary/10 border border-primary/20 text-xs text-primary">
-                  <Info size={14} className="shrink-0 mt-0.5" />
-                  <div>
-                    <strong>Host-Owned:</strong> Os IPs de egress serão adicionados à interface <code className="font-mono bg-primary/20 px-1 rounded">lo</code> via <code className="font-mono bg-primary/20 px-1 rounded">ip addr add</code> no post-up.
-                    <br />
-                    <span className="text-primary/70 mt-1 block">→ O Unbound emitirá <code className="font-mono bg-primary/20 px-1 rounded">outgoing-interface: &lt;IP&gt;</code> para cada instância.</span>
-                    <span className="text-primary/70 block">→ Os IPs devem pertencer a um bloco roteado para este host (ex: /29 ou /30 público).</span>
-                  </div>
-                </div>
-              )}
-              {config.egressDeliveryMode === 'border-routed' && (
-                <div className="flex gap-2 p-3 rounded bg-accent/10 border border-accent/20 text-xs text-accent">
-                  <Info size={14} className="shrink-0 mt-0.5" />
-                  <div>
-                    <strong>Border-Routed:</strong> O IP público de egress <strong>não é configurado localmente</strong> no host
-                    e <strong>não será emitido</strong> como <code className="font-mono bg-accent/20 px-1 rounded">outgoing-interface</code> no Unbound.
-                    <br />
-                    <span className="text-accent/70 mt-1 block">→ O Unbound usará o IP padrão do host para queries recursivas.</span>
-                    <span className="text-accent/70 block">→ A identidade pública é imposta pelo dispositivo de borda (SNAT/policy routing/rota estática de retorno).</span>
-                    <span className="text-accent/70 block">→ Os IPs de egress preenchidos abaixo servirão apenas como referência documental — não serão materializados.</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Egress Mode Selection */}
-            <div className="space-y-3">
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Modo de Alocação</div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <ModeCard selected={config.egressMode === 'fixed-per-instance'}
-                  onClick={() => set('egressMode', 'fixed-per-instance')}
-                  label="Fixo por Instância" desc="Cada instância usa 1 IP público fixo de saída. Recomendado para rastreabilidade." />
-                <ModeCard selected={config.egressMode === 'shared-pool'}
-                  onClick={() => set('egressMode', 'shared-pool')}
-                  label="Pool Compartilhado" desc="Todas as instâncias compartilham um pool de IPs de saída." />
-                <ModeCard selected={config.egressMode === 'randomized'}
-                  onClick={() => set('egressMode', 'randomized')}
-                  label="Randomizado" desc="IP de saída selecionado aleatoriamente do pool a cada query." />
-              </div>
-            </div>
-
-            {config.egressMode === 'fixed-per-instance' && (
-              <div className="space-y-3">
-                {config.instances.map((inst, i) => (
-                  <div key={i} className="p-4 rounded bg-secondary border border-border">
-                    <div className="flex items-center gap-3 mb-3">
-                      <span className="text-xs font-medium text-primary uppercase">{inst.name}</span>
-                      <span className="text-xs text-muted-foreground font-mono">listener: {inst.bindIp || '(não definido)'}</span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <FieldGroup label="Egress IPv4 *" error={fieldError(`instances[${i}].egressIpv4`)} hint="IP público de saída para recursão">
-                        <Input value={inst.egressIpv4} onChange={v => updateInstance(i, 'egressIpv4', v)} placeholder="IP público do bloco /29" />
-                      </FieldGroup>
-                      {config.enableIpv6 && (
-                        <FieldGroup label="Egress IPv6">
-                          <Input value={inst.egressIpv6} onChange={v => updateInstance(i, 'egressIpv6', v)} placeholder="IPv6 de saída" />
-                        </FieldGroup>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {(config.egressMode === 'shared-pool' || config.egressMode === 'randomized') && (
-              <div className="space-y-3">
-                <FieldGroup label="Pool de IPs Públicos de Saída" hint="Adicione os IPs do bloco que serão compartilhados entre instâncias">
-                  <ListInput items={config.egressSharedPool} onChange={v => set('egressSharedPool', v)} placeholder="45.160.X.X" />
-                </FieldGroup>
-                <InfoBox>
-                  {config.egressMode === 'shared-pool'
-                    ? 'Todas as instâncias farão round-robin entre os IPs do pool via outgoing-interface.'
-                    : 'Cada query sairá por um IP aleatório do pool. Útil para distribuir carga em blocos grandes.'}
-                </InfoBox>
-              </div>
-            )}
-          </div>
-        );
-
-      // ═══ STEP 7: Mapeamento VIP → Instância ═══
-      case 6:
-        return (
-          <div className="space-y-4">
-            <InfoBox>
-              Define como o tráfego dos VIPs de serviço é distribuído entre as instâncias resolver.
-            </InfoBox>
-            <div className="grid grid-cols-1 gap-3">
-              {([
-                { value: 'fixed-mapping', label: 'Mapeamento Fixo', desc: 'Cada VIP associado a uma instância específica.' },
-                { value: 'round-robin', label: 'Round Robin (numgen)', desc: 'Distribuição sequencial entre todas as instâncias.' },
-                { value: 'sticky-source', label: 'Sticky por Origem (Recomendado)', desc: 'Memoriza o resolver por IP de origem via nftables sets. Fallback nth balancing.' },
-                { value: 'nth-balancing', label: 'Nth Balancing', desc: 'Balanceamento nth com numgen e decrementação progressiva.' },
-                { value: 'active-passive', label: 'Ativo / Passivo', desc: 'Uma instância primária, demais em standby.' },
-              ] as { value: VipDistributionPolicy; label: string; desc: string }[]).map(policy => (
-                <ModeCard key={policy.value}
-                  selected={config.distributionPolicy === policy.value}
-                  onClick={() => set('distributionPolicy', policy.value)}
-                  label={policy.label} desc={policy.desc} />
-              ))}
-            </div>
-            {config.distributionPolicy === 'sticky-source' && (
-              <FieldGroup label="Sticky Timeout (minutos)">
-                <Input type="number" value={Math.floor(config.stickyTimeout / 60)} onChange={v => set('stickyTimeout', (parseInt(v) || 20) * 60)} />
-              </FieldGroup>
-            )}
-          </div>
-        );
-
-      // ═══ STEP 8: Roteamento ═══
-      case 7:
-        return (
-          <div className="space-y-4">
-            <InfoBox>Define como os VIPs serão alcançáveis na rede.</InfoBox>
-            <div className="grid grid-cols-1 gap-3">
-              {([
-                { value: 'static', label: 'Sem Roteamento Dinâmico', desc: 'VIPs alcançáveis via rotas estáticas.' },
-                { value: 'frr-ospf', label: 'FRR / OSPF', desc: 'VIPs anunciados via OSPF com redistribute connected.' },
-                { value: 'frr-bgp', label: 'FRR / BGP (futuro)', desc: 'Em desenvolvimento.' },
-              ] as { value: RoutingMode; label: string; desc: string }[]).map(mode => (
-                <ModeCard key={mode.value}
-                  selected={config.routingMode === mode.value}
-                  onClick={() => mode.value !== 'frr-bgp' && set('routingMode', mode.value)}
-                  label={mode.label} desc={mode.desc}
-                  disabled={mode.value === 'frr-bgp'} />
-              ))}
-            </div>
-            {config.routingMode === 'frr-ospf' && (
-              <div className="space-y-4 border-t border-border pt-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FieldGroup label="Router ID *" error={fieldError('routerId')}>
-                    <Input value={config.routerId} onChange={v => set('routerId', v)} placeholder="IP do router-id" />
-                  </FieldGroup>
-                  <FieldGroup label="Área OSPF *" error={fieldError('ospfArea')}>
-                    <Input value={config.ospfArea} onChange={v => set('ospfArea', v)} placeholder="0.0.0.0" />
-                  </FieldGroup>
-                  <FieldGroup label="Custo OSPF" error={fieldError('ospfCost')}>
-                    <Input type="number" value={config.ospfCost} onChange={v => set('ospfCost', parseInt(v) || 1)} />
-                  </FieldGroup>
-                  <FieldGroup label="Network Type">
-                    <Select value={config.networkType} onChange={v => set('networkType', v as 'point-to-point' | 'broadcast')}
-                      options={[{ value: 'point-to-point', label: 'Point-to-Point' }, { value: 'broadcast', label: 'Broadcast' }]} />
-                  </FieldGroup>
-                </div>
-                <Toggle checked={config.redistributeConnected} onChange={v => set('redistributeConnected', v)} label="Redistribuir connected" />
-                <FieldGroup label="Interfaces OSPF *" error={fieldError('ospfInterfaces')}>
-                  <ListInput items={config.ospfInterfaces} onChange={v => set('ospfInterfaces', v)} placeholder="lo" />
-                </FieldGroup>
-              </div>
-            )}
-          </div>
-        );
-
-      // ═══ STEP 9: Segurança ═══
-      case 8:
-        return (
-          <div className="space-y-4">
-            <InfoBox>
-              Configure controle de acesso, proteção contra amplificação e autenticação do painel.
-            </InfoBox>
-            <div className="space-y-3">
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">ACLs IPv4 (access-control do Unbound)</div>
-              {config.accessControlIpv4.map((acl, i) => (
-                <div key={i} className="grid grid-cols-3 md:grid-cols-4 gap-3 p-3 rounded bg-secondary border border-border">
-                  <FieldGroup label="Rede" error={fieldError(`accessControlIpv4[${i}].network`)}>
-                    <Input value={acl.network} onChange={v => updateAcl('ipv4', i, 'network', v)} placeholder="172.16.0.0/12" />
-                  </FieldGroup>
-                  <FieldGroup label="Ação">
-                    <Select value={acl.action} onChange={v => updateAcl('ipv4', i, 'action', v)}
-                      options={[
-                        { value: 'allow', label: 'allow' },
-                        { value: 'refuse', label: 'refuse' },
-                        { value: 'deny', label: 'deny' },
-                        { value: 'allow_snoop', label: 'allow_snoop' },
-                      ]} />
-                  </FieldGroup>
-                  <FieldGroup label="Label">
-                    <Input value={acl.label} onChange={v => updateAcl('ipv4', i, 'label', v)} placeholder="Rede interna" />
-                  </FieldGroup>
-                  <div className="flex items-end">
-                    <button onClick={() => set('accessControlIpv4', config.accessControlIpv4.filter((_, j) => j !== i))}
-                      className="px-2 py-2 text-xs text-destructive hover:bg-destructive/10 rounded"><Trash2 size={12} /></button>
-                  </div>
-                </div>
-              ))}
-              <button onClick={() => set('accessControlIpv4', [...config.accessControlIpv4, { network: '', action: 'allow', label: '' }])}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
-                <Plus size={12} /> Adicionar ACL IPv4
-              </button>
-            </div>
-
-            {config.enableIpv6 && (
-              <div className="space-y-3">
-                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">ACLs IPv6</div>
-                {config.accessControlIpv6.map((acl, i) => (
-                  <div key={i} className="grid grid-cols-3 md:grid-cols-4 gap-3 p-3 rounded bg-secondary border border-border">
-                    <FieldGroup label="Rede"><Input value={acl.network} onChange={v => updateAcl('ipv6', i, 'network', v)} placeholder="::/0" /></FieldGroup>
-                    <FieldGroup label="Ação">
-                      <Select value={acl.action} onChange={v => updateAcl('ipv6', i, 'action', v)}
-                        options={[{ value: 'allow', label: 'allow' }, { value: 'refuse', label: 'refuse' }, { value: 'deny', label: 'deny' }]} />
-                    </FieldGroup>
-                    <FieldGroup label="Label"><Input value={acl.label} onChange={v => updateAcl('ipv6', i, 'label', v)} /></FieldGroup>
-                    <div className="flex items-end">
-                      <button onClick={() => set('accessControlIpv6', config.accessControlIpv6.filter((_, j) => j !== i))}
-                        className="px-2 py-2 text-xs text-destructive hover:bg-destructive/10 rounded"><Trash2 size={12} /></button>
-                    </div>
-                  </div>
-                ))}
-                <button onClick={() => set('accessControlIpv6', [...config.accessControlIpv6, { network: '', action: 'allow', label: '' }])}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
-                  <Plus size={12} /> Adicionar ACL IPv6
-                </button>
-              </div>
-            )}
-
-            {config.accessControlIpv4.some(a => a.network === '0.0.0.0/0' && a.action === 'allow') && (
-              <div className="p-3 rounded bg-destructive/10 border border-destructive/30 space-y-2">
-                <div className="flex items-center gap-2 text-sm text-destructive font-medium">
-                  <AlertTriangle size={14} /> Open Resolver Detectado
-                </div>
-                <p className="text-xs text-destructive/80">
-                  A ACL 0.0.0.0/0 allow configura um open resolver. Risco de amplificação DNS.
-                </p>
-                <Toggle checked={config.openResolverConfirmed} onChange={v => set('openResolverConfirmed', v)}
-                  label="Confirmo que quero operar como open resolver" />
-              </div>
-            )}
-
-            <div className="border-t border-border pt-4 space-y-3">
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Proteção</div>
-              <div className="flex gap-4 flex-wrap">
-                <Toggle checked={config.enableDnsProtection} onChange={v => set('enableDnsProtection', v)} label="Rate limiting via nftables" />
-                <Toggle checked={config.enableAntiAmplification} onChange={v => set('enableAntiAmplification', v)} label="Anti-amplificação DNS" />
-                <Toggle checked={config.recursionAllowed} onChange={v => set('recursionAllowed', v)} label="Recursão permitida" />
-              </div>
-            </div>
-
-            <div className="border-t border-border pt-4 space-y-3">
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Painel de Controle</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FieldGroup label="Usuário Admin *" error={fieldError('adminUser')}>
-                  <Input value={config.adminUser} onChange={v => set('adminUser', v)} />
-                </FieldGroup>
-                <FieldGroup label="Senha Inicial">
-                  <Input value={config.adminPassword} onChange={v => set('adminPassword', v)} type="password" placeholder="Definida no primeiro acesso" />
-                </FieldGroup>
-                <FieldGroup label="Bind do Painel" error={fieldError('panelBind')}>
-                  <Select value={config.panelBind} onChange={v => set('panelBind', v)}
-                    options={[
-                      { value: '127.0.0.1', label: '127.0.0.1 (local only)' },
-                      { value: '0.0.0.0', label: '0.0.0.0 (all interfaces)' },
-                    ]} />
-                </FieldGroup>
-                <FieldGroup label="Porta *" error={fieldError('panelPort')}>
-                  <Input type="number" value={config.panelPort} onChange={v => set('panelPort', parseInt(v) || 8443)} />
-                </FieldGroup>
-              </div>
-            </div>
-          </div>
-        );
-
-      // ═══ STEP 10: Observabilidade ═══
-      case 9:
-        return (
-          <div className="space-y-4">
-            <InfoBox>
-              Configure quais métricas e sinais operacionais o DNS Control deve coletar.
-            </InfoBox>
-            <div className="space-y-3">
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Métricas de Tráfego</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <Toggle checked={config.observability.metricsPerVip} onChange={v => updateObs('metricsPerVip', v)} label="Métricas por VIP de serviço" />
-                <Toggle checked={config.observability.metricsPerInstance} onChange={v => updateObs('metricsPerInstance', v)} label="Métricas por instância resolver" />
-                <Toggle checked={config.observability.metricsPerEgress} onChange={v => updateObs('metricsPerEgress', v)} label="Métricas por IP de saída (egress)" />
-                <Toggle checked={config.observability.nftablesCounters} onChange={v => updateObs('nftablesCounters', v)} label="Counters nftables (pacotes/bytes por VIP)" />
-              </div>
-            </div>
-            <div className="space-y-3">
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Saúde & Status</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <Toggle checked={config.observability.systemdStatus} onChange={v => updateObs('systemdStatus', v)} label="Status systemd por instância" />
-                <Toggle checked={config.observability.healthChecks} onChange={v => updateObs('healthChecks', v)} label="Health checks ativos (DNS probe)" />
-              </div>
-            </div>
-            <div className="space-y-3">
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Performance DNS</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <Toggle checked={config.observability.latencyTracking} onChange={v => updateObs('latencyTracking', v)} label="Latência média de resolução" />
-                <Toggle checked={config.observability.cacheHitTracking} onChange={v => updateObs('cacheHitTracking', v)} label="Cache hit ratio" />
-                <Toggle checked={config.observability.recursionTimeTracking} onChange={v => updateObs('recursionTimeTracking', v)} label="Recursion time (avg/median)" />
-              </div>
-            </div>
-            <div className="space-y-3">
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Eventos</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <Toggle checked={config.observability.operationalEvents} onChange={v => updateObs('operationalEvents', v)} label="Eventos operacionais" />
-              </div>
-            </div>
-          </div>
-        );
-
-      // ═══ STEP 11: Revisão & Deploy ═══
-      case 10:
-        if (applyResult) {
-          const deployValidationErrors = applyResult.validationErrors ?? [];
-          const deployValidationResults = applyResult.validationResults;
-          const isSuccess = applyResult.success ?? (
-            applyResult.status === 'success' ||
-            (applyResult.status === 'dry-run' && deployValidationErrors.length === 0)
-          );
-          return (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-2">
-                {isSuccess ? (
-                  <><Check size={20} className="text-success" /><span className="font-medium text-success">{applyResult.dryRun ? 'Dry-run concluído' : 'Deploy concluído com sucesso'}</span></>
-                ) : (
-                  <><AlertCircle size={20} className="text-destructive" /><span className="font-medium text-destructive">Falha no deploy</span></>
-                )}
-                <span className="text-xs text-muted-foreground ml-auto font-mono">{applyResult.duration}ms · {applyResult.configVersion}</span>
-              </div>
-
-              {/* Step-by-step execution */}
-              <div className="noc-panel">
-                <div className="noc-panel-header">Pipeline de Execução ({applyResult.steps.length} etapas)</div>
-                <ApplyStepsViewer steps={applyResult.steps} />
-              </div>
-
-              {/* Validation result section by category */}
-              {deployValidationResults && (
-                <div className="noc-panel">
-                  <div className="noc-panel-header">Resultado da Validação de Deploy</div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                    {[
-                      ['Unbound validation', deployValidationResults.unbound || []],
-                      ['nftables validation', deployValidationResults.nftables || []],
-                      ['network file validation', deployValidationResults.network || []],
-                      ['IP collision validation', deployValidationResults.ipCollision || []],
-                    ].map(([label, items]) => {
-                      const list = items as Array<{ status: string }>;
-                      const failed = list.filter(i => i.status === 'fail').length;
-                      const passed = list.filter(i => i.status === 'pass').length;
-                      return (
-                        <div key={label as string} className={`p-2 rounded border ${failed > 0 ? 'border-destructive/30 bg-destructive/5' : 'border-border bg-secondary/30'}`}>
-                          <div className="font-medium">{label as string}</div>
-                          <div className="text-muted-foreground font-mono">{passed} ok · {failed} falha</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Structured validation errors from staging */}
-              {deployValidationErrors.length > 0 && (
-                <div className="noc-panel border-destructive/30">
-                  <div className="noc-panel-header flex items-center gap-2 text-destructive">
-                    <AlertCircle size={12} />
-                    Erros de Validação em Staging ({deployValidationErrors.length})
-                  </div>
-                  <div className="space-y-2">
-                    {deployValidationErrors.map((ve, i) => (
-                      <div key={i} className="p-2 rounded bg-destructive/5 border border-destructive/10 text-xs space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="px-1.5 py-0.5 rounded bg-destructive/15 text-destructive font-medium uppercase text-[10px]">
-                            {ve.category || 'validation'}
-                          </span>
-                          {ve.file && <span className="font-mono text-muted-foreground">{ve.file}</span>}
-                        </div>
-                        {ve.command && <code className="block font-mono text-muted-foreground opacity-70">$ {ve.command}</code>}
-                        <pre className="font-mono text-destructive whitespace-pre-wrap break-all">{ve.stderr}</pre>
-                        {ve.remediation && <p className="text-muted-foreground italic">💡 {ve.remediation}</p>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Post-deploy health checks */}
-              {applyResult.healthResult && applyResult.healthResult.length > 0 && (
-                <div className="noc-panel">
-                  <div className="noc-panel-header flex items-center gap-2">
-                    <Activity size={12} />
-                    Verificação Pós-Deploy ({applyResult.healthResult.filter(h => h.status === 'pass').length}/{applyResult.healthResult.length})
-                  </div>
-                  <div className="space-y-1">
-                    {applyResult.healthResult.map((check, i) => (
-                      <div key={i} className={`flex items-center gap-3 p-2 rounded text-xs ${
-                        check.status === 'fail' ? 'bg-destructive/5' : check.status === 'skip' ? 'bg-secondary/50' : ''
-                      }`}>
-                        {check.status === 'pass' ? <Check size={12} className="text-success" /> :
-                         check.status === 'fail' ? <X size={12} className="text-destructive" /> :
-                         <SkipForward size={12} className="text-muted-foreground" />}
-                        <span className="font-medium flex-1">{check.name}</span>
-                        <span className="font-mono text-muted-foreground">{check.target}</span>
-                        <span className="font-mono text-muted-foreground">{check.durationMs}ms</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Rollback info */}
-              {applyResult.rollbackAvailable && applyResult.backupId && (
-                <div className="noc-panel border-accent/20">
-                  <div className="flex items-center gap-2 text-xs">
-                    <Shield size={12} className="text-accent" />
-                    <span className="text-accent font-medium">Rollback disponível</span>
-                    <span className="text-muted-foreground font-mono ml-auto">{applyResult.backupId}</span>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-2 mt-4">
-                <button onClick={() => { setApplyResult(null); setStep(0); }}
-                  className="px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">Novo Wizard</button>
-                <button onClick={() => navigate('/history')}
-                  className="px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">Ver Histórico</button>
-                <button onClick={() => navigate('/')}
-                  className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded font-medium hover:bg-primary/90">Ir ao Dashboard</button>
-              </div>
-            </div>
-          );
-        }
-        return (
-          <div className="space-y-4">
-            {/* Validation Summary */}
-            {validationErrors.length > 0 && (
-              <div className={`noc-panel ${validationSummary.totalErrors > 0 ? 'border-destructive/30' : 'border-warning/30'}`}>
-                <div className="noc-panel-header flex items-center gap-3">
-                  {validationSummary.totalErrors > 0 ? <AlertCircle size={14} className="text-destructive" /> : <AlertTriangle size={14} className="text-warning" />}
-                  Validação — {validationSummary.totalErrors} erro{validationSummary.totalErrors !== 1 ? 's' : ''}, {validationSummary.totalWarnings} aviso{validationSummary.totalWarnings !== 1 ? 's' : ''}
-                </div>
-                <div className="space-y-1 max-h-[200px] overflow-y-auto">
-                  {validationErrors.map((e, i) => (
-                    <div key={i} className={`flex items-center gap-2 text-xs py-1 ${e.severity === 'error' ? 'text-destructive' : 'text-warning'}`}>
-                      {e.severity === 'error' ? <AlertCircle size={10} /> : <AlertTriangle size={10} />}
-                      <span className="font-mono text-muted-foreground">[{STEPS[e.step]?.slice(0, 12)}]</span>
-                      <span className="flex-1">{e.message}</span>
-                      <button onClick={() => { setStep(e.step); setShowValidation(true); }}
-                        className="text-accent underline shrink-0">Ir</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Architecture Blueprint */}
-            <div className="noc-panel">
-              <div className="noc-panel-header">Recursive DNS Node — Architecture Blueprint</div>
-              <div className="text-xs text-muted-foreground mb-3 font-mono space-y-1">
-                <div>Clients → Service VIPs → nftables PREROUTING (DNAT) → Unbound Resolvers → Public Egress → Global DNS</div>
-                <div className="text-[10px] text-muted-foreground/60">
-                  {config.instances.length} resolvers · {config.serviceVips.length} VIPs · {config.distributionPolicy} · {config.egressDeliveryMode} egress · {config.routingMode} routing
-                </div>
-              </div>
-              <TopologySummary config={config} />
-            </div>
-
-            {/* Instance Table */}
-            <div className="noc-panel">
-              <div className="noc-panel-header">Backend Resolver Layer ({config.instances.length} instâncias)</div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs font-mono">
-                  <thead>
-                    <tr className="text-muted-foreground border-b border-border">
-                      <th className="text-left py-2 pr-4">Nome</th>
-                      <th className="text-left py-2 pr-4">Listener (interface:)</th>
-                      <th className="text-left py-2 pr-4">Egress (outgoing-interface:)</th>
-                      <th className="text-left py-2 pr-4">Control</th>
-                      <th className="text-left py-2 pr-4">Config Path</th>
-                      {config.enableIpv6 && <th className="text-left py-2 pr-4">Listener v6</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {config.instances.map((inst, i) => (
-                      <tr key={i} className="border-b border-border last:border-0">
-                        <td className="py-2 pr-4 text-primary">{inst.name}</td>
-                        <td className="py-2 pr-4">
-                          {inst.bindIp || '—'}
-                          {config.egressDeliveryMode === 'host-owned' && inst.egressIpv4 && inst.egressIpv4 !== inst.bindIp && (
-                            <span className="text-accent/70 ml-1">+ {inst.egressIpv4}</span>
-                          )}
-                        </td>
-                        <td className="py-2 pr-4">
-                          {config.egressDeliveryMode === 'border-routed' 
-                            ? <span className="text-muted-foreground/50 line-through">{inst.egressIpv4 || '—'}</span>
-                            : (inst.egressIpv4 || '—')}
-                        </td>
-                        <td className="py-2 pr-4 text-muted-foreground">{inst.controlInterface}:{inst.controlPort}</td>
-                        <td className="py-2 pr-4 text-muted-foreground/70">/etc/unbound/{inst.name}.conf</td>
-                        {config.enableIpv6 && <td className="py-2 pr-4">{inst.bindIpv6 || '—'}</td>}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Compatibility Matrix (border-routed) */}
-            {/* Compatibility Matrix — always shown, adapts to mode */}
-            <div className="noc-panel border-accent/20">
-              <div className="noc-panel-header flex items-center gap-2 text-accent">
-                <Info size={12} /> Matriz de Compatibilidade — {config.egressDeliveryMode === 'border-routed' ? 'Border-Routed' : 'Host-Owned'}
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-                {[
-                  ['Entrega VIP', 'nftables DNAT (prerouting)'],
-                  ['Listener Bind', 'Host-local loopback/dummy'],
-                  ['Listener local no host', '✅ Obrigatório'],
-                  ['outgoing-interface emitido', config.egressDeliveryMode === 'border-routed' ? '❌ Suprimido' : '✅ Emitido no Unbound'],
-                  ['IP Egress local obrigatório', config.egressDeliveryMode === 'border-routed' ? '❌ Não (lógico)' : '✅ Sim (deve existir no host)'],
-                  ['Caminho de Retorno', config.egressDeliveryMode === 'border-routed' ? 'Rota estática na borda' : 'Masquerade/SNAT local'],
-                  ['IP Público local no host', config.egressDeliveryMode === 'border-routed' ? '❌ Não configurado' : '✅ Configurado em loopback'],
-                  ['Masquerade/SNAT', config.egressDeliveryMode === 'border-routed' ? '❌ Não gerado' : '✅ Gerado em postrouting'],
-                  ['NAT de borda obrigatório', config.egressDeliveryMode === 'border-routed' ? '✅ Sim (SNAT/policy)' : '❌ Não necessário'],
-                  ['Post-up listener IPs', '✅ ip addr add no loopback'],
-                  ['Post-up egress IPs', config.egressDeliveryMode === 'border-routed' ? '❌ Comentado (lógico)' : '✅ ip addr add no loopback'],
-                  ['Deploy check egress', config.egressDeliveryMode === 'border-routed' ? 'IP não presente (esperado)' : 'IP presente no host'],
-                  ['Deploy check listener', 'dig @listenerIP deve responder'],
-                ].map(([k, v]) => (
-                  <div key={k} className="py-1">
-                    <div className="text-muted-foreground uppercase tracking-wider text-[10px]">{k}</div>
-                    <div className="font-mono font-medium">{v}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Deployment Summary */}
-            <div className="noc-panel">
-              <div className="noc-panel-header">Resumo do Deploy</div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-                {[
-                  ['Hostname', config.hostname || '—'],
-                  ['Interface', `${config.mainInterface} — ${config.ipv4Address}`],
-                  ['Modo', config.deploymentMode],
-                  ['Egress', config.egressDeliveryMode === 'border-routed' ? 'Border-Routed (lógico)' : 'Host-Owned (local)'],
-                  ['Roteamento', config.routingMode],
-                  ['VIPs', `${config.serviceVips.length} IPv4${config.vipIpv6Enabled ? ' + IPv6' : ''}`],
-                  ['Instâncias', String(config.instances.length)],
-                  ['Distribuição', config.distributionPolicy],
-                  ['Firewall', config.behindFirewall ? 'Sim' : 'Não'],
-                  ['Rate Limit', config.enableDnsProtection ? 'Ativo' : 'Inativo'],
-                  ['IPv6', config.enableIpv6 ? 'Dual-stack' : 'IPv4 only'],
-                  ['ACLs', `${config.accessControlIpv4.length} IPv4`],
-                  ['Arquivos', `${generatedFiles.length}`],
-                ].map(([k, v]) => (
-                  <div key={k} className="py-1">
-                    <div className="text-muted-foreground uppercase tracking-wider text-[10px]">{k}</div>
-                    <div className="font-mono font-medium">{v}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Generated Files Preview — Grouped */}
-            <div className="noc-panel">
-              <div className="noc-panel-header flex items-center justify-between">
-                <span>Artefatos de Deploy ({generatedFiles.length} arquivos)</span>
-                <button onClick={() => setShowFiles(!showFiles)}
-                  className="text-[10px] text-accent hover:underline">{showFiles ? 'Ocultar conteúdo' : 'Mostrar conteúdo'}</button>
-              </div>
-              {/* Category summary */}
-              {(() => {
-                const cats = new Map<string, number>();
-                generatedFiles.forEach(f => {
-                  let cat = 'Config';
-                  if (f.path.includes('/unbound/')) cat = 'Unbound configs';
-                  else if (f.path.includes('/nftables')) cat = 'NFTables rules';
-                  else if (f.path.includes('/sysctl')) cat = 'Sysctl tuning';
-                  else if (f.path.includes('/network/') || f.path.includes('interfaces')) cat = 'Network';
-                  else if (f.path.includes('/frr/')) cat = 'FRR routing';
-                  else if (f.path.includes('systemd') || f.path.endsWith('.service')) cat = 'Systemd units';
-                  else if (f.path.endsWith('.sh') || f.path.endsWith('.txt')) cat = 'Scripts / Manifests';
-                  cats.set(cat, (cats.get(cat) || 0) + 1);
-                });
-                return (
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {[...cats.entries()].map(([cat, count]) => (
-                      <span key={cat} className="text-xs px-2 py-1 bg-secondary border border-border rounded font-mono">
-                        {cat} ({count})
-                      </span>
-                    ))}
-                  </div>
-                );
-              })()}
-              {showFiles ? (
-                <FilePreviewAccordion files={generatedFiles} />
-              ) : (
-                <div className="flex flex-wrap gap-1 max-h-[150px] overflow-y-auto">
-                  {generatedFiles.map(f => (
-                    <span key={f.path} className="text-xs font-mono px-2 py-0.5 bg-secondary text-secondary-foreground rounded border border-border">{f.path}</span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Risk Warnings */}
-            <div className="noc-panel border-warning/20">
-              <div className="noc-panel-header flex items-center gap-2 text-warning">
-                <AlertTriangle size={12} /> Ações Privilegiadas
-              </div>
-              <div className="space-y-1 text-xs">
-                <div className="flex items-center gap-2">
-                  <Lock size={10} className="text-muted-foreground" />
-                  <span>systemctl daemon-reload</span>
-                </div>
-                {config.instances.map(inst => (
-                  <div key={inst.name} className="flex items-center gap-2">
-                    <Lock size={10} className="text-muted-foreground" />
-                    <span>systemctl restart {inst.name}</span>
-                  </div>
-                ))}
-                <div className="flex items-center gap-2">
-                  <Lock size={10} className="text-muted-foreground" />
-                  <span>nft -f /etc/nftables.conf</span>
-                </div>
-                {config.routingMode === 'frr-ospf' && (
-                  <div className="flex items-center gap-2">
-                    <Lock size={10} className="text-muted-foreground" />
-                    <span>systemctl restart frr</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Submit State & Error Panel */}
-            {(submitState !== 'idle' || submitError) && (
-              <div className={`noc-panel ${submitError ? 'border-destructive/30' : 'border-primary/30'}`}>
-                <div className="noc-panel-header flex items-center gap-2">
-                  {submitError ? <AlertCircle size={12} className="text-destructive" /> : <Activity size={12} className="text-primary" />}
-                  Estado da Submissão
-                </div>
-                <div className="space-y-2 text-xs">
-                  <div className="flex items-center gap-3">
-                    {['validating', 'dispatching', 'polling', 'done'].map(phase => (
-                      <span key={phase} className={`px-2 py-0.5 rounded font-mono ${
-                        submitState === phase ? 'bg-primary text-primary-foreground' :
-                        submitState === 'error' ? 'bg-destructive/10 text-destructive' :
-                        'bg-secondary text-muted-foreground'
-                      }`}>{phase}</span>
-                    ))}
-                  </div>
-                  {submitError && (
-                    <div className="p-2 bg-destructive/10 border border-destructive/20 rounded text-destructive font-mono text-xs">
-                      {submitError}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Debug Actions */}
-            <div className="noc-panel border-border/50">
-              <div className="noc-panel-header flex items-center gap-2 text-muted-foreground">
-                <Settings size={12} /> Diagnóstico de Deploy
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button onClick={handleCopyPayload}
-                  className="px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
-                  📋 Copiar Payload JSON
-                </button>
-                <button onClick={handleTestConnectivity}
-                  className="px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
-                  🔗 Testar Conectividade API
-                </button>
-                <button onClick={handleForceDryRun}
-                  className="px-3 py-1.5 text-xs bg-accent/20 text-accent rounded border border-accent/30 hover:bg-accent/30">
-                  ⚡ Enviar Dry-Run Direto
-                </button>
-              </div>
-              <div className="mt-2 text-[10px] text-muted-foreground/60 font-mono">
-                Validação: {isConfigValid(validationErrors) ? '✅ OK' : `❌ ${validationErrors.filter(e => e.severity === 'error').length} erro(s)`}
-                {' · '}Arquivos: {generatedFiles.length}
-                {' · '}Mutation pending: {applyMutation.isPending ? 'sim' : 'não'}
-                {' · '}Submit state: {submitState}
-              </div>
-            </div>
-          </div>
-        );
+    if (isInterception) {
+      switch (step) {
+        case 0: return renderHostTopology();
+        case 1: return renderOperationMode();
+        case 2: return renderInstances();
+        case 3: return renderServiceVips();
+        case 4: return renderInterception();
+        case 5: return renderEgress();
+        case 6: return renderMapping();
+        case 7: return renderSecurity();
+        case 8: return renderObservability();
+        case 9: return renderReview();
+      }
+    } else {
+      switch (step) {
+        case 0: return renderHostTopology();
+        case 1: return renderOperationMode();
+        case 2: return renderInstances();
+        case 3: return renderSecurity();
+        case 4: return renderObservability();
+        case 5: return renderReview();
+      }
     }
   };
 
@@ -1592,7 +1098,6 @@ export default function Wizard() {
       const r = await api.importHostState();
       if (r.success && r.data) {
         const imported = r.data as any;
-        // Map imported state to WizardConfig
         const newConfig: Partial<WizardConfig> = {};
         if (imported.hostname) newConfig.hostname = imported.hostname;
         if (imported.instances?.length > 0) {
@@ -1600,7 +1105,7 @@ export default function Wizard() {
             name: inst.name || `unbound${String(i + 1).padStart(2, '0')}`,
             bindIp: inst.bind_ip || inst.bindIp || '',
             bindIpv6: inst.bind_ipv6 || '',
-            publicListenerIp: inst.public_listener_ip || inst.publicListenerIp || '',
+            publicListenerIp: '',
             controlInterface: inst.control_interface || inst.controlInterface || `127.0.0.${11 + i}`,
             controlPort: inst.control_port || inst.controlPort || 8953,
             egressIpv4: inst.egress_ipv4 || inst.egressIpv4 || '',
@@ -1609,32 +1114,23 @@ export default function Wizard() {
           newConfig.instanceCount = newConfig.instances!.length;
         }
         if (imported.egress_delivery_mode) newConfig.egressDeliveryMode = imported.egress_delivery_mode;
-        if (imported.service_vips?.length > 0) {
-          newConfig.serviceVips = imported.service_vips.map((v: any) => ({
-            ipv4: v.ipv4 || '', ipv6: v.ipv6 || '', port: v.port || 53,
-            protocol: 'udp+tcp' as const, description: v.description || '',
-            label: '', deliveryMode: 'firewall-delivered' as const,
-            healthCheckEnabled: true, healthCheckDomain: 'google.com', healthCheckInterval: 30,
-          }));
-        }
         setConfig(prev => ({ ...prev, ...newConfig }));
-        alert(`✅ Estado importado: ${newConfig.instances?.length || 0} instâncias, ${newConfig.serviceVips?.length || 0} VIPs`);
-      } else {
-        alert(`❌ Falha ao importar: ${r.error || 'Erro desconhecido'}`);
-      }
-    } catch (err: any) {
-      alert(`❌ Exceção: ${err.message}`);
-    } finally {
-      setImportLoading(false);
-    }
+        alert(`✅ Estado importado: ${newConfig.instances?.length || 0} instâncias`);
+      } else { alert(`❌ Falha: ${r.error}`); }
+    } catch (err: any) { alert(`❌ Exceção: ${err.message}`); }
+    finally { setImportLoading(false); }
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Recursive DNS Node — Architecture Blueprint</h1>
-          <p className="text-sm text-muted-foreground">Nó recursivo multi-instância · VIP → nftables DNAT → Unbound resolvers → Egress</p>
+          <h1 className="text-xl font-semibold">
+            {isInterception ? 'DNS Recursivo — Interceptação' : 'DNS Recursivo — Simples'}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {isInterception ? 'Multi-instância · VIP → nftables DNAT → Unbound → Egress' : 'Unbound standalone · resolução direta'}
+          </p>
         </div>
         <div className="flex gap-2">
           <button onClick={handleImportHost} disabled={importLoading}
@@ -1677,59 +1173,44 @@ export default function Wizard() {
         {renderStep()}
       </div>
 
-      {/* Deploy Progress Bar */}
+      {/* Deploy Progress */}
       {deployProgress && submitState === 'dispatching' && (
         <div className="noc-panel border-primary/30">
           <div className="flex items-center gap-3 mb-2">
             <Loader2 size={14} className="animate-spin text-primary" />
-            <span className="text-xs font-medium uppercase tracking-wider">
-              {deployProgress.phase === 'dry_run_validating' ? 'Dry-Run em andamento' : 'Deploy em andamento'}
-            </span>
-            <span className="text-xs text-muted-foreground ml-auto font-mono">
-              {deployProgress.completedSteps}/{deployProgress.totalSteps || '?'} etapas
-            </span>
+            <span className="text-xs font-medium uppercase tracking-wider">{deployProgress.phase === 'dry_run_validating' ? 'Dry-Run' : 'Deploy'} em andamento</span>
+            <span className="text-xs text-muted-foreground ml-auto font-mono">{deployProgress.completedSteps}/{deployProgress.totalSteps || '?'}</span>
           </div>
           <div className="w-full h-2 bg-secondary rounded-full overflow-hidden mb-2">
-            <div
-              className="h-full bg-primary rounded-full transition-all duration-500"
-              style={{ width: deployProgress.totalSteps > 0 ? `${(deployProgress.completedSteps / deployProgress.totalSteps) * 100}%` : '10%' }}
-            />
+            <div className="h-full bg-primary rounded-full transition-all duration-500"
+              style={{ width: deployProgress.totalSteps > 0 ? `${(deployProgress.completedSteps / deployProgress.totalSteps) * 100}%` : '10%' }} />
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
-            <Activity size={10} className="text-primary" />
-            <span>{deployProgress.currentStep || 'Aguardando...'}</span>
-          </div>
-          {deployProgress.lastMessage && (
-            <div className="text-[10px] text-muted-foreground/60 mt-1 font-mono">{deployProgress.lastMessage}</div>
-          )}
+          <div className="text-xs text-muted-foreground font-mono"><Activity size={10} className="text-primary inline mr-1" />{deployProgress.currentStep || 'Aguardando...'}</div>
         </div>
       )}
 
-      {/* Navigation Buttons */}
+      {/* Navigation */}
       <div className="flex items-center justify-between">
-        <button onClick={() => { setStep(Math.max(0, step - 1)); setShowValidation(false); }}
-          disabled={step === 0}
+        <button onClick={() => { setStep(Math.max(0, step - 1)); setShowValidation(false); }} disabled={step === 0}
           className="flex items-center gap-1 px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80 disabled:opacity-40">
           <ChevronLeft size={16} /> Anterior
         </button>
-
         <div className="flex gap-2">
           {step === LAST_STEP && !applyResult && (
             <>
               <button onClick={() => handleApply(true)} disabled={submitState === 'dispatching'}
-                className="flex items-center gap-1 px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80 disabled:opacity-60">
+                className="flex items-center gap-1 px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded border border-border disabled:opacity-60">
                 <Eye size={16} /> Dry Run
               </button>
               <button onClick={() => handleApply(false)} disabled={submitState === 'dispatching' || !isConfigValid(validationErrors)}
-                className="flex items-center gap-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded font-medium hover:bg-primary/90 disabled:opacity-60">
+                className="flex items-center gap-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded font-medium disabled:opacity-60">
                 {submitState === 'dispatching' ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
                 {submitState === 'dispatching' ? 'Aplicando...' : 'Aplicar Deploy'}
               </button>
             </>
           )}
           {step < LAST_STEP && (
-            <button onClick={handleNext}
-              className="flex items-center gap-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded font-medium hover:bg-primary/90">
+            <button onClick={handleNext} className="flex items-center gap-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded font-medium hover:bg-primary/90">
               Próximo <ChevronRight size={16} />
             </button>
           )}
