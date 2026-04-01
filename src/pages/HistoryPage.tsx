@@ -162,6 +162,7 @@ export default function HistoryPage() {
                           <div key={i} className="flex items-center gap-3 p-1.5 text-xs">
                             {check.status === 'pass' ? <Check size={10} className="text-success" /> :
                              check.status === 'fail' ? <X size={10} className="text-destructive" /> :
+                             check.status === 'warn' ? <Info size={10} className="text-accent" /> :
                              <SkipForward size={10} className="text-muted-foreground" />}
                             <span className="flex-1">{check.name}</span>
                             <span className="font-mono text-muted-foreground">{check.target}</span>
