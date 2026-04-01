@@ -335,11 +335,12 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60) -> dict:
     log_source = "none"
     diag_info = {}
 
-    # Attempt 1: sudo + --since
+    # Attempt 1: sudo + --since (--no-pager MUST be first arg for sudoers match)
     code, raw_out, stderr = run_cmd([
-        "sudo", "journalctl", *unit_args,
+        "sudo", "journalctl", "--no-pager",
+        *unit_args,
         "--since", f"{since_seconds} seconds ago",
-        "--no-pager", "-o", "short-iso",
+        "-o", "short-iso",
         "-n", "5000",
     ], timeout=15)
 
@@ -352,8 +353,9 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60) -> dict:
     if not stdout.strip():
         # Attempt 2: sudo + last N lines (no --since)
         code2, raw_out2, stderr2 = run_cmd([
-            "sudo", "journalctl", *unit_args,
-            "--no-pager", "-o", "short-iso",
+            "sudo", "journalctl", "--no-pager",
+            *unit_args,
+            "-o", "short-iso",
             "-n", "2000",
         ], timeout=15)
         diag_info["attempt2"] = {"code": code2, "lines": len(raw_out2.strip().split("\n")) if raw_out2.strip() else 0, "stderr": stderr2[:200]}
@@ -362,10 +364,11 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60) -> dict:
             log_source = "journalctl"
 
     if not stdout.strip():
-        # Attempt 3: without sudo (fallback for systems where user has journal access)
+        # Attempt 3: without sudo (fallback)
         code3, raw_out3, stderr3 = run_cmd([
-            "journalctl", *unit_args,
-            "--no-pager", "-o", "short-iso",
+            "journalctl", "--no-pager",
+            *unit_args,
+            "-o", "short-iso",
             "-n", "2000",
         ], timeout=15)
         diag_info["attempt3"] = {"code": code3, "lines": len(raw_out3.strip().split("\n")) if raw_out3.strip() else 0, "stderr": stderr3[:200]}
@@ -374,16 +377,15 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60) -> dict:
             log_source = "journalctl"
 
     if not stdout.strip():
-        # Attempt 4: without unit filter (get ALL journal, filter in Python)
+        # Attempt 4: ALL journal units, filter in Python
         code4, raw_out4, stderr4 = run_cmd([
-            "sudo", "journalctl",
+            "sudo", "journalctl", "--no-pager",
             "--since", f"{since_seconds * 2} seconds ago",
-            "--no-pager", "-o", "short-iso",
+            "-o", "short-iso",
             "-n", "5000",
         ], timeout=15)
         diag_info["attempt4_all_units"] = {"code": code4, "lines": len(raw_out4.strip().split("\n")) if raw_out4.strip() else 0}
         if code4 == 0 and raw_out4.strip():
-            # Filter only unbound lines
             unbound_lines = [l for l in raw_out4.split("\n") if "unbound" in l.lower()]
             if unbound_lines:
                 stdout = "\n".join(unbound_lines)
