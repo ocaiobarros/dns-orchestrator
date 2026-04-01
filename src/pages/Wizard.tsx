@@ -1062,7 +1062,10 @@ export default function Wizard() {
                 ['VIPs', `${config.interceptedVips.length} interceptados${hasOwnVip ? ` + ${config.serviceVips.length} próprios` : ''}`],
                 ['Egress', config.egressDeliveryMode === 'border-routed' ? 'Border-Routed' : 'Host-Owned'],
                 ['Distribuição', config.distributionPolicy],
-              ] : []),
+              ] : [
+                ['Frontend DNS', config.frontendDnsIp || '—'],
+                ['Balanceamento', 'Local (round-robin)'],
+              ]),
               ['Instâncias', String(config.instances.length)],
               ['IPv6', config.enableIpv6 ? 'Dual-stack' : 'IPv4 only'],
               ['ACLs', `${config.accessControlIpv4.length} IPv4`],
