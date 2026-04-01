@@ -79,6 +79,8 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     # Throttle repeated successful login log entries
     if _should_log_login(user.username):
         log_auth_event(db, f"Login bem-sucedido: '{user.username}'", user.username, client_ip, True)
+        db.add(OperationalEvent(event_type="login_success", severity="info", instance_id=None, message=f"User '{user.username}' logged in from {client_ip}"))
+        db.commit()
 
     return LoginResponse(
         token=token,
