@@ -976,7 +976,7 @@ def _execute_deploy_locked(
             pass
 
     # Save deploy state + version manifest
-    _save_deploy_state(deploy_id, operator, all_ok, backup_id)
+    _save_deploy_state(deploy_id, operator, all_ok, backup_id, payload=payload)
     if all_ok:
         try:
             write_version_manifest(deploy_id, operator, files)
