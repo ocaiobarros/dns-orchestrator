@@ -31,13 +31,12 @@ const STEPS_INTERCEPTION = [
   'Topologia do Host',        // 0
   'Modo de Operação DNS',     // 1
   'Instâncias Resolver',      // 2
-  'VIPs de Serviço',          // 3
-  'VIP Interception',         // 4
-  'Egress Público',           // 5
-  'Mapeamento VIP→Instância', // 6
-  'Segurança',                // 7
-  'Observabilidade',          // 8
-  'Revisão & Deploy',         // 9
+  'VIP Interception',         // 3
+  'Egress Público',           // 4
+  'Mapeamento VIP→Instância', // 5
+  'Segurança',                // 6
+  'Observabilidade',          // 7
+  'Revisão & Deploy',         // 8
 ];
 
 const STEPS_SIMPLE = [
@@ -49,7 +48,7 @@ const STEPS_SIMPLE = [
   'Revisão & Deploy',         // 5
 ];
 
-const ICONS_INTERCEPTION = [Server, Network, Layers, Globe, Crosshair, ExternalLink, Route, Shield, BarChart3, FileText];
+const ICONS_INTERCEPTION = [Server, Network, Layers, Crosshair, ExternalLink, Route, Shield, BarChart3, FileText];
 const ICONS_SIMPLE = [Server, Network, Layers, Shield, BarChart3, FileText];
 
 // ---- Reusable form components ----
