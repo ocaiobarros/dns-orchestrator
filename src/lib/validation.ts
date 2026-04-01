@@ -132,109 +132,77 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
 
   // ═══ Interception-only steps ═══
   if (isInterception) {
-    // ═══ Step 3 — VIPs de Serviço ═══
-    if (config.serviceVips.length === 0) e('serviceVips', 3, 'Pelo menos um VIP de serviço é necessário');
-    
-    const vipIpv4s = config.serviceVips.map(v => v.ipv4).filter(Boolean);
-    const dupVips = findDuplicates(vipIpv4s);
-    if (dupVips.length > 0) e('serviceVips', 3, `VIPs IPv4 duplicados: ${dupVips.join(', ')}`);
-
-    config.serviceVips.forEach((vip, i) => {
-      if (!vip.ipv4.trim()) e(`serviceVips[${i}].ipv4`, 3, `IPv4 do VIP ${i + 1} é obrigatório`);
-      else if (!isValidIpv4(vip.ipv4)) e(`serviceVips[${i}].ipv4`, 3, `IPv4 do VIP ${i + 1} é inválido`);
-
-      // BLOCK known public DNS IPs as Service VIPs
-      if (vip.ipv4 && KNOWN_PUBLIC_DNS_IPV4.includes(vip.ipv4)) {
-        e(`serviceVips[${i}].ipv4`, 3, `O IP ${vip.ipv4} pertence a resolvedor público conhecido e não pode ser usado como VIP do projeto. Use a etapa "VIP Interception" para sequestrar este IP.`);
-      }
-
-      if (config.vipIpv6Enabled && vip.ipv6 && !isValidIpv6(vip.ipv6)) {
-        e(`serviceVips[${i}].ipv6`, 3, `IPv6 do VIP ${i + 1} é inválido`);
-      }
-
-      // VIP cannot equal a listener IP
-      config.instances.forEach((inst) => {
-        if (vip.ipv4 && inst.bindIp && vip.ipv4 === inst.bindIp) {
-          e(`serviceVips[${i}].ipv4`, 3, `VIP ${vip.ipv4} conflita com listener da instância "${inst.name}" — VIP e listener devem ser IPs distintos`);
-        }
-      });
-
-      // VIP cannot equal the host private IP
-      if (vip.ipv4 && config.ipv4Address && vip.ipv4 === extractIpFromCidr(config.ipv4Address)) {
-        e(`serviceVips[${i}].ipv4`, 3, `VIP ${vip.ipv4} conflita com o IP privado do host`);
-      }
-    });
-
-    // ═══ Step 4 — VIP Interception ═══
+    // ═══ Step 3 — VIP Interception ═══
     if (config.interceptedVips && config.interceptedVips.length > 0) {
       const ivipIps = config.interceptedVips.map(v => v.vipIp).filter(Boolean);
       const dupIvips = findDuplicates(ivipIps);
-      if (dupIvips.length > 0) e('interceptedVips', 4, `VIPs interceptados duplicados: ${dupIvips.join(', ')}`);
+      if (dupIvips.length > 0) e('interceptedVips', 3, `VIPs interceptados duplicados: ${dupIvips.join(', ')}`);
 
       config.interceptedVips.forEach((vip, i) => {
-        if (!vip.vipIp.trim()) e(`interceptedVips[${i}].vipIp`, 4, `VIP IP ${i + 1} é obrigatório`);
-        else if (!isValidIpv4(vip.vipIp)) e(`interceptedVips[${i}].vipIp`, 4, `VIP IP ${i + 1} inválido`);
-        if (!vip.backendInstance.trim()) e(`interceptedVips[${i}].backendInstance`, 4, `Backend instance do VIP ${vip.vipIp || i + 1} é obrigatório`);
+        if (!vip.vipIp.trim()) e(`interceptedVips[${i}].vipIp`, 3, `VIP IP ${i + 1} é obrigatório`);
+        else if (!isValidIpv4(vip.vipIp)) e(`interceptedVips[${i}].vipIp`, 3, `VIP IP ${i + 1} inválido`);
+        if (!vip.backendInstance.trim()) e(`interceptedVips[${i}].backendInstance`, 3, `Backend instance do VIP ${vip.vipIp || i + 1} é obrigatório`);
         else {
           // Backend instance must exist
           const exists = config.instances.some(inst => inst.name === vip.backendInstance);
-          if (!exists) e(`interceptedVips[${i}].backendInstance`, 4, `Backend instance "${vip.backendInstance}" não existe — cadastre a instância primeiro`);
+          if (!exists) e(`interceptedVips[${i}].backendInstance`, 3, `Backend instance "${vip.backendInstance}" não existe — cadastre a instância primeiro`);
         }
-        if (!vip.backendTargetIp.trim()) e(`interceptedVips[${i}].backendTargetIp`, 4, `Backend target IP do VIP ${vip.vipIp || i + 1} é obrigatório`);
-        else if (!isValidIpv4(vip.backendTargetIp)) e(`interceptedVips[${i}].backendTargetIp`, 4, `Backend target IP inválido`);
+        if (!vip.backendTargetIp.trim()) e(`interceptedVips[${i}].backendTargetIp`, 3, `Backend target IP do VIP ${vip.vipIp || i + 1} é obrigatório`);
+        else if (!isValidIpv4(vip.backendTargetIp)) e(`interceptedVips[${i}].backendTargetIp`, 3, `Backend target IP inválido`);
         else {
           // Backend target IP must match the instance's bindIp
           const inst = config.instances.find(inst => inst.name === vip.backendInstance);
           if (inst && inst.bindIp && vip.backendTargetIp !== inst.bindIp) {
-            e(`interceptedVips[${i}].backendTargetIp`, 4, `Backend target IP ${vip.backendTargetIp} não corresponde ao listener da instância "${vip.backendInstance}" (${inst.bindIp})`);
+            e(`interceptedVips[${i}].backendTargetIp`, 3, `Backend target IP ${vip.backendTargetIp} não corresponde ao listener da instância "${vip.backendInstance}" (${inst.bindIp})`);
           }
         }
       });
     }
 
-    // ═══ Step 5 — Egress Público ═══
+    // ═══ Step 4 — Egress Público ═══
     const isBorderRouted = config.egressDeliveryMode === 'border-routed';
     const egressIps = config.instances.map(i => i.egressIpv4).filter(Boolean);
     const dupEgress = findDuplicates(egressIps);
     if (dupEgress.length > 0 && config.egressFixedIdentity) {
-      e('egressIpv4', 5, `IPs de egress duplicados com identidade fixa ativa: ${dupEgress.join(', ')}`);
+      e('egressIpv4', 4, `IPs de egress duplicados com identidade fixa ativa: ${dupEgress.join(', ')}`);
     }
 
     config.instances.forEach((inst, i) => {
-      if (!inst.egressIpv4.trim()) e(`instances[${i}].egressIpv4`, 5, `Egress IPv4 da instância "${inst.name}" é obrigatório`);
-      else if (!isValidIpv4(inst.egressIpv4)) e(`instances[${i}].egressIpv4`, 5, `Egress IPv4 da instância "${inst.name}" é inválido`);
+      if (!inst.egressIpv4.trim()) e(`instances[${i}].egressIpv4`, 4, `Egress IPv4 da instância "${inst.name}" é obrigatório`);
+      else if (!isValidIpv4(inst.egressIpv4)) e(`instances[${i}].egressIpv4`, 4, `Egress IPv4 da instância "${inst.name}" é inválido`);
 
       if (inst.egressIpv4 && inst.bindIp && inst.egressIpv4 === inst.bindIp) {
-        e(`instances[${i}].egressIpv4`, 5, `Egress ${inst.egressIpv4} da instância "${inst.name}" é igual ao listener — devem ser IPs distintos`);
+        e(`instances[${i}].egressIpv4`, 4, `Egress ${inst.egressIpv4} da instância "${inst.name}" é igual ao listener — devem ser IPs distintos`);
       }
 
-      config.serviceVips.forEach(vip => {
-        if (inst.egressIpv4 && vip.ipv4 && inst.egressIpv4 === vip.ipv4) {
-          e(`instances[${i}].egressIpv4`, 5, `Egress ${inst.egressIpv4} conflita com VIP ${vip.ipv4}`);
+      // Check egress against intercepted VIPs (no serviceVips in interception mode)
+      config.interceptedVips?.forEach(vip => {
+        if (inst.egressIpv4 && vip.vipIp && inst.egressIpv4 === vip.vipIp) {
+          e(`instances[${i}].egressIpv4`, 4, `Egress ${inst.egressIpv4} conflita com VIP interceptado ${vip.vipIp}`);
         }
       });
 
       if (!isBorderRouted && inst.egressIpv4 && config.ipv4Address && inst.egressIpv4 === extractIpFromCidr(config.ipv4Address)) {
-        e(`instances[${i}].egressIpv4`, 5, `Egress ${inst.egressIpv4} conflita com IP privado do host`);
+        e(`instances[${i}].egressIpv4`, 4, `Egress ${inst.egressIpv4} conflita com IP privado do host`);
       }
 
       if (config.enableIpv6 && inst.egressIpv6 && !isValidIpv6(inst.egressIpv6)) {
-        e(`instances[${i}].egressIpv6`, 5, `Egress IPv6 da instância "${inst.name}" é inválido`);
+        e(`instances[${i}].egressIpv6`, 4, `Egress IPv6 da instância "${inst.name}" é inválido`);
       }
     });
 
     if (isBorderRouted && egressIps.length > 0) {
-      e('egressDeliveryMode', 5, 'Modo border-routed: IP público de egress não estará presente nas interfaces do host — esperado neste modo. Roteamento estático na borda é obrigatório.', 'warning');
+      e('egressDeliveryMode', 4, 'Modo border-routed: IP público de egress não estará presente nas interfaces do host — esperado neste modo. Roteamento estático na borda é obrigatório.', 'warning');
     }
 
-    // ═══ Step 6 — Mapeamento VIP → Instância ═══
+    // ═══ Step 5 — Mapeamento VIP → Instância ═══
     if (config.distributionPolicy === 'active-passive' && config.instances.length < 2) {
-      e('distributionPolicy', 6, 'Ativo/passivo requer pelo menos 2 instâncias');
+      e('distributionPolicy', 5, 'Ativo/passivo requer pelo menos 2 instâncias');
     }
   }
 
-  // ═══ Step 7 (interception) or 3 (simple) — Segurança ═══
-  const securityStep = isInterception ? 7 : 3;
+  // ═══ Step 6 (interception) or 3 (simple) — Segurança ═══
+  const securityStep = isInterception ? 6 : 3;
   if (config.accessControlIpv4.length === 0) e('accessControlIpv4', securityStep, 'Pelo menos uma ACL IPv4 é necessária');
   
   config.accessControlIpv4.forEach((acl, i) => {
@@ -270,9 +238,10 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
 
   // ═══ Cross-layer architectural validations ═══
   if (isInterception) {
+    const reviewStep = 8;
     const allIps: { ip: string; layer: string }[] = [];
     if (config.ipv4Address) allIps.push({ ip: extractIpFromCidr(config.ipv4Address), layer: 'Host privado' });
-    config.serviceVips.forEach(v => { if (v.ipv4) allIps.push({ ip: v.ipv4, layer: 'VIP de serviço' }); });
+    config.interceptedVips?.forEach(v => { if (v.vipIp) allIps.push({ ip: v.vipIp, layer: 'VIP interceptado' }); });
     config.instances.forEach(inst => {
       if (inst.bindIp) allIps.push({ ip: inst.bindIp, layer: `Listener ${inst.name}` });
       if (inst.egressIpv4) allIps.push({ ip: inst.egressIpv4, layer: `Egress ${inst.name}` });
@@ -287,7 +256,7 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
     });
     ipMap.forEach((layers, ip) => {
       if (layers.length > 1) {
-        e('architecture', 9, `IP ${ip} usado em múltiplas camadas: ${layers.join(', ')} — cada camada deve ter IPs exclusivos`, 'warning');
+        e('architecture', reviewStep, `IP ${ip} usado em múltiplas camadas: ${layers.join(', ')} — cada camada deve ter IPs exclusivos`, 'warning');
       }
     });
   }
