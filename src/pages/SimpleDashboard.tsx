@@ -335,7 +335,7 @@ export default function SimpleDashboard() {
             <div className="flex items-center gap-3">
               <div className={`w-2 h-2 rounded-full ${frontendHealthy ? 'bg-success animate-pulse' : 'bg-destructive'}`} />
               <span className="font-mono font-bold text-foreground">{frontendIp || '—'}:53</span>
-              <span className="text-[9px] font-mono text-muted-foreground/50 uppercase">→ Balanceamento Local (nftables DNAT)</span>
+              <span className="text-[9px] font-mono text-muted-foreground/50 uppercase">→ Balanceamento Local ({deployState?.simpleDistributionStrategy === 'sticky-source' ? 'Sticky por origem' : 'Round-robin'} — nftables DNAT)</span>
               {telemetryConnected && (
                 <span className="text-[9px] font-mono text-accent ml-auto">{qps} QPS · {formatBytes(traffic.total_bytes ?? 0)}</span>
               )}

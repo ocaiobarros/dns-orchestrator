@@ -145,6 +145,8 @@ def normalize_payload(raw: dict[str, Any]) -> dict[str, Any]:
         "frontendDnsIp": raw.get("frontendDnsIp", ""),
         "ipv4Address": ipv4_address,
         "stickyTimeout": raw.get("stickyTimeout", 0),
+        "simpleDistributionStrategy": raw.get("simpleDistributionStrategy", "round-robin"),
+        "simpleStickyTimeout": raw.get("simpleStickyTimeout", 0),
         # Preserve raw config for reference
         "_wizardConfig": raw,
     }

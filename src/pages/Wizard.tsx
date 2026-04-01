@@ -1181,8 +1181,8 @@ export default function Wizard() {
                 ['Egress', config.egressDeliveryMode === 'border-routed' ? 'Border-Routed' : 'Host-Owned'],
                 ['Distribuição', config.distributionPolicy],
               ] : [
-                ['Frontend DNS', config.frontendDnsIp || '—'],
-                ['Balanceamento', 'Local (round-robin)'],
+              ['Frontend DNS', config.frontendDnsIp || '—'],
+              ['Distribuição', config.simpleDistributionStrategy === 'sticky-source' ? `Sticky (${Math.floor(config.simpleStickyTimeout / 60)}min)` : 'Round-robin'],
               ]),
               ['Instâncias', String(config.instances.length)],
               ['IPv6', config.enableIpv6 ? 'Dual-stack' : 'IPv4 only'],
