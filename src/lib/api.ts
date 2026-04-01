@@ -599,7 +599,7 @@ function mockApplyResult(req?: { dry_run?: boolean; scope?: string; config?: Wiz
   };
 }
 
-function mockTelemetryHistory() {
+function mockTelemetryHistoryData() {
   const now = Date.now();
   return Array.from({ length: 30 }, (_, i) => {
     const t = new Date(now - (29 - i) * 10000);
