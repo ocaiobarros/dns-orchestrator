@@ -598,3 +598,25 @@ function mockApplyResult(req?: { dry_run?: boolean; scope?: string; config?: Wiz
     filesGenerated: [],
   };
 }
+
+function mockTelemetryHistory() {
+  const now = Date.now();
+  return Array.from({ length: 30 }, (_, i) => {
+    const t = new Date(now - (29 - i) * 10000);
+    return {
+      timestamp: t.toISOString(),
+      epoch: Math.floor(t.getTime() / 1000),
+      qps: Math.round(80 + Math.random() * 40),
+      latency_ms: +(5 + Math.random() * 10).toFixed(2),
+      cache_hit_ratio: +(85 + Math.random() * 10).toFixed(1),
+      servfail: Math.floor(Math.random() * 5),
+      nxdomain: Math.floor(Math.random() * 20),
+      total_queries: 150000 + i * 1000,
+      cache_hits: 130000 + i * 900,
+      cache_misses: 20000 + i * 100,
+      instances_live: 2,
+      nft_qps: Math.round(70 + Math.random() * 30),
+      nft_packets: 500000 + i * 5000,
+    };
+  });
+}
