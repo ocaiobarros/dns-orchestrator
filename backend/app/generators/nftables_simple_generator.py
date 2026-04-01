@@ -48,8 +48,23 @@ def generate_simple_nftables_config(payload: dict[str, Any], validation_mode: bo
     if not frontend_ip:
         return []
 
-    sticky_timeout_seconds = int(payload.get("stickyTimeout", 0) or 0)
-    use_sticky = sticky_timeout_seconds >= 60
+    # Distribution strategy: round-robin (default for simple) or sticky-source
+    wizard_cfg = payload.get("_wizardConfig", {}) or {}
+    distribution_strategy = str(
+        payload.get("simpleDistributionStrategy")
+        or wizard_cfg.get("simpleDistributionStrategy")
+        or "round-robin"
+    )
+    use_sticky = distribution_strategy == "sticky-source"
+
+    sticky_timeout_seconds = int(
+        payload.get("simpleStickyTimeout")
+        or wizard_cfg.get("simpleStickyTimeout")
+        or payload.get("stickyTimeout", 0)
+        or 0
+    )
+    if use_sticky and sticky_timeout_seconds < 60:
+        sticky_timeout_seconds = 1200  # default 20min
     sticky_timeout_min = max(1, sticky_timeout_seconds // 60) if use_sticky else 20
 
     if validation_mode:

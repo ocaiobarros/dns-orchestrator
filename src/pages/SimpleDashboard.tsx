@@ -244,6 +244,9 @@ export default function SimpleDashboard() {
             Frontend: {frontendIp}:53
           </span>
         )}
+        <span className="px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider rounded bg-secondary text-secondary-foreground border border-border">
+          Distribuição: {deployState?.simpleDistributionStrategy === 'sticky-source' ? 'Sticky por origem' : 'Round-robin'}
+        </span>
         <span className={`px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider rounded border ${
           collectorOk && !collectorStale ? 'bg-success/10 text-success border-success/20' :
           collectorStale ? 'bg-warning/10 text-warning border-warning/20' :
@@ -332,7 +335,7 @@ export default function SimpleDashboard() {
             <div className="flex items-center gap-3">
               <div className={`w-2 h-2 rounded-full ${frontendHealthy ? 'bg-success animate-pulse' : 'bg-destructive'}`} />
               <span className="font-mono font-bold text-foreground">{frontendIp || '—'}:53</span>
-              <span className="text-[9px] font-mono text-muted-foreground/50 uppercase">→ Balanceamento Local (nftables DNAT)</span>
+              <span className="text-[9px] font-mono text-muted-foreground/50 uppercase">→ Balanceamento Local ({deployState?.simpleDistributionStrategy === 'sticky-source' ? 'Sticky por origem' : 'Round-robin'} — nftables DNAT)</span>
               {telemetryConnected && (
                 <span className="text-[9px] font-mono text-accent ml-auto">{qps} QPS · {formatBytes(traffic.total_bytes ?? 0)}</span>
               )}
