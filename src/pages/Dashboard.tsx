@@ -25,7 +25,35 @@ import NocIncidentDetector from '@/components/noc/NocIncidentDetector';
 import NocDeploySimulation from '@/components/noc/NocDeploySimulation';
 import NocVipDiagnostics from '@/components/noc/NocVipDiagnostics';
 
+import SimpleDashboard from '@/pages/SimpleDashboard';
+
+/**
+ * Dashboard router: renders SimpleDashboard for 'simple' mode,
+ * InterceptionDashboard for 'interception' mode.
+ */
 export default function Dashboard() {
+  const { data: sysInfo, isLoading: sysLoading } = useSystemInfo();
+  const { data: deployState } = useDeployState();
+
+  // Determine operation mode from sysInfo (dashboard summary) or deployState
+  const operationMode =
+    sysInfo?.operation_mode ||
+    deployState?.operationMode ||
+    '';
+
+  // While loading, show nothing
+  if (sysLoading && !sysInfo) return <LoadingState />;
+
+  // Route to the correct dashboard
+  if (operationMode === 'simple') {
+    return <SimpleDashboard />;
+  }
+
+  // Default: interception dashboard (or unknown mode)
+  return <InterceptionDashboard />;
+}
+
+function InterceptionDashboard() {
   const { data: sysInfo, isLoading: sysLoading, error: sysError } = useSystemInfo();
   const { data: services, isLoading: svcLoading } = useServices();
   const { data: instanceStats } = useInstanceStats();
