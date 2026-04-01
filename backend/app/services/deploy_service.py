@@ -308,6 +308,17 @@ def _execute_deploy_locked(
             except Exception as exc:
                 logger.warning(f"Failed to generate nftables validation artifact: {exc}")
 
+        # ── Structural guard: simple mode MUST NOT produce interception artifacts ──
+        if is_simple_mode:
+            nft_interception_patterns = ("DNS_ANYCAST_IP", "ipv4_tcp_dns", "ipv4_udp_dns",
+                                         "ipv6_tcp_dns", "ipv6_udp_dns", "dnat to", "users_unbound")
+            for f in files:
+                combined = f["path"] + "\n" + f.get("content", "")
+                if any(pat in combined for pat in nft_interception_patterns):
+                    return {"status": "failed",
+                            "output": f"Modo simples gerou artefato de interceptação: {f['path']}",
+                            "stderr": "Erro de modelagem: artefatos nftables de interceptação não são permitidos no modo Recursivo Simples"}
+
         return {"status": "success", "output": f"{len(files)} arquivos gerados em staging: {staging_dir}"}
 
     _run_step(s2, generate_and_stage)
