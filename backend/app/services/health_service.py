@@ -153,6 +153,8 @@ def _update_instance_state(db: Session, instance: DnsInstance, check_result: str
         state = InstanceState(instance_id=instance.id, current_status="healthy", in_rotation=True)
         db.add(state)
         db.flush()
+        _emit_event(db, "instance_discovered", "info", instance.id,
+                    f"{instance.instance_name} discovered and added to monitoring")
 
     now = datetime.now(timezone.utc)
     previous_status = state.current_status

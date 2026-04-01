@@ -416,7 +416,7 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   // Telemetry mock
   if (path === '/api/telemetry/latest') return mockTelemetryLatest();
   if (path === '/api/telemetry/status') return { collector_status: 'ok', last_update: new Date().toISOString(), file_age_seconds: 5, stale: false, mode: 'recursive_simple' };
-  if (path === '/api/telemetry/history') return mockTelemetryHistory();
+  if (path === '/api/telemetry/history') return mockTelemetryHistoryData();
 
   // System
   if (path === '/api/system/self-test' && method === 'POST') {
@@ -599,7 +599,7 @@ function mockApplyResult(req?: { dry_run?: boolean; scope?: string; config?: Wiz
   };
 }
 
-function mockTelemetryHistory() {
+function mockTelemetryHistoryData() {
   const now = Date.now();
   return Array.from({ length: 30 }, (_, i) => {
     const t = new Date(now - (29 - i) * 10000);

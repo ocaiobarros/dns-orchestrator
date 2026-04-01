@@ -17,6 +17,7 @@ from app.core.logging import log_auth_event, log_event
 from app.api.deps import get_current_user, get_session_id
 from app.models.user import User
 from app.models.log_entry import LogEntry
+from app.models.operational import OperationalEvent
 from app.schemas.auth import (
     LoginRequest, LoginResponse, UserResponse,
     SessionInfoResponse, ChangePasswordRequest,
@@ -60,8 +61,9 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
 
     user = db.query(User).filter(User.username == body.username).first()
     if not user or not verify_password(body.password, user.password_hash):
-        # Failed logins are ALWAYS logged (security-relevant)
         log_auth_event(db, f"Login falhou para '{body.username}'", body.username, client_ip, False)
+        db.add(OperationalEvent(event_type="login_failed", severity="warning", instance_id=None, message=f"Failed login attempt for '{body.username}' from {client_ip}"))
+        db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais inválidas")
 
     if not user.is_active:
@@ -77,6 +79,8 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     # Throttle repeated successful login log entries
     if _should_log_login(user.username):
         log_auth_event(db, f"Login bem-sucedido: '{user.username}'", user.username, client_ip, True)
+        db.add(OperationalEvent(event_type="login_success", severity="info", instance_id=None, message=f"User '{user.username}' logged in from {client_ip}"))
+        db.commit()
 
     return LoginResponse(
         token=token,
