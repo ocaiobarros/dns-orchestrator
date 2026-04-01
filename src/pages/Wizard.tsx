@@ -755,7 +755,7 @@ export default function Wizard() {
 
   const renderMapping = () => (
     <div className="space-y-4">
-      <InfoBox>Define como o tráfego dos VIPs de serviço é distribuído entre as instâncias resolver via nftables.</InfoBox>
+      <InfoBox>Define como o tráfego dos VIPs interceptados é distribuído entre as instâncias resolver via nftables.</InfoBox>
       <div className="grid grid-cols-1 gap-3">
         {([
           { value: 'sticky-source', label: 'Sticky por Origem (Recomendado)', desc: 'Memoriza o resolver por IP de origem via nftables sets. Fallback nth balancing.' },
