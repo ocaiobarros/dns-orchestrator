@@ -323,36 +323,74 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60) -> dict:
 
     unit_args = []
     for inst in instances:
-        unit_args.extend(["-u", inst["name"]])
+        name = inst["name"]
+        # Accept both "unbound01" and "unbound01.service"
+        svc = name if name.endswith(".service") else f"{name}.service"
+        unit_args.extend(["-u", svc])
     if not unit_args:
-        unit_args = ["-u", "unbound01", "-u", "unbound02"]
+        unit_args = ["-u", "unbound01.service", "-u", "unbound02.service"]
 
-    # Try journalctl WITHOUT --grep (which fails on many systems)
-    # Instead, fetch all lines and filter in Python
+    # Try journalctl with sudo (collector may not have journal read perms)
     stdout = ""
     log_source = "none"
+    diag_info = {}
 
+    # Attempt 1: sudo + --since (--no-pager MUST be first arg for sudoers match)
     code, raw_out, stderr = run_cmd([
-        "journalctl", *unit_args,
+        "sudo", "journalctl", "--no-pager",
+        *unit_args,
         "--since", f"{since_seconds} seconds ago",
-        "--no-pager", "-o", "short-iso",
+        "-o", "short-iso",
         "-n", "5000",
     ], timeout=15)
+
+    diag_info["attempt1"] = {"code": code, "lines": len(raw_out.strip().split("\n")) if raw_out.strip() else 0, "stderr": stderr[:200]}
 
     if code == 0 and raw_out.strip():
         stdout = raw_out
         log_source = "journalctl"
 
     if not stdout.strip():
-        # Fallback: try without --since (get last N lines)
-        code2, raw_out2, _ = run_cmd([
-            "journalctl", *unit_args,
-            "--no-pager", "-o", "short-iso",
+        # Attempt 2: sudo + last N lines (no --since)
+        code2, raw_out2, stderr2 = run_cmd([
+            "sudo", "journalctl", "--no-pager",
+            *unit_args,
+            "-o", "short-iso",
             "-n", "2000",
         ], timeout=15)
+        diag_info["attempt2"] = {"code": code2, "lines": len(raw_out2.strip().split("\n")) if raw_out2.strip() else 0, "stderr": stderr2[:200]}
         if code2 == 0 and raw_out2.strip():
             stdout = raw_out2
             log_source = "journalctl"
+
+    if not stdout.strip():
+        # Attempt 3: without sudo (fallback)
+        code3, raw_out3, stderr3 = run_cmd([
+            "journalctl", "--no-pager",
+            *unit_args,
+            "-o", "short-iso",
+            "-n", "2000",
+        ], timeout=15)
+        diag_info["attempt3"] = {"code": code3, "lines": len(raw_out3.strip().split("\n")) if raw_out3.strip() else 0, "stderr": stderr3[:200]}
+        if code3 == 0 and raw_out3.strip():
+            stdout = raw_out3
+            log_source = "journalctl"
+
+    if not stdout.strip():
+        # Attempt 4: ALL journal units, filter in Python
+        code4, raw_out4, stderr4 = run_cmd([
+            "sudo", "journalctl", "--no-pager",
+            "--since", f"{since_seconds * 2} seconds ago",
+            "-o", "short-iso",
+            "-n", "5000",
+        ], timeout=15)
+        diag_info["attempt4_all_units"] = {"code": code4, "lines": len(raw_out4.strip().split("\n")) if raw_out4.strip() else 0}
+        if code4 == 0 and raw_out4.strip():
+            unbound_lines = [l for l in raw_out4.split("\n") if "unbound" in l.lower()]
+            if unbound_lines:
+                stdout = "\n".join(unbound_lines)
+                log_source = "journalctl"
+                diag_info["attempt4_unbound_lines"] = len(unbound_lines)
 
     # Unbound log-queries formats (verbosity 1+):
     #   [thread:0] info: <client_ip> <domain>. <type> <class>
@@ -381,8 +419,13 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60) -> dict:
         ),
     ]
 
+    # Debug: capture sample lines for diagnostics
+    all_lines = stdout.split("\n")
+    info_lines = [l for l in all_lines if "info:" in l]
+    sample_lines = info_lines[:5] if info_lines else all_lines[:5]
+
     parsed_count = 0
-    for line in stdout.split("\n"):
+    for line in all_lines:
         # Quick pre-filter: must contain "info:" to be a query log line
         if "info:" not in line:
             continue
@@ -445,6 +488,13 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60) -> dict:
         "recent_queries": list(recent),
         "log_source": log_source,
         "queries_parsed": parsed_count,
+        "diag": {
+            "total_lines": len(all_lines),
+            "info_lines": len(info_lines),
+            "sample_lines": sample_lines,
+            "unit_args": unit_args,
+            **diag_info,
+        },
     }
 
 
@@ -679,6 +729,7 @@ def collect_all() -> dict:
         "query_analytics": {
             "log_source": query_analytics.get("log_source", "none"),
             "queries_parsed": query_analytics.get("queries_parsed", 0),
+            "diag": query_analytics.get("diag", {}),
         },
 
         "services": service_checks,
