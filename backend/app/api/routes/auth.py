@@ -17,6 +17,7 @@ from app.core.logging import log_auth_event, log_event
 from app.api.deps import get_current_user, get_session_id
 from app.models.user import User
 from app.models.log_entry import LogEntry
+from app.models.operational import OperationalEvent
 from app.schemas.auth import (
     LoginRequest, LoginResponse, UserResponse,
     SessionInfoResponse, ChangePasswordRequest,
