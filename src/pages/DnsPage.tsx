@@ -1,5 +1,5 @@
-import { useMemo, useState, lazy, Suspense, useEffect } from 'react';
-import { Activity, Database, Timer, AlertTriangle, Search, BarChart3 } from 'lucide-react';
+import { useState, lazy, Suspense, useEffect } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import MetricCard from '@/components/MetricCard';
 import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useTelemetry } from '@/lib/hooks';
