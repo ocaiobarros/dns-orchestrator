@@ -85,8 +85,13 @@ def generate_preview(payload: dict[str, Any]) -> list[dict]:
         files.extend(generate_unbound_configs(normalized))
     except Exception:
         pass
-    # nftables interception artifacts — ONLY for interception mode
-    if not is_simple:
+    # nftables: interception mode uses full VIP rules, simple mode uses local balancing
+    if is_simple:
+        try:
+            files.extend(generate_simple_nftables_config(normalized))
+        except Exception:
+            pass
+    else:
         try:
             files.extend(generate_nftables_config(normalized))
         except Exception:
