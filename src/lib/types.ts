@@ -670,6 +670,7 @@ export const DEFAULT_CONFIG: WizardConfig = {
 
   // Step 2 - Modo de Operação DNS
   operationMode: 'interception',
+  vipDeliverySubmode: 'pure-interception' as VipDeliverySubmode,
   deploymentMode: 'vip-routed-border',
 
   // Step 3 - VIPs de Serviço
