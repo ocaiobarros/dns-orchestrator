@@ -1105,30 +1105,25 @@ export default function Wizard() {
     );
   };
 
-  // ═══ Step router ═══
+  // ═══ Step router — dynamic based on step name ═══
+  const stepRenderers: Record<string, () => React.ReactNode> = {
+    'Topologia do Host': renderHostTopology,
+    'Modo de Operação DNS': renderOperationMode,
+    'Modelo de Entrega do VIP': renderDeliverySubmode,
+    'Instâncias Resolver': renderInstances,
+    'VIPs de Serviço': renderServiceVips,
+    'VIP Interception': renderInterception,
+    'Egress Público': renderEgress,
+    'Mapeamento VIP→Instância': renderMapping,
+    'Segurança': renderSecurity,
+    'Observabilidade': renderObservability,
+    'Revisão & Deploy': renderReview,
+  };
+
   const renderStep = () => {
-    if (isInterception) {
-      switch (step) {
-        case 0: return renderHostTopology();
-        case 1: return renderOperationMode();
-        case 2: return renderInstances();
-        case 3: return renderInterception();
-        case 4: return renderEgress();
-        case 5: return renderMapping();
-        case 6: return renderSecurity();
-        case 7: return renderObservability();
-        case 8: return renderReview();
-      }
-    } else {
-      switch (step) {
-        case 0: return renderHostTopology();
-        case 1: return renderOperationMode();
-        case 2: return renderInstances();
-        case 3: return renderSecurity();
-        case 4: return renderObservability();
-        case 5: return renderReview();
-      }
-    }
+    const stepName = STEPS[step];
+    const renderer = stepRenderers[stepName];
+    return renderer ? renderer() : null;
   };
 
   const [importLoading, setImportLoading] = useState(false);
