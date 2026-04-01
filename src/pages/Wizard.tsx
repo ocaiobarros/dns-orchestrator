@@ -27,30 +27,26 @@ import {
 } from 'lucide-react';
 import type { ApplyResult, ApplyRequest } from '@/lib/types';
 
-// ═══ Step definitions per mode ═══
-const STEPS_INTERCEPTION = [
-  'Topologia do Host',        // 0
-  'Modo de Operação DNS',     // 1
-  'Instâncias Resolver',      // 2
-  'VIP Interception',         // 3
-  'Egress Público',           // 4
-  'Mapeamento VIP→Instância', // 5
-  'Segurança',                // 6
-  'Observabilidade',          // 7
-  'Revisão & Deploy',         // 8
-];
-
-const STEPS_SIMPLE = [
-  'Topologia do Host',        // 0
-  'Modo de Operação DNS',     // 1
-  'Instâncias Resolver',      // 2
-  'Segurança',                // 3
-  'Observabilidade',          // 4
-  'Revisão & Deploy',         // 5
-];
-
-const ICONS_INTERCEPTION = [Server, Network, Layers, Crosshair, ExternalLink, Route, Shield, BarChart3, FileText];
-const ICONS_SIMPLE = [Server, Network, Layers, Shield, BarChart3, FileText];
+// ═══ Dynamic step definitions based on mode + submode ═══
+function getSteps(mode: OperationMode, submode: VipDeliverySubmode) {
+  if (mode === 'simple') {
+    return {
+      names: ['Topologia do Host', 'Modo de Operação DNS', 'Instâncias Resolver', 'Segurança', 'Observabilidade', 'Revisão & Deploy'],
+      icons: [Server, Network, Layers, Shield, BarChart3, FileText],
+    };
+  }
+  if (submode === 'interception-plus-own-vip') {
+    return {
+      names: ['Topologia do Host', 'Modo de Operação DNS', 'Modelo de Entrega do VIP', 'Instâncias Resolver', 'VIPs de Serviço', 'VIP Interception', 'Egress Público', 'Mapeamento VIP→Instância', 'Segurança', 'Observabilidade', 'Revisão & Deploy'],
+      icons: [Server, Network, Globe, Layers, Globe, Crosshair, ExternalLink, Route, Shield, BarChart3, FileText],
+    };
+  }
+  // pure-interception (default)
+  return {
+    names: ['Topologia do Host', 'Modo de Operação DNS', 'Modelo de Entrega do VIP', 'Instâncias Resolver', 'VIP Interception', 'Egress Público', 'Mapeamento VIP→Instância', 'Segurança', 'Observabilidade', 'Revisão & Deploy'],
+    icons: [Server, Network, Globe, Layers, Crosshair, ExternalLink, Route, Shield, BarChart3, FileText],
+  };
+}
 
 // ---- Reusable form components ----
 
