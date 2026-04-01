@@ -99,6 +99,21 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
     else if (!isValidIpv6(config.ipv6Gateway)) e('ipv6Gateway', topStep, 'Gateway IPv6 inválido');
   }
 
+  // ═══ Frontend DNS (simple mode only) ═══
+  if (!isInterception) {
+    const frontendStep = s('Frontend DNS');
+    if (!config.frontendDnsIp.trim()) e('frontendDnsIp', frontendStep, 'Frontend DNS IP é obrigatório no modo simples');
+    else if (!isValidIpv4(config.frontendDnsIp)) e('frontendDnsIp', frontendStep, 'Frontend DNS IP inválido');
+    else {
+      // Frontend IP must not collide with backend bind IPs
+      config.instances.forEach((inst) => {
+        if (config.frontendDnsIp === inst.bindIp) {
+          e('frontendDnsIp', frontendStep, `Frontend DNS IP ${config.frontendDnsIp} conflita com listener da instância "${inst.name}" — o frontend não pode ser o mesmo IP do backend`);
+        }
+      });
+    }
+  }
+
   // ═══ Instâncias Resolver ═══
   const instStep = s('Instâncias Resolver');
   if (config.instances.length === 0) e('instances', instStep, 'Pelo menos uma instância resolver é necessária');
