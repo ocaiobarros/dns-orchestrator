@@ -1019,16 +1019,54 @@ export default function Wizard() {
               ))}
             </div>
           )}
-          {applyResult.healthResult?.length > 0 && (
-            <div className="noc-panel"><div className="noc-panel-header"><Activity size={12} /> Verificação Pós-Deploy ({applyResult.healthResult.filter(h => h.status === 'pass').length}/{applyResult.healthResult.filter(h => h.status !== 'skip' && h.status !== 'warn').length}{applyResult.healthResult.some(h => h.status === 'skip' || h.status === 'warn') ? ` · ${applyResult.healthResult.filter(h => h.status === 'skip' || h.status === 'warn').length} ignorados` : ''})</div>
+          {applyResult.healthResult?.length > 0 && (() => {
+            const passed = applyResult.healthResult.filter(h => h.status === 'pass');
+            const failed = applyResult.healthResult.filter(h => h.status === 'fail');
+            const skipped = applyResult.healthResult.filter(h => h.status === 'skip' || h.status === 'warn');
+            const applicable = applyResult.healthResult.length - skipped.length;
+            const allOk = failed.length === 0;
+            return (
+            <div className="noc-panel">
+              <div className={`noc-panel-header flex items-center justify-between ${!allOk ? 'text-destructive' : ''}`}>
+                <div className="flex items-center gap-2">
+                  <Activity size={12} />
+                  <span>Verificação Pós-Deploy ({passed.length}/{applicable}{skipped.length > 0 ? ` · ${skipped.length} ignorados` : ''})</span>
+                </div>
+                {allOk ? (
+                  <span className="text-success text-[10px] font-bold uppercase tracking-wider">Tudo OK</span>
+                ) : (
+                  <span className="text-destructive text-[10px] font-bold uppercase tracking-wider">{failed.length} falha{failed.length !== 1 ? 's' : ''}</span>
+                )}
+              </div>
+              {failed.length > 0 && (
+                <div className="mb-3 p-3 rounded-md border border-destructive/30 bg-destructive/5 space-y-1">
+                  <div className="text-xs font-semibold text-destructive uppercase tracking-wider">Checks com falha:</div>
+                  {failed.map((check, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs text-destructive">
+                      <X size={10} className="shrink-0" />
+                      <span className="font-medium">{check.name}</span>
+                      <span className="font-mono text-destructive/70">— {check.detail || check.target}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {applyResult.healthResult.map((check, i) => (
-                <div key={i} className={`flex items-center gap-3 p-2 rounded text-xs ${check.status === 'fail' ? 'bg-destructive/5' : ''}`}>
+                <div key={i} className={`flex items-center gap-3 p-2 rounded text-xs ${check.status === 'fail' ? 'bg-destructive/5 border border-destructive/20' : ''}`}>
                   {check.status === 'pass' ? <Check size={12} className="text-success" /> : check.status === 'fail' ? <X size={12} className="text-destructive" /> : check.status === 'warn' ? <Info size={12} className="text-accent" /> : <SkipForward size={12} className="text-muted-foreground" />}
-                  <span className="font-medium flex-1">{check.name}</span><span className="font-mono text-muted-foreground">{check.target}</span><span className="font-mono text-muted-foreground">{check.durationMs}ms</span>
+                  <span className="font-medium flex-1">{check.name}</span>
+                  <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded ${
+                    check.status === 'pass' ? 'bg-success/10 text-success' :
+                    check.status === 'fail' ? 'bg-destructive/10 text-destructive font-bold' :
+                    check.status === 'warn' ? 'bg-accent/10 text-accent' :
+                    'bg-muted text-muted-foreground'
+                  }`}>{check.status === 'pass' ? 'OK' : check.status === 'fail' ? 'FALHA' : check.status === 'warn' ? 'AVISO' : 'IGNORADO'}</span>
+                  <span className="font-mono text-muted-foreground">{check.target}</span>
+                  <span className="font-mono text-muted-foreground">{check.durationMs}ms</span>
                 </div>
               ))}
             </div>
-          )}
+            );
+          })()}
           {applyResult.rollbackAvailable && applyResult.backupId && (
             <div className="noc-panel border-accent/20"><Shield size={12} className="text-accent" /><span className="text-accent font-medium text-xs">Rollback disponível: {applyResult.backupId}</span></div>
           )}
