@@ -261,6 +261,7 @@ export const api = {
   // Telemetry (collector service)
   getTelemetryLatest: () => apiCall<any>('GET', '/telemetry/latest'),
   getTelemetryStatus: () => apiCall<any>('GET', '/telemetry/status'),
+  getTelemetryHistory: () => apiCall<any[]>('GET', '/telemetry/history'),
 
   removeBackend: (instanceId: string) =>
     apiCall<{ success: boolean }>('POST', `/actions/remove-backend/${instanceId}`),

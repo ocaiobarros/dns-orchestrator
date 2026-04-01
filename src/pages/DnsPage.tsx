@@ -158,11 +158,21 @@ export default function DnsPage() {
         </div>
       )}
 
-      {chartData.length > 0 && (
-        <Suspense fallback={<ChartGridSkeleton />}>
+      <Suspense fallback={<ChartGridSkeleton />}>
+        {chartData.length > 0 ? (
           <DnsTimeSeriesCharts chartData={chartData} />
-        </Suspense>
-      )}
+        ) : telemetryConnected ? (
+          <div className="noc-panel">
+            <div className="p-8 text-center space-y-2">
+              <Clock size={20} className="text-muted-foreground mx-auto" />
+              <div className="text-sm font-medium text-muted-foreground">Aguardando dados históricos…</div>
+              <div className="text-xs text-muted-foreground/60">
+                O collector está ativo. Os gráficos aparecerão após algumas coletas (~30s).
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </Suspense>
 
       {(topDomains.length > 0 || topDomainsFromAnalytics.length > 0) && (
         <Suspense fallback={<ChartGridSkeleton />}>
