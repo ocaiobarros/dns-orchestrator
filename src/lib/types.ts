@@ -664,7 +664,8 @@ export const DEFAULT_CONFIG: WizardConfig = {
   vlanTag: '',
   behindFirewall: true,
 
-  // Step 2 - Modelo de Publicação
+  // Step 2 - Modo de Operação DNS
+  operationMode: 'interception',
   deploymentMode: 'vip-routed-border',
 
   // Step 3 - VIPs de Serviço
