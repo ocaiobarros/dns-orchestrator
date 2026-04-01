@@ -577,6 +577,7 @@ export interface DeployState {
   rollbackAvailable: boolean;
   operationMode?: string;
   frontendDnsIp?: string;
+  simpleDistributionStrategy?: 'round-robin' | 'sticky-source';
 }
 
 // ---- Troubleshoot Commands ----
