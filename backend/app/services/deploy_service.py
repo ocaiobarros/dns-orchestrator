@@ -1557,10 +1557,20 @@ def _generate_health_checks(payload: dict, dry_run: bool = False) -> list[dict]:
     return checks
 
 
-def _save_deploy_state(deploy_id: str, operator: str, success: bool, backup_id: str | None):
+def _save_deploy_state(deploy_id: str, operator: str, success: bool, backup_id: str | None,
+                       payload: dict | None = None):
     try:
         existing = get_deploy_state()
         total = existing.get("totalDeployments", 0) + 1
+
+        # Extract operation mode and frontend IP from payload
+        operation_mode = ""
+        frontend_dns_ip = ""
+        if payload:
+            normalized = normalize_payload(payload)
+            operation_mode = normalized.get("operationMode", "")
+            frontend_dns_ip = normalized.get("frontendDnsIp", "")
+
         state = {
             "configVersion": f"v{total}",
             "lastApplyAt": _now_iso(),
@@ -1571,6 +1581,8 @@ def _save_deploy_state(deploy_id: str, operator: str, success: bool, backup_id: 
             "totalDeployments": total,
             "rollbackAvailable": backup_id is not None,
             "lastBackupPath": os.path.join(BACKUP_ROOT, backup_id) if backup_id else None,
+            "operationMode": operation_mode,
+            "frontendDnsIp": frontend_dns_ip,
         }
         os.makedirs(os.path.dirname(DEPLOY_STATE_FILE), exist_ok=True)
         with open(DEPLOY_STATE_FILE, "w") as f:
