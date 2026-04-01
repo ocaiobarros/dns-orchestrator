@@ -62,19 +62,22 @@ export default function DnsPage() {
   const totalServfail = safeNum(resolver.servfail);
   const qps = safeNum(resolver.qps);
 
-  // Build chart data from backend stats (single point — collector provides snapshots)
-  const chartData = telemetryConnected ? [{
-    ts: new Date().toISOString().slice(11, 16),
-    time: new Date().toISOString().slice(11, 16),
-    qps: totalQueries,
-    hits: safeNum(resolver.cache_hits),
-    misses: safeNum(resolver.cache_misses),
-    latency: avgLatency,
-    servfail: totalServfail,
-    nxdomain: safeNum(resolver.nxdomain),
-    hitRatio: cacheHitRatio,
-    count: 1,
-  }] : [];
+  // Build chart data from history endpoint (real time-series)
+  const chartData = useMemo(() => {
+    const history = Array.isArray(historyData) ? historyData : [];
+    if (history.length === 0) return [];
+    return history.map((p: any) => {
+      const ts = p.timestamp ? new Date(p.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
+      return {
+        time: ts,
+        qps: safeNum(p.qps),
+        latency: safeNum(p.latency_ms),
+        servfail: safeNum(p.servfail),
+        nxdomain: safeNum(p.nxdomain),
+        hitRatio: safeNum(p.cache_hit_ratio),
+      };
+    });
+  }, [historyData]);
 
   return (
     <div className="space-y-6">
