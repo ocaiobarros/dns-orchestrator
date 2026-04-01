@@ -1058,7 +1058,7 @@ export default function Wizard() {
               ['Hostname', config.hostname || '—'],
               ['Interface', `${config.mainInterface} — ${config.ipv4Address}`],
               ...(isInterception ? [
-                ['VIPs', `${config.serviceVips.length} serviço + ${config.interceptedVips.length} interceptados`],
+                ['VIPs', `${config.interceptedVips.length} interceptados${hasOwnVip ? ` + ${config.serviceVips.length} próprios` : ''}`],
                 ['Egress', config.egressDeliveryMode === 'border-routed' ? 'Border-Routed' : 'Host-Owned'],
                 ['Distribuição', config.distributionPolicy],
               ] : []),
