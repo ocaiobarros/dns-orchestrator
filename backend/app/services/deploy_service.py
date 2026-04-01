@@ -625,35 +625,42 @@ def _execute_deploy_locked(
     s6 = _step(6, "Limpeza seletiva de configurações geradas")
     def selective_cleanup():
         msgs = []
-        total_removed = 0
 
-        # Remove loopback IPs from lo (keep 127.0.0.1 only)
+        # ── 1. Remove ALL non-system IPv4 from lo (keep only 127.0.0.1) ──
         import re as _re
         r_lo = run_command("ip", ["-4", "addr", "show", "dev", "lo"], timeout=5)
-        lo_ips = _re.findall(r'inet (\d+\.\d+\.\d+\.\d+)/\d+', r_lo.get("stdout") or "")
-        for ip in lo_ips:
+        # Capture IP WITH its actual prefix length to ensure correct deletion
+        lo_entries = _re.findall(r'inet (\d+\.\d+\.\d+\.\d+)/(\d+)', r_lo.get("stdout") or "")
+        removed_v4 = 0
+        for ip, prefix in lo_entries:
             if ip == "127.0.0.1":
                 continue
-            run_command("ip", ["addr", "del", f"{ip}/32", "dev", "lo"], timeout=5, use_privilege=True)
-            total_removed += 1
+            run_command("ip", ["-4", "addr", "del", f"{ip}/{prefix}", "dev", "lo"], timeout=5, use_privilege=True)
+            removed_v4 += 1
 
-        # Remove IPv6 from lo (keep ::1 and link-local)
+        # ── 2. Remove ALL non-system IPv6 from lo (keep ::1 and link-local) ──
         r_lo6 = run_command("ip", ["-6", "addr", "show", "dev", "lo"], timeout=5)
-        lo6_ips = _re.findall(r'inet6 ([0-9a-fA-F:]+)/\d+', r_lo6.get("stdout") or "")
-        for ip6 in lo6_ips:
+        lo6_entries = _re.findall(r'inet6 ([0-9a-fA-F:]+)/(\d+)', r_lo6.get("stdout") or "")
+        removed_v6 = 0
+        for ip6, prefix in lo6_entries:
             if ip6 == "::1" or ip6.startswith("fe80"):
                 continue
-            run_command("ip", ["-6", "addr", "del", f"{ip6}/128", "dev", "lo"], timeout=5, use_privilege=True)
-            total_removed += 1
+            run_command("ip", ["-6", "addr", "del", f"{ip6}/{prefix}", "dev", "lo"], timeout=5, use_privilege=True)
+            removed_v6 += 1
 
-        if total_removed:
-            msgs.append(f"Removidos {total_removed} IPs do lo")
+        total_lo = removed_v4 + removed_v6
+        if total_lo:
+            msgs.append(f"lo: {total_lo} IPs removidos ({removed_v4} v4, {removed_v6} v6)")
 
-        # Remove dummy lo0 interface (will be recreated by post-up)
+        # ── 3. Remove dummy lo0 entirely (destroys ALL IPs bound to it) ──
         r_lo0 = run_command("ip", ["link", "show", "lo0"], timeout=5)
         if r_lo0.get("exit_code") == 0:
+            run_command("ip", ["addr", "flush", "dev", "lo0"], timeout=5, use_privilege=True)
+            run_command("ip", ["link", "set", "lo0", "down"], timeout=5, use_privilege=True)
             run_command("ip", ["link", "del", "lo0"], timeout=5, use_privilege=True)
-            msgs.append("Interface dummy lo0 removida")
+            msgs.append("Interface dummy lo0 removida (todos os IPs destruídos)")
+        else:
+            msgs.append("lo0 não existia")
 
         # Remove wizard-generated files via globs
         for label, pattern in _CLEANUP_GLOBS.items():
