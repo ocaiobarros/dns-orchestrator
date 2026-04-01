@@ -971,7 +971,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
       .join(', ');
     files.push({
       path: `/etc/nftables.d/${ruleid}-nat-rule-nth-ipv4_${proto}_dns.nft`,
-      content: `table ip nat {\n    chain ${topchain} {\n        numgen inc mod ${config.instances.length} vmap { ${vmapEntries} }\n    }\n}\n`,
+      content: `table ip nat {\n    chain ${topchain} {\n        numgen random mod ${config.instances.length} vmap { ${vmapEntries} }\n    }\n}\n`,
     });
     ruleid++;
   }
