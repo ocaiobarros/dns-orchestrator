@@ -354,73 +354,77 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60) -> dict:
             stdout = raw_out2
             log_source = "journalctl"
 
-    # Multiple regex patterns to match different Unbound log formats
-    # Format 1: 2026-04-01T14:00:01+0000 host unbound01[123]: [1234:0] info: 172.250.40.10 google.com. A IN
-    # Format 2: 2026-04-01T14:00:01+0000 host unbound01[123]: info: 172.250.40.10 google.com. A IN
-    # Format 3: Apr 01 14:00:01 host unbound01[123]: [1234:0] info: 172.250.40.10 google.com. A IN
-    # Format 4: ...unbound01[123]: 172.250.40.10 google.com. A IN
+    # Unbound log-queries formats (verbosity 1+):
+    #   [thread:0] info: <client_ip> <domain>. <type> <class>
+    #   info: <client_ip> <domain>. <type> <class>
+    #   info: <client_ip>#<port> <domain>. <type> <class>
+    # Full journalctl line example:
+    #   2026-04-01T14:00:01+0000 host unbound01[123]: [0:0] info: 172.250.40.10 google.com. A IN
     query_patterns = [
-        # Standard with optional thread id and info prefix
+        # Pattern 1: with "info:" prefix, optional thread, optional #port on client
         re.compile(
-            r'(\S+)\s+\S+\s+\S+\[\d+\]:\s+'
-            r'(?:\[\d+:\d+\]\s+)?'
-            r'(?:info:\s+)?'
-            r'(\d+\.\d+\.\d+\.\d+)\s+'
+            r'info:\s+'
+            r'(\d+\.\d+\.\d+\.\d+)(?:#\d+)?\s+'
             r'(\S+)\s+'
-            r'(\S+)\s+'
-            r'(\S+)'
+            r'(\w+)\s+'
+            r'(\w+)'
         ),
-        # Simpler: just IP domain type class after the process name
+        # Pattern 2: "query:" style (some unbound versions)
+        # info: query: <domain>. <class> <type> from <client_ip>
         re.compile(
-            r'\[\d+\]:\s+(?:info:\s+)?(\d+\.\d+\.\d+\.\d+)\s+(\S+)\s+(\S+)\s+(\S+)'
+            r'query:\s+'
+            r'(\S+)\s+'
+            r'(\w+)\s+'
+            r'(\w+)\s+'
+            r'from\s+'
+            r'(\d+\.\d+\.\d+\.\d+)'
         ),
     ]
 
     parsed_count = 0
     for line in stdout.split("\n"):
-        # Skip lines that don't look like queries
-        if "query:" not in line.lower() and " info: " not in line and not re.search(r'\d+\.\d+\.\d+\.\d+\s+\S+\.\s+\w+\s+IN', line):
+        # Quick pre-filter: must contain "info:" to be a query log line
+        if "info:" not in line:
             continue
 
-        matched = False
         for i, pat in enumerate(query_patterns):
             m = pat.search(line)
-            if m:
-                groups = m.groups()
-                if i == 0:
-                    ts_str, client, domain, qtype, _ = groups
-                else:
-                    client, domain, qtype, _ = groups
-                    ts_str = ""
+            if not m:
+                continue
 
-                domain = domain.rstrip(".")
-                if not domain or domain == ".":
-                    continue
+            if i == 0:
+                # info: <client> <domain> <type> <class>
+                client, domain, qtype, _qclass = m.groups()
+            else:
+                # query: <domain> <class> <type> from <client>
+                domain, _qclass, qtype, client = m.groups()
 
-                domains[domain] += 1
-                clients[client] += 1
-                query_types[qtype] += 1
+            domain = domain.rstrip(".")
+            if not domain or domain == "." or domain == "localhost":
+                continue
 
-                # Extract time from line start for recent queries
-                time_str = ts_str[-8:] if ts_str and len(ts_str) > 8 else ""
-                if not time_str:
-                    tm = re.match(r'(\d{4}-\d{2}-\d{2}T[\d:]+)', line)
-                    if tm:
-                        time_str = tm.group(1)[-8:]
-                    else:
-                        tm2 = re.match(r'\w+\s+\d+\s+([\d:]+)', line)
-                        if tm2:
-                            time_str = tm2.group(1)
+            domains[domain] += 1
+            clients[client] += 1
+            query_types[qtype] += 1
 
-                recent.append({
-                    "time": time_str or "??:??:??",
-                    "client": client,
-                    "domain": domain,
-                    "type": qtype,
-                })
-                parsed_count += 1
-                matched = True
-                break
+            # Extract timestamp from line start
+            time_str = ""
+            tm = re.match(r'(\d{4}-\d{2}-\d{2}T[\d:]+)', line)
+            if tm:
+                time_str = tm.group(1)[-8:]
+            else:
+                tm2 = re.match(r'\w+\s+\d+\s+([\d:]+)', line)
+                if tm2:
+                    time_str = tm2.group(1)
+
+            recent.append({
+                "time": time_str or "??:??:??",
+                "client": client,
+                "domain": domain,
+                "type": qtype,
+            })
+            parsed_count += 1
+            break
 
     # Merge with history
     hist_domains.update(domains)
