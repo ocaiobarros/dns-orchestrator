@@ -2,7 +2,11 @@
 // DNS Control — Complete Type System
 // ============================================================
 
-// ---- Deployment Mode ----
+// ---- Operation Mode (deterministic — only 2 modes) ----
+
+export type OperationMode = 'interception' | 'simple';
+
+// ---- Deployment Mode (legacy compat — maps from operationMode) ----
 
 export type DeploymentMode =
   | 'internal-recursive'
