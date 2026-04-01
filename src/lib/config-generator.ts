@@ -785,7 +785,7 @@ export function generateSimpleNftablesModular(config: WizardConfig): { path: str
     const vmapEntries = config.instances.map((inst, i) => `${i} : jump local_dns_${proto}_${inst.name}`).join(', ');
     files.push({
       path: `/etc/nftables.d/5600-local-rule-rr-${proto}.nft`,
-      content: `table ip nat {\n    chain ${topchain} {\n        numgen inc mod ${config.instances.length} vmap { ${vmapEntries} }\n    }\n}\n`,
+      content: `table ip nat {\n    chain ${topchain} {\n        numgen random mod ${config.instances.length} vmap { ${vmapEntries} }\n    }\n}\n`,
     });
   }
 
