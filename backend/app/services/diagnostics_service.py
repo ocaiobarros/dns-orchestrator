@@ -636,7 +636,7 @@ def get_network_interfaces() -> list[dict]:
 
 
 def _classify_interface_type(name: str, link_type: str) -> str:
-    if name == "lo":
+    if name == "lo" or name.startswith("lo") and not name.startswith("lo_"):
         return "loopback"
     if name.startswith("dummy"):
         return "dummy"

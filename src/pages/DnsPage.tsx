@@ -160,10 +160,64 @@ export default function DnsPage() {
         </Suspense>
       )}
 
-      {topDomains.length > 0 && (
+      {(topDomains.length > 0 || topDomainsFromAnalytics.length > 0) && (
         <Suspense fallback={<ChartGridSkeleton />}>
-          <DnsTopDomains topDomains={topDomains} />
+          <DnsTopDomains topDomains={topDomains.length > 0 ? topDomains : topDomainsFromAnalytics} />
         </Suspense>
+      )}
+
+      {/* Top Clients */}
+      {topClients.length > 0 && (
+        <div className="noc-panel">
+          <div className="noc-panel-header">Top Clientes</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b border-border">
+                  <th className="pb-2 font-medium">Cliente</th>
+                  <th className="pb-2 font-medium text-right">Queries</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono">
+                {topClients.map((c: any) => (
+                  <tr key={c.client || c.ip} className="border-b border-border last:border-0">
+                    <td className="py-2 text-primary">{c.client || c.ip}</td>
+                    <td className="py-2 text-right">{safeNum(c.count || c.queries).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Recent Queries */}
+      {recentQueries.length > 0 && (
+        <div className="noc-panel">
+          <div className="noc-panel-header">Consultas Recentes</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b border-border">
+                  <th className="pb-2 font-medium">Domínio</th>
+                  <th className="pb-2 font-medium">Cliente</th>
+                  <th className="pb-2 font-medium">Tipo</th>
+                  <th className="pb-2 font-medium">Hora</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono">
+                {recentQueries.slice(0, 50).map((q: any, i: number) => (
+                  <tr key={i} className="border-b border-border last:border-0">
+                    <td className="py-2 text-primary">{(q.domain || '').replace(/\.$/, '')}</td>
+                    <td className="py-2 text-muted-foreground">{q.client || q.client_ip || '—'}</td>
+                    <td className="py-2">{q.qtype || q.type || '—'}</td>
+                    <td className="py-2 text-muted-foreground text-xs">{q.time || q.timestamp || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
   );

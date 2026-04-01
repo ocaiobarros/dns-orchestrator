@@ -81,14 +81,33 @@ export default function NetworkPage() {
               const mac = iface.mac || getIfaceMac(iface);
               const hasTraffic = iface.rxBytes != null || iface.txBytes != null;
               const ifType = iface.type || '';
+              const flags: string[] = iface.flags || [];
+              const name: string = iface.name || '';
+
+              // Classify interface status correctly
+              const isLoopbackOrVirtual = ifType === 'loopback' || ifType === 'dummy' || name === 'lo' || name.startsWith('lo') || name.startsWith('dummy');
+              const hasLowerUp = flags.includes('LOWER_UP');
+              const isUp = state === 'UP' || state === 'up';
+              const isUnknown = state === 'UNKNOWN' || state === 'unknown';
+
+              let statusColor = 'bg-destructive/15 text-destructive border-destructive/30'; // DOWN = red
+              let statusLabel = state;
+              if (isUp && hasLowerUp) {
+                statusColor = 'bg-success/15 text-success border-success/30';
+              } else if (isUp && !hasLowerUp) {
+                statusColor = 'bg-warning/15 text-warning border-warning/30';
+              } else if (isUnknown && isLoopbackOrVirtual) {
+                statusColor = 'bg-success/15 text-success border-success/30';
+                statusLabel = 'OK';
+              } else if (isUnknown) {
+                statusColor = 'bg-muted text-muted-foreground border-border';
+              }
 
               return (
                 <div key={iface.name} className="border-b border-border last:border-0 pb-3 last:pb-0">
                   <div className="flex items-center gap-3 mb-1 flex-wrap">
                     <span className="font-mono font-medium">{iface.name}</span>
-                    <span className={`text-xs px-1.5 py-0.5 rounded border ${
-                      state === 'UP' || state === 'up' ? 'bg-success/15 text-success border-success/30' : 'bg-destructive/15 text-destructive border-destructive/30'
-                    }`}>{state}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded border ${statusColor}`}>{statusLabel}</span>
                     {ifType && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{ifType}</span>}
                     {iface.mtu != null && <span className="text-xs text-muted-foreground">MTU {iface.mtu}</span>}
                     {mac && mac !== '00:00:00:00:00:00' && <span className="text-xs text-muted-foreground font-mono">{mac}</span>}
