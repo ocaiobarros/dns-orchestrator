@@ -255,3 +255,20 @@ export function useProfiles() {
     queryFn: async () => { const r = await api.getProfiles(); if (!r.success) throw new Error(r.error!); return r.data; },
   });
 }
+
+// ---- Telemetry (Collector Service) ----
+export function useTelemetry() {
+  return useQuery({
+    queryKey: ['telemetry', 'latest'],
+    queryFn: async () => { const r = await api.getTelemetryLatest(); if (!r.success) throw new Error(r.error!); return r.data; },
+    refetchInterval: 10000,
+  });
+}
+
+export function useTelemetryStatus() {
+  return useQuery({
+    queryKey: ['telemetry', 'status'],
+    queryFn: async () => { const r = await api.getTelemetryStatus(); if (!r.success) throw new Error(r.error!); return r.data; },
+    refetchInterval: 30000,
+  });
+}
