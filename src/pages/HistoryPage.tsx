@@ -4,7 +4,7 @@ import ApplyStepsViewer from '@/components/ApplyStepsViewer';
 import { LoadingState, ErrorState, EmptyState } from '@/components/DataStates';
 import { useHistory, useDeployBackups, useRollback, useHistoryDetail } from '@/lib/hooks';
 import { safeDate } from '@/lib/types';
-import { RotateCcw, ChevronDown, ChevronUp, Check, X, SkipForward, FileText, Shield } from 'lucide-react';
+import { RotateCcw, ChevronDown, ChevronUp, Check, X, SkipForward, FileText, Shield, Info } from 'lucide-react';
 
 /** Normalize a history item from real API (snake_case) or mock (camelCase) */
 function normalizeHistoryItem(raw: any) {
