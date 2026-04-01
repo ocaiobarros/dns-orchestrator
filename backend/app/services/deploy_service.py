@@ -293,18 +293,20 @@ def _execute_deploy_locked(
                     nc.write(".\t\t\t3600000\tNS\tA.ROOT-SERVERS.NET.\n"
                              "A.ROOT-SERVERS.NET.\t3600000\tA\t198.41.0.4\n")
 
-        # Generate nftables validation artifact
-        try:
-            normalized_payload = normalize_payload(payload)
-            vfiles = generate_nftables_config(normalized_payload, validation_mode=True)
-            if vfiles:
-                rel_path = vfiles[0]["path"].lstrip("/")
-                nft_validation_staged_path = os.path.join(staging_dir, rel_path)
-                os.makedirs(os.path.dirname(nft_validation_staged_path), exist_ok=True)
-                with open(nft_validation_staged_path, "w") as vf:
-                    vf.write(vfiles[0]["content"])
-        except Exception as exc:
-            logger.warning(f"Failed to generate nftables validation artifact: {exc}")
+        # Generate nftables validation artifact — ONLY for interception mode
+        normalized_payload = normalize_payload(payload)
+        is_simple_mode = normalized_payload.get("operationMode") == "simple"
+        if not is_simple_mode:
+            try:
+                vfiles = generate_nftables_config(normalized_payload, validation_mode=True)
+                if vfiles:
+                    rel_path = vfiles[0]["path"].lstrip("/")
+                    nft_validation_staged_path = os.path.join(staging_dir, rel_path)
+                    os.makedirs(os.path.dirname(nft_validation_staged_path), exist_ok=True)
+                    with open(nft_validation_staged_path, "w") as vf:
+                        vf.write(vfiles[0]["content"])
+            except Exception as exc:
+                logger.warning(f"Failed to generate nftables validation artifact: {exc}")
 
         return {"status": "success", "output": f"{len(files)} arquivos gerados em staging: {staging_dir}"}
 
