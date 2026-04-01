@@ -31,6 +31,7 @@ interface PathEdge {
 interface Props {
   nodes: PathNode[];
   edges: PathEdge[];
+  layerLabels?: Partial<Record<PathNode['type'], string>>;
 }
 
 const LAYER_TYPES: Array<PathNode['type']> = ['client', 'vip', 'resolver', 'upstream'];
