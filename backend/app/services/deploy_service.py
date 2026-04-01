@@ -1310,54 +1310,64 @@ def _run_health_checks(payload: dict) -> list[dict]:
                 "durationMs": int((time.monotonic() - t0) * 1000),
             })
 
-    # nftables loaded
-    t0 = time.monotonic()
-    r = run_command("nft", ["list", "tables"], timeout=5, use_privilege=True)
-    checks.append({
-        "name": "nftables rules loaded", "target": "nftables",
-        "status": "pass" if r["exit_code"] == 0 and r["stdout"].strip() else "fail",
-        "detail": r["stdout"].strip()[:200] or "No tables",
-        "durationMs": int((time.monotonic() - t0) * 1000),
-    })
+    # ── nftables checks: only for interception mode ──
+    operation_mode = str(
+        payload.get("operationMode")
+        or payload.get("_wizardConfig", {}).get("operationMode", "")
+        or ""
+    ).lower()
+    is_simple_mode = operation_mode in ("simple", "recursivo_simples", "recursivo simples", "")
 
-    # nft list ruleset for DNAT + sticky verification
-    t0 = time.monotonic()
-    r = run_command("nft", ["list", "ruleset"], timeout=10, use_privilege=True)
-    nft_ruleset = r.get("stdout") or ""
-    nft_dur = int((time.monotonic() - t0) * 1000)
-
-    for inst in instances:
-        name = inst.get("name", "unbound")
-        bind_ip = inst.get("bindIp", "")
-        if bind_ip:
-            has_dnat = f"dnat to {bind_ip}:53" in nft_ruleset
-            checks.append({
-                "name": f"nftables DNAT → {name} ({bind_ip})", "target": f"nftables/{name}",
-                "status": "pass" if has_dnat else "fail",
-                "detail": f"DNAT rule para {bind_ip}:53 {'encontrada' if has_dnat else 'AUSENTE'}",
-                "durationMs": nft_dur,
-            })
-
-    for inst in instances:
-        name = inst.get("name", "unbound")
-        set_name = f"ipv4_users_{name}"
-        has_set = set_name in nft_ruleset
+    nft_ruleset = ""
+    if not is_simple_mode:
+        # nftables loaded
+        t0 = time.monotonic()
+        r = run_command("nft", ["list", "tables"], timeout=5, use_privilege=True)
         checks.append({
-            "name": f"nftables sticky set {set_name}", "target": f"nftables/{set_name}",
-            "status": "pass" if has_set else "fail",
-            "detail": f"Set dinâmico {set_name} {'presente' if has_set else 'AUSENTE'}",
-            "durationMs": 0,
+            "name": "nftables rules loaded", "target": "nftables",
+            "status": "pass" if r["exit_code"] == 0 and r["stdout"].strip() else "fail",
+            "detail": r["stdout"].strip()[:200] or "No tables",
+            "durationMs": int((time.monotonic() - t0) * 1000),
         })
 
-    # nftables counters
-    t0 = time.monotonic()
-    r = run_command("nft", ["list", "counters"], timeout=5, use_privilege=True)
-    checks.append({
-        "name": "nftables counters", "target": "nftables",
-        "status": "pass" if r["exit_code"] == 0 else "fail",
-        "detail": r["stdout"].strip()[:200] or "No counters",
-        "durationMs": int((time.monotonic() - t0) * 1000),
-    })
+        # nft list ruleset for DNAT + sticky verification
+        t0 = time.monotonic()
+        r = run_command("nft", ["list", "ruleset"], timeout=10, use_privilege=True)
+        nft_ruleset = r.get("stdout") or ""
+        nft_dur = int((time.monotonic() - t0) * 1000)
+
+        for inst in instances:
+            name = inst.get("name", "unbound")
+            bind_ip = inst.get("bindIp", "")
+            if bind_ip:
+                has_dnat = f"dnat to {bind_ip}:53" in nft_ruleset
+                checks.append({
+                    "name": f"nftables DNAT → {name} ({bind_ip})", "target": f"nftables/{name}",
+                    "status": "pass" if has_dnat else "fail",
+                    "detail": f"DNAT rule para {bind_ip}:53 {'encontrada' if has_dnat else 'AUSENTE'}",
+                    "durationMs": nft_dur,
+                })
+
+        for inst in instances:
+            name = inst.get("name", "unbound")
+            set_name = f"ipv4_users_{name}"
+            has_set = set_name in nft_ruleset
+            checks.append({
+                "name": f"nftables sticky set {set_name}", "target": f"nftables/{set_name}",
+                "status": "pass" if has_set else "fail",
+                "detail": f"Set dinâmico {set_name} {'presente' if has_set else 'AUSENTE'}",
+                "durationMs": 0,
+            })
+
+        # nftables counters
+        t0 = time.monotonic()
+        r = run_command("nft", ["list", "counters"], timeout=5, use_privilege=True)
+        checks.append({
+            "name": "nftables counters", "target": "nftables",
+            "status": "pass" if r["exit_code"] == 0 else "fail",
+            "detail": r["stdout"].strip()[:200] or "No counters",
+            "durationMs": int((time.monotonic() - t0) * 1000),
+        })
 
     # VIP reachability
     for vip in (vips or []):
