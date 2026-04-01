@@ -667,6 +667,8 @@ export const DEFAULT_CONFIG: WizardConfig = {
   organization: '',
   project: '',
   frontendDnsIp: '',
+  simpleDistributionStrategy: 'round-robin' as const,
+  simpleStickyTimeout: 1200,
   description: '',
   timezone: 'America/Sao_Paulo',
   mainInterface: '',
