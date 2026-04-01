@@ -208,7 +208,7 @@ export default function SimpleDashboard() {
     { id: 'clients', label: 'Clientes DNS', type: 'client' as const, status: 'ok' as const },
     {
       id: 'frontend', label: frontendIp ? `Frontend ${frontendIp}` : 'Frontend DNS',
-      type: 'vip' as const, status: (frontendHealthy ? 'ok' : 'unknown') as const,
+      type: 'vip' as const, status: frontendHealthy ? 'ok' as const : 'unknown' as const,
       ip: frontendIp || undefined, qps: telemetryConnected ? qps : undefined,
     },
     ...resolvers.map((r: any) => {
