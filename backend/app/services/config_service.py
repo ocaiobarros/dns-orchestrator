@@ -30,18 +30,47 @@ def validate_config(payload: dict[str, Any]) -> dict:
 
     # ═══ Egress delivery mode validation ═══
     egress_mode = normalized.get("egressDeliveryMode", "host-owned")
+    seen_egress: set[str] = set()
+    primary_ip = normalized.get("ipv4Address", "").split("/")[0].strip()
+    all_bind_ips = {inst.get("bindIp", "") for inst in instances if inst.get("bindIp")}
+    all_vips = set()
+    for v in normalized.get("interceptedVips", []):
+        if isinstance(v, dict) and v.get("vipIp"):
+            all_vips.add(v["vipIp"])
+    for v in normalized.get("serviceVips", []) or normalized.get("nat", {}).get("serviceVips", []) or []:
+        if isinstance(v, dict) and v.get("ipv4"):
+            all_vips.add(v["ipv4"])
+
     for inst in instances:
-        exit_ip = inst.get("exitIp", "")
+        exit_ip = str(inst.get("exitIp", "") or inst.get("egressIpv4", "")).strip()
         name = inst.get("name", "unbound")
-        if egress_mode == "host-owned" and exit_ip:
+        if not exit_ip:
+            continue
+        # Duplicate check
+        if exit_ip in seen_egress:
             errors.append({
                 "field": f"instances.{name}.exitIp",
-                "message": f"host-owned: IP de egress {exit_ip} DEVE existir localmente no host para outgoing-interface funcionar",
-                "severity": "warning",
+                "message": f"IP de egress {exit_ip} duplicado entre instâncias",
             })
-        if egress_mode == "border-routed" and exit_ip:
-            # INFO: expected — outgoing-interface will be suppressed
-            pass
+        seen_egress.add(exit_ip)
+        # Collision with primary host IP
+        if exit_ip == primary_ip:
+            errors.append({
+                "field": f"instances.{name}.exitIp",
+                "message": f"IP de egress {exit_ip} colide com o IP principal do host",
+            })
+        # Collision with listener/bind IPs
+        if exit_ip in all_bind_ips:
+            errors.append({
+                "field": f"instances.{name}.exitIp",
+                "message": f"IP de egress {exit_ip} colide com um listener IP interno",
+            })
+        # Collision with VIPs
+        if exit_ip in all_vips:
+            errors.append({
+                "field": f"instances.{name}.exitIp",
+                "message": f"IP de egress {exit_ip} colide com um VIP interceptado ou de serviço",
+            })
 
     return {"valid": len(errors) == 0, "errors": errors, "normalized": normalized}
 
