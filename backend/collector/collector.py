@@ -392,30 +392,18 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60) -> dict:
                 log_source = "journalctl"
                 diag_info["attempt4_unbound_lines"] = len(unbound_lines)
 
-    # Unbound log-queries formats (verbosity 1+):
-    #   [thread:0] info: <client_ip> <domain>. <type> <class>
-    #   info: <client_ip> <domain>. <type> <class>
-    #   info: <client_ip>#<port> <domain>. <type> <class>
-    # Full journalctl line example:
-    #   2026-04-01T14:00:01+0000 host unbound01[123]: [0:0] info: 172.250.40.10 google.com. A IN
+    # Unbound log-queries format from real journalctl:
+    #   Apr 01 14:43:56 dnscontrol unbound[109556]: [1775069036] unbound[109556:3] info: 172.250.40.100 google.com. A IN
+    # The key part after "info:" is: <client> <domain> <qtype> <qclass>
+    # Client can be IP, IP#port, or other formats — use \S+ for robustness
     query_patterns = [
-        # Pattern 1: with "info:" prefix, optional thread, optional #port on client
+        # Primary: info: <client> <domain> <qtype> <qclass>
         re.compile(
-            r'info:\s+'
-            r'(\d+\.\d+\.\d+\.\d+)(?:#\d+)?\s+'
-            r'(\S+)\s+'
-            r'(\w+)\s+'
-            r'(\w+)'
+            r'info:\s+(\S+)\s+(\S+)\s+([A-Z0-9]+)\s+([A-Z0-9]+)'
         ),
-        # Pattern 2: "query:" style (some unbound versions)
-        # info: query: <domain>. <class> <type> from <client_ip>
+        # Fallback: query: <domain> <class> <type> from <client>
         re.compile(
-            r'query:\s+'
-            r'(\S+)\s+'
-            r'(\w+)\s+'
-            r'(\w+)\s+'
-            r'from\s+'
-            r'(\d+\.\d+\.\d+\.\d+)'
+            r'query:\s+(\S+)\s+(\w+)\s+(\w+)\s+from\s+(\d+\.\d+\.\d+\.\d+)'
         ),
     ]
 
@@ -436,8 +424,10 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60) -> dict:
                 continue
 
             if i == 0:
-                # info: <client> <domain> <type> <class>
-                client, domain, qtype, _qclass = m.groups()
+                # info: <client> <domain> <qtype> <qclass>
+                raw_client, domain, qtype, _qclass = m.groups()
+                # Strip optional #port from client (e.g. 172.250.40.100#12345)
+                client = raw_client.split("#")[0]
             else:
                 # query: <domain> <class> <type> from <client>
                 domain, _qclass, qtype, client = m.groups()
