@@ -935,8 +935,20 @@ export default function Wizard() {
           <FieldGroup label="Senha Inicial"><Input value={config.adminPassword} onChange={v => set('adminPassword', v)} type="password" placeholder="Definida no primeiro acesso" /></FieldGroup>
           <FieldGroup label="Bind do Painel" error={fieldError('panelBind')}>
             <Select value={config.panelBind} onChange={v => set('panelBind', v)} options={[
-              { value: '127.0.0.1', label: '127.0.0.1 (local only)' }, { value: '0.0.0.0', label: '0.0.0.0 (all interfaces)' },
+              { value: '127.0.0.1', label: '127.0.0.1 — Apenas local (SSH tunnel)' },
+              ...(config.ipv4Address ? [{ value: config.ipv4Address, label: `${config.ipv4Address} — Interface do host` }] : []),
+              { value: '0.0.0.0', label: '0.0.0.0 — Todas as interfaces' },
             ]} />
+            {config.panelBind === '127.0.0.1' && (
+              <div className="mt-2 rounded-md border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-yellow-600 dark:text-yellow-400">
+                <strong>Atenção:</strong> O painel ficará acessível apenas localmente. Para acesso remoto, use um SSH tunnel (<code className="font-mono text-[11px]">ssh -L 8443:127.0.0.1:8443 host</code>) ou altere o bind para a interface do host ou 0.0.0.0.
+              </div>
+            )}
+            {config.panelBind === '0.0.0.0' && (
+              <div className="mt-2 rounded-md border border-orange-500/30 bg-orange-500/5 px-3 py-2 text-xs text-orange-600 dark:text-orange-400">
+                <strong>Importante:</strong> O painel ficará exposto em todas as interfaces. Garanta proteção via ACL, firewall ou autenticação forte.
+              </div>
+            )}
           </FieldGroup>
           <FieldGroup label="Porta *" error={fieldError('panelPort')}><Input type="number" value={config.panelPort} onChange={v => set('panelPort', parseInt(v) || 8443)} /></FieldGroup>
         </div>
