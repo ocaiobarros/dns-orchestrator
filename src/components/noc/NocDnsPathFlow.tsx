@@ -209,7 +209,7 @@ function NodeCard({ node }: { node: PathNode }) {
 }
 
 // ── Main component ──
-export default function NocDnsPathFlow({ nodes, edges }: Props) {
+export default function NocDnsPathFlow({ nodes, edges, layerLabels }: Props) {
   const layers: PathNode[][] = LAYER_TYPES.map(t => nodes.filter(n => n.type === t));
 
   // Synthetic defaults
