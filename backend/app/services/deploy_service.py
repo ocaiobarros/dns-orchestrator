@@ -35,6 +35,7 @@ from app.core.config import settings
 from app.services.config_service import validate_config, generate_preview
 from app.services.payload_normalizer import normalize_payload
 from app.generators.nftables_generator import generate_nftables_config
+from app.generators.nftables_simple_generator import generate_simple_nftables_config
 from app.executors.command_runner import run_command
 from app.services.deploy_lock import deploy_lock
 from app.services.drift_service import write_version_manifest
