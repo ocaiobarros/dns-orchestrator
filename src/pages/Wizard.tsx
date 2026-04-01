@@ -10,6 +10,7 @@ import {
   type VipDistributionPolicy,
   type ObservabilityConfig,
   type OperationMode,
+  type VipDeliverySubmode,
 } from '@/lib/types';
 import { validateConfig, getStepErrors, isConfigValid, getValidationSummary } from '@/lib/validation';
 import { generateAllFiles, createDefaultInstance } from '@/lib/config-generator';
@@ -26,30 +27,26 @@ import {
 } from 'lucide-react';
 import type { ApplyResult, ApplyRequest } from '@/lib/types';
 
-// ═══ Step definitions per mode ═══
-const STEPS_INTERCEPTION = [
-  'Topologia do Host',        // 0
-  'Modo de Operação DNS',     // 1
-  'Instâncias Resolver',      // 2
-  'VIP Interception',         // 3
-  'Egress Público',           // 4
-  'Mapeamento VIP→Instância', // 5
-  'Segurança',                // 6
-  'Observabilidade',          // 7
-  'Revisão & Deploy',         // 8
-];
-
-const STEPS_SIMPLE = [
-  'Topologia do Host',        // 0
-  'Modo de Operação DNS',     // 1
-  'Instâncias Resolver',      // 2
-  'Segurança',                // 3
-  'Observabilidade',          // 4
-  'Revisão & Deploy',         // 5
-];
-
-const ICONS_INTERCEPTION = [Server, Network, Layers, Crosshair, ExternalLink, Route, Shield, BarChart3, FileText];
-const ICONS_SIMPLE = [Server, Network, Layers, Shield, BarChart3, FileText];
+// ═══ Dynamic step definitions based on mode + submode ═══
+function getSteps(mode: OperationMode, submode: VipDeliverySubmode) {
+  if (mode === 'simple') {
+    return {
+      names: ['Topologia do Host', 'Modo de Operação DNS', 'Instâncias Resolver', 'Segurança', 'Observabilidade', 'Revisão & Deploy'],
+      icons: [Server, Network, Layers, Shield, BarChart3, FileText],
+    };
+  }
+  if (submode === 'interception-plus-own-vip') {
+    return {
+      names: ['Topologia do Host', 'Modo de Operação DNS', 'Modelo de Entrega do VIP', 'Instâncias Resolver', 'VIPs de Serviço', 'VIP Interception', 'Egress Público', 'Mapeamento VIP→Instância', 'Segurança', 'Observabilidade', 'Revisão & Deploy'],
+      icons: [Server, Network, Globe, Layers, Globe, Crosshair, ExternalLink, Route, Shield, BarChart3, FileText],
+    };
+  }
+  // pure-interception (default)
+  return {
+    names: ['Topologia do Host', 'Modo de Operação DNS', 'Modelo de Entrega do VIP', 'Instâncias Resolver', 'VIP Interception', 'Egress Público', 'Mapeamento VIP→Instância', 'Segurança', 'Observabilidade', 'Revisão & Deploy'],
+    icons: [Server, Network, Globe, Layers, Crosshair, ExternalLink, Route, Shield, BarChart3, FileText],
+  };
+}
 
 // ---- Reusable form components ----
 
@@ -159,8 +156,8 @@ export default function Wizard() {
   const navigate = useNavigate();
 
   const isInterception = config.operationMode === 'interception';
-  const STEPS = isInterception ? STEPS_INTERCEPTION : STEPS_SIMPLE;
-  const STEP_ICONS = isInterception ? ICONS_INTERCEPTION : ICONS_SIMPLE;
+  const hasOwnVip = config.vipDeliverySubmode === 'interception-plus-own-vip';
+  const { names: STEPS, icons: STEP_ICONS } = getSteps(config.operationMode, config.vipDeliverySubmode);
   const LAST_STEP = STEPS.length - 1;
 
   const validationErrors = validateConfig(config);
@@ -217,6 +214,7 @@ export default function Wizard() {
       newConfig.serviceVips = [];
       newConfig.interceptedVips = [];
       newConfig.vipMappings = [];
+      newConfig.vipDeliverySubmode = 'pure-interception';
       newConfig.instances = config.instances.map(inst => ({
         ...inst,
         egressIpv4: '',
@@ -226,8 +224,23 @@ export default function Wizard() {
     }
 
     setConfig(prev => ({ ...prev, ...newConfig }));
-    // Reset to step 1 after mode change
     setStep(1);
+  };
+
+  // Handle VIP delivery submode switch
+  const handleSubmodeSwitch = (submode: VipDeliverySubmode) => {
+    if (submode === config.vipDeliverySubmode) return;
+
+    if (submode === 'pure-interception' && config.serviceVips.length > 0) {
+      if (!confirm('Trocar para Interceptação Pura vai remover os VIPs de serviço próprios cadastrados. Continuar?')) return;
+    }
+
+    const newConfig: Partial<WizardConfig> = { vipDeliverySubmode: submode };
+    if (submode === 'pure-interception') {
+      newConfig.serviceVips = [];
+    }
+
+    setConfig(prev => ({ ...prev, ...newConfig }));
   };
 
   useEffect(() => {
@@ -408,7 +421,7 @@ export default function Wizard() {
           onClick={() => handleModeSwitch('interception')}
           label="Recursivo com Interceptação"
           badge="Padrão"
-          desc="Clientes usam VIPs públicos conhecidos ou definidos no projeto. O host intercepta tráfego DNS via nftables DNAT e redireciona para instâncias internas do Unbound (100.x.x.x). Balanceamento sticky por origem. Egress controlado. Este é o modo principal do script existente."
+          desc="O host intercepta tráfego DNS destinado a IPs externos (ex: 4.2.2.5, 4.2.2.6) via nftables DNAT e redireciona para instâncias internas do Unbound (100.x.x.x). Balanceamento sticky por origem. Egress controlado."
         />
         <ModeCard
           selected={config.operationMode === 'simple'}
@@ -418,28 +431,58 @@ export default function Wizard() {
         />
       </div>
 
-      {config.operationMode === 'interception' && (
-        <div className="p-3 rounded bg-primary/5 border border-primary/15 text-xs space-y-2">
-          <div className="font-medium text-primary">Etapas ativas neste modo:</div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-1 text-muted-foreground">
-            {STEPS_INTERCEPTION.map((s, i) => (
-              <div key={i} className="flex items-center gap-1"><Check size={10} className="text-primary" /> {s}</div>
-            ))}
-          </div>
+      <div className="p-3 rounded bg-primary/5 border border-primary/15 text-xs space-y-2">
+        <div className="font-medium text-primary">Etapas ativas neste modo:</div>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-1 text-muted-foreground">
+          {STEPS.map((s, i) => (
+            <div key={i} className="flex items-center gap-1"><Check size={10} className="text-primary" /> {s}</div>
+          ))}
         </div>
-      )}
-
-      {config.operationMode === 'simple' && (
-        <div className="p-3 rounded bg-secondary/50 border border-border text-xs space-y-2">
-          <div className="font-medium">Etapas ativas neste modo:</div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-1 text-muted-foreground">
-            {STEPS_SIMPLE.map((s, i) => (
-              <div key={i} className="flex items-center gap-1"><Check size={10} /> {s}</div>
-            ))}
-          </div>
+        {config.operationMode === 'simple' && (
           <div className="text-muted-foreground/60 mt-1">
             Etapas removidas: VIP Interception, Egress Público, Mapeamento VIP→Instância
           </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderDeliverySubmode = () => (
+    <div className="space-y-4">
+      <InfoBox>
+        Defina como o serviço DNS será exposto aos clientes. Esta escolha controla se o wizard exibirá a etapa de VIPs de serviço próprios.
+      </InfoBox>
+      <div className="grid grid-cols-1 gap-4">
+        <ModeCard
+          selected={config.vipDeliverySubmode === 'pure-interception'}
+          onClick={() => handleSubmodeSwitch('pure-interception')}
+          label="Interceptação Pura"
+          badge="Padrão"
+          desc="Os clientes consultam IPs DNS externos conhecidos (ex: 4.2.2.5, 4.2.2.6) que são interceptados localmente via nftables. O host NÃO possui VIP público próprio anunciado."
+        />
+        <ModeCard
+          selected={config.vipDeliverySubmode === 'interception-plus-own-vip'}
+          onClick={() => handleSubmodeSwitch('interception-plus-own-vip')}
+          label="Interceptação + VIP Próprio"
+          desc="Além da interceptação de IPs externos, a rede também possui e anuncia IPs públicos próprios para o serviço DNS. Use somente se você realmente anuncia IPs próprios na rede."
+        />
+      </div>
+
+      {config.vipDeliverySubmode === 'pure-interception' && (
+        <div className="p-3 rounded bg-accent/5 border border-accent/15 text-xs text-muted-foreground space-y-1">
+          <div className="font-medium text-accent">Neste submodo:</div>
+          <div>• Nenhum VIP de serviço próprio é necessário</div>
+          <div>• Os VIPs interceptados (ex: 4.2.2.5) são configurados na etapa <strong>VIP Interception</strong></div>
+          <div>• A etapa "VIPs de Serviço" está oculta</div>
+        </div>
+      )}
+
+      {config.vipDeliverySubmode === 'interception-plus-own-vip' && (
+        <div className="p-3 rounded bg-primary/5 border border-primary/15 text-xs text-muted-foreground space-y-1">
+          <div className="font-medium text-primary">Neste submodo:</div>
+          <div>• A etapa "VIPs de Serviço" estará disponível para cadastrar IPs <strong>próprios da sua rede</strong></div>
+          <div>• IPs de terceiros (8.8.8.8, 4.2.2.5) continuam sendo cadastrados em <strong>VIP Interception</strong></div>
+          <div>• Nunca use IPs de resolvedores públicos como VIP de serviço próprio</div>
         </div>
       )}
     </div>
@@ -567,8 +610,8 @@ export default function Wizard() {
   const renderServiceVips = () => (
     <div className="space-y-4">
       <InfoBox>
-        Configure os IPs que a sua rede <strong>anuncia/possui</strong> e que os clientes usarão como servidor DNS.
-        <strong> Não use IPs de resolvedores públicos conhecidos aqui</strong> (Google 8.8.8.8, Level3 4.2.2.5) — esses vão na etapa "VIP Interception".
+        Configure apenas os IPs públicos <strong>próprios da sua rede</strong> que serão usados como identidade do serviço DNS.
+        <strong> Não use aqui IPs interceptados de terceiros.</strong> IPs como 4.2.2.5 e 4.2.2.6 pertencem exclusivamente à etapa "VIP Interception".
       </InfoBox>
       <div className="space-y-3">
         {config.serviceVips.map((vip, i) => (
@@ -617,8 +660,7 @@ export default function Wizard() {
   const renderInterception = () => (
     <div className="space-y-4">
       <InfoBox>
-        Configure quais IPs DNS públicos conhecidos serão "sequestrados" dentro da rede.
-        Clientes acreditam estar usando o DNS público, mas a resolução é local.
+        Configure aqui os IPs DNS externos que serão <strong>interceptados localmente</strong> e redirecionados via nftables para instâncias internas do Unbound.
         <strong> Esta é a feature principal do DNS Control.</strong>
       </InfoBox>
 
@@ -976,7 +1018,7 @@ export default function Wizard() {
               ? <div>Clients → Service VIPs → nftables PREROUTING (DNAT) → Unbound Resolvers → Public Egress → Global DNS</div>
               : <div>Clients → Unbound Resolver → Global DNS</div>}
             <div className="text-[10px] text-muted-foreground/60">
-              {config.instances.length} resolvers{isInterception ? ` · ${config.serviceVips.length} VIPs · ${config.distributionPolicy} · ${config.egressDeliveryMode} egress` : ''}
+              {config.instances.length} resolvers{isInterception ? ` · ${config.interceptedVips.length} interceptados${hasOwnVip ? ` + ${config.serviceVips.length} próprios` : ''} · ${config.distributionPolicy} · ${config.egressDeliveryMode} egress` : ''}
             </div>
           </div>
           <TopologySummary config={config} />
@@ -1016,7 +1058,7 @@ export default function Wizard() {
               ['Hostname', config.hostname || '—'],
               ['Interface', `${config.mainInterface} — ${config.ipv4Address}`],
               ...(isInterception ? [
-                ['VIPs', `${config.serviceVips.length} serviço + ${config.interceptedVips.length} interceptados`],
+                ['VIPs', `${config.interceptedVips.length} interceptados${hasOwnVip ? ` + ${config.serviceVips.length} próprios` : ''}`],
                 ['Egress', config.egressDeliveryMode === 'border-routed' ? 'Border-Routed' : 'Host-Owned'],
                 ['Distribuição', config.distributionPolicy],
               ] : []),
@@ -1063,30 +1105,25 @@ export default function Wizard() {
     );
   };
 
-  // ═══ Step router ═══
+  // ═══ Step router — dynamic based on step name ═══
+  const stepRenderers: Record<string, () => React.ReactNode> = {
+    'Topologia do Host': renderHostTopology,
+    'Modo de Operação DNS': renderOperationMode,
+    'Modelo de Entrega do VIP': renderDeliverySubmode,
+    'Instâncias Resolver': renderInstances,
+    'VIPs de Serviço': renderServiceVips,
+    'VIP Interception': renderInterception,
+    'Egress Público': renderEgress,
+    'Mapeamento VIP→Instância': renderMapping,
+    'Segurança': renderSecurity,
+    'Observabilidade': renderObservability,
+    'Revisão & Deploy': renderReview,
+  };
+
   const renderStep = () => {
-    if (isInterception) {
-      switch (step) {
-        case 0: return renderHostTopology();
-        case 1: return renderOperationMode();
-        case 2: return renderInstances();
-        case 3: return renderInterception();
-        case 4: return renderEgress();
-        case 5: return renderMapping();
-        case 6: return renderSecurity();
-        case 7: return renderObservability();
-        case 8: return renderReview();
-      }
-    } else {
-      switch (step) {
-        case 0: return renderHostTopology();
-        case 1: return renderOperationMode();
-        case 2: return renderInstances();
-        case 3: return renderSecurity();
-        case 4: return renderObservability();
-        case 5: return renderReview();
-      }
-    }
+    const stepName = STEPS[step];
+    const renderer = stepRenderers[stepName];
+    return renderer ? renderer() : null;
   };
 
   const [importLoading, setImportLoading] = useState(false);

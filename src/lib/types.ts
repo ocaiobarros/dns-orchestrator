@@ -5,6 +5,7 @@
 // ---- Operation Mode (deterministic — only 2 modes) ----
 
 export type OperationMode = 'interception' | 'simple';
+export type VipDeliverySubmode = 'pure-interception' | 'interception-plus-own-vip';
 
 // ---- Deployment Mode (legacy compat — maps from operationMode) ----
 
@@ -132,6 +133,9 @@ export interface WizardConfig {
 
   // Step 2 - Modo de Operação DNS (deterministic)
   operationMode: OperationMode;
+
+  // Step 2b - Modelo de Entrega do VIP (only when interception)
+  vipDeliverySubmode: VipDeliverySubmode;
 
   // Legacy compat (derived from operationMode)
   deploymentMode: DeploymentMode;
@@ -666,6 +670,7 @@ export const DEFAULT_CONFIG: WizardConfig = {
 
   // Step 2 - Modo de Operação DNS
   operationMode: 'interception',
+  vipDeliverySubmode: 'pure-interception' as VipDeliverySubmode,
   deploymentMode: 'vip-routed-border',
 
   // Step 3 - VIPs de Serviço
