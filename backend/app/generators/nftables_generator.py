@@ -132,9 +132,14 @@ def _generate_modular(
     # PREROUTING hooks (base chains inside table block)
     _file("/etc/nftables.d/0051-hook-ipv4-prerouting.nft",
           "table ip nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n")
+    # OUTPUT hooks — intercept locally-generated traffic (dig @VIP on this host)
+    _file("/etc/nftables.d/0053-hook-ipv4-output.nft",
+          "table ip nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n")
     if enable_ipv6:
         _file("/etc/nftables.d/0052-hook-ipv6-prerouting.nft",
               "table ip6 nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n")
+        _file("/etc/nftables.d/0054-hook-ipv6-output.nft",
+              "table ip6 nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n")
 
     # VIP definitions — 'define' stays at top level (outside table blocks)
     if vip_ipv4s:
