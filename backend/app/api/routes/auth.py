@@ -61,8 +61,9 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
 
     user = db.query(User).filter(User.username == body.username).first()
     if not user or not verify_password(body.password, user.password_hash):
-        # Failed logins are ALWAYS logged (security-relevant)
         log_auth_event(db, f"Login falhou para '{body.username}'", body.username, client_ip, False)
+        db.add(OperationalEvent(event_type="login_failed", severity="warning", instance_id=None, message=f"Failed login attempt for '{body.username}' from {client_ip}"))
+        db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais inválidas")
 
     if not user.is_active:
