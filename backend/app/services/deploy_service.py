@@ -312,12 +312,27 @@ def _execute_deploy_locked(
             logger.warning(f"Failed to generate nftables validation artifact: {exc}")
 
         # ── Structural guard: simple mode MUST NOT produce interception artifacts ──
+        # Local balancing nftables (local_* chains, DNS_FRONTEND_IP) are ALLOWED.
+        # Only external interception artifacts (DNS_ANYCAST_*, intercept-* files,
+        # ipv4_tcp_dns/ipv4_udp_dns chains) are BLOCKED.
         if is_simple_mode:
-            nft_interception_patterns = ("DNS_ANYCAST_IP", "ipv4_tcp_dns", "ipv4_udp_dns",
-                                         "ipv6_tcp_dns", "ipv6_udp_dns", "users_unbound")
+            # Patterns that indicate external interception — NOT local balancing
+            nft_interception_patterns = (
+                "DNS_ANYCAST_IPV4", "DNS_ANYCAST_IPV6", "DNS_ANYCAST_IP",
+                "intercept-",
+            )
+            # Chain names used by interception mode (NOT prefixed with "local_")
+            nft_interception_chain_patterns = (
+                "chain ipv4_tcp_dns", "chain ipv4_udp_dns",
+                "chain ipv6_tcp_dns", "chain ipv6_udp_dns",
+                "jump ipv4_tcp_dns", "jump ipv4_udp_dns",
+                "jump ipv6_tcp_dns", "jump ipv6_udp_dns",
+                "set users_unbound",
+            )
+            all_blocked = nft_interception_patterns + nft_interception_chain_patterns
             for f in files:
                 combined = f["path"] + "\n" + f.get("content", "")
-                if any(pat in combined for pat in nft_interception_patterns):
+                if any(pat in combined for pat in all_blocked):
                     return {"status": "failed",
                             "output": f"Modo simples gerou artefato de interceptação: {f['path']}",
                             "stderr": "Erro de modelagem: artefatos nftables de interceptação não são permitidos no modo Recursivo Simples"}
