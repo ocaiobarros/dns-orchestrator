@@ -43,6 +43,23 @@ export default function DnsPage() {
     };
   }, []);
 
+  // Build chart data from history endpoint (real time-series)
+  const chartData = useMemo(() => {
+    const history = Array.isArray(historyData) ? historyData : [];
+    if (history.length === 0) return [];
+    return history.map((p: any) => {
+      const ts = p.timestamp ? new Date(p.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
+      return {
+        time: ts,
+        qps: safeNum(p.qps),
+        latency: safeNum(p.latency_ms),
+        servfail: safeNum(p.servfail),
+        nxdomain: safeNum(p.nxdomain),
+        hitRatio: safeNum(p.cache_hit_ratio),
+      };
+    });
+  }, [historyData]);
+
   if (isLoading) return <LoadingState />;
   if (error) return <ErrorState message={error.message} />;
 
@@ -61,23 +78,6 @@ export default function DnsPage() {
   const avgLatency = safeNum(resolver.avg_latency_ms);
   const totalServfail = safeNum(resolver.servfail);
   const qps = safeNum(resolver.qps);
-
-  // Build chart data from history endpoint (real time-series)
-  const chartData = useMemo(() => {
-    const history = Array.isArray(historyData) ? historyData : [];
-    if (history.length === 0) return [];
-    return history.map((p: any) => {
-      const ts = p.timestamp ? new Date(p.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
-      return {
-        time: ts,
-        qps: safeNum(p.qps),
-        latency: safeNum(p.latency_ms),
-        servfail: safeNum(p.servfail),
-        nxdomain: safeNum(p.nxdomain),
-        hitRatio: safeNum(p.cache_hit_ratio),
-      };
-    });
-  }, [historyData]);
 
   return (
     <div className="space-y-6">
