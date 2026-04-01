@@ -1062,7 +1062,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
         .join(', ');
       files.push({
         path: `/etc/nftables.d/${ruleid}-nat-rule-nth-ipv6_${proto}_dns.nft`,
-        content: `table ip6 nat {\n    chain ${topchain} {\n        numgen inc mod ${ipv6Instances.length} vmap { ${vmapEntries} }\n    }\n}\n`,
+        content: `table ip6 nat {\n    chain ${topchain} {\n        numgen random mod ${ipv6Instances.length} vmap { ${vmapEntries} }\n    }\n}\n`,
       });
       ruleid++;
     }

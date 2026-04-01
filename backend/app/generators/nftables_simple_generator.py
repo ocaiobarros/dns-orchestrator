@@ -217,7 +217,7 @@ def _generate_validation(
         vmap_entries = ", ".join(
             f"{i} : jump local_dns_{proto}_{b['name']}" for i, b in enumerate(backends)
         )
-        lines.append(f"        numgen inc mod {len(backends)} vmap {{ {vmap_entries} }}")
+        lines.append(f"        numgen random mod {len(backends)} vmap {{ {vmap_entries} }}")
         lines.append("    }")
 
     # Hooks with capture rules

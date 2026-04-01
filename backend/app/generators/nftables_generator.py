@@ -376,7 +376,7 @@ def _generate_monolithic_validation(
         vmap_entries = ", ".join(
             f"{i} : jump ipv4_dns_{proto}_{b['name']}" for i, b in enumerate(backends)
         )
-        lines.append(f"        numgen inc mod {len(backends)} vmap {{ {vmap_entries} }}")
+        lines.append(f"        numgen random mod {len(backends)} vmap {{ {vmap_entries} }}")
         lines.append("    }")
 
     lines.append("}")

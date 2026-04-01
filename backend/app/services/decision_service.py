@@ -197,7 +197,7 @@ def _rebuild_dispatch_chains(active_backends: list[dict]) -> dict:
             name = backend["name"]
             subchain = f"ipv4_dns_{proto}_{name}"
             batch_lines.append(
-                f"add rule ip nat {dispatch} numgen inc mod {rand_num} 0 counter jump {subchain}"
+                f"add rule ip nat {dispatch} numgen random mod {rand_num} 0 counter jump {subchain}"
             )
             rand_num -= 1
 
