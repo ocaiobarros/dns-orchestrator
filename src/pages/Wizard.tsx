@@ -156,8 +156,8 @@ export default function Wizard() {
   const navigate = useNavigate();
 
   const isInterception = config.operationMode === 'interception';
-  const STEPS = isInterception ? STEPS_INTERCEPTION : STEPS_SIMPLE;
-  const STEP_ICONS = isInterception ? ICONS_INTERCEPTION : ICONS_SIMPLE;
+  const hasOwnVip = config.vipDeliverySubmode === 'interception-plus-own-vip';
+  const { names: STEPS, icons: STEP_ICONS } = getSteps(config.operationMode, config.vipDeliverySubmode);
   const LAST_STEP = STEPS.length - 1;
 
   const validationErrors = validateConfig(config);
