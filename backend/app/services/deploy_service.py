@@ -1330,16 +1330,66 @@ def _run_health_checks(payload: dict) -> list[dict]:
                 "durationMs": int((time.monotonic() - t0) * 1000),
             })
 
-    # ── nftables checks: only for interception mode ──
+    # ── nftables checks: mode-dependent ──
     operation_mode = str(
         payload.get("operationMode")
         or payload.get("_wizardConfig", {}).get("operationMode", "")
         or ""
     ).lower()
-    is_simple_mode = operation_mode in ("simple", "recursivo_simples", "recursivo simples", "")
+    is_simple_mode = operation_mode in ("simple", "recursivo_simples", "recursivo simples")
+    is_no_mode = operation_mode == ""
 
     nft_ruleset = ""
-    if not is_simple_mode:
+
+    if is_simple_mode:
+        # ── Simple mode: check local balancing ──
+        frontend_ip = str(
+            payload.get("frontendDnsIp")
+            or payload.get("_wizardConfig", {}).get("frontendDnsIp", "")
+            or ""
+        ).strip()
+
+        # Check nftables local balancing loaded
+        t0 = time.monotonic()
+        r = run_command("nft", ["list", "tables"], timeout=5, use_privilege=True)
+        checks.append({
+            "name": "Balanceamento local (nftables) carregado", "target": "nftables",
+            "status": "pass" if r["exit_code"] == 0 and r["stdout"].strip() else "fail",
+            "detail": r["stdout"].strip()[:200] or "No tables",
+            "durationMs": int((time.monotonic() - t0) * 1000),
+        })
+
+        # Check DNAT rules for each backend
+        t0 = time.monotonic()
+        r = run_command("nft", ["list", "ruleset"], timeout=10, use_privilege=True)
+        nft_ruleset = r.get("stdout") or ""
+        nft_dur = int((time.monotonic() - t0) * 1000)
+
+        for inst in instances:
+            name = inst.get("name", "unbound")
+            bind_ip = inst.get("bindIp", "")
+            if bind_ip:
+                has_dnat = f"dnat to {bind_ip}:53" in nft_ruleset
+                checks.append({
+                    "name": f"Balanceamento local → {name} ({bind_ip})", "target": f"local/{name}",
+                    "status": "pass" if has_dnat else "fail",
+                    "detail": f"DNAT local para {bind_ip}:53 {'encontrada' if has_dnat else 'AUSENTE'}",
+                    "durationMs": nft_dur,
+                })
+
+        # Frontend DNS probe
+        if frontend_ip:
+            t0 = time.monotonic()
+            r = run_command("dig", [f"@{frontend_ip}", "localhost", "+short", "+time=2", "+tries=1"], timeout=5)
+            checks.append({
+                "name": f"Frontend DNS ({frontend_ip}) responde", "target": frontend_ip,
+                "status": "pass" if r["exit_code"] == 0 else "fail",
+                "detail": r["stdout"].strip()[:200] or "Sem resposta",
+                "durationMs": int((time.monotonic() - t0) * 1000),
+            })
+
+    elif not is_no_mode:
+        # ── Interception mode: full nftables checks ──
         # nftables loaded
         t0 = time.monotonic()
         r = run_command("nft", ["list", "tables"], timeout=5, use_privilege=True)
