@@ -160,6 +160,9 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
 
 server:
     verbosity: {verbosity}
+    log-queries: yes
+    log-replies: no
+    log-local-actions: no
     statistics-interval: 20
     extended-statistics: yes
     num-threads: {threads}
