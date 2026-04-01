@@ -1166,7 +1166,9 @@ export default function Wizard() {
             {isInterception ? 'DNS Recursivo — Interceptação' : 'DNS Recursivo — Simples'}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {isInterception ? 'Multi-instância · VIP → nftables DNAT → Unbound → Egress' : 'Unbound standalone · resolução direta'}
+            {isInterception
+              ? 'Multi-instância · VIP → nftables DNAT → Unbound → Egress'
+              : `Frontend local${config.frontendDnsIp ? ` (${config.frontendDnsIp})` : ''} · balanceamento local → backends internos`}
           </p>
         </div>
         <div className="flex gap-2">
