@@ -659,6 +659,7 @@ export const DEFAULT_CONFIG: WizardConfig = {
   hostname: '',
   organization: '',
   project: '',
+  frontendDnsIp: '',
   description: '',
   timezone: 'America/Sao_Paulo',
   mainInterface: '',
