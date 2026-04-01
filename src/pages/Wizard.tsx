@@ -438,7 +438,7 @@ export default function Wizard() {
             ))}
           </div>
           <div className="text-muted-foreground/60 mt-1">
-            Etapas removidas: VIPs de Serviço, VIP Interception, Egress Público, Mapeamento VIP→Instância
+            Etapas removidas: VIP Interception, Egress Público, Mapeamento VIP→Instância
           </div>
         </div>
       )}
