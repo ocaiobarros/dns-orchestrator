@@ -356,7 +356,7 @@ export default function SimpleDashboard() {
       </motion.div>
 
       {/* ═══ DNS PATH FLOW (Simple: Frontend → Backends → Upstream) ═══ */}
-      <NocDnsPathFlow nodes={pathNodes} edges={pathEdges} />
+      <NocDnsPathFlow nodes={pathNodes} edges={pathEdges} layerLabels={{ vip: 'FRONTEND DNS', resolver: 'BACKENDS' }} />
 
       {/* ═══ PER-INSTANCE METRICS ═══ */}
       {telemetryConnected && safeStats.length > 0 && (
