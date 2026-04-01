@@ -7,6 +7,7 @@ import { AuthProvider } from "@/lib/auth";
 import { NocProvider } from "@/lib/noc-context";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import SessionTimeoutModal from "@/components/SessionTimeoutModal";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import Layout from "@/components/Layout";
 import LoginPage from "@/pages/LoginPage";
 import NotFound from "@/pages/NotFound";
@@ -43,9 +44,11 @@ const PageLoader = () => (
 const ProtectedApp = ({ children }: { children: React.ReactNode }) => (
   <ProtectedRoute>
     <Layout>
-      <Suspense fallback={<PageLoader />}>
-        {children}
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          {children}
+        </Suspense>
+      </ErrorBoundary>
     </Layout>
   </ProtectedRoute>
 );
