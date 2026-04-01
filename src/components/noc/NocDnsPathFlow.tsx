@@ -31,6 +31,7 @@ interface PathEdge {
 interface Props {
   nodes: PathNode[];
   edges: PathEdge[];
+  layerLabels?: Partial<Record<PathNode['type'], string>>;
 }
 
 const LAYER_TYPES: Array<PathNode['type']> = ['client', 'vip', 'resolver', 'upstream'];
@@ -208,7 +209,7 @@ function NodeCard({ node }: { node: PathNode }) {
 }
 
 // ── Main component ──
-export default function NocDnsPathFlow({ nodes, edges }: Props) {
+export default function NocDnsPathFlow({ nodes, edges, layerLabels }: Props) {
   const layers: PathNode[][] = LAYER_TYPES.map(t => nodes.filter(n => n.type === t));
 
   // Synthetic defaults
@@ -262,7 +263,7 @@ export default function NocDnsPathFlow({ nodes, edges }: Props) {
             return (
               <div key={type} className="flex-1 text-center" style={{ opacity: hasNodes ? 1 : 0.3 }}>
                 <span className="text-[9px] font-mono font-bold uppercase tracking-[0.25em] text-muted-foreground/50">
-                  {cfg.label}
+                  {layerLabels?.[type] || cfg.label}
                 </span>
               </div>
             );

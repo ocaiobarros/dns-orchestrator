@@ -291,6 +291,9 @@ export interface SystemInfo {
   config_version_status?: string;
   last_apply_available?: boolean;
   last_apply_status?: string;
+  // Operation mode from last deploy
+  operation_mode?: string;
+  frontend_dns_ip?: string;
 }
 
 // ---- Network ----
@@ -570,6 +573,8 @@ export interface DeployState {
   lastDeploymentId: string | null;
   totalDeployments: number;
   rollbackAvailable: boolean;
+  operationMode?: string;
+  frontendDnsIp?: string;
 }
 
 // ---- Troubleshoot Commands ----
