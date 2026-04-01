@@ -218,6 +218,13 @@ function InterceptionDashboard() {
 
   return (
     <div className="space-y-4">
+      {/* ═══ MODE BADGE ═══ */}
+      <div className="flex items-center gap-2">
+        <span className="px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-widest rounded bg-destructive/10 text-destructive border border-destructive/20">
+          Recursivo com Interceptação
+        </span>
+      </div>
+
       {/* ═══ TIER 1: HERO BAR — Operational state at a glance ═══ */}
       <NocHeroBar
         allHealthy={allRunning && failedCount === 0}
