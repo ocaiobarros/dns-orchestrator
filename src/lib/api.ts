@@ -258,6 +258,10 @@ export const api = {
     apiCall<V2Instance[]>('GET', '/health/instances'),
   getV2Actions: () =>
     apiCall<V2Action[]>('GET', '/actions'),
+  // Telemetry (collector service)
+  getTelemetryLatest: () => apiCall<any>('GET', '/telemetry/latest'),
+  getTelemetryStatus: () => apiCall<any>('GET', '/telemetry/status'),
+
   removeBackend: (instanceId: string) =>
     apiCall<{ success: boolean }>('POST', `/actions/remove-backend/${instanceId}`),
   restoreBackend: (instanceId: string) =>
