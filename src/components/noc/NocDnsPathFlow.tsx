@@ -263,7 +263,7 @@ export default function NocDnsPathFlow({ nodes, edges, layerLabels }: Props) {
             return (
               <div key={type} className="flex-1 text-center" style={{ opacity: hasNodes ? 1 : 0.3 }}>
                 <span className="text-[9px] font-mono font-bold uppercase tracking-[0.25em] text-muted-foreground/50">
-                  {cfg.label}
+                  {layerLabels?.[type] || cfg.label}
                 </span>
               </div>
             );
