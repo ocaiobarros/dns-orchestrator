@@ -313,7 +313,7 @@ def _generate_modular(
             f"{i} : jump ipv4_dns_{proto}_{b['name']}" for i, b in enumerate(backends)
         )
         _file(f"/etc/nftables.d/{ruleid}-nat-rule-nth-ipv4_{proto}_dns.nft",
-              f"table ip nat {{\n    chain {topchain} {{\n        numgen inc mod {len(backends)} vmap {{ {vmap_entries} }}\n    }}\n}}\n")
+              f"table ip nat {{\n    chain {topchain} {{\n        numgen random mod {len(backends)} vmap {{ {vmap_entries} }}\n    }}\n}}\n")
         ruleid += 1
 
     # Nth balancing fallback (IPv6)
