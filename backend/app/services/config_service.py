@@ -6,6 +6,7 @@ Validation and preview generation for configuration profiles.
 from typing import Any
 from app.generators.unbound_generator import generate_unbound_configs
 from app.generators.nftables_generator import generate_nftables_config
+from app.generators.nftables_simple_generator import generate_simple_nftables_config
 from app.generators.frr_generator import generate_frr_config
 from app.generators.network_generator import generate_network_config
 from app.generators.systemd_generator import generate_systemd_units
