@@ -412,6 +412,10 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path.match(/\/api\/actions\/(remove|restore)-backend/)) return { success: true };
   if (path === '/api/actions/reconcile-now' && method === 'POST') return { instances_checked: 4, instances_failed: 0, backends_removed: 0, backends_restored: 0 };
 
+  // Telemetry mock
+  if (path === '/api/telemetry/latest') return mockTelemetryLatest();
+  if (path === '/api/telemetry/status') return { collector_status: 'ok', last_update: new Date().toISOString(), file_age_seconds: 5, stale: false, mode: 'recursive_simple' };
+
   // System
   if (path === '/api/system/self-test' && method === 'POST') {
     return {
