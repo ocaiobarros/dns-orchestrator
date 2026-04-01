@@ -214,6 +214,7 @@ export default function Wizard() {
       newConfig.serviceVips = [];
       newConfig.interceptedVips = [];
       newConfig.vipMappings = [];
+      newConfig.vipDeliverySubmode = 'pure-interception';
       newConfig.instances = config.instances.map(inst => ({
         ...inst,
         egressIpv4: '',
@@ -223,8 +224,23 @@ export default function Wizard() {
     }
 
     setConfig(prev => ({ ...prev, ...newConfig }));
-    // Reset to step 1 after mode change
     setStep(1);
+  };
+
+  // Handle VIP delivery submode switch
+  const handleSubmodeSwitch = (submode: VipDeliverySubmode) => {
+    if (submode === config.vipDeliverySubmode) return;
+
+    if (submode === 'pure-interception' && config.serviceVips.length > 0) {
+      if (!confirm('Trocar para Interceptação Pura vai remover os VIPs de serviço próprios cadastrados. Continuar?')) return;
+    }
+
+    const newConfig: Partial<WizardConfig> = { vipDeliverySubmode: submode };
+    if (submode === 'pure-interception') {
+      newConfig.serviceVips = [];
+    }
+
+    setConfig(prev => ({ ...prev, ...newConfig }));
   };
 
   useEffect(() => {
