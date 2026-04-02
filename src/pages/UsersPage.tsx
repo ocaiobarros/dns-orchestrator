@@ -282,7 +282,7 @@ export default function UsersPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
-            <Button onClick={() => createMutation.mutate({ username: newUsername, password: newPassword })} disabled={!canCreate || createMutation.isPending}>
+            <Button onClick={() => createMutation.mutate({ username: newUsername, password: newPassword, role: newRole })} disabled={!canCreate || createMutation.isPending}>
               {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
               Criar
             </Button>

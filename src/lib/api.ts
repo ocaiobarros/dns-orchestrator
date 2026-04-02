@@ -241,8 +241,8 @@ export const api = {
 
   // Users (admin)
   getUsers: () => apiCall<AuthUserRecord[]>('GET', '/users'),
-  createUser: (username: string, password: string, mustChangePassword: boolean = true) =>
-    apiCall<AuthUserRecord>('POST', '/users', { username, password, must_change_password: mustChangePassword }),
+  createUser: (username: string, password: string, mustChangePassword: boolean = true, role: string = 'admin') =>
+    apiCall<AuthUserRecord>('POST', '/users', { username, password, must_change_password: mustChangePassword, role }),
   toggleUser: (userId: string, active: boolean) =>
     apiCall<{ success: boolean }>('POST', `/users/${userId}/${active ? 'enable' : 'disable'}`),
   changeUserPassword: (userId: string, password: string) =>
