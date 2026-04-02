@@ -82,6 +82,7 @@ app.include_router(healthcheck.router, prefix="/api/healthcheck", tags=["Health 
 app.include_router(deploy.router, prefix="/api/deploy", tags=["Deploy"])
 app.include_router(import_config.router, prefix="/api/config", tags=["Config Import"])
 app.include_router(telemetry.router, prefix="/api/telemetry", tags=["Telemetry"])
+app.include_router(kiosk.router, prefix="/api/kiosk", tags=["Kiosk"])
 # Backward-compatibility alias for older frontend/runtime combinations.
 app.include_router(deploy.router, prefix="/deploy", tags=["Deploy Legacy"])
 
