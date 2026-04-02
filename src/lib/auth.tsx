@@ -9,6 +9,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef, ty
 export interface AuthUser {
   id: string;
   username: string;
+  role: string;
   isActive: boolean;
   mustChangePassword: boolean;
   createdAt: string;
