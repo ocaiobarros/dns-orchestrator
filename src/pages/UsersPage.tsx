@@ -263,6 +263,18 @@ export default function UsersPage() {
                 <p className="text-xs text-destructive">Senhas não conferem</p>
               )}
             </div>
+            <div className="space-y-2">
+              <Label>Perfil</Label>
+              <Select value={newRole} onValueChange={setNewRole}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o perfil" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin — acesso completo</SelectItem>
+                  <SelectItem value="viewer">Viewer — somente leitura (NOC/Kiosk)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex items-center gap-3">
               <Switch checked={mustChangePassword} onCheckedChange={setMustChangePassword} />
               <Label>Forçar troca de senha no primeiro login</Label>
