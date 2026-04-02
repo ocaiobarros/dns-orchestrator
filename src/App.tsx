@@ -80,6 +80,15 @@ const App = () => (
               <Route path="/history" element={<ProtectedApp><HistoryPage /></ProtectedApp>} />
               <Route path="/settings" element={<ProtectedApp><SettingsPage /></ProtectedApp>} />
               <Route path="/users" element={<ProtectedApp><UsersPage /></ProtectedApp>} />
+              <Route path="/kiosk" element={
+                <ProtectedRoute>
+                  <ErrorBoundary>
+                    <Suspense fallback={<PageLoader />}>
+                      <KioskDashboard />
+                    </Suspense>
+                  </ErrorBoundary>
+                </ProtectedRoute>
+              } />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </NocProvider>
