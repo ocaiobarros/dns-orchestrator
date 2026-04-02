@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
@@ -59,6 +60,7 @@ export default function UsersPage() {
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
+  const [newRole, setNewRole] = useState<string>('admin');
   const [mustChangePassword, setMustChangePassword] = useState(true);
   const [changePassword, setChangePassword] = useState('');
   const [changePasswordConfirm, setChangePasswordConfirm] = useState('');
@@ -73,7 +75,7 @@ export default function UsersPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { username: string; password: string }) => api.createUser(data.username, data.password, mustChangePassword),
+    mutationFn: (data: { username: string; password: string; role: string }) => api.createUser(data.username, data.password, mustChangePassword, data.role),
     onSuccess: async (res) => {
       if (res.success) {
         toast.success('Usuário criado com sucesso');
@@ -83,6 +85,7 @@ export default function UsersPage() {
         setNewUsername('');
         setNewPassword('');
         setNewPasswordConfirm('');
+        setNewRole('admin');
         setMustChangePassword(true);
       } else {
         toast.error(res.error || 'Erro ao criar usuário');
@@ -260,6 +263,18 @@ export default function UsersPage() {
                 <p className="text-xs text-destructive">Senhas não conferem</p>
               )}
             </div>
+            <div className="space-y-2">
+              <Label>Perfil</Label>
+              <Select value={newRole} onValueChange={setNewRole}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o perfil" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin — acesso completo</SelectItem>
+                  <SelectItem value="viewer">Viewer — somente leitura (NOC/Kiosk)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex items-center gap-3">
               <Switch checked={mustChangePassword} onCheckedChange={setMustChangePassword} />
               <Label>Forçar troca de senha no primeiro login</Label>
@@ -267,7 +282,7 @@ export default function UsersPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
-            <Button onClick={() => createMutation.mutate({ username: newUsername, password: newPassword })} disabled={!canCreate || createMutation.isPending}>
+            <Button onClick={() => createMutation.mutate({ username: newUsername, password: newPassword, role: newRole })} disabled={!canCreate || createMutation.isPending}>
               {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
               Criar
             </Button>
