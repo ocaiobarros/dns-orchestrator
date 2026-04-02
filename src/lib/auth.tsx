@@ -146,14 +146,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const stored = sessionStorage.getItem(SESSION_KEY);
         if (stored) {
           const parsed = JSON.parse(stored);
-          setUser(parsed.user || parsed);
+          const u = parsed.user || parsed;
+          setUser(u);
           const si = parsed.sessionInfo || {
             expiresAt: new Date(Date.now() + DEFAULT_SESSION_TIMEOUT_MINUTES * 60000).toISOString(),
             sessionTimeoutMinutes: DEFAULT_SESSION_TIMEOUT_MINUTES,
             sessionWarningSeconds: DEFAULT_SESSION_WARNING_SECONDS,
           };
           setSessionInfo(si);
-          startSessionTimers(si.expiresAt, si.sessionWarningSeconds);
+          startSessionTimers(si.expiresAt, si.sessionWarningSeconds, u.role);
         } else {
           setUser(null);
           setSessionInfo(null);
