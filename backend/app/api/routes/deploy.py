@@ -15,6 +15,7 @@ from app.models.user import User
 from app.models.apply_job import ApplyJob
 from app.models.config_profile import ConfigProfile
 from app.services.deploy_service import execute_deploy, execute_rollback, get_deploy_state, get_live_deploy_state, list_backups
+from app.services.service_mode import require_managed_mode
 
 router = APIRouter()
 

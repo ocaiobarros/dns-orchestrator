@@ -14,11 +14,13 @@ from app.models.apply_job import ApplyJob
 from app.models.config_profile import ConfigProfile
 from app.services.apply_service import execute_apply
 from app.schemas.config import ApplyRequest
+from app.services.service_mode import require_managed_mode
 
 router = APIRouter()
 
 
 def _run_apply(scope: str, dry_run: bool, body: ApplyRequest, db: Session, user: User):
+    require_managed_mode(db)
     profile = db.query(ConfigProfile).filter(ConfigProfile.id == body.profile_id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Perfil não encontrado")
