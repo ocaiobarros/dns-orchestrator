@@ -628,3 +628,48 @@ function mockTelemetryHistoryData() {
     };
   });
 }
+
+function mockKioskSummary() {
+  const tel = mockTelemetryLatest();
+  return {
+    timestamp: new Date().toISOString(),
+    host: {
+      hostname: 'dnscontrol',
+      uptime_seconds: 345600,
+      uptime_display: '4d 0h 0m',
+      load_1m: 0.42,
+      load_5m: 0.38,
+      load_15m: 0.35,
+      cpu_count: 8,
+      cpu_percent: 5.3,
+      ram_total_mb: 16384,
+      ram_used_mb: 4200,
+      ram_percent: 25.6,
+      disk_total_gb: 100.0,
+      disk_used_gb: 22.4,
+      disk_percent: 22.4,
+      services: {
+        'dns-control-api': 'active',
+        'nginx': 'active',
+        'unbound01': 'active',
+        'unbound02': 'active',
+        'dns-control-collector.timer': 'active',
+        'nftables': 'active',
+      },
+      timezone: 'BRT',
+      primary_ip: '172.29.22.6',
+    },
+    operation_mode: 'Recursivo Simples',
+    dns: {
+      frontend: tel.frontend,
+      resolver: tel.resolver,
+      traffic: tel.traffic,
+      backends: tel.backends,
+      top_domains: tel.top_domains,
+      top_clients: tel.top_clients,
+      recent_queries: tel.recent_queries,
+      health: tel.health,
+    },
+    history: mockTelemetryHistoryData(),
+  };
+}
