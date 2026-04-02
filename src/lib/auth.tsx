@@ -222,17 +222,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         // Simulate first-access flow for 'admin' with password 'admin'
         const mustChange = username === 'admin' && password === 'admin';
-        const mockUser = { ...MOCK_USER, username, mustChangePassword: mustChange };
-        const expiresAt = new Date(Date.now() + DEFAULT_SESSION_TIMEOUT_MINUTES * 60000).toISOString();
+        const isViewer = username === 'viewer';
+        const mockUser = { ...MOCK_USER, username, role: isViewer ? 'viewer' : 'admin', mustChangePassword: mustChange };
+        const expiresAt = new Date(Date.now() + (isViewer ? 1440 : DEFAULT_SESSION_TIMEOUT_MINUTES) * 60000).toISOString();
         const si: SessionInfo = {
           expiresAt,
-          sessionTimeoutMinutes: DEFAULT_SESSION_TIMEOUT_MINUTES,
+          sessionTimeoutMinutes: isViewer ? 1440 : DEFAULT_SESSION_TIMEOUT_MINUTES,
           sessionWarningSeconds: DEFAULT_SESSION_WARNING_SECONDS,
         };
         sessionStorage.setItem(SESSION_KEY, JSON.stringify({ user: mockUser, sessionInfo: si }));
         setUser(mockUser);
         setSessionInfo(si);
-        startSessionTimers(expiresAt, si.sessionWarningSeconds);
+        startSessionTimers(expiresAt, si.sessionWarningSeconds, mockUser.role);
         return { success: true, mustChangePassword: mustChange };
       }
 
