@@ -29,6 +29,7 @@ const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
 const UsersPage = lazy(() => import("@/pages/UsersPage"));
 const EventsPage = lazy(() => import("@/pages/EventsPage"));
 const MetricsPage = lazy(() => import("@/pages/MetricsPage"));
+const KioskDashboard = lazy(() => import("@/pages/KioskDashboard"));
 
 const queryClient = new QueryClient();
 
