@@ -46,7 +46,29 @@ def get_db():
         db.close()
 
 
+def _run_migrations(eng):
+    """Apply schema migrations for existing databases."""
+    import sqlite3
+    raw = eng.raw_connection()
+    try:
+        cur = raw.cursor()
+        # Check if 'role' column exists in users table
+        cur.execute("PRAGMA table_info(users)")
+        columns = [row[1] for row in cur.fetchall()]
+        if "role" not in columns:
+            cur.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'")
+            raw.commit()
+            print("[DNS Control] Migration: added 'role' column to users table")
+    except Exception as exc:
+        print(f"[DNS Control] Migration warning: {exc}")
+    finally:
+        raw.close()
+
+
 def init_db():
+    # Run migrations BEFORE SQLAlchemy touches the schema
+    _run_migrations(engine)
+
     # Import all models so they register with Base.metadata
     import app.models.user  # noqa
     import app.models.session  # noqa
