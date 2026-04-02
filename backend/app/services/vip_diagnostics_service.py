@@ -227,7 +227,10 @@ def run_vip_diagnostics(service_vips: list[dict] | None = None, debug: bool = Fa
     stale_cfg = {**STALE_THRESHOLDS, **(stale_overrides or {})}
 
     if not service_vips:
-        service_vips = _discover_vips_from_loopback()
+        # Check for imported VIP mappings first (passive mode)
+        service_vips = _get_imported_vips_as_service_vips()
+        if not service_vips:
+            service_vips = _discover_vips_from_loopback()
 
     source_timestamps = {}
 
