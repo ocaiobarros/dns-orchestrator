@@ -72,7 +72,8 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuário desativado")
 
     user_agent = request.headers.get("User-Agent", "")
-    token, _, expires_at = create_session(db, user, client_ip, user_agent)
+    is_kiosk = user.is_viewer  # Viewer users always get kiosk (long-lived) sessions
+    token, _, expires_at = create_session(db, user, client_ip, user_agent, kiosk=is_kiosk)
 
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
