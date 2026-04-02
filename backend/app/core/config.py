@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     # Sessions
     SESSION_TIMEOUT_MINUTES: int = int(os.environ.get("DNS_CONTROL_SESSION_TIMEOUT_MINUTES", "30"))
     SESSION_WARNING_SECONDS: int = int(os.environ.get("DNS_CONTROL_SESSION_WARNING_SECONDS", "120"))
+    KIOSK_SESSION_TIMEOUT_MINUTES: int = int(os.environ.get("DNS_CONTROL_KIOSK_SESSION_TIMEOUT_MINUTES", "1440"))  # 24h
 
     # Server
     HOST: str = os.environ.get("DNS_CONTROL_HOST", "127.0.0.1")
