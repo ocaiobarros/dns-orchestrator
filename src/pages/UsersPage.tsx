@@ -85,6 +85,7 @@ export default function UsersPage() {
         setNewUsername('');
         setNewPassword('');
         setNewPasswordConfirm('');
+        setNewRole('admin');
         setMustChangePassword(true);
       } else {
         toast.error(res.error || 'Erro ao criar usuário');
