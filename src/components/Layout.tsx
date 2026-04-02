@@ -76,7 +76,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
-          {navItems.map(item => {
+          {filteredNavItems.map(item => {
             const active = location.pathname === item.path;
             return (
               <Link
