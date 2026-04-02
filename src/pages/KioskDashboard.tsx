@@ -211,7 +211,7 @@ export default function KioskDashboard() {
         <KioskCard
           label="RAM"
           value={`${host.ram_percent ?? 0}%`}
-          sub={`${host.ram_used_mb ?? 0} / ${host.ram_total_mb ?? 0} MB`}
+          sub={`${host.ram_used_display ?? `${host.ram_used_mb ?? 0} MB`} / ${host.ram_total_display ?? `${host.ram_total_mb ?? 0} MB`}`}
           icon={<MemoryStick size={20} />}
           accent={(host.ram_percent ?? 0) > 85 ? 'danger' : (host.ram_percent ?? 0) > 70 ? 'warning' : 'success'}
         />
