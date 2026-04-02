@@ -103,6 +103,7 @@ def deploy_dry_run(body: DeployRequest, db: Session = Depends(get_db), user: Use
 @router.post("/apply")
 def deploy_apply(body: DeployRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Execute full deployment pipeline."""
+    require_managed_mode(db)
     payload = _resolve_payload(body, db)
     result = execute_deploy(
         payload=payload,
