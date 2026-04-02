@@ -100,7 +100,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     warningTriggeredRef.current = false;
   }, []);
 
-  const startSessionTimers = useCallback((expiresAt: string, warningSeconds: number) => {
+  const startSessionTimers = useCallback((expiresAt: string, warningSeconds: number, role?: string) => {
+    // Skip session timers entirely for viewer/kiosk users
+    if (role === 'viewer') {
+      clearTimers();
+      return;
+    }
+
     clearTimers();
     const expiresMs = new Date(expiresAt).getTime();
 
