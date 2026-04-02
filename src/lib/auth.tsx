@@ -61,6 +61,7 @@ function buildAuthUrl(path: string): string {
 const MOCK_USER: AuthUser = {
   id: 'usr-001',
   username: 'admin',
+  role: 'admin',
   isActive: true,
   mustChangePassword: false,
   createdAt: '2026-01-15T10:00:00Z',
