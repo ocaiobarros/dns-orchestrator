@@ -22,7 +22,7 @@ router = APIRouter()
 
 def _user_to_response(u: User) -> UserListResponse:
     return UserListResponse(
-        id=u.id, username=u.username, is_active=u.is_active,
+        id=u.id, username=u.username, role=u.role, is_active=u.is_active,
         must_change_password=u.must_change_password,
         created_at=u.created_at, updated_at=u.updated_at,
         last_login_at=u.last_login_at,
