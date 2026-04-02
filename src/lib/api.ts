@@ -263,6 +263,9 @@ export const api = {
   getTelemetryStatus: () => apiCall<any>('GET', '/telemetry/status'),
   getTelemetryHistory: () => apiCall<any[]>('GET', '/telemetry/history'),
 
+  // Kiosk (NOC TV)
+  getKioskSummary: () => apiCall<any>('GET', '/kiosk/summary'),
+
   removeBackend: (instanceId: string) =>
     apiCall<{ success: boolean }>('POST', `/actions/remove-backend/${instanceId}`),
   restoreBackend: (instanceId: string) =>
