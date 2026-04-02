@@ -121,6 +121,7 @@ def deploy_apply(body: DeployRequest, db: Session = Depends(get_db), user: User 
 def deploy_rollback(body: RollbackRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Rollback to a previous backup snapshot."""
     require_managed_mode(db)
+    result = execute_rollback(backup_id=body.backup_id, operator=user.username)
     if not result["success"] and "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
 
