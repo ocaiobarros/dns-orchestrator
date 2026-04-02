@@ -174,9 +174,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (res.ok) {
         const data = await res.json();
+        const userRole = data.user.role || 'admin';
         setUser({
           id: data.user.id,
           username: data.user.username,
+          role: userRole,
           isActive: data.user.is_active,
           mustChangePassword: data.user.must_change_password,
           createdAt: data.user.created_at,
@@ -188,7 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           sessionWarningSeconds: data.session_warning_seconds,
         };
         setSessionInfo(si);
-        startSessionTimers(si.expiresAt, si.sessionWarningSeconds);
+        startSessionTimers(si.expiresAt, si.sessionWarningSeconds, userRole);
       } else if (res.status === 401) {
         // Keep current in-memory session on transient auth/me 401 noise.
         setUser(prev => prev ?? null);
