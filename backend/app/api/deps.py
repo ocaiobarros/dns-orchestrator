@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.core.sessions import validate_session
-from app.models.user import User
+from app.models.user import User, ROLE_ADMIN
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
@@ -50,6 +50,16 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
             detail="Usuário desativado",
         )
 
+    return user
+
+
+def require_admin(user: User = Depends(get_current_user)) -> User:
+    """Require admin role for protected admin-only routes."""
+    if user.role != ROLE_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permissão negada — acesso restrito a administradores",
+        )
     return user
 
 

@@ -47,6 +47,7 @@ def _user_response(user: User) -> UserResponse:
     return UserResponse(
         id=user.id,
         username=user.username,
+        role=user.role,
         is_active=user.is_active,
         must_change_password=user.must_change_password,
         created_at=user.created_at,
@@ -71,7 +72,8 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuário desativado")
 
     user_agent = request.headers.get("User-Agent", "")
-    token, _, expires_at = create_session(db, user, client_ip, user_agent)
+    is_kiosk = user.is_viewer  # Viewer users always get kiosk (long-lived) sessions
+    token, _, expires_at = create_session(db, user, client_ip, user_agent, kiosk=is_kiosk)
 
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
@@ -124,7 +126,8 @@ def refresh(
     user: User = Depends(get_current_user),
     session_id: str = Depends(get_session_id),
 ):
-    new_expires = refresh_session(db, session_id)
+    is_kiosk = user.is_viewer
+    new_expires = refresh_session(db, session_id, kiosk=is_kiosk)
     if not new_expires:
         raise HTTPException(status_code=401, detail="Sessão inválida")
     return RefreshResponse(expires_at=new_expires)

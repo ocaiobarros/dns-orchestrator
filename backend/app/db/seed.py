@@ -18,6 +18,7 @@ def seed_admin(db: Session) -> None:
     admin = User(
         username=settings.INITIAL_ADMIN_USERNAME,
         password_hash=hash_password(settings.INITIAL_ADMIN_PASSWORD),
+        role="admin",
         is_active=True,
         must_change_password=True,
     )

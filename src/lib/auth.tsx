@@ -9,6 +9,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef, ty
 export interface AuthUser {
   id: string;
   username: string;
+  role: string;
   isActive: boolean;
   mustChangePassword: boolean;
   createdAt: string;
@@ -60,6 +61,7 @@ function buildAuthUrl(path: string): string {
 const MOCK_USER: AuthUser = {
   id: 'usr-001',
   username: 'admin',
+  role: 'admin',
   isActive: true,
   mustChangePassword: false,
   createdAt: '2026-01-15T10:00:00Z',
@@ -98,7 +100,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     warningTriggeredRef.current = false;
   }, []);
 
-  const startSessionTimers = useCallback((expiresAt: string, warningSeconds: number) => {
+  const startSessionTimers = useCallback((expiresAt: string, warningSeconds: number, role?: string) => {
+    // Skip session timers entirely for viewer/kiosk users
+    if (role === 'viewer') {
+      clearTimers();
+      return;
+    }
+
     clearTimers();
     const expiresMs = new Date(expiresAt).getTime();
 
@@ -138,14 +146,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const stored = sessionStorage.getItem(SESSION_KEY);
         if (stored) {
           const parsed = JSON.parse(stored);
-          setUser(parsed.user || parsed);
+          const u = parsed.user || parsed;
+          setUser(u);
           const si = parsed.sessionInfo || {
             expiresAt: new Date(Date.now() + DEFAULT_SESSION_TIMEOUT_MINUTES * 60000).toISOString(),
             sessionTimeoutMinutes: DEFAULT_SESSION_TIMEOUT_MINUTES,
             sessionWarningSeconds: DEFAULT_SESSION_WARNING_SECONDS,
           };
           setSessionInfo(si);
-          startSessionTimers(si.expiresAt, si.sessionWarningSeconds);
+          startSessionTimers(si.expiresAt, si.sessionWarningSeconds, u.role);
         } else {
           setUser(null);
           setSessionInfo(null);
@@ -166,9 +175,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (res.ok) {
         const data = await res.json();
+        const userRole = data.user.role || 'admin';
         setUser({
           id: data.user.id,
           username: data.user.username,
+          role: userRole,
           isActive: data.user.is_active,
           mustChangePassword: data.user.must_change_password,
           createdAt: data.user.created_at,
@@ -180,7 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           sessionWarningSeconds: data.session_warning_seconds,
         };
         setSessionInfo(si);
-        startSessionTimers(si.expiresAt, si.sessionWarningSeconds);
+        startSessionTimers(si.expiresAt, si.sessionWarningSeconds, userRole);
       } else if (res.status === 401) {
         // Keep current in-memory session on transient auth/me 401 noise.
         setUser(prev => prev ?? null);
@@ -211,17 +222,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         // Simulate first-access flow for 'admin' with password 'admin'
         const mustChange = username === 'admin' && password === 'admin';
-        const mockUser = { ...MOCK_USER, username, mustChangePassword: mustChange };
-        const expiresAt = new Date(Date.now() + DEFAULT_SESSION_TIMEOUT_MINUTES * 60000).toISOString();
+        const isViewer = username === 'viewer';
+        const mockUser = { ...MOCK_USER, username, role: isViewer ? 'viewer' : 'admin', mustChangePassword: mustChange };
+        const expiresAt = new Date(Date.now() + (isViewer ? 1440 : DEFAULT_SESSION_TIMEOUT_MINUTES) * 60000).toISOString();
         const si: SessionInfo = {
           expiresAt,
-          sessionTimeoutMinutes: DEFAULT_SESSION_TIMEOUT_MINUTES,
+          sessionTimeoutMinutes: isViewer ? 1440 : DEFAULT_SESSION_TIMEOUT_MINUTES,
           sessionWarningSeconds: DEFAULT_SESSION_WARNING_SECONDS,
         };
         sessionStorage.setItem(SESSION_KEY, JSON.stringify({ user: mockUser, sessionInfo: si }));
         setUser(mockUser);
         setSessionInfo(si);
-        startSessionTimers(expiresAt, si.sessionWarningSeconds);
+        startSessionTimers(expiresAt, si.sessionWarningSeconds, mockUser.role);
         return { success: true, mustChangePassword: mustChange };
       }
 
@@ -238,9 +250,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const data = await res.json();
       localStorage.setItem(TOKEN_KEY, data.token);
+      const userRole = data.user.role || 'admin';
       setUser({
         id: data.user.id,
         username: data.user.username,
+        role: userRole,
         isActive: data.user.is_active,
         mustChangePassword: data.must_change_password,
         createdAt: data.user.created_at,
@@ -252,7 +266,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sessionWarningSeconds: DEFAULT_SESSION_WARNING_SECONDS,
       };
       setSessionInfo(si);
-      startSessionTimers(si.expiresAt, si.sessionWarningSeconds);
+      startSessionTimers(si.expiresAt, si.sessionWarningSeconds, userRole);
       return { success: true, mustChangePassword: data.must_change_password };
     } catch {
       return { success: false, error: 'Falha na conexão com o servidor' };

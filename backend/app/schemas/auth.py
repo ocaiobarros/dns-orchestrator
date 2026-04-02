@@ -21,6 +21,7 @@ class LoginResponse(BaseModel):
 class UserResponse(BaseModel):
     id: str
     username: str
+    role: str
     is_active: bool
     must_change_password: bool
     created_at: datetime

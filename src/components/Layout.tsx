@@ -9,21 +9,22 @@ import { useAuth } from '@/lib/auth';
 import { useNoc } from '@/lib/noc-context';
 
 const navItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/wizard', label: 'Wizard', icon: Wand2 },
-  { path: '/services', label: 'Serviços', icon: Server },
-  { path: '/network', label: 'Rede', icon: Network },
-  { path: '/dns', label: 'DNS', icon: Globe },
-  { path: '/nat', label: 'NAT / Balanceamento', icon: Shield },
-  { path: '/ospf', label: 'OSPF / FRR', icon: Router },
-  { path: '/metrics', label: 'Métricas', icon: BarChart3 },
-  { path: '/events', label: 'Eventos', icon: Bell },
-  { path: '/logs', label: 'Logs', icon: FileText },
-  { path: '/troubleshoot', label: 'Troubleshooting', icon: Wrench },
-  { path: '/files', label: 'Arquivos', icon: FolderOpen },
-  { path: '/history', label: 'Histórico', icon: History },
-  { path: '/settings', label: 'Configurações', icon: Settings },
-  { path: '/users', label: 'Usuários', icon: Users },
+  { path: '/', label: 'Dashboard', icon: LayoutDashboard, adminOnly: false },
+  { path: '/kiosk', label: 'NOC / Kiosk', icon: HeartPulse, adminOnly: false },
+  { path: '/wizard', label: 'Wizard', icon: Wand2, adminOnly: true },
+  { path: '/services', label: 'Serviços', icon: Server, adminOnly: true },
+  { path: '/network', label: 'Rede', icon: Network, adminOnly: true },
+  { path: '/dns', label: 'DNS', icon: Globe, adminOnly: false },
+  { path: '/nat', label: 'NAT / Balanceamento', icon: Shield, adminOnly: true },
+  { path: '/ospf', label: 'OSPF / FRR', icon: Router, adminOnly: true },
+  { path: '/metrics', label: 'Métricas', icon: BarChart3, adminOnly: false },
+  { path: '/events', label: 'Eventos', icon: Bell, adminOnly: false },
+  { path: '/logs', label: 'Logs', icon: FileText, adminOnly: true },
+  { path: '/troubleshoot', label: 'Troubleshooting', icon: Wrench, adminOnly: true },
+  { path: '/files', label: 'Arquivos', icon: FolderOpen, adminOnly: true },
+  { path: '/history', label: 'Histórico', icon: History, adminOnly: true },
+  { path: '/settings', label: 'Configurações', icon: Settings, adminOnly: true },
+  { path: '/users', label: 'Usuários', icon: Users, adminOnly: true },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -31,6 +32,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, logout } = useAuth();
   const { fullscreen } = useNoc();
+  const isViewer = user?.role === 'viewer';
+
+  // Filter nav items based on role
+  const filteredNavItems = isViewer
+    ? navItems.filter(item => !item.adminOnly)
+    : navItems;
 
   // In fullscreen NOC mode on the dashboard, hide sidebar and header
   const isDashboard = location.pathname === '/';
@@ -69,7 +76,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
-          {navItems.map(item => {
+          {filteredNavItems.map(item => {
             const active = location.pathname === item.path;
             return (
               <Link
@@ -94,7 +101,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="px-3 py-3 border-t border-sidebar-border space-y-2">
           {user && (
             <div className="flex items-center justify-between px-1">
-              <span className="text-xs text-muted-foreground font-mono truncate">{user.username}</span>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-xs text-muted-foreground font-mono truncate">{user.username}</span>
+                <span className={`text-[9px] font-mono font-bold uppercase px-1 py-0.5 rounded ${
+                  user.role === 'viewer' ? 'bg-accent/20 text-accent' : 'bg-primary/20 text-primary'
+                }`}>{user.role}</span>
+              </div>
               <button
                 onClick={logout}
                 className="text-muted-foreground hover:text-destructive transition-colors"

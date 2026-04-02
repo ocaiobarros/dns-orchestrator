@@ -29,6 +29,7 @@ const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
 const UsersPage = lazy(() => import("@/pages/UsersPage"));
 const EventsPage = lazy(() => import("@/pages/EventsPage"));
 const MetricsPage = lazy(() => import("@/pages/MetricsPage"));
+const KioskDashboard = lazy(() => import("@/pages/KioskDashboard"));
 
 const queryClient = new QueryClient();
 
@@ -79,6 +80,15 @@ const App = () => (
               <Route path="/history" element={<ProtectedApp><HistoryPage /></ProtectedApp>} />
               <Route path="/settings" element={<ProtectedApp><SettingsPage /></ProtectedApp>} />
               <Route path="/users" element={<ProtectedApp><UsersPage /></ProtectedApp>} />
+              <Route path="/kiosk" element={
+                <ProtectedRoute>
+                  <ErrorBoundary>
+                    <Suspense fallback={<PageLoader />}>
+                      <KioskDashboard />
+                    </Suspense>
+                  </ErrorBoundary>
+                </ProtectedRoute>
+              } />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </NocProvider>

@@ -6,8 +6,10 @@ import { Button } from '@/components/ui/button';
 import { AlertTriangle } from 'lucide-react';
 
 export default function SessionTimeoutModal() {
-  const { showSessionWarning, sessionSecondsLeft, dismissSessionWarning, logout } = useAuth();
+  const { showSessionWarning, sessionSecondsLeft, dismissSessionWarning, logout, user } = useAuth();
 
+  // Never show timeout modal for viewer/kiosk users
+  if (user?.role === 'viewer') return null;
   const minutes = Math.floor(sessionSecondsLeft / 60);
   const seconds = sessionSecondsLeft % 60;
   const timeDisplay = minutes > 0

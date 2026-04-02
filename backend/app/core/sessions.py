@@ -12,10 +12,11 @@ from app.models.session import SessionRecord
 from app.models.user import User
 
 
-def create_session(db: Session, user: User, client_ip: str = "", user_agent: str = "") -> tuple[str, str, datetime]:
+def create_session(db: Session, user: User, client_ip: str = "", user_agent: str = "", kiosk: bool = False) -> tuple[str, str, datetime]:
     """Create a new session and return (access_token, session_token, expires_at)."""
     session_token = generate_session_token()
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.SESSION_TIMEOUT_MINUTES)
+    timeout = settings.KIOSK_SESSION_TIMEOUT_MINUTES if kiosk else settings.SESSION_TIMEOUT_MINUTES
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=timeout)
 
     session_record = SessionRecord(
         user_id=user.id,
@@ -28,7 +29,7 @@ def create_session(db: Session, user: User, client_ip: str = "", user_agent: str
     db.commit()
     db.refresh(session_record)
 
-    access_token = create_access_token(str(user.id), str(session_record.id))
+    access_token = create_access_token(str(user.id), str(session_record.id), timeout_minutes=timeout)
     return access_token, session_token, expires_at
 
 
@@ -58,13 +59,14 @@ def validate_session(db: Session, session_id: str) -> SessionRecord | None:
     return session
 
 
-def refresh_session(db: Session, session_id: str) -> datetime | None:
+def refresh_session(db: Session, session_id: str, kiosk: bool = False) -> datetime | None:
     """Extend session expiration. Returns new expires_at or None if invalid."""
     session = validate_session(db, session_id)
     if not session:
         return None
 
-    session.expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.SESSION_TIMEOUT_MINUTES)
+    timeout = settings.KIOSK_SESSION_TIMEOUT_MINUTES if kiosk else settings.SESSION_TIMEOUT_MINUTES
+    session.expires_at = datetime.now(timezone.utc) + timedelta(minutes=timeout)
     db.commit()
     return session.expires_at
 

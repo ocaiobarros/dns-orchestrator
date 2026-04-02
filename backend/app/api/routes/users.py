@@ -10,8 +10,8 @@ from app.core.database import get_db
 from app.core.security import hash_password, validate_password_strength, validate_username
 from app.core.sessions import invalidate_user_sessions
 from app.core.logging import log_event
-from app.api.deps import get_current_user
-from app.models.user import User
+from app.api.deps import get_current_user, require_admin
+from app.models.user import User, VALID_ROLES
 from app.schemas.user import (
     CreateUserRequest, UpdateUserRequest,
     AdminChangePasswordRequest, UserListResponse,
@@ -22,7 +22,7 @@ router = APIRouter()
 
 def _user_to_response(u: User) -> UserListResponse:
     return UserListResponse(
-        id=u.id, username=u.username, is_active=u.is_active,
+        id=u.id, username=u.username, role=u.role, is_active=u.is_active,
         must_change_password=u.must_change_password,
         created_at=u.created_at, updated_at=u.updated_at,
         last_login_at=u.last_login_at,
@@ -30,13 +30,13 @@ def _user_to_response(u: User) -> UserListResponse:
 
 
 @router.get("", response_model=list[UserListResponse])
-def list_users(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def list_users(db: Session = Depends(get_db), _: User = Depends(require_admin)):
     users = db.query(User).order_by(User.created_at).all()
     return [_user_to_response(u) for u in users]
 
 
 @router.post("", response_model=UserListResponse, status_code=201)
-def create_user(body: CreateUserRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+def create_user(body: CreateUserRequest, db: Session = Depends(get_db), current: User = Depends(require_admin)):
     err = validate_username(body.username)
     if err:
         raise HTTPException(status_code=400, detail=err)
@@ -45,6 +45,9 @@ def create_user(body: CreateUserRequest, db: Session = Depends(get_db), current:
     if err:
         raise HTTPException(status_code=400, detail=err)
 
+    if body.role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Role inválida. Valores aceitos: {', '.join(VALID_ROLES)}")
+
     existing = db.query(User).filter(User.username == body.username).first()
     if existing:
         raise HTTPException(status_code=409, detail="Usuário já existe")
@@ -52,18 +55,19 @@ def create_user(body: CreateUserRequest, db: Session = Depends(get_db), current:
     user = User(
         username=body.username,
         password_hash=hash_password(body.password),
+        role=body.role,
         must_change_password=body.must_change_password,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
 
-    log_event(db, "auth", "info", f"Usuário criado: '{user.username}' por '{current.username}'")
+    log_event(db, "auth", "info", f"Usuário criado: '{user.username}' (role={user.role}) por '{current.username}'")
     return _user_to_response(user)
 
 
 @router.patch("/{user_id}", response_model=UserListResponse)
-def update_user(user_id: str, body: UpdateUserRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+def update_user(user_id: str, body: UpdateUserRequest, db: Session = Depends(get_db), current: User = Depends(require_admin)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
@@ -82,6 +86,11 @@ def update_user(user_id: str, body: UpdateUserRequest, db: Session = Depends(get
             raise HTTPException(status_code=409, detail="Usuário já existe")
         user.username = body.username
 
+    if body.role is not None:
+        if body.role not in VALID_ROLES:
+            raise HTTPException(status_code=400, detail=f"Role inválida. Valores aceitos: {', '.join(VALID_ROLES)}")
+        user.role = body.role
+
     user.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(user)
@@ -89,7 +98,7 @@ def update_user(user_id: str, body: UpdateUserRequest, db: Session = Depends(get
 
 
 @router.post("/{user_id}/change-password")
-def admin_change_password(user_id: str, body: AdminChangePasswordRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+def admin_change_password(user_id: str, body: AdminChangePasswordRequest, db: Session = Depends(get_db), current: User = Depends(require_admin)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
@@ -107,7 +116,7 @@ def admin_change_password(user_id: str, body: AdminChangePasswordRequest, db: Se
 
 
 @router.post("/{user_id}/disable")
-def disable_user(user_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+def disable_user(user_id: str, db: Session = Depends(get_db), current: User = Depends(require_admin)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
@@ -121,7 +130,7 @@ def disable_user(user_id: str, db: Session = Depends(get_db), current: User = De
 
 
 @router.post("/{user_id}/enable")
-def enable_user(user_id: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def enable_user(user_id: str, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
@@ -132,7 +141,7 @@ def enable_user(user_id: str, db: Session = Depends(get_db), _: User = Depends(g
 
 
 @router.delete("/{user_id}")
-def delete_user(user_id: str, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+def delete_user(user_id: str, db: Session = Depends(get_db), current: User = Depends(require_admin)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")

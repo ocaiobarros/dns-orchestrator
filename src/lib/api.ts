@@ -18,6 +18,7 @@ import type {
 export interface AuthUserRecord {
   id: string;
   username: string;
+  role?: string;
   is_active?: boolean;
   isActive?: boolean;
   must_change_password?: boolean;
@@ -263,6 +264,9 @@ export const api = {
   getTelemetryStatus: () => apiCall<any>('GET', '/telemetry/status'),
   getTelemetryHistory: () => apiCall<any[]>('GET', '/telemetry/history'),
 
+  // Kiosk (NOC TV)
+  getKioskSummary: () => apiCall<any>('GET', '/kiosk/summary'),
+
   removeBackend: (instanceId: string) =>
     apiCall<{ success: boolean }>('POST', `/actions/remove-backend/${instanceId}`),
   restoreBackend: (instanceId: string) =>
@@ -418,6 +422,9 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path === '/api/telemetry/status') return { collector_status: 'ok', last_update: new Date().toISOString(), file_age_seconds: 5, stale: false, mode: 'recursive_simple' };
   if (path === '/api/telemetry/history') return mockTelemetryHistoryData();
 
+  // Kiosk
+  if (path === '/api/kiosk/summary') return mockKioskSummary();
+
   // System
   if (path === '/api/system/self-test' && method === 'POST') {
     return {
@@ -526,9 +533,10 @@ function mockRollbackResult(): RollbackResult {
 
 function mockUsers(): AuthUserRecord[] {
   return [
-    { id: 'usr-001', username: 'admin', isActive: true, mustChangePassword: false, createdAt: '2026-01-15T10:00:00Z', updatedAt: '2026-03-10T08:00:00Z', lastLoginAt: '2026-03-11T09:30:00Z' },
-    { id: 'usr-002', username: 'operador', isActive: true, mustChangePassword: false, createdAt: '2026-02-20T14:00:00Z', updatedAt: '2026-03-08T12:00:00Z', lastLoginAt: '2026-03-10T16:45:00Z' },
-    { id: 'usr-003', username: 'auditor', isActive: false, mustChangePassword: true, createdAt: '2026-03-01T09:00:00Z', updatedAt: '2026-03-05T11:00:00Z', lastLoginAt: null },
+    { id: 'usr-001', username: 'admin', role: 'admin', isActive: true, mustChangePassword: false, createdAt: '2026-01-15T10:00:00Z', updatedAt: '2026-03-10T08:00:00Z', lastLoginAt: '2026-03-11T09:30:00Z' },
+    { id: 'usr-002', username: 'operador', role: 'admin', isActive: true, mustChangePassword: false, createdAt: '2026-02-20T14:00:00Z', updatedAt: '2026-03-08T12:00:00Z', lastLoginAt: '2026-03-10T16:45:00Z' },
+    { id: 'usr-003', username: 'viewer', role: 'viewer', isActive: true, mustChangePassword: false, createdAt: '2026-03-01T09:00:00Z', updatedAt: '2026-03-05T11:00:00Z', lastLoginAt: null },
+    { id: 'usr-004', username: 'auditor', role: 'admin', isActive: false, mustChangePassword: true, createdAt: '2026-03-01T09:00:00Z', updatedAt: '2026-03-05T11:00:00Z', lastLoginAt: null },
   ];
 }
 
@@ -619,4 +627,49 @@ function mockTelemetryHistoryData() {
       nft_packets: 500000 + i * 5000,
     };
   });
+}
+
+function mockKioskSummary() {
+  const tel = mockTelemetryLatest();
+  return {
+    timestamp: new Date().toISOString(),
+    host: {
+      hostname: 'dnscontrol',
+      uptime_seconds: 345600,
+      uptime_display: '4d 0h 0m',
+      load_1m: 0.42,
+      load_5m: 0.38,
+      load_15m: 0.35,
+      cpu_count: 8,
+      cpu_percent: 5.3,
+      ram_total_mb: 16384,
+      ram_used_mb: 4200,
+      ram_percent: 25.6,
+      disk_total_gb: 100.0,
+      disk_used_gb: 22.4,
+      disk_percent: 22.4,
+      services: {
+        'dns-control-api': 'active',
+        'nginx': 'active',
+        'unbound01': 'active',
+        'unbound02': 'active',
+        'dns-control-collector.timer': 'active',
+        'nftables': 'active',
+      },
+      timezone: 'BRT',
+      primary_ip: '172.29.22.6',
+    },
+    operation_mode: 'Recursivo Simples',
+    dns: {
+      frontend: tel.frontend,
+      resolver: tel.resolver,
+      traffic: tel.traffic,
+      backends: tel.backends,
+      top_domains: tel.top_domains,
+      top_clients: tel.top_clients,
+      recent_queries: tel.recent_queries,
+      health: tel.health,
+    },
+    history: mockTelemetryHistoryData(),
+  };
 }

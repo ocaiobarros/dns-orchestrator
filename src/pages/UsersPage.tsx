@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 interface UserRecord {
   id: string;
   username: string;
+  role?: string;
   is_active?: boolean;
   isActive?: boolean;
   must_change_password?: boolean;
@@ -146,6 +147,7 @@ export default function UsersPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Usuário</TableHead>
+              <TableHead>Perfil</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Troca de senha</TableHead>
               <TableHead>Criado em</TableHead>
@@ -156,13 +158,13 @@ export default function UsersPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8">
+                 <TableCell colSpan={7} className="text-center py-8">
                   <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
                 </TableCell>
               </TableRow>
             ) : users.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                   Nenhum usuário cadastrado
                 </TableCell>
               </TableRow>
@@ -173,6 +175,11 @@ export default function UsersPage() {
                 return (
                   <TableRow key={u.id}>
                     <TableCell className="font-mono text-sm">{u.username}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={u.role === 'viewer' ? 'text-accent border-accent/30' : 'text-primary border-primary/30'}>
+                        {u.role === 'viewer' ? 'Viewer' : 'Admin'}
+                      </Badge>
+                    </TableCell>
                     <TableCell>
                       <Badge variant={active ? 'default' : 'secondary'} className={active ? 'bg-success/20 text-success border-success/30' : ''}>
                         {active ? 'Ativo' : 'Inativo'}
