@@ -16,6 +16,7 @@ from app.api.routes import (
     nat, ospf, logs, troubleshooting, configs, apply,
     files, history, settings as settings_route, system,
     healthcheck, deploy, import_config, telemetry,
+    kiosk,
 )
 from app.api.routes import (
     health_v2, metrics_v2, events, actions, instances,
