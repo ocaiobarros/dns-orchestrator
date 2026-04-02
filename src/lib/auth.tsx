@@ -248,9 +248,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const data = await res.json();
       localStorage.setItem(TOKEN_KEY, data.token);
+      const userRole = data.user.role || 'admin';
       setUser({
         id: data.user.id,
         username: data.user.username,
+        role: userRole,
         isActive: data.user.is_active,
         mustChangePassword: data.must_change_password,
         createdAt: data.user.created_at,
@@ -262,7 +264,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sessionWarningSeconds: DEFAULT_SESSION_WARNING_SECONDS,
       };
       setSessionInfo(si);
-      startSessionTimers(si.expiresAt, si.sessionWarningSeconds);
+      startSessionTimers(si.expiresAt, si.sessionWarningSeconds, userRole);
       return { success: true, mustChangePassword: data.must_change_password };
     } catch {
       return { success: false, error: 'Falha na conexão com o servidor' };
