@@ -36,7 +36,7 @@ def list_users(db: Session = Depends(get_db), _: User = Depends(require_admin)):
 
 
 @router.post("", response_model=UserListResponse, status_code=201)
-def create_user(body: CreateUserRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+def create_user(body: CreateUserRequest, db: Session = Depends(get_db), current: User = Depends(require_admin)):
     err = validate_username(body.username)
     if err:
         raise HTTPException(status_code=400, detail=err)
@@ -45,6 +45,9 @@ def create_user(body: CreateUserRequest, db: Session = Depends(get_db), current:
     if err:
         raise HTTPException(status_code=400, detail=err)
 
+    if body.role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Role inválida. Valores aceitos: {', '.join(VALID_ROLES)}")
+
     existing = db.query(User).filter(User.username == body.username).first()
     if existing:
         raise HTTPException(status_code=409, detail="Usuário já existe")
@@ -52,13 +55,14 @@ def create_user(body: CreateUserRequest, db: Session = Depends(get_db), current:
     user = User(
         username=body.username,
         password_hash=hash_password(body.password),
+        role=body.role,
         must_change_password=body.must_change_password,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
 
-    log_event(db, "auth", "info", f"Usuário criado: '{user.username}' por '{current.username}'")
+    log_event(db, "auth", "info", f"Usuário criado: '{user.username}' (role={user.role}) por '{current.username}'")
     return _user_to_response(user)
 
 
