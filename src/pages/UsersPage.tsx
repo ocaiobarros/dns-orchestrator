@@ -60,6 +60,7 @@ export default function UsersPage() {
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
+  const [newRole, setNewRole] = useState<string>('admin');
   const [mustChangePassword, setMustChangePassword] = useState(true);
   const [changePassword, setChangePassword] = useState('');
   const [changePasswordConfirm, setChangePasswordConfirm] = useState('');
