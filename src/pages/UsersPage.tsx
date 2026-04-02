@@ -147,6 +147,7 @@ export default function UsersPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Usuário</TableHead>
+              <TableHead>Perfil</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Troca de senha</TableHead>
               <TableHead>Criado em</TableHead>
