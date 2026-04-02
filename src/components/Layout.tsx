@@ -101,7 +101,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="px-3 py-3 border-t border-sidebar-border space-y-2">
           {user && (
             <div className="flex items-center justify-between px-1">
-              <span className="text-xs text-muted-foreground font-mono truncate">{user.username}</span>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-xs text-muted-foreground font-mono truncate">{user.username}</span>
+                <span className={`text-[9px] font-mono font-bold uppercase px-1 py-0.5 rounded ${
+                  user.role === 'viewer' ? 'bg-accent/20 text-accent' : 'bg-primary/20 text-primary'
+                }`}>{user.role}</span>
+              </div>
               <button
                 onClick={logout}
                 className="text-muted-foreground hover:text-destructive transition-colors"
