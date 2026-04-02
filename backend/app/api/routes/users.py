@@ -10,8 +10,8 @@ from app.core.database import get_db
 from app.core.security import hash_password, validate_password_strength, validate_username
 from app.core.sessions import invalidate_user_sessions
 from app.core.logging import log_event
-from app.api.deps import get_current_user
-from app.models.user import User
+from app.api.deps import get_current_user, require_admin
+from app.models.user import User, VALID_ROLES
 from app.schemas.user import (
     CreateUserRequest, UpdateUserRequest,
     AdminChangePasswordRequest, UserListResponse,
