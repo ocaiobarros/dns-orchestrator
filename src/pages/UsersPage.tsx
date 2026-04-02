@@ -176,6 +176,11 @@ export default function UsersPage() {
                   <TableRow key={u.id}>
                     <TableCell className="font-mono text-sm">{u.username}</TableCell>
                     <TableCell>
+                      <Badge variant="outline" className={u.role === 'viewer' ? 'text-accent border-accent/30' : 'text-primary border-primary/30'}>
+                        {u.role === 'viewer' ? 'Viewer' : 'Admin'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
                       <Badge variant={active ? 'default' : 'secondary'} className={active ? 'bg-success/20 text-success border-success/30' : ''}>
                         {active ? 'Ativo' : 'Inativo'}
                       </Badge>
