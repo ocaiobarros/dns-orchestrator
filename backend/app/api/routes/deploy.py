@@ -86,6 +86,7 @@ def _persist_job(db: Session, result: dict, body: DeployRequest, user: User) -> 
 @router.post("/dry-run")
 def deploy_dry_run(body: DeployRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Execute dry-run: validate, generate, check — no changes applied."""
+    require_managed_mode(db)
     payload = _resolve_payload(body, db)
     result = execute_deploy(
         payload=payload,
