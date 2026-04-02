@@ -90,8 +90,16 @@ def _collect_host_metrics() -> dict:
         total_kb = meminfo.get("MemTotal", 0)
         avail_kb = meminfo.get("MemAvailable", meminfo.get("MemFree", 0))
         used_kb = total_kb - avail_kb
-        host["ram_total_mb"] = round(total_kb / 1024)
-        host["ram_used_mb"] = round(used_kb / 1024)
+        total_mb = round(total_kb / 1024)
+        used_mb = round(used_kb / 1024)
+        if total_mb >= 1024:
+            host["ram_total_display"] = f"{total_mb / 1024:.1f} GB"
+            host["ram_used_display"] = f"{used_mb / 1024:.1f} GB"
+        else:
+            host["ram_total_display"] = f"{total_mb} MB"
+            host["ram_used_display"] = f"{used_mb} MB"
+        host["ram_total_mb"] = total_mb
+        host["ram_used_mb"] = used_mb
         host["ram_percent"] = round(used_kb / total_kb * 100, 1) if total_kb > 0 else 0.0
     except Exception:
         host["ram_total_mb"] = host["ram_used_mb"] = 0

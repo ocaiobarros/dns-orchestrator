@@ -211,7 +211,7 @@ export default function KioskDashboard() {
         <KioskCard
           label="RAM"
           value={`${host.ram_percent ?? 0}%`}
-          sub={`${host.ram_used_mb ?? 0} / ${host.ram_total_mb ?? 0} MB`}
+          sub={`${host.ram_used_display ?? `${host.ram_used_mb ?? 0} MB`} / ${host.ram_total_display ?? `${host.ram_total_mb ?? 0} MB`}`}
           icon={<MemoryStick size={20} />}
           accent={(host.ram_percent ?? 0) > 85 ? 'danger' : (host.ram_percent ?? 0) > 70 ? 'warning' : 'success'}
         />
@@ -318,20 +318,20 @@ export default function KioskDashboard() {
           <div className="text-sm font-mono font-bold uppercase tracking-widest text-muted-foreground mb-4 flex items-center gap-2">
             <Server size={16} /> Backends ({backends.length})
           </div>
-          <div className="space-y-3">
+          <div className="space-y-2">
             {backends.length > 0 ? backends.map((b: any) => {
               const r = b.resolver ?? {};
               return (
-                <div key={b.name} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className={`w-3 h-3 rounded-full ${b.healthy ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                    <span className="font-mono text-base font-semibold">{b.name}</span>
-                    <span className="font-mono text-sm text-muted-foreground">{b.ip}</span>
+                <div key={b.name} className="flex flex-col gap-1 py-2 border-b border-border/30 last:border-0">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${b.healthy ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                    <span className="font-mono text-sm font-semibold text-foreground">{b.name}</span>
+                    <span className="font-mono text-xs text-muted-foreground truncate">{b.ip}</span>
                   </div>
-                  <div className="flex items-center gap-4 text-sm font-mono text-muted-foreground">
-                    <span>{r.total_queries?.toLocaleString() ?? '—'} q</span>
-                    <span>{r.cache_hit_ratio ?? '—'}%</span>
-                    <span>{b.traffic?.share ?? '—'}%</span>
+                  <div className="flex items-center gap-3 ml-[18px] text-xs font-mono text-muted-foreground">
+                    <span>{r.total_queries?.toLocaleString() ?? '—'} <span className="text-muted-foreground/50">queries</span></span>
+                    <span>{r.cache_hit_ratio ?? '—'}% <span className="text-muted-foreground/50">cache</span></span>
+                    <span>{b.traffic?.share ?? '—'}% <span className="text-muted-foreground/50">share</span></span>
                   </div>
                 </div>
               );
