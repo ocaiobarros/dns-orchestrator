@@ -277,6 +277,14 @@ export const api = {
     apiCall<{ running: boolean; jobs: Array<{ id: string; name: string; next_run: string | null }> }>('GET', '/health'),
   importHostState: () =>
     apiCall<any>('GET', '/config/import-host'),
+
+  // Import mode (read-only infrastructure adoption)
+  getServiceMode: () =>
+    apiCall<{ service_mode: string; import_timestamp?: string; imported_vips?: any[] }>('GET', '/config/service-mode'),
+  executeImport: () =>
+    apiCall<any>('POST', '/config/import'),
+  clearImport: () =>
+    apiCall<{ success: boolean; mode: string }>('DELETE', '/config/import'),
 };
 
 // ---- Mock Response Router ----
