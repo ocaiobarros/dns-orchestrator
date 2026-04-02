@@ -59,13 +59,14 @@ def validate_session(db: Session, session_id: str) -> SessionRecord | None:
     return session
 
 
-def refresh_session(db: Session, session_id: str) -> datetime | None:
+def refresh_session(db: Session, session_id: str, kiosk: bool = False) -> datetime | None:
     """Extend session expiration. Returns new expires_at or None if invalid."""
     session = validate_session(db, session_id)
     if not session:
         return None
 
-    session.expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.SESSION_TIMEOUT_MINUTES)
+    timeout = settings.KIOSK_SESSION_TIMEOUT_MINUTES if kiosk else settings.SESSION_TIMEOUT_MINUTES
+    session.expires_at = datetime.now(timezone.utc) + timedelta(minutes=timeout)
     db.commit()
     return session.expires_at
 

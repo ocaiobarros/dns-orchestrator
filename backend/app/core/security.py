@@ -25,8 +25,9 @@ def generate_session_token() -> str:
     return secrets.token_urlsafe(48)
 
 
-def create_access_token(user_id: str, session_id: str) -> str:
-    expires = datetime.now(timezone.utc) + timedelta(minutes=settings.SESSION_TIMEOUT_MINUTES)
+def create_access_token(user_id: str, session_id: str, timeout_minutes: int | None = None) -> str:
+    minutes = timeout_minutes or settings.SESSION_TIMEOUT_MINUTES
+    expires = datetime.now(timezone.utc) + timedelta(minutes=minutes)
     payload = {
         "sub": user_id,
         "sid": session_id,
