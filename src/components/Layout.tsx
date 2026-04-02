@@ -9,21 +9,22 @@ import { useAuth } from '@/lib/auth';
 import { useNoc } from '@/lib/noc-context';
 
 const navItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/wizard', label: 'Wizard', icon: Wand2 },
-  { path: '/services', label: 'Serviços', icon: Server },
-  { path: '/network', label: 'Rede', icon: Network },
-  { path: '/dns', label: 'DNS', icon: Globe },
-  { path: '/nat', label: 'NAT / Balanceamento', icon: Shield },
-  { path: '/ospf', label: 'OSPF / FRR', icon: Router },
-  { path: '/metrics', label: 'Métricas', icon: BarChart3 },
-  { path: '/events', label: 'Eventos', icon: Bell },
-  { path: '/logs', label: 'Logs', icon: FileText },
-  { path: '/troubleshoot', label: 'Troubleshooting', icon: Wrench },
-  { path: '/files', label: 'Arquivos', icon: FolderOpen },
-  { path: '/history', label: 'Histórico', icon: History },
-  { path: '/settings', label: 'Configurações', icon: Settings },
-  { path: '/users', label: 'Usuários', icon: Users },
+  { path: '/', label: 'Dashboard', icon: LayoutDashboard, adminOnly: false },
+  { path: '/kiosk', label: 'NOC / Kiosk', icon: HeartPulse, adminOnly: false },
+  { path: '/wizard', label: 'Wizard', icon: Wand2, adminOnly: true },
+  { path: '/services', label: 'Serviços', icon: Server, adminOnly: true },
+  { path: '/network', label: 'Rede', icon: Network, adminOnly: true },
+  { path: '/dns', label: 'DNS', icon: Globe, adminOnly: false },
+  { path: '/nat', label: 'NAT / Balanceamento', icon: Shield, adminOnly: true },
+  { path: '/ospf', label: 'OSPF / FRR', icon: Router, adminOnly: true },
+  { path: '/metrics', label: 'Métricas', icon: BarChart3, adminOnly: false },
+  { path: '/events', label: 'Eventos', icon: Bell, adminOnly: false },
+  { path: '/logs', label: 'Logs', icon: FileText, adminOnly: true },
+  { path: '/troubleshoot', label: 'Troubleshooting', icon: Wrench, adminOnly: true },
+  { path: '/files', label: 'Arquivos', icon: FolderOpen, adminOnly: true },
+  { path: '/history', label: 'Histórico', icon: History, adminOnly: true },
+  { path: '/settings', label: 'Configurações', icon: Settings, adminOnly: true },
+  { path: '/users', label: 'Usuários', icon: Users, adminOnly: true },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
