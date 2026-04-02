@@ -126,7 +126,8 @@ def refresh(
     user: User = Depends(get_current_user),
     session_id: str = Depends(get_session_id),
 ):
-    new_expires = refresh_session(db, session_id)
+    is_kiosk = user.is_viewer
+    new_expires = refresh_session(db, session_id, kiosk=is_kiosk)
     if not new_expires:
         raise HTTPException(status_code=401, detail="Sessão inválida")
     return RefreshResponse(expires_at=new_expires)

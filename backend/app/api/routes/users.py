@@ -67,7 +67,7 @@ def create_user(body: CreateUserRequest, db: Session = Depends(get_db), current:
 
 
 @router.patch("/{user_id}", response_model=UserListResponse)
-def update_user(user_id: str, body: UpdateUserRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+def update_user(user_id: str, body: UpdateUserRequest, db: Session = Depends(get_db), current: User = Depends(require_admin)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
