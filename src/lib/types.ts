@@ -933,7 +933,13 @@ export function safeDate(dateStr: string | null | undefined, locale = 'pt-BR'): 
 export function safeDateShort(dateStr: string | null | undefined, locale = 'pt-BR'): string {
   if (!dateStr) return '—';
   try {
-    const d = new Date(String(dateStr));
+    let s = String(dateStr).trim();
+    if (!s.endsWith('Z') && !s.includes('+') && !s.includes('T')) {
+      s = s.replace(' ', 'T') + 'Z';
+    } else if (s.includes('T') && !s.endsWith('Z') && !s.includes('+') && !s.includes('-', s.indexOf('T'))) {
+      s = s + 'Z';
+    }
+    const d = new Date(s);
     if (isNaN(d.getTime())) return '—';
     return d.toLocaleString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   } catch {
