@@ -17,6 +17,9 @@ dns-control ALL=(root) NOPASSWD: \
     /usr/sbin/nft list tables, \
     /usr/sbin/nft list ruleset, \
     /usr/sbin/nft list counters, \
+    /usr/sbin/nft -j list tables, \
+    /usr/sbin/nft -j list ruleset, \
+    /usr/sbin/nft -j list counters, \
     /usr/sbin/nft -c -f *, \
     /usr/sbin/nft -f *, \
     /usr/bin/vtysh -c *, \
