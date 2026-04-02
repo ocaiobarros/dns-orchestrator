@@ -86,6 +86,11 @@ def update_user(user_id: str, body: UpdateUserRequest, db: Session = Depends(get
             raise HTTPException(status_code=409, detail="Usuário já existe")
         user.username = body.username
 
+    if body.role is not None:
+        if body.role not in VALID_ROLES:
+            raise HTTPException(status_code=400, detail=f"Role inválida. Valores aceitos: {', '.join(VALID_ROLES)}")
+        user.role = body.role
+
     user.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(user)
