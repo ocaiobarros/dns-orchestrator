@@ -30,7 +30,7 @@ def _user_to_response(u: User) -> UserListResponse:
 
 
 @router.get("", response_model=list[UserListResponse])
-def list_users(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def list_users(db: Session = Depends(get_db), _: User = Depends(require_admin)):
     users = db.query(User).order_by(User.created_at).all()
     return [_user_to_response(u) for u in users]
 
