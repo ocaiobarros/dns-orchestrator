@@ -98,7 +98,7 @@ def update_user(user_id: str, body: UpdateUserRequest, db: Session = Depends(get
 
 
 @router.post("/{user_id}/change-password")
-def admin_change_password(user_id: str, body: AdminChangePasswordRequest, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+def admin_change_password(user_id: str, body: AdminChangePasswordRequest, db: Session = Depends(get_db), current: User = Depends(require_admin)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
