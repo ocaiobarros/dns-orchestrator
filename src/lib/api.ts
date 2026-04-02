@@ -277,6 +277,14 @@ export const api = {
     apiCall<{ running: boolean; jobs: Array<{ id: string; name: string; next_run: string | null }> }>('GET', '/health'),
   importHostState: () =>
     apiCall<any>('GET', '/config/import-host'),
+
+  // Import mode (read-only infrastructure adoption)
+  getServiceMode: () =>
+    apiCall<{ service_mode: string; import_timestamp?: string; imported_vips?: any[] }>('GET', '/config/service-mode'),
+  executeImport: () =>
+    apiCall<any>('POST', '/config/import'),
+  clearImport: () =>
+    apiCall<{ success: boolean; mode: string }>('DELETE', '/config/import'),
 };
 
 // ---- Mock Response Router ----
@@ -421,6 +429,12 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path === '/api/telemetry/latest') return mockTelemetryLatest();
   if (path === '/api/telemetry/status') return { collector_status: 'ok', last_update: new Date().toISOString(), file_age_seconds: 5, stale: false, mode: 'recursive_simple' };
   if (path === '/api/telemetry/history') return mockTelemetryHistoryData();
+
+  // Import / service mode
+  if (path === '/api/config/service-mode') return { service_mode: 'managed' };
+  if (path === '/api/config/import' && method === 'POST') return { success: true, mode: 'imported', discovery: { instances: [], vip_mappings: [], dns_listeners: [] }, audit: [], errors: [] };
+  if (path === '/api/config/import' && method === 'DELETE') return { success: true, mode: 'managed' };
+  if (path === '/api/config/import-host') return { hostname: 'mock-host', instances: [], instanceCount: 0, network: { interfaces: [], listeners: [] } };
 
   // Kiosk
   if (path === '/api/kiosk/summary') return mockKioskSummary();

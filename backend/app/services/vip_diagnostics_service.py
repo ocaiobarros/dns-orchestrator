@@ -227,7 +227,10 @@ def run_vip_diagnostics(service_vips: list[dict] | None = None, debug: bool = Fa
     stale_cfg = {**STALE_THRESHOLDS, **(stale_overrides or {})}
 
     if not service_vips:
-        service_vips = _discover_vips_from_loopback()
+        # Check for imported VIP mappings first (passive mode)
+        service_vips = _get_imported_vips_as_service_vips()
+        if not service_vips:
+            service_vips = _discover_vips_from_loopback()
 
     source_timestamps = {}
 
@@ -917,6 +920,33 @@ def _aggregate_backend_stats(backend_paths: list[dict], backend_probes: list[dic
 
 
 # ── VIP discovery ────────────────────────────────────────────
+
+
+def _get_imported_vips_as_service_vips() -> list[dict]:
+    """Convert imported VIP mappings to service_vips format for diagnostics."""
+    try:
+        from app.services.import_service import get_imported_vips
+        db = _get_db_session()
+        try:
+            imported = get_imported_vips(db)
+            if not imported:
+                return []
+            vips = []
+            for v in imported:
+                vips.append({
+                    "ipv4": v.get("vip_ip", ""),
+                    "ipv6": "",
+                    "description": f"Imported VIP {v.get('vip_ip', '')} ({v.get('capture_mode', 'unknown')})",
+                    "vipType": "intercepted" if v.get("capture_mode") == "dnat" else "owned",
+                    "backendIp": v.get("backend_ip", ""),
+                    "backendInstance": v.get("backend_instance", ""),
+                })
+            return vips
+        finally:
+            db.close()
+    except Exception as e:
+        logger.debug(f"Failed to read imported VIPs: {e}")
+        return []
 
 
 def _discover_vips_from_loopback() -> list[dict]:
