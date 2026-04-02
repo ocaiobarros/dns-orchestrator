@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 interface UserRecord {
   id: string;
   username: string;
+  role?: string;
   is_active?: boolean;
   isActive?: boolean;
   must_change_password?: boolean;
