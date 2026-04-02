@@ -32,6 +32,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, logout } = useAuth();
   const { fullscreen } = useNoc();
+  const isViewer = user?.role === 'viewer';
+
+  // Filter nav items based on role
+  const filteredNavItems = isViewer
+    ? navItems.filter(item => !item.adminOnly)
+    : navItems;
 
   // In fullscreen NOC mode on the dashboard, hide sidebar and header
   const isDashboard = location.pathname === '/';
