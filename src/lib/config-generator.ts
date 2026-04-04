@@ -773,28 +773,34 @@ export function generateNftablesFilterTable(config: WizardConfig): { path: strin
       '        # ═══ DNS Access Control IPv6 (EDGE) ═══',
     ];
 
+    // 1. DENY
     for (const acl of ipv6Denies) {
       ipv6Lines.push(`        ip6 saddr ${acl.network} udp dport 53 counter drop${acl.label ? ` comment "${acl.label}"` : ''}`);
       ipv6Lines.push(`        ip6 saddr ${acl.network} tcp dport 53 counter drop${acl.label ? ` comment "${acl.label}"` : ''}`);
     }
 
+    // 2. Anti-amplification
+    if (config.enableAntiAmplification) {
+      ipv6Lines.push('');
+      ipv6Lines.push('        udp dport 53 ip6 length > 512 counter drop');
+      ipv6Lines.push('        udp dport 53 ct state new limit rate over 1000/second counter drop');
+    }
+
+    // 3. Rate limit
+    if (config.enableDnsProtection) {
+      ipv6Lines.push('');
+      ipv6Lines.push('        udp dport 53 limit rate over 2000/second counter drop');
+      ipv6Lines.push('        tcp dport 53 limit rate over 2000/second counter drop');
+    }
+
+    // 4. ACCEPT
     for (const acl of ipv6Allows) {
       if (acl.network === '::/0') continue;
       ipv6Lines.push(`        ip6 saddr ${acl.network} udp dport 53 counter accept${acl.label ? ` comment "${acl.label}"` : ''}`);
       ipv6Lines.push(`        ip6 saddr ${acl.network} tcp dport 53 counter accept${acl.label ? ` comment "${acl.label}"` : ''}`);
     }
 
-    if (config.enableDnsProtection) {
-      ipv6Lines.push('');
-      ipv6Lines.push('        udp dport 53 limit rate 2000/second accept');
-      ipv6Lines.push('        tcp dport 53 limit rate 2000/second accept');
-    }
-
-    if (config.enableAntiAmplification) {
-      ipv6Lines.push('');
-      ipv6Lines.push('        udp dport 53 ip6 length > 512 counter drop');
-    }
-
+    // 5. DEFAULT DENY
     const isOpenV6 = config.accessControlIpv6.some(a => a.network === '::/0' && a.action === 'allow') && config.openResolverConfirmed;
     if (!isOpenV6) {
       ipv6Lines.push('');

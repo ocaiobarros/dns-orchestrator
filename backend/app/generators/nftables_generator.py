@@ -441,6 +441,7 @@ def _generate_filter_table(payload: dict[str, Any], enable_ipv6: bool) -> list[d
             "        # ═══ DNS Access Control IPv6 (EDGE) ═══",
         ]
 
+        # 1. DENY
         for acl in acl_ipv6:
             if not isinstance(acl, dict):
                 continue
@@ -450,6 +451,19 @@ def _generate_filter_table(payload: dict[str, Any], enable_ipv6: bool) -> list[d
                 lines6.append(f"        ip6 saddr {network} udp dport 53 counter drop")
                 lines6.append(f"        ip6 saddr {network} tcp dport 53 counter drop")
 
+        # 2. Anti-amplification
+        if enable_anti_amp:
+            lines6.append("")
+            lines6.append("        udp dport 53 ip6 length > 512 counter drop")
+            lines6.append("        udp dport 53 ct state new limit rate over 1000/second counter drop")
+
+        # 3. Rate limit
+        if enable_rate_limit:
+            lines6.append("")
+            lines6.append("        udp dport 53 limit rate over 2000/second counter drop")
+            lines6.append("        tcp dport 53 limit rate over 2000/second counter drop")
+
+        # 4. ACCEPT
         for acl in acl_ipv6:
             if not isinstance(acl, dict):
                 continue
@@ -459,15 +473,7 @@ def _generate_filter_table(payload: dict[str, Any], enable_ipv6: bool) -> list[d
                 lines6.append(f"        ip6 saddr {network} udp dport 53 counter accept")
                 lines6.append(f"        ip6 saddr {network} tcp dport 53 counter accept")
 
-        if enable_rate_limit:
-            lines6.append("")
-            lines6.append("        udp dport 53 limit rate 2000/second accept")
-            lines6.append("        tcp dport 53 limit rate 2000/second accept")
-
-        if enable_anti_amp:
-            lines6.append("")
-            lines6.append("        udp dport 53 ip6 length > 512 counter drop")
-
+        # 5. DEFAULT DENY
         is_open_v6 = any(
             isinstance(a, dict) and str(a.get("network", "")).strip() == "::/0" and str(a.get("action", "")).strip() == "allow"
             for a in acl_ipv6
