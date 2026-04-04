@@ -126,6 +126,21 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
   const dupListeners = findDuplicates(listenerIps);
   if (dupListeners.length > 0) e('instances', instStep, `Listener IPs duplicados: ${dupListeners.join(', ')}`);
 
+  // IPv6 listener count must match instance count when IPv6 enabled
+  if (config.enableIpv6) {
+    const v6ListenerCount = config.instances.filter(i => i.bindIpv6?.trim()).length;
+    if (v6ListenerCount > 0 && v6ListenerCount < config.instances.length) {
+      e('instances', instStep, `Apenas ${v6ListenerCount} de ${config.instances.length} instâncias possuem listener IPv6 — todas devem ter quando IPv6 está habilitado`);
+    }
+  }
+
+  // IPv6 listener duplicates
+  if (config.enableIpv6) {
+    const v6Listeners = config.instances.map(i => i.bindIpv6).filter(Boolean);
+    const dupV6 = findDuplicates(v6Listeners);
+    if (dupV6.length > 0) e('instances', instStep, `Listener IPv6 duplicados: ${dupV6.join(', ')}`);
+  }
+
   const controlIps = config.instances.map(i => `${i.controlInterface}:${i.controlPort}`).filter(i => i !== ':');
   const dupControls = findDuplicates(controlIps);
   if (dupControls.length > 0) e('instances', instStep, `Control interfaces duplicadas: ${dupControls.join(', ')}`);
@@ -206,17 +221,24 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
       config.interceptedVips.forEach((vip, i) => {
         if (!vip.vipIp.trim()) e(`interceptedVips[${i}].vipIp`, intStep, `VIP IP ${i + 1} é obrigatório`);
         else if (!isValidIpv4(vip.vipIp)) e(`interceptedVips[${i}].vipIp`, intStep, `VIP IP ${i + 1} inválido`);
-        if (!vip.backendInstance.trim()) e(`interceptedVips[${i}].backendInstance`, intStep, `Backend instance do VIP ${vip.vipIp || i + 1} é obrigatório`);
-        else {
-          const exists = config.instances.some(inst => inst.name === vip.backendInstance);
-          if (!exists) e(`interceptedVips[${i}].backendInstance`, intStep, `Backend instance "${vip.backendInstance}" não existe — cadastre a instância primeiro`);
+
+        // IPv6 validation for intercepted VIPs
+        if (config.enableIpv6 && vip.vipIpv6 && !isValidIpv6(vip.vipIpv6)) {
+          e(`interceptedVips[${i}].vipIpv6`, intStep, `VIP IPv6 ${i + 1} inválido`);
         }
-        if (!vip.backendTargetIp.trim()) e(`interceptedVips[${i}].backendTargetIp`, intStep, `Backend target IP do VIP ${vip.vipIp || i + 1} é obrigatório`);
-        else if (!isValidIpv4(vip.backendTargetIp)) e(`interceptedVips[${i}].backendTargetIp`, intStep, `Backend target IP inválido`);
-        else {
-          const inst = config.instances.find(inst => inst.name === vip.backendInstance);
-          if (inst && inst.bindIp && vip.backendTargetIp !== inst.bindIp) {
-            e(`interceptedVips[${i}].backendTargetIp`, intStep, `Backend target IP ${vip.backendTargetIp} não corresponde ao listener da instância "${vip.backendInstance}" (${inst.bindIp})`);
+
+        // VIP IPv4 must not collide with listener or egress IPs
+        if (vip.vipIp) {
+          config.instances.forEach((inst) => {
+            if (inst.bindIp && vip.vipIp === inst.bindIp) {
+              e(`interceptedVips[${i}].vipIp`, intStep, `VIP ${vip.vipIp} conflita com listener da instância "${inst.name}"`);
+            }
+            if (inst.egressIpv4 && vip.vipIp === inst.egressIpv4) {
+              e(`interceptedVips[${i}].vipIp`, intStep, `VIP ${vip.vipIp} conflita com egress da instância "${inst.name}"`);
+            }
+          });
+          if (config.ipv4Address && vip.vipIp === extractIpFromCidr(config.ipv4Address)) {
+            e(`interceptedVips[${i}].vipIp`, intStep, `VIP ${vip.vipIp} conflita com IP principal do host`);
           }
         }
       });
@@ -229,6 +251,19 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
     const dupEgress = findDuplicates(egressIps);
     if (dupEgress.length > 0 && config.egressFixedIdentity) {
       e('egressIpv4', egrStep, `IPs de egress duplicados com identidade fixa ativa: ${dupEgress.join(', ')}`);
+    }
+
+    // ═══ Count validations: egress must match instances ═══
+    const instanceCount = config.instances.length;
+    const egressCount = config.instances.filter(i => i.egressIpv4.trim()).length;
+    if (egressCount > 0 && egressCount < instanceCount) {
+      e('egressIpv4', egrStep, `Apenas ${egressCount} de ${instanceCount} instâncias possuem egress IPv4 — todas devem ter`);
+    }
+    if (config.enableIpv6) {
+      const egressV6Count = config.instances.filter(i => i.egressIpv6?.trim()).length;
+      if (egressV6Count > 0 && egressV6Count < instanceCount) {
+        e('egressIpv6', egrStep, `Apenas ${egressV6Count} de ${instanceCount} instâncias possuem egress IPv6 — todas devem ter quando IPv6 está habilitado`);
+      }
     }
 
     config.instances.forEach((inst, i) => {

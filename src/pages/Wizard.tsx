@@ -754,27 +754,18 @@ export default function Wizard() {
                 className="text-xs text-destructive hover:text-destructive/80 flex items-center gap-1"><Trash2 size={12} /> Remover</button>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              <FieldGroup label="VIP IP *" error={fieldError(`interceptedVips[${i}].vipIp`)} hint="DNS público a ser sequestrado">
+              <FieldGroup label="VIP IPv4 *" error={fieldError(`interceptedVips[${i}].vipIp`)} hint="DNS público a ser sequestrado">
                 <Input value={vip.vipIp} onChange={v => {
                   const vips = [...config.interceptedVips]; vips[i] = { ...vips[i], vipIp: v }; set('interceptedVips', vips);
                 }} placeholder="4.2.2.5" />
               </FieldGroup>
-              <FieldGroup label="Backend Instance *" error={fieldError(`interceptedVips[${i}].backendInstance`)} hint="Instância que atende">
-                <Select value={vip.backendInstance} onChange={v => {
-                  const vips = [...config.interceptedVips];
-                  const inst = config.instances.find(inst => inst.name === v);
-                  vips[i] = { ...vips[i], backendInstance: v, backendTargetIp: inst?.bindIp || vip.backendTargetIp };
-                  set('interceptedVips', vips);
-                }} options={[
-                  { value: '', label: '— Selecionar —' },
-                  ...config.instances.map(inst => ({ value: inst.name, label: `${inst.name} (${inst.bindIp || '?'})` })),
-                ]} />
-              </FieldGroup>
-              <FieldGroup label="Backend Target IP" error={fieldError(`interceptedVips[${i}].backendTargetIp`)} hint="IP real da instância">
-                <Input value={vip.backendTargetIp} onChange={v => {
-                  const vips = [...config.interceptedVips]; vips[i] = { ...vips[i], backendTargetIp: v }; set('interceptedVips', vips);
-                }} placeholder="100.127.255.101" />
-              </FieldGroup>
+              {config.enableIpv6 && (
+                <FieldGroup label="VIP IPv6" hint="Endereço IPv6 do VIP interceptado">
+                  <Input value={vip.vipIpv6} onChange={v => {
+                    const vips = [...config.interceptedVips]; vips[i] = { ...vips[i], vipIpv6: v }; set('interceptedVips', vips);
+                  }} placeholder="2620:119:35::35" />
+                </FieldGroup>
+              )}
               <FieldGroup label="Protocolo">
                 <Select value={vip.protocol} onChange={v => {
                   const vips = [...config.interceptedVips]; vips[i] = { ...vips[i], protocol: v as any }; set('interceptedVips', vips);
@@ -788,6 +779,9 @@ export default function Wizard() {
                 const vips = [...config.interceptedVips]; vips[i] = { ...vips[i], description: v }; set('interceptedVips', vips);
               }} placeholder="DNS público Level3 sequestrado" />
             </FieldGroup>
+            <div className="p-2 rounded bg-primary/5 border border-primary/10 text-xs text-muted-foreground">
+              <strong>Balanceamento:</strong> Este VIP será distribuído automaticamente entre <strong>todas as {config.instances.length} instâncias</strong> via sticky source + numgen inc mod {config.instances.length}.
+            </div>
           </div>
         ))}
       </div>
