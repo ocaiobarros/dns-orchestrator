@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { LoadingState, ErrorState, EmptyState } from '@/components/DataStates';
-import { Settings2, Activity, Stethoscope, Download, Import, ShieldAlert, ShieldCheck, Trash2, Loader2 } from 'lucide-react';
+import { Settings2, Activity, Stethoscope, Download, Import, ShieldAlert, ShieldCheck, Trash2, Loader2, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { safeDate } from '@/lib/types';
