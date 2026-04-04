@@ -80,6 +80,7 @@ function MiniBar({ data, color = 'hsl(var(--primary))', height = 60 }: { data: n
 
 export default function KioskDashboard() {
   const { user, refreshSession } = useAuth();
+  const navigate = useNavigate();
   const [now, setNow] = useState(new Date());
 
   // Auto-refresh session for viewer users (silent)
