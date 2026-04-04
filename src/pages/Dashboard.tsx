@@ -24,6 +24,7 @@ import NocDnsPathFlow from '@/components/noc/NocDnsPathFlow';
 import NocIncidentDetector from '@/components/noc/NocIncidentDetector';
 import NocDeploySimulation from '@/components/noc/NocDeploySimulation';
 import NocVipDiagnostics from '@/components/noc/NocVipDiagnostics';
+import NocDnsErrors from '@/components/noc/NocDnsErrors';
 
 import SimpleDashboard from '@/pages/SimpleDashboard';
 
@@ -450,6 +451,9 @@ function InterceptionDashboard() {
 
       {/* ═══ TIER 4D: SERVICE VIP DIAGNOSTICS ═══ */}
       <NocVipDiagnostics data={vipDiagnostics} isLoading={vipDiagLoading} />
+
+      {/* ═══ TIER 4E: DNS ERRORS & FAILURES ═══ */}
+      <NocDnsErrors />
 
       {/* ═══ TIER 5: TOPOLOGY DETAIL (8col) + Health Matrix (4col) ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">

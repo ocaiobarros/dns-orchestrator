@@ -293,6 +293,20 @@ export const api = {
     apiCall<any>('GET', '/inventory/full'),
   syncRuntimeInstances: () =>
     apiCall<any>('POST', '/inventory/sync'),
+
+  // DNS Error Metrics
+  getDnsErrorSummary: (minutes: number = 60) =>
+    apiCall<any>('GET', `/metrics/dns/errors/summary?minutes=${minutes}`),
+  getDnsErrorsLive: (since: number = 60) =>
+    apiCall<any>('GET', `/metrics/dns/errors/live?since=${since}`),
+  getDnsErrorStats: () =>
+    apiCall<any>('GET', '/metrics/dns/errors/stats'),
+  getDnstapStatus: () =>
+    apiCall<any>('GET', '/metrics/dns/errors/dnstap/status'),
+  getDnstapEvents: (limit: number = 100) =>
+    apiCall<any[]>('GET', `/metrics/dns/errors/dnstap/events?limit=${limit}`),
+  getDnstapSummary: () =>
+    apiCall<any>('GET', '/metrics/dns/errors/dnstap/summary'),
 };
 
 // ---- Mock Response Router ----
@@ -438,6 +452,14 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path === '/api/config/service-mode' && method === 'POST') return { mode: (body as any)?.mode ?? 'managed' };
   if (path === '/api/inventory/full') return { collected_at: new Date().toISOString(), instances: [], vips: [], dnat_rules: [], sticky_sets: [], listeners: [], vip_backend_map: {}, instance_count: 0, vip_count: 0, dnat_rule_count: 0, listener_count: 0 };
   if (path === '/api/inventory/sync' && method === 'POST') return { discovered: 0, created: 0, updated: 0, unchanged: 0, instances: [] };
+
+  // DNS Error mocks
+  if (path.startsWith('/api/metrics/dns/errors/summary')) return { rcode_counts: { SERVFAIL: 12, NXDOMAIN: 45, REFUSED: 3 }, total_errors: 60, top_error_domains: [{ domain: 'malware.example.com', count: 15 }, { domain: 'blocked.ad.net', count: 12 }, { domain: 'nonexist.test', count: 8 }], top_error_clients: [{ ip: '192.168.1.50', count: 20 }, { ip: '10.0.0.33', count: 15 }], top_error_instances: [{ instance: 'unbound01', count: 30 }, { instance: 'unbound02', count: 30 }], error_timeline: [], source: 'mock', period_minutes: 60 };
+  if (path.startsWith('/api/metrics/dns/errors/live')) return { errors: [], rcode_counts: { SERVFAIL: 2, NXDOMAIN: 8 }, total_errors: 10, top_error_domains: [], top_error_clients: [], source: 'mock' };
+  if (path.startsWith('/api/metrics/dns/errors/stats')) return { rcode_counts: { SERVFAIL: 100, NXDOMAIN: 500, REFUSED: 20, NOERROR: 50000 }, total_errors: 620, total_queries: 50620, error_rate_pct: 1.22, source: 'unbound-control', fidelity: 'aggregate' };
+  if (path.startsWith('/api/metrics/dns/errors/dnstap/status')) return { enabled: false, status: 'not_configured', fidelity: 'unavailable', message: 'dnstap collector not running' };
+  if (path.startsWith('/api/metrics/dns/errors/dnstap/events')) return [];
+  if (path.startsWith('/api/metrics/dns/errors/dnstap/summary')) return { status: 'not_configured', source: 'dnstap', fidelity: 'unavailable' };
 
   // Telemetry mock
   if (path === '/api/telemetry/latest') return mockTelemetryLatest();
