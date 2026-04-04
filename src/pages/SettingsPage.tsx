@@ -52,6 +52,8 @@ export default function SettingsPage() {
 
   const serviceMode = serviceModeData?.service_mode ?? 'managed';
   const isImported = serviceMode === 'imported';
+  const isObserved = serviceMode === 'observed';
+  const isReadonly = isImported || isObserved;
 
   const settingsEntries = useMemo(() => {
     if (!settingsData || typeof settingsData !== 'object' || Array.isArray(settingsData)) return [];
