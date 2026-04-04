@@ -103,8 +103,16 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    _scheduler.add_job(
+        dns_error_collection_job,
+        trigger=IntervalTrigger(seconds=60),
+        id="dns_error_worker",
+        name="DNS Error Collection",
+        replace_existing=True,
+    )
+
     _scheduler.start()
-    logger.info("v2.1 Scheduler started: health(10s), metrics(30s), reconciliation(10s) — file-lock protected")
+    logger.info("v2.1 Scheduler started: health(10s), metrics(30s), reconciliation(10s), dns-errors(60s) — file-lock protected")
 
 
 def stop_scheduler():
