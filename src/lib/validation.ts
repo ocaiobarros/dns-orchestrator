@@ -206,17 +206,24 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
       config.interceptedVips.forEach((vip, i) => {
         if (!vip.vipIp.trim()) e(`interceptedVips[${i}].vipIp`, intStep, `VIP IP ${i + 1} é obrigatório`);
         else if (!isValidIpv4(vip.vipIp)) e(`interceptedVips[${i}].vipIp`, intStep, `VIP IP ${i + 1} inválido`);
-        if (!vip.backendInstance.trim()) e(`interceptedVips[${i}].backendInstance`, intStep, `Backend instance do VIP ${vip.vipIp || i + 1} é obrigatório`);
-        else {
-          const exists = config.instances.some(inst => inst.name === vip.backendInstance);
-          if (!exists) e(`interceptedVips[${i}].backendInstance`, intStep, `Backend instance "${vip.backendInstance}" não existe — cadastre a instância primeiro`);
+
+        // IPv6 validation for intercepted VIPs
+        if (config.enableIpv6 && vip.vipIpv6 && !isValidIpv6(vip.vipIpv6)) {
+          e(`interceptedVips[${i}].vipIpv6`, intStep, `VIP IPv6 ${i + 1} inválido`);
         }
-        if (!vip.backendTargetIp.trim()) e(`interceptedVips[${i}].backendTargetIp`, intStep, `Backend target IP do VIP ${vip.vipIp || i + 1} é obrigatório`);
-        else if (!isValidIpv4(vip.backendTargetIp)) e(`interceptedVips[${i}].backendTargetIp`, intStep, `Backend target IP inválido`);
-        else {
-          const inst = config.instances.find(inst => inst.name === vip.backendInstance);
-          if (inst && inst.bindIp && vip.backendTargetIp !== inst.bindIp) {
-            e(`interceptedVips[${i}].backendTargetIp`, intStep, `Backend target IP ${vip.backendTargetIp} não corresponde ao listener da instância "${vip.backendInstance}" (${inst.bindIp})`);
+
+        // VIP IPv4 must not collide with listener or egress IPs
+        if (vip.vipIp) {
+          config.instances.forEach((inst) => {
+            if (inst.bindIp && vip.vipIp === inst.bindIp) {
+              e(`interceptedVips[${i}].vipIp`, intStep, `VIP ${vip.vipIp} conflita com listener da instância "${inst.name}"`);
+            }
+            if (inst.egressIpv4 && vip.vipIp === inst.egressIpv4) {
+              e(`interceptedVips[${i}].vipIp`, intStep, `VIP ${vip.vipIp} conflita com egress da instância "${inst.name}"`);
+            }
+          });
+          if (config.ipv4Address && vip.vipIp === extractIpFromCidr(config.ipv4Address)) {
+            e(`interceptedVips[${i}].vipIp`, intStep, `VIP ${vip.vipIp} conflita com IP principal do host`);
           }
         }
       });
