@@ -93,6 +93,7 @@ app.include_router(metrics_v2.router, prefix="/api/metrics", tags=["Metrics v2"]
 app.include_router(events.router, prefix="/api/events", tags=["Events"])
 app.include_router(actions.router, prefix="/api/actions", tags=["Actions"])
 app.include_router(instances.router, prefix="/api/instances", tags=["Instances"])
+app.include_router(inventory_route.router, prefix="/api/inventory", tags=["Runtime Inventory"])
 
 
 # ---- Prometheus endpoint (no auth) ----
