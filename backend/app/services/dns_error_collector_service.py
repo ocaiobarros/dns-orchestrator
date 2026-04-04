@@ -65,20 +65,24 @@ def collect_dns_errors_from_logs(
         unit_args = ["-u", "unbound01.service", "-u", "unbound02.service"]
 
     # Try journalctl with sudo
-    code, stdout, stderr = run_command(
+    result = run_command(
         "journalctl",
         ["--no-pager", *unit_args, "--since", f"{since_seconds} seconds ago", "-o", "short-iso", "-n", "10000"],
         timeout=15,
         use_privilege=True,
     )
+    code = result["exit_code"]
+    stdout = result["stdout"]
 
     if code != 0 or not stdout.strip():
         # Fallback: without sudo
-        code, stdout, stderr = run_command(
+        result = run_command(
             "journalctl",
             ["--no-pager", *unit_args, "--since", f"{since_seconds} seconds ago", "-o", "short-iso", "-n", "10000"],
             timeout=15,
         )
+        code = result["exit_code"]
+        stdout = result["stdout"]
 
     errors: list[dict] = []
     error_domains: Counter = Counter()
