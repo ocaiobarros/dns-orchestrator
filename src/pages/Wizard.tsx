@@ -357,12 +357,108 @@ export default function Wizard() {
 
   const generatedFiles = generateAllFiles(config);
 
+  // Track whether config came from host sync
+  const [configSource, setConfigSource] = useState<'wizard_form' | 'host_runtime'>('wizard_form');
+
   const exportConfig = () => {
-    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+    const exportPayload = {
+      _meta: {
+        source: configSource,
+        exported_at: new Date().toISOString(),
+        version: '1.0',
+        dns_control_export: true,
+      },
+      hostname: config.hostname,
+      organization: config.organization,
+      project: config.project,
+      mainInterface: config.mainInterface,
+      ipv4Address: config.ipv4Address,
+      ipv4Gateway: config.ipv4Gateway,
+      enableIpv6: config.enableIpv6,
+      ipv6Address: config.ipv6Address,
+      ipv6Gateway: config.ipv6Gateway,
+      operationMode: config.operationMode,
+      vipDeliverySubmode: config.vipDeliverySubmode,
+      deploymentMode: config.deploymentMode,
+      securityProfile: config.securityProfile,
+      egressDeliveryMode: config.egressDeliveryMode,
+      egressMode: config.egressMode,
+      distributionPolicy: config.distributionPolicy,
+      stickyTimeout: config.stickyTimeout,
+      frontendDnsIp: config.frontendDnsIp,
+      simpleDistributionStrategy: config.simpleDistributionStrategy,
+      simpleStickyTimeout: config.simpleStickyTimeout,
+      config,
+    };
+    const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `dns-control-${config.hostname || 'config'}-${new Date().toISOString().slice(0,10)}.json`;
+    const srcTag = configSource === 'host_runtime' ? 'host' : 'wizard';
+    a.href = url; a.download = `dns-control-${config.hostname || 'config'}-${srcTag}-${new Date().toISOString().slice(0,10)}.json`;
     a.click(); URL.revokeObjectURL(url);
+  };
+
+  const importConfigFromFile = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+
+        // Accept both full export (with _meta + config) and raw WizardConfig
+        let importedConfig: Partial<WizardConfig>;
+        let source: string = 'unknown';
+
+        if (parsed._meta?.dns_control_export && parsed.config) {
+          // Full export format
+          importedConfig = parsed.config;
+          source = parsed._meta.source || 'imported';
+        } else if (parsed.hostname !== undefined || parsed.operationMode !== undefined) {
+          // Raw WizardConfig format
+          importedConfig = parsed;
+          source = 'imported_raw';
+        } else {
+          alert('❌ Schema inválido: o arquivo não contém uma configuração DNS Control válida.\n\nFormatos aceitos:\n- Exportação DNS Control (com _meta.dns_control_export)\n- WizardConfig direto (com hostname/operationMode)');
+          return;
+        }
+
+        // Validate required fields minimally
+        const errors: string[] = [];
+        if (importedConfig.instances && !Array.isArray(importedConfig.instances)) {
+          errors.push('Campo "instances" deve ser um array');
+        }
+        if (importedConfig.operationMode && !['interception', 'simple'].includes(importedConfig.operationMode)) {
+          errors.push(`operationMode inválido: "${importedConfig.operationMode}"`);
+        }
+
+        if (errors.length > 0) {
+          alert(`❌ Erros de validação:\n\n${errors.join('\n')}`);
+          return;
+        }
+
+        // Merge imported config over defaults
+        setConfig(prev => ({
+          ...prev,
+          ...importedConfig,
+          // Ensure instanceCount stays in sync
+          instanceCount: importedConfig.instances?.length ?? prev.instanceCount,
+        }));
+        setConfigSource('wizard_form');
+        setStep(0);
+        alert(`✅ Configuração importada com sucesso!\n\nOrigem: ${source}\nHostname: ${importedConfig.hostname || '(não definido)'}\nInstâncias: ${importedConfig.instances?.length ?? '(mantidas)'}\n\n⚠ Revise os campos antes de aplicar.`);
+      } catch (err: any) {
+        if (err instanceof SyntaxError) {
+          alert('❌ Arquivo JSON inválido — erro de sintaxe.');
+        } else {
+          alert(`❌ Erro ao importar: ${err.message}`);
+        }
+      }
+    };
+    input.click();
   };
 
   // ═══ Step renderers ═══
