@@ -238,6 +238,19 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
       e('egressIpv4', egrStep, `IPs de egress duplicados com identidade fixa ativa: ${dupEgress.join(', ')}`);
     }
 
+    // ═══ Count validations: egress must match instances ═══
+    const instanceCount = config.instances.length;
+    const egressCount = config.instances.filter(i => i.egressIpv4.trim()).length;
+    if (egressCount > 0 && egressCount < instanceCount) {
+      e('egressIpv4', egrStep, `Apenas ${egressCount} de ${instanceCount} instâncias possuem egress IPv4 — todas devem ter`);
+    }
+    if (config.enableIpv6) {
+      const egressV6Count = config.instances.filter(i => i.egressIpv6?.trim()).length;
+      if (egressV6Count > 0 && egressV6Count < instanceCount) {
+        e('egressIpv6', egrStep, `Apenas ${egressV6Count} de ${instanceCount} instâncias possuem egress IPv6 — todas devem ter quando IPv6 está habilitado`);
+      }
+    }
+
     config.instances.forEach((inst, i) => {
       if (!inst.egressIpv4.trim()) e(`instances[${i}].egressIpv4`, egrStep, `Egress IPv4 da instância "${inst.name}" é obrigatório`);
       else if (!isValidIpv4(inst.egressIpv4)) e(`instances[${i}].egressIpv4`, egrStep, `Egress IPv4 da instância "${inst.name}" é inválido`);
