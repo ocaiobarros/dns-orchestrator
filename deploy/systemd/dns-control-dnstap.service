@@ -1,0 +1,21 @@
+[Unit]
+Description=DNS Control dnstap Collector
+After=network.target
+Wants=unbound01.service
+
+[Service]
+Type=simple
+User=dns-control
+Group=dns-control
+ExecStart=/usr/bin/python3 /opt/dns-control/collector/dnstap_collector.py --socket /var/run/unbound/dnstap.sock --instance unbound01
+WorkingDirectory=/opt/dns-control
+Environment=DNSTAP_OUTPUT=/var/lib/dns-control/telemetry/dnstap.json
+Environment=DNSTAP_EVENTS_OUTPUT=/var/lib/dns-control/telemetry/dnstap-events.json
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dns-control-dnstap
+
+[Install]
+WantedBy=multi-user.target
