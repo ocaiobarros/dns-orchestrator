@@ -27,15 +27,8 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
   const inst = config.instances[instanceIndex];
   if (!inst) return '# Error: Instance not found';
 
-  const aclLines = config.accessControlIpv4
-    .map(acl => `    access-control: ${acl.network} ${acl.action}`)
-    .join('\n');
-
-  const aclIpv6Lines = config.enableIpv6
-    ? config.accessControlIpv6
-        .map(acl => `    access-control: ${acl.network} ${acl.action}`)
-        .join('\n')
-    : '';
+  // ACL is now enforced at EDGE (nftables filter INPUT chain).
+  // Unbound MUST remain open — security is handled before DNAT.
 
   // Collect all interface: directives (listeners ONLY — egress is strictly outgoing-interface)
   // Primary listener IP (always)
