@@ -11,8 +11,9 @@ import { useAuth } from '@/lib/auth';
 import {
   Monitor, Cpu, HardDrive, MemoryStick, Clock, Activity,
   Database, Timer, Server, Globe, Shield, Wifi, AlertTriangle,
-  CheckCircle2, XCircle, ChevronUp,
+  CheckCircle2, XCircle, ChevronUp, Home,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 // ── Auto-refresh interval (15s)
 const REFRESH_INTERVAL = 15_000;
@@ -79,6 +80,7 @@ function MiniBar({ data, color = 'hsl(var(--primary))', height = 60 }: { data: n
 
 export default function KioskDashboard() {
   const { user, refreshSession } = useAuth();
+  const navigate = useNavigate();
   const [now, setNow] = useState(new Date());
 
   // Auto-refresh session for viewer users (silent)
@@ -142,9 +144,13 @@ export default function KioskDashboard() {
       {/* ═══ HEADER BAR ═══ */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
-          <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-black text-xl font-mono">D</span>
-          </div>
+          <button
+            onClick={() => navigate('/')}
+            className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center hover:bg-primary/80 transition-colors"
+            title="Voltar ao Dashboard"
+          >
+            <Home size={20} className="text-primary-foreground" />
+          </button>
           <div>
             <h1 className="text-2xl lg:text-3xl font-black font-mono tracking-tight">DNS Control</h1>
             <div className="flex items-center gap-3 text-sm font-mono text-muted-foreground">
