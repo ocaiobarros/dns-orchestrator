@@ -1,12 +1,18 @@
 """
 DNS Control — Unbound Configuration Generator
 Generates per-instance unbound configs at /etc/unbound/{name}.conf
-Matches Part1 production reference exactly:
-- No log-queries/log-replies/log-local-actions
-- No infra-cache-slabs/key-cache-slabs
-- pidfile: /var/run/unbound.pid (fixed, not per-instance)
-- No verbose header comments
-- Standalone instances, IPv4+IPv6, statistics, outgoing-range, local-zones
+Matches vdns-02 runtime exactly:
+- verbosity: 1, statistics-interval: 20, extended-statistics: yes
+- outgoing-range: 8192, outgoing-port-avoid/permit
+- so-rcvbuf/sndbuf: 8m, so-reuseport: yes
+- prefetch: yes, prefetch-key: yes
+- msg-cache-slabs: 4, rrset-cache-slabs: 4
+- use-syslog: no, module-config: "iterator"
+- pidfile: /var/run/unbound.pid
+- include: unbound-block-domains.conf
+- forward-zone with forward-first: yes
+- server: include: anablock.conf at end
+- Standalone instances, IPv4+IPv6, per-instance remote-control
 """
 
 from typing import Any
@@ -105,7 +111,6 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     files.append(_generate_root_hints())
 
     instances = payload.get("instances", [])
-    security = payload.get("security", {})
 
     # Global settings from payload or wizard config
     wizard_cfg = payload.get("_wizardConfig", {}) or {}
@@ -113,8 +118,8 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     enable_ipv6 = payload.get("enableIpv6") or wizard_cfg.get("enableIpv6", False)
     enable_blocklist = payload.get("enableBlocklist") or wizard_cfg.get("enableBlocklist", False)
     threads = _safe_int(payload.get("threads") or wizard_cfg.get("threads"), 4)
-    msg_cache_size = _safe_str(payload.get("msgCacheSize") or wizard_cfg.get("msgCacheSize"), "512m")
-    rrset_cache_size = _safe_str(payload.get("rrsetCacheSize") or wizard_cfg.get("rrsetCacheSize"), "32m")
+    msg_cache_size = _safe_str(payload.get("msgCacheSize") or wizard_cfg.get("msgCacheSize"), "1024m")
+    rrset_cache_size = _safe_str(payload.get("rrsetCacheSize") or wizard_cfg.get("rrsetCacheSize"), "2048m")
     max_ttl = _safe_int(payload.get("maxTtl") or wizard_cfg.get("maxTtl"), 7200)
     root_hints_path = _safe_str(
         payload.get("rootHintsPath") or wizard_cfg.get("rootHintsPath"),
@@ -122,7 +127,7 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     )
     dns_identity = _safe_str(
         payload.get("dnsIdentity") or wizard_cfg.get("dnsIdentity"),
-        payload.get("hostname", "dns-control"),
+        payload.get("hostname", "67-DNS"),
     )
     dns_version = _safe_str(payload.get("dnsVersion") or wizard_cfg.get("dnsVersion"), "1.0")
 
@@ -134,17 +139,18 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     )
     is_border_routed = egress_delivery_mode == "border-routed"
 
+    # Forward zone settings
+    forward_addrs = payload.get("forwardAddrs") or wizard_cfg.get("forwardAddrs") or ["1.1.1.1", "8.8.8.8"]
+    forward_first = payload.get("forwardFirst") if payload.get("forwardFirst") is not None else wizard_cfg.get("forwardFirst", True)
+
     for inst in instances:
         name = inst.get("name", "unbound")
         bind_ip = inst.get("bindIp", "127.0.0.1")
         bind_ipv6 = _safe_str(inst.get("bindIpv6", ""))
-        port = _safe_int(inst.get("port", 53), 53)
         exit_ip = _safe_str(inst.get("exitIp", "") or inst.get("egressIpv4", ""))
         exit_ipv6 = _safe_str(inst.get("exitIpv6", "") or inst.get("egressIpv6", ""))
         control_interface = inst.get("controlInterface", "127.0.0.1")
         control_port = _safe_int(inst.get("controlPort", 8953), 8953)
-        access_cidrs_v4 = security.get("allowedCidrs", ["0.0.0.0/0"])
-        access_cidrs_v6 = security.get("allowedCidrsV6", ["::/0"])
 
         config = f"""
 server:
@@ -170,11 +176,20 @@ server:
             config += f"    outgoing-interface: {exit_ipv6}\n"
 
         config += f"""
-    outgoing-range: 512
-    num-queries-per-thread: 3200
+    outgoing-range: 8192
+    outgoing-port-avoid: 0-1024
+    outgoing-port-permit: 1025-65535
+    num-queries-per-thread: 2048
+
+    so-rcvbuf: 8m
+    so-sndbuf: 8m
+    so-reuseport: yes
 
     msg-cache-size: {msg_cache_size}
     rrset-cache-size: {rrset_cache_size}
+
+    prefetch: yes
+    prefetch-key: yes
 
     msg-cache-slabs: {threads}
     rrset-cache-slabs: {threads}
@@ -192,16 +207,9 @@ server:
     do-tcp: yes
     do-daemonize: yes
 
-"""
+    access-control: 0.0.0.0/0 allow
+    access-control: ::/0 allow
 
-        # Access control
-        for cidr in access_cidrs_v4:
-            config += f"    access-control: {cidr} allow\n"
-        if enable_ipv6:
-            for cidr in access_cidrs_v6:
-                config += f"    access-control: {cidr} allow\n"
-
-        config += f"""
     username: "unbound"
     directory: "/etc/unbound"
     logfile: ""
@@ -218,7 +226,6 @@ server:
     do-not-query-localhost: yes
     module-config: "iterator"
 
-    #zone localhost
     local-zone: "localhost." static
     local-data: "localhost. 10800 IN NS localhost."
     local-data: "localhost. 10800 IN SOA localhost. nobody.invalid. 1 3600 1200 604800 10800"
@@ -228,28 +235,24 @@ server:
     local-data: "127.in-addr.arpa. 10800 IN NS localhost."
     local-data: "127.in-addr.arpa. 10800 IN SOA localhost. nobody.invalid. 2 3600 1200 604800 10800"
     local-data: "1.0.0.127.in-addr.arpa. 10800 IN PTR localhost."
-"""
 
-        # Conditional blocklist includes
-        if enable_blocklist:
-            config += "\n    include: /etc/unbound/unbound-block-domains.conf\n\n"
+    include: /etc/unbound/unbound-block-domains.conf
+
+forward-zone:
+    name: "."
+"""
+        for faddr in forward_addrs:
+            config += f"    forward-addr: {faddr}\n"
+        if forward_first:
+            config += "    forward-first: yes\n"
 
         config += f"""
-#forward-zone:
-#    name: "."
-#    forward-addr: 8.8.8.8
-#    forward-addr: 8.8.4.4
-
 remote-control:
     control-enable: yes
     control-interface: {control_interface}
     control-port: {control_port}
     control-use-cert: "no"
-"""
 
-        # Conditional anablock include
-        if enable_blocklist:
-            config += """
 server:
     include: /etc/unbound/anablock.conf
 """
@@ -261,27 +264,27 @@ server:
             "owner": "root:unbound",
         })
 
-    # Generate blocklist placeholder files when enabled
-    if enable_blocklist:
-        files.append({
-            "path": "/etc/unbound/unbound-block-domains.conf",
-            "content": "# DNS Control — Domain Blocklist (local/custom)\n"
-                       "# Add custom local-zone directives here, one per line:\n"
-                       "# local-zone: \"example-ads.com\" always_refuse\n"
-                       "# local-zone: \"tracking.example.com\" always_refuse\n",
-            "permissions": "0644",
-            "owner": "root:unbound",
-        })
-        files.append({
-            "path": "/etc/unbound/anablock.conf",
-            "content": "# DNS Control — AnaBlock placeholder\n"
-                       "# Este arquivo será populado automaticamente pelo script de sincronização.\n"
-                       "# Primeira execução: systemctl start dns-control-anablock.service\n",
-            "permissions": "0644",
-            "owner": "root:unbound",
-        })
+    # Always generate blocklist placeholder files
+    files.append({
+        "path": "/etc/unbound/unbound-block-domains.conf",
+        "content": "# DNS Control — Domain Blocklist (local/custom)\n"
+                   "# Add custom local-zone directives here, one per line:\n"
+                   "# local-zone: \"example-ads.com\" always_refuse\n"
+                   "# local-zone: \"tracking.example.com\" always_refuse\n",
+        "permissions": "0644",
+        "owner": "root:unbound",
+    })
+    files.append({
+        "path": "/etc/unbound/anablock.conf",
+        "content": "# DNS Control — AnaBlock placeholder\n"
+                   "# Este arquivo será populado automaticamente pelo script de sincronização.\n"
+                   "# Primeira execução: systemctl start dns-control-anablock.service\n",
+        "permissions": "0644",
+        "owner": "root:unbound",
+    })
 
-        # AnaBlock sync script
+    # AnaBlock sync script (when blocklist explicitly enabled)
+    if enable_blocklist:
         blocklist_cfg = payload.get("_wizardConfig", {}) or {}
         api_url = _safe_str(
             payload.get("blocklistApiUrl") or blocklist_cfg.get("blocklistApiUrl"),

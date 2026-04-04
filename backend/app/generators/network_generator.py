@@ -1,8 +1,9 @@
 """
 DNS Control — Network Configuration Generator
 Generates ifupdown2 configuration and post-up script.
-Matches Part1 reference exactly: ALL IPs on loopback 'lo' (no dummy lo0).
-Egress IPs, listener IPs, and VIPs all go on 'lo' via /32 or /128.
+Matches vdns-02 runtime: dual-plane model:
+  - lo  = egress IPv4 + egress IPv6
+  - lo0 = dummy interface for listeners IPv4/IPv6 + VIPs IPv4/IPv6
 """
 
 from typing import Any
@@ -79,12 +80,12 @@ post-up /etc/network/post-up.sh
     })
 
     # ── /etc/network/post-up.sh ──
-    # Part1 reference: ALL IPs on lo, no dummy interface
+    # Runtime model: lo = egress, lo0 = listeners + VIPs
     post_up_lines = [
         "#!/bin/sh",
     ]
 
-    # Egress IPs on lo (host-owned)
+    # Egress IPv4 on lo (host-owned)
     if egress_ips and not is_border_routed:
         for eip in egress_ips:
             post_up_lines.append(f"     /usr/sbin/ip -4 addr add {eip}/32 dev lo")
@@ -100,25 +101,30 @@ post-up /etc/network/post-up.sh
         if ipv6_gateway:
             post_up_lines.append(f"     /usr/sbin/ip -6 route add default via {ipv6_gateway}")
 
-    # IPv6 egress IPs on lo
+    # IPv6 egress on lo
     if egress_ipv6 and not is_border_routed:
         post_up_lines.append(f"")
         for eip6 in egress_ipv6:
             post_up_lines.append(f"     /usr/sbin/ip addr add {eip6}/128 dev lo")
 
-    # Listener IPs on lo (100.127.255.x)
+    # ── Create dummy lo0 for listeners and VIPs ──
+    post_up_lines.append(f"")
+    post_up_lines.append("     /usr/sbin/ip link add lo0 type dummy 2>/dev/null || true")
+    post_up_lines.append("     /usr/sbin/ip link set lo0 up")
+
+    # Listener IPv4 on lo0
     if listener_ips:
         post_up_lines.append(f"")
         for lip in listener_ips:
-            post_up_lines.append(f"     /usr/sbin/ip addr add {lip}/32 dev lo")
+            post_up_lines.append(f"     /usr/sbin/ip addr add {lip}/32 dev lo0")
 
-    # Listener IPv6 on lo
+    # Listener IPv6 on lo0
     if listener_ipv6:
         post_up_lines.append(f"")
         for lip6 in listener_ipv6:
-            post_up_lines.append(f"     /usr/sbin/ip addr add {lip6}/128 dev lo")
+            post_up_lines.append(f"     /usr/sbin/ip addr add {lip6}/128 dev lo0")
 
-    # Intercepted VIPs on lo (anycast public)
+    # Intercepted VIPs on lo0 (anycast public)
     vip_ipv4s = []
     vip_ipv6s = []
     for vip in intercepted_vips:
@@ -131,7 +137,7 @@ post-up /etc/network/post-up.sh
         if vip_ipv6:
             vip_ipv6s.append(vip_ipv6)
 
-    # Service VIPs on lo
+    # Service VIPs on lo0
     for vip in service_vips:
         if not isinstance(vip, dict):
             continue
@@ -146,11 +152,11 @@ post-up /etc/network/post-up.sh
         post_up_lines.append(f"")
         post_up_lines.append(f"     # Anycast publico")
         for vip in vip_ipv4s:
-            post_up_lines.append(f"     /usr/sbin/ip addr add {vip}/32 dev lo")
+            post_up_lines.append(f"     /usr/sbin/ip addr add {vip}/32 dev lo0")
 
     if vip_ipv6s and enable_ipv6:
         for vip6 in vip_ipv6s:
-            post_up_lines.append(f"     /usr/sbin/ip addr add {vip6}/128 dev lo")
+            post_up_lines.append(f"     /usr/sbin/ip addr add {vip6}/128 dev lo0")
 
     post_up_lines.append(f"")
     post_up_lines.append("exit 0")
