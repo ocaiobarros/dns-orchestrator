@@ -121,6 +121,12 @@ post-up /etc/network/post-up.sh
         for lip6 in listener_ipv6:
             post_up_lines.append(f"     /usr/sbin/ip addr add {lip6}/128 dev lo0")
 
+    # Egress IPv6 on lo0 (runtime vdns-02: egress IPv6 lives on lo0)
+    if egress_ipv6 and not is_border_routed:
+        post_up_lines.append(f"")
+        for eip6 in egress_ipv6:
+            post_up_lines.append(f"     /usr/sbin/ip addr add {eip6}/128 dev lo0")
+
     # Intercepted VIPs on lo0 (anycast public)
     vip_ipv4s = []
     vip_ipv6s = []
