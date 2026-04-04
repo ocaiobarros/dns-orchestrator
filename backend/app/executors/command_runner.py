@@ -199,6 +199,30 @@ def run_command(
         )
         elapsed_ms = int((time.monotonic() - start) * 1000)
 
+        # Detect sudo password failure and auto-retry without sudo
+        if should_sudo and result.returncode != 0 and _is_sudo_password_failure(result.stderr):
+            logger.warning(f"Sudo requires password for {executable}, retrying without sudo")
+            global _sudo_available
+            _sudo_available = False  # Cache: stop trying sudo
+            cmd_nosudo = [executable] + sanitized_args
+            start2 = time.monotonic()
+            try:
+                result2 = subprocess.run(
+                    cmd_nosudo, capture_output=True, text=True,
+                    timeout=timeout, shell=False,
+                )
+                elapsed_ms2 = int((time.monotonic() - start2) * 1000)
+                return {
+                    "exit_code": result2.returncode,
+                    "stdout": result2.stdout,
+                    "stderr": result2.stderr,
+                    "duration_ms": elapsed_ms2,
+                    "executed_privileged": False,
+                    "sudo_fallback": True,
+                }
+            except Exception:
+                pass  # Fall through to return original sudo failure
+
         return {
             "exit_code": result.returncode,
             "stdout": result.stdout,
@@ -233,6 +257,14 @@ def run_command(
             "duration_ms": 0,
             "executed_privileged": False,
         }
+
+
+def _is_sudo_password_failure(stderr: str) -> bool:
+    """Detect if sudo failed because it requires a password."""
+    markers = ("a password is required", "no tty present", "sorry, a password is required",
+               "sudo: a password is required", "no askpass program specified")
+    stderr_lower = stderr.lower()
+    return any(m in stderr_lower for m in markers)
 
 
 def _sanitize_arg(arg: str) -> str:
