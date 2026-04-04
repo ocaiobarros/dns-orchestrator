@@ -26,35 +26,60 @@ def dns_error_summary(
     _: User = Depends(get_current_user),
 ):
     """
-    DNS error summary from persisted events.
-    Falls back to unbound-control stats_delta or aggregate if no events persisted.
+    DNS error summary. Fallback chain:
+      1. Database (persisted events from worker)
+      2. stats_delta on-demand (live counter deltas)
+      3. Aggregate absolute (unbound-control totals)
     """
     summary = get_dns_error_summary(db, minutes=minutes)
-    if summary["total_errors"] == 0:
-        # Fallback 1: try stats_delta (live)
-        delta = collect_dns_errors_from_stats_delta()
-        if delta["total_errors"] > 0:
-            summary.update({
-                "rcode_counts": delta["rcode_counts"],
-                "total_errors": delta["total_errors"],
-                "source": delta["source"],
-                "fidelity": delta["fidelity"],
-                "top_error_instances": delta["top_error_instances"],
-            })
-            return summary
+    if summary["total_errors"] > 0:
+        return summary
 
-        # Fallback 2: absolute aggregate
-        fallback = get_dns_error_stats_from_unbound()
-        if fallback["total_errors"] > 0:
-            summary.update({
-                "rcode_counts": fallback["rcode_counts"],
-                "total_errors": fallback["total_errors"],
-                "total_queries": fallback.get("total_queries", 0),
-                "error_rate_pct": fallback.get("error_rate_pct", 0),
-                "source": fallback["source"],
-                "fidelity": fallback["fidelity"],
-            })
-    return summary
+    # DB empty — force source/fidelity to reflect reality
+    # Fallback 1: try stats_delta (live, on-demand)
+    delta = collect_dns_errors_from_stats_delta()
+    if delta["total_errors"] > 0:
+        return {
+            "rcode_counts": delta["rcode_counts"],
+            "total_errors": delta["total_errors"],
+            "top_error_domains": [],
+            "top_error_clients": [],
+            "top_error_instances": delta.get("top_error_instances", []),
+            "error_timeline": [],
+            "period_minutes": minutes,
+            "source": "stats_delta",
+            "fidelity": "counters_only",
+        }
+
+    # Fallback 2: absolute aggregate (always returns totals)
+    fallback = get_dns_error_stats_from_unbound()
+    if fallback["total_errors"] > 0:
+        return {
+            "rcode_counts": fallback["rcode_counts"],
+            "total_errors": fallback["total_errors"],
+            "total_queries": fallback.get("total_queries", 0),
+            "error_rate_pct": fallback.get("error_rate_pct", 0),
+            "top_error_domains": [],
+            "top_error_clients": [],
+            "top_error_instances": [],
+            "error_timeline": [],
+            "period_minutes": minutes,
+            "source": "unbound-control",
+            "fidelity": "aggregate",
+        }
+
+    # Nothing anywhere — return empty with honest metadata
+    return {
+        "rcode_counts": {},
+        "total_errors": 0,
+        "top_error_domains": [],
+        "top_error_clients": [],
+        "top_error_instances": [],
+        "error_timeline": [],
+        "period_minutes": minutes,
+        "source": "none",
+        "fidelity": "unavailable",
+    }
 
 
 @router.get("/live")
