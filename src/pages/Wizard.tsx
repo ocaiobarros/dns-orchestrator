@@ -22,8 +22,8 @@ import FilePreviewAccordion from '@/components/FilePreviewAccordion';
 import {
   Check, ChevronLeft, ChevronRight, AlertTriangle, Play, Eye, AlertCircle,
   Loader2, Server, Network, Shield, Globe, Layers, Route, Settings, FileText,
-  Plus, Trash2, Info, ExternalLink, Activity, Lock, BarChart3, Download,
-  X, SkipForward, Crosshair,
+  Plus, Trash2, Info, ExternalLink, Activity, Lock, BarChart3, Download, Upload,
+  X, SkipForward, Crosshair, MonitorDown,
 } from 'lucide-react';
 import type { ApplyResult, ApplyRequest } from '@/lib/types';
 
