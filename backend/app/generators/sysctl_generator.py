@@ -1,7 +1,8 @@
 """
 DNS Control — Sysctl Configuration Generator
 Generates carrier-grade kernel tuning files in /etc/sysctl.d/
-matching the production reference manual for high-performance DNS infrastructure.
+matching the production reference (Part1) exactly, including all
+conntrack parameters and nf_conntrack_helper.
 """
 
 from typing import Any
@@ -37,7 +38,7 @@ def generate_sysctl_configs(payload: dict[str, Any]) -> list[dict]:
         "net.ipv4.tcp_mem = 6672016 6682016 7185248",
         "net.ipv4.tcp_congestion_control=htcp",
         "net.ipv4.tcp_mtu_probing=1",
-        "net.ipv4.tcp_moderate_rcvbuf=1",
+        "net.ipv4.tcp_moderate_rcvbuf =1",
         "net.ipv4.tcp_no_metrics_save = 1",
     ]))
 
@@ -118,7 +119,9 @@ def generate_sysctl_configs(payload: dict[str, Any]) -> list[dict]:
         "net.netfilter.nf_conntrack_timestamp = 0",
     ]))
 
-    # Note: nf_conntrack_helper was removed from kernel 4.7+ — skipped
+    # nf_conntrack_helper — present in Part1 reference
+    _file("/etc/sysctl.d/092-netfilter-helper.conf",
+          "net.netfilter.nf_conntrack_helper=1")
 
     _file("/etc/sysctl.d/093-netfilter-icmp.conf", "\n".join([
         "net.netfilter.nf_conntrack_icmp_timeout=30",
@@ -151,6 +154,7 @@ def generate_sysctl_configs(payload: dict[str, Any]) -> list[dict]:
         "net.netfilter.nf_conntrack_sctp_timeout_cookie_echoed=3",
         "net.netfilter.nf_conntrack_sctp_timeout_cookie_wait=3",
         "net.netfilter.nf_conntrack_sctp_timeout_established=432000",
+        "net.netfilter.nf_conntrack_sctp_timeout_heartbeat_acked=210",
         "net.netfilter.nf_conntrack_sctp_timeout_heartbeat_sent=30",
         "net.netfilter.nf_conntrack_sctp_timeout_shutdown_ack_sent=3",
         "net.netfilter.nf_conntrack_sctp_timeout_shutdown_recd=0",

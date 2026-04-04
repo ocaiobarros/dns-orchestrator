@@ -1,10 +1,12 @@
 """
 DNS Control — Unbound Configuration Generator
 Generates per-instance unbound configs at /etc/unbound/{name}.conf
-Each systemd unit references its own config file directly.
-Aligned with vdns-01 production model: standalone instances, IPv4+IPv6,
-statistics, outgoing-range, local-zones, conditional blocklist, named.cache.
-DNSSEC via auto-trust-anchor-file only (no inline trust-anchor).
+Matches Part1 production reference exactly:
+- No log-queries/log-replies/log-local-actions
+- No infra-cache-slabs/key-cache-slabs
+- pidfile: /var/run/unbound.pid (fixed, not per-instance)
+- No verbose header comments
+- Standalone instances, IPv4+IPv6, statistics, outgoing-range, local-zones
 """
 
 from typing import Any
@@ -23,13 +25,12 @@ def _safe_str(value: Any, default: str = "") -> str:
 
 
 def generate_unbound_master_conf() -> dict:
-    """Generate the master /etc/unbound/unbound.conf that includes per-instance configs."""
+    """Generate inert master /etc/unbound/unbound.conf."""
     content = """# DNS Control — Unbound master configuration
-# This file only includes per-instance configurations.
+# This file is inert. Each instance is started with -c /etc/unbound/{name}.conf
 # Do not edit manually — managed by DNS Control.
 
 server:
-    # Minimal server block — per-instance configs handle all settings
 
 include: "/etc/unbound/unbound.conf.d/*.conf"
 """
@@ -115,7 +116,6 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     msg_cache_size = _safe_str(payload.get("msgCacheSize") or wizard_cfg.get("msgCacheSize"), "512m")
     rrset_cache_size = _safe_str(payload.get("rrsetCacheSize") or wizard_cfg.get("rrsetCacheSize"), "32m")
     max_ttl = _safe_int(payload.get("maxTtl") or wizard_cfg.get("maxTtl"), 7200)
-    min_ttl = _safe_int(payload.get("minTtl") or wizard_cfg.get("minTtl"), 0)
     root_hints_path = _safe_str(
         payload.get("rootHintsPath") or wizard_cfg.get("rootHintsPath"),
         "/etc/unbound/named.cache",
@@ -125,9 +125,8 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
         payload.get("hostname", "dns-control"),
     )
     dns_version = _safe_str(payload.get("dnsVersion") or wizard_cfg.get("dnsVersion"), "1.0")
-    enable_detailed_logs = payload.get("enableDetailedLogs") or wizard_cfg.get("enableDetailedLogs", False)
 
-    # Egress delivery mode — check both payload and wizard config for consistency
+    # Egress delivery mode
     egress_delivery_mode = str(
         payload.get("egressDeliveryMode")
         or wizard_cfg.get("egressDeliveryMode")
@@ -139,7 +138,6 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
         name = inst.get("name", "unbound")
         bind_ip = inst.get("bindIp", "127.0.0.1")
         bind_ipv6 = _safe_str(inst.get("bindIpv6", ""))
-        public_listener_ip = _safe_str(inst.get("publicListenerIp", ""))
         port = _safe_int(inst.get("port", 53), 53)
         exit_ip = _safe_str(inst.get("exitIp", "") or inst.get("egressIpv4", ""))
         exit_ipv6 = _safe_str(inst.get("exitIpv6", "") or inst.get("egressIpv6", ""))
@@ -148,21 +146,9 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
         access_cidrs_v4 = security.get("allowedCidrs", ["0.0.0.0/0"])
         access_cidrs_v6 = security.get("allowedCidrsV6", ["::/0"])
 
-        verbosity = 2 if enable_detailed_logs else 1
-
-        config = f"""# DNS Control — Unbound instance: {name}
-# Generated configuration — do not edit manually
-# Config path: /etc/unbound/{name}.conf
-# Listener: {bind_ip}:{port}
-# Control: {control_interface}:{control_port}
-# Egress IPv4: {exit_ip or '(default)'} ({egress_delivery_mode})
-# Egress IPv6: {exit_ipv6 or '(default)'}
-
+        config = f"""
 server:
-    verbosity: {verbosity}
-    log-queries: yes
-    log-replies: no
-    log-local-actions: no
+    verbosity: 1
     statistics-interval: 20
     extended-statistics: yes
     num-threads: {threads}
@@ -174,28 +160,14 @@ server:
         if enable_ipv6 and bind_ipv6:
             config += f"    interface: {bind_ipv6}\n"
 
-        # Public listener / public identity can coexist with private listener
-        # In border-routed mode, public IPs are NOT local — skip binding
-        if public_listener_ip and public_listener_ip != bind_ip and not is_border_routed:
-            config += f"    interface: {public_listener_ip}  # public listener / identity (host-owned)\n"
-        elif public_listener_ip and is_border_routed:
-            config += f"    # interface: {public_listener_ip}  # SUPPRESSED — border-routed mode\n"
-
-        # Egress IPs are NOT listeners — they are only used as outgoing-interface.
-        # VIPs reach backends via DNAT (PREROUTING + OUTPUT), not via direct bind.
-        # Do NOT add interface: <egress-ip> here.
-
         # Egress outgoing-interface
-        config += "\n"
         if exit_ip and not is_border_routed:
-            config += f"    outgoing-interface: {exit_ip}\n"
+            config += f"\n    outgoing-interface: {exit_ip}\n"
         elif exit_ip and is_border_routed:
-            config += f"    # outgoing-interface: {exit_ip}  # SUPPRESSED — border-routed mode\n"
+            config += f"\n    # outgoing-interface: {exit_ip}  # SUPPRESSED — border-routed mode\n"
 
         if enable_ipv6 and exit_ipv6 and not is_border_routed:
             config += f"    outgoing-interface: {exit_ipv6}\n"
-        elif enable_ipv6 and exit_ipv6 and is_border_routed:
-            config += f"    # outgoing-interface: {exit_ipv6}  # SUPPRESSED — border-routed\n"
 
         config += f"""
     outgoing-range: 512
@@ -213,8 +185,6 @@ server:
 
     infra-cache-numhosts: 10000
     infra-cache-lame-size: 10k
-    infra-cache-slabs: {threads}
-    key-cache-slabs: {threads}
 
     do-ip4: yes
     do-ip6: {"yes" if enable_ipv6 else "no"}
@@ -227,29 +197,6 @@ server:
         # Access control
         for cidr in access_cidrs_v4:
             config += f"    access-control: {cidr} allow\n"
-
-        # Always allow queries from the listener IPs themselves (loopback VIPs)
-        # This prevents REFUSED when probing via dig @<listener_ip> or DNAT source
-        import ipaddress
-        existing_nets = []
-        for cidr in access_cidrs_v4:
-            try:
-                existing_nets.append(ipaddress.ip_network(cidr, strict=False))
-            except ValueError:
-                pass
-
-        listener_ips_to_allow = {bind_ip}
-        if public_listener_ip:
-            listener_ips_to_allow.add(public_listener_ip)
-
-        for lip in sorted(listener_ips_to_allow):
-            try:
-                addr = ipaddress.ip_address(lip)
-                if not any(addr in net for net in existing_nets):
-                    config += f"    access-control: {lip}/32 allow  # auto — listener IP\n"
-            except ValueError:
-                pass
-
         if enable_ipv6:
             for cidr in access_cidrs_v6:
                 config += f"    access-control: {cidr} allow\n"
@@ -259,7 +206,7 @@ server:
     directory: "/etc/unbound"
     logfile: ""
     use-syslog: no
-    pidfile: "/var/run/{name}.pid"
+    pidfile: "/var/run/unbound.pid"
     root-hints: "{root_hints_path}"
 
     identity: "{dns_identity}"
@@ -283,10 +230,9 @@ server:
     local-data: "1.0.0.127.in-addr.arpa. 10800 IN PTR localhost."
 """
 
-        # ═══ Conditional blocklist includes ═══
+        # Conditional blocklist includes
         if enable_blocklist:
-            config += "\n    include: /etc/unbound/unbound-block-domains.conf\n"
-            config += "\n"
+            config += "\n    include: /etc/unbound/unbound-block-domains.conf\n\n"
 
         config += f"""
 #forward-zone:
@@ -301,7 +247,7 @@ remote-control:
     control-use-cert: "no"
 """
 
-        # ═══ Conditional anablock include ═══
+        # Conditional anablock include
         if enable_blocklist:
             config += """
 server:
@@ -315,7 +261,7 @@ server:
             "owner": "root:unbound",
         })
 
-    # ═══ Generate blocklist placeholder files when enabled ═══
+    # Generate blocklist placeholder files when enabled
     if enable_blocklist:
         files.append({
             "path": "/etc/unbound/unbound-block-domains.conf",
@@ -335,7 +281,7 @@ server:
             "owner": "root:unbound",
         })
 
-        # ═══ AnaBlock sync script ═══
+        # AnaBlock sync script
         blocklist_cfg = payload.get("_wizardConfig", {}) or {}
         api_url = _safe_str(
             payload.get("blocklistApiUrl") or blocklist_cfg.get("blocklistApiUrl"),
@@ -364,7 +310,6 @@ server:
             if redirect_ipv6:
                 domain_url += f"&ipv6={redirect_ipv6}"
 
-        # Validation block
         validate_block = """
 # Validar configuração antes de aplicar
 UNBOUND_TEST="/tmp/unbound-anablock-test-$$.conf"
@@ -382,7 +327,6 @@ fi
 rm -f "$UNBOUND_TEST"
 """ if validate_before else "# Validação desativada pelo operador"
 
-        # Reload block
         reload_block = """
 # Recarregar todas as instâncias Unbound
 for UNIT in /usr/lib/systemd/system/unbound*.service; do
@@ -450,7 +394,6 @@ logger -t anablock-sync "AnaBlock: atualização concluída (versão $REMOTE_VER
             "owner": "root:root",
         })
 
-        # ═══ Systemd service (always generated) ═══
         files.append({
             "path": "/etc/systemd/system/anablock-sync.service",
             "content": """[Unit]
@@ -471,7 +414,6 @@ WantedBy=multi-user.target
             "owner": "root:root",
         })
 
-        # ═══ Systemd timer (only if autoSync enabled) ═══
         if auto_sync:
             files.append({
                 "path": "/etc/systemd/system/anablock-sync.timer",
