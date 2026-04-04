@@ -69,7 +69,7 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
 
   return `
 server:
-    verbosity: ${config.enableDetailedLogs ? 2 : 1}
+    verbosity: 1
     statistics-interval: 20
     extended-statistics: yes
     num-threads: ${config.threads}
@@ -78,14 +78,25 @@ ${interfaceBlock}
 
 ${egressBlock}
 
-    outgoing-range: 512
-    num-queries-per-thread: 3200
+    outgoing-range: 8192
+    outgoing-port-avoid: 0-1024
+    outgoing-port-permit: 1025-65535
+    num-queries-per-thread: 2048
+
+    so-rcvbuf: 8m
+    so-sndbuf: 8m
+    so-reuseport: yes
 
     msg-cache-size: ${config.msgCacheSize}
     rrset-cache-size: ${config.rrsetCacheSize}
 
+    prefetch: yes
+    prefetch-key: yes
+
+    msg-cache-slabs: ${config.threads}
+    rrset-cache-slabs: ${config.threads}
+
     cache-max-ttl: ${config.maxTtl}
-    cache-min-ttl: ${config.minTtl}
     infra-host-ttl: 60
     infra-lame-ttl: 120
 
@@ -98,28 +109,25 @@ ${egressBlock}
     do-tcp: yes
     do-daemonize: yes
 
-${aclLines}
-${aclIpv6Lines}
+    access-control: 0.0.0.0/0 allow
+    access-control: ::/0 allow
 
     username: "unbound"
     directory: "/etc/unbound"
     logfile: ""
-    use-syslog: yes
+    use-syslog: no
     pidfile: "/var/run/unbound.pid"
     root-hints: "${config.rootHintsPath}"
-    auto-trust-anchor-file: "/var/lib/unbound/root.key"
 
     identity: "${config.dnsIdentity || config.hostname}"
     version: "${config.dnsVersion}"
     hide-identity: yes
     hide-version: yes
     harden-glue: yes
-    harden-dnssec-stripped: yes
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
-    module-config: "validator iterator"
+    module-config: "iterator"
 
-    #zone localhost
     local-zone: "localhost." static
     local-data: "localhost. 10800 IN NS localhost."
     local-data: "localhost. 10800 IN SOA localhost. nobody.invalid. 1 3600 1200 604800 10800"
@@ -129,23 +137,24 @@ ${aclIpv6Lines}
     local-data: "127.in-addr.arpa. 10800 IN NS localhost."
     local-data: "127.in-addr.arpa. 10800 IN SOA localhost. nobody.invalid. 2 3600 1200 604800 10800"
     local-data: "1.0.0.127.in-addr.arpa. 10800 IN PTR localhost."
-${config.enableBlocklist ? `
+
     include: /etc/unbound/unbound-block-domains.conf
-` : ''}
-#forward-zone:
-#    name: "."
-#    forward-addr: 8.8.8.8
-#    forward-addr: 8.8.4.4
+
+forward-zone:
+    name: "."
+    forward-addr: 1.1.1.1
+    forward-addr: 8.8.8.8
+    forward-first: yes
 
 remote-control:
     control-enable: yes
     control-interface: ${inst.controlInterface}
     control-port: ${inst.controlPort}
     control-use-cert: "no"
-${config.enableBlocklist ? `
+
 server:
     include: /etc/unbound/anablock.conf
-` : ''}`;
+`;
 }
 
 // ═══ BLOCKLIST / ANABLOCK ═══
