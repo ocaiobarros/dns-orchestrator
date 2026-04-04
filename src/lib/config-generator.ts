@@ -914,6 +914,9 @@ export function generateSimpleNftablesModular(config: WizardConfig): { path: str
     });
   }
 
+  // ═══ TABLE FILTER — EDGE ACL (also for simple mode) ═══
+  files.push(...generateNftablesFilterTable(config));
+
   return files;
 }
 

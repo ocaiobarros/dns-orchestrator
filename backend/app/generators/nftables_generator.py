@@ -93,7 +93,12 @@ def generate_nftables_config(payload: dict[str, Any], validation_mode: bool = Fa
     if validation_mode:
         return _generate_monolithic_validation(vip_ipv4s, backends, enable_ipv6, sticky_timeout_min)
 
-    return _generate_modular(vip_ipv4s, vip_ipv6s, backends, enable_ipv6, sticky_timeout_min)
+    files = _generate_modular(vip_ipv4s, vip_ipv6s, backends, enable_ipv6, sticky_timeout_min)
+
+    # ═══ TABLE FILTER — EDGE ACL ═══
+    files.extend(_generate_filter_table(payload, enable_ipv6))
+
+    return files
 
 
 def _generate_modular(
