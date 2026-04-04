@@ -699,6 +699,11 @@ post-up /etc/network/post-up.sh
 // chain BEFORE DNAT reaches Unbound. Unbound remains 0.0.0.0/0 allow.
 
 export function generateNftablesFilterTable(config: WizardConfig): { path: string; content: string }[] {
+  // Legacy mode: no filter table at all — reproduces Part1/Part2 runtime
+  if (config.securityProfile === 'legacy') {
+    return [];
+  }
+
   const files: { path: string; content: string }[] = [];
 
   // Collect allowed networks from wizard ACLs

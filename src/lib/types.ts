@@ -205,6 +205,7 @@ export interface WizardConfig {
   networkType: 'point-to-point' | 'broadcast';
 
   // Step 8 - Segurança
+  securityProfile: 'legacy' | 'isp-hardened';
   accessControlIpv4: AccessControlEntry[];
   accessControlIpv6: AccessControlEntry[];
   openResolverConfirmed: boolean;
@@ -746,6 +747,7 @@ export const DEFAULT_CONFIG: WizardConfig = {
   networkType: 'point-to-point',
 
   // Step 8 - Segurança
+  securityProfile: 'legacy',
   accessControlIpv4: [
     { network: '127.0.0.0/8', action: 'allow', label: 'Loopback' },
   ],

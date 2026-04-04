@@ -882,73 +882,115 @@ export default function Wizard() {
 
   const renderSecurity = () => (
     <div className="space-y-4">
-      <InfoBox>Configure controle de acesso DNS via nftables (camada EDGE). As ACLs são aplicadas na chain INPUT do nftables ANTES do DNAT, garantindo que tráfego não autorizado seja bloqueado antes de atingir o Unbound.</InfoBox>
+      {/* ── Perfil de Segurança ── */}
       <div className="space-y-3">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">ACLs IPv4 (nftables filter INPUT — EDGE)</div>
-        {config.accessControlIpv4.map((acl, i) => (
-          <div key={i} className="grid grid-cols-3 md:grid-cols-4 gap-3 p-3 rounded bg-secondary border border-border">
-            <FieldGroup label="Rede" error={fieldError(`accessControlIpv4[${i}].network`)}>
-              <Input value={acl.network} onChange={v => updateAcl('ipv4', i, 'network', v)} placeholder="172.16.0.0/12" />
-            </FieldGroup>
-            <FieldGroup label="Ação">
-              <Select value={acl.action} onChange={v => updateAcl('ipv4', i, 'action', v)} options={[
-                { value: 'allow', label: 'allow' }, { value: 'refuse', label: 'refuse' },
-                { value: 'deny', label: 'deny' }, { value: 'allow_snoop', label: 'allow_snoop' },
-              ]} />
-            </FieldGroup>
-            <FieldGroup label="Label"><Input value={acl.label} onChange={v => updateAcl('ipv4', i, 'label', v)} placeholder="Rede interna" /></FieldGroup>
-            <div className="flex items-end">
-              <button onClick={() => set('accessControlIpv4', config.accessControlIpv4.filter((_, j) => j !== i))}
-                className="px-2 py-2 text-xs text-destructive hover:bg-destructive/10 rounded"><Trash2 size={12} /></button>
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Perfil de Segurança</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <ModeCard
+            selected={config.securityProfile === 'legacy'}
+            onClick={() => set('securityProfile', 'legacy')}
+            label="Sem Proteção (Legacy / Open DNS)"
+            desc="Reproduz o runtime Part1/Part2. Sem filter table, sem ACL no firewall."
+          />
+          <ModeCard
+            selected={config.securityProfile === 'isp-hardened'}
+            onClick={() => set('securityProfile', 'isp-hardened')}
+            label="ISP Hardened"
+            desc="ACL, rate limit e anti-amplificação no nftables (EDGE)."
+          />
+        </div>
+        {config.securityProfile === 'legacy' && (
+          <div className="p-3 rounded border border-yellow-500/30 bg-yellow-500/10 text-sm text-yellow-700 dark:text-yellow-400 flex items-start gap-2">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <div>
+              <strong>Atenção:</strong> Este modo não aplica controle de acesso no firewall.
+              O servidor pode operar como open resolver.
+              Use apenas em ambientes controlados ou para compatibilidade com Part1/Part2.
             </div>
           </div>
-        ))}
-        <button onClick={() => set('accessControlIpv4', [...config.accessControlIpv4, { network: '', action: 'allow', label: '' }])}
-          className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
-          <Plus size={12} /> Adicionar ACL IPv4
-        </button>
-      </div>
-
-      {config.enableIpv6 && (
-        <div className="space-y-3">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">ACLs IPv6</div>
-          {config.accessControlIpv6.map((acl, i) => (
-            <div key={i} className="grid grid-cols-3 md:grid-cols-4 gap-3 p-3 rounded bg-secondary border border-border">
-              <FieldGroup label="Rede"><Input value={acl.network} onChange={v => updateAcl('ipv6', i, 'network', v)} /></FieldGroup>
-              <FieldGroup label="Ação">
-                <Select value={acl.action} onChange={v => updateAcl('ipv6', i, 'action', v)} options={[
-                  { value: 'allow', label: 'allow' }, { value: 'refuse', label: 'refuse' }, { value: 'deny', label: 'deny' },
-                ]} />
-              </FieldGroup>
-              <FieldGroup label="Label"><Input value={acl.label} onChange={v => updateAcl('ipv6', i, 'label', v)} /></FieldGroup>
-              <div className="flex items-end">
-                <button onClick={() => set('accessControlIpv6', config.accessControlIpv6.filter((_, j) => j !== i))}
-                  className="px-2 py-2 text-xs text-destructive hover:bg-destructive/10 rounded"><Trash2 size={12} /></button>
-              </div>
+        )}
+        {config.securityProfile === 'isp-hardened' && (
+          <div className="p-3 rounded border border-green-500/30 bg-green-500/10 text-sm text-green-700 dark:text-green-400 flex items-start gap-2">
+            <Shield size={16} className="mt-0.5 shrink-0" />
+            <div>
+              Este modo aplica ACL, rate limit e anti-amplificação no nftables, sem alterar o comportamento do DNS.
             </div>
-          ))}
-          <button onClick={() => set('accessControlIpv6', [...config.accessControlIpv6, { network: '', action: 'allow', label: '' }])}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
-            <Plus size={12} /> Adicionar ACL IPv6
-          </button>
-        </div>
-      )}
-
-      {config.accessControlIpv4.some(a => a.network === '0.0.0.0/0' && a.action === 'allow') && (
-        <div className="p-3 rounded bg-destructive/10 border border-destructive/30 space-y-2">
-          <div className="flex items-center gap-2 text-sm text-destructive font-medium"><AlertTriangle size={14} /> Open Resolver Detectado</div>
-          <p className="text-xs text-destructive/80">A ACL 0.0.0.0/0 allow configura um open resolver. Risco de amplificação DNS.</p>
-          <Toggle checked={config.openResolverConfirmed} onChange={v => set('openResolverConfirmed', v)} label="Confirmo que quero operar como open resolver" />
-        </div>
-      )}
-
-      <div className="border-t border-border pt-4 space-y-3">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Proteção</div>
-        <div className="flex gap-4 flex-wrap">
-          <Toggle checked={config.enableDnsProtection} onChange={v => set('enableDnsProtection', v)} label="Rate limiting via nftables" />
-          <Toggle checked={config.enableAntiAmplification} onChange={v => set('enableAntiAmplification', v)} label="Anti-amplificação DNS" />
-        </div>
+          </div>
+        )}
       </div>
+
+      {/* ── ACL + Proteções (somente ISP Hardened) ── */}
+      {config.securityProfile === 'isp-hardened' && (
+        <>
+          <InfoBox>Configure controle de acesso DNS via nftables (camada EDGE). As ACLs são aplicadas na chain INPUT do nftables ANTES do DNAT, garantindo que tráfego não autorizado seja bloqueado antes de atingir o Unbound.</InfoBox>
+          <div className="space-y-3">
+            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">ACLs IPv4 (nftables filter INPUT — EDGE)</div>
+            {config.accessControlIpv4.map((acl, i) => (
+              <div key={i} className="grid grid-cols-3 md:grid-cols-4 gap-3 p-3 rounded bg-secondary border border-border">
+                <FieldGroup label="Rede" error={fieldError(`accessControlIpv4[${i}].network`)}>
+                  <Input value={acl.network} onChange={v => updateAcl('ipv4', i, 'network', v)} placeholder="172.16.0.0/12" />
+                </FieldGroup>
+                <FieldGroup label="Ação">
+                  <Select value={acl.action} onChange={v => updateAcl('ipv4', i, 'action', v)} options={[
+                    { value: 'allow', label: 'allow' }, { value: 'refuse', label: 'refuse' },
+                    { value: 'deny', label: 'deny' }, { value: 'allow_snoop', label: 'allow_snoop' },
+                  ]} />
+                </FieldGroup>
+                <FieldGroup label="Label"><Input value={acl.label} onChange={v => updateAcl('ipv4', i, 'label', v)} placeholder="Rede interna" /></FieldGroup>
+                <div className="flex items-end">
+                  <button onClick={() => set('accessControlIpv4', config.accessControlIpv4.filter((_, j) => j !== i))}
+                    className="px-2 py-2 text-xs text-destructive hover:bg-destructive/10 rounded"><Trash2 size={12} /></button>
+                </div>
+              </div>
+            ))}
+            <button onClick={() => set('accessControlIpv4', [...config.accessControlIpv4, { network: '', action: 'allow', label: '' }])}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
+              <Plus size={12} /> Adicionar ACL IPv4
+            </button>
+          </div>
+
+          {config.enableIpv6 && (
+            <div className="space-y-3">
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">ACLs IPv6</div>
+              {config.accessControlIpv6.map((acl, i) => (
+                <div key={i} className="grid grid-cols-3 md:grid-cols-4 gap-3 p-3 rounded bg-secondary border border-border">
+                  <FieldGroup label="Rede"><Input value={acl.network} onChange={v => updateAcl('ipv6', i, 'network', v)} /></FieldGroup>
+                  <FieldGroup label="Ação">
+                    <Select value={acl.action} onChange={v => updateAcl('ipv6', i, 'action', v)} options={[
+                      { value: 'allow', label: 'allow' }, { value: 'refuse', label: 'refuse' }, { value: 'deny', label: 'deny' },
+                    ]} />
+                  </FieldGroup>
+                  <FieldGroup label="Label"><Input value={acl.label} onChange={v => updateAcl('ipv6', i, 'label', v)} /></FieldGroup>
+                  <div className="flex items-end">
+                    <button onClick={() => set('accessControlIpv6', config.accessControlIpv6.filter((_, j) => j !== i))}
+                      className="px-2 py-2 text-xs text-destructive hover:bg-destructive/10 rounded"><Trash2 size={12} /></button>
+                  </div>
+                </div>
+              ))}
+              <button onClick={() => set('accessControlIpv6', [...config.accessControlIpv6, { network: '', action: 'allow', label: '' }])}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
+                <Plus size={12} /> Adicionar ACL IPv6
+              </button>
+            </div>
+          )}
+
+          {config.accessControlIpv4.some(a => a.network === '0.0.0.0/0' && a.action === 'allow') && (
+            <div className="p-3 rounded bg-destructive/10 border border-destructive/30 space-y-2">
+              <div className="flex items-center gap-2 text-sm text-destructive font-medium"><AlertTriangle size={14} /> Open Resolver Detectado</div>
+              <p className="text-xs text-destructive/80">A ACL 0.0.0.0/0 allow configura um open resolver. Risco de amplificação DNS.</p>
+              <Toggle checked={config.openResolverConfirmed} onChange={v => set('openResolverConfirmed', v)} label="Confirmo que quero operar como open resolver" />
+            </div>
+          )}
+
+          <div className="border-t border-border pt-4 space-y-3">
+            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Proteção</div>
+            <div className="flex gap-4 flex-wrap">
+              <Toggle checked={config.enableDnsProtection} onChange={v => set('enableDnsProtection', v)} label="Rate limiting via nftables" />
+              <Toggle checked={config.enableAntiAmplification} onChange={v => set('enableAntiAmplification', v)} label="Anti-amplificação DNS" />
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="border-t border-border pt-4 space-y-3">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Painel de Controle</div>
