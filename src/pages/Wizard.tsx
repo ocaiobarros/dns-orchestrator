@@ -11,6 +11,7 @@ import {
   type ObservabilityConfig,
   type OperationMode,
   type VipDeliverySubmode,
+  type CaptureMode,
 } from '@/lib/types';
 import { validateConfig, getStepErrors, isConfigValid, getValidationSummary } from '@/lib/validation';
 import { generateAllFiles, createDefaultInstance } from '@/lib/config-generator';
@@ -22,8 +23,8 @@ import FilePreviewAccordion from '@/components/FilePreviewAccordion';
 import {
   Check, ChevronLeft, ChevronRight, AlertTriangle, Play, Eye, AlertCircle,
   Loader2, Server, Network, Shield, Globe, Layers, Route, Settings, FileText,
-  Plus, Trash2, Info, ExternalLink, Activity, Lock, BarChart3, Download,
-  X, SkipForward, Crosshair,
+  Plus, Trash2, Info, ExternalLink, Activity, Lock, BarChart3, Download, Upload,
+  X, SkipForward, Crosshair, MonitorDown,
 } from 'lucide-react';
 import type { ApplyResult, ApplyRequest } from '@/lib/types';
 
@@ -357,12 +358,108 @@ export default function Wizard() {
 
   const generatedFiles = generateAllFiles(config);
 
+  // Track whether config came from host sync
+  const [configSource, setConfigSource] = useState<'wizard_form' | 'host_runtime'>('wizard_form');
+
   const exportConfig = () => {
-    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+    const exportPayload = {
+      _meta: {
+        source: configSource,
+        exported_at: new Date().toISOString(),
+        version: '1.0',
+        dns_control_export: true,
+      },
+      hostname: config.hostname,
+      organization: config.organization,
+      project: config.project,
+      mainInterface: config.mainInterface,
+      ipv4Address: config.ipv4Address,
+      ipv4Gateway: config.ipv4Gateway,
+      enableIpv6: config.enableIpv6,
+      ipv6Address: config.ipv6Address,
+      ipv6Gateway: config.ipv6Gateway,
+      operationMode: config.operationMode,
+      vipDeliverySubmode: config.vipDeliverySubmode,
+      deploymentMode: config.deploymentMode,
+      securityProfile: config.securityProfile,
+      egressDeliveryMode: config.egressDeliveryMode,
+      egressMode: config.egressMode,
+      distributionPolicy: config.distributionPolicy,
+      stickyTimeout: config.stickyTimeout,
+      frontendDnsIp: config.frontendDnsIp,
+      simpleDistributionStrategy: config.simpleDistributionStrategy,
+      simpleStickyTimeout: config.simpleStickyTimeout,
+      config,
+    };
+    const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `dns-control-${config.hostname || 'config'}-${new Date().toISOString().slice(0,10)}.json`;
+    const srcTag = configSource === 'host_runtime' ? 'host' : 'wizard';
+    a.href = url; a.download = `dns-control-${config.hostname || 'config'}-${srcTag}-${new Date().toISOString().slice(0,10)}.json`;
     a.click(); URL.revokeObjectURL(url);
+  };
+
+  const importConfigFromFile = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+
+        // Accept both full export (with _meta + config) and raw WizardConfig
+        let importedConfig: Partial<WizardConfig>;
+        let source: string = 'unknown';
+
+        if (parsed._meta?.dns_control_export && parsed.config) {
+          // Full export format
+          importedConfig = parsed.config;
+          source = parsed._meta.source || 'imported';
+        } else if (parsed.hostname !== undefined || parsed.operationMode !== undefined) {
+          // Raw WizardConfig format
+          importedConfig = parsed;
+          source = 'imported_raw';
+        } else {
+          alert('❌ Schema inválido: o arquivo não contém uma configuração DNS Control válida.\n\nFormatos aceitos:\n- Exportação DNS Control (com _meta.dns_control_export)\n- WizardConfig direto (com hostname/operationMode)');
+          return;
+        }
+
+        // Validate required fields minimally
+        const errors: string[] = [];
+        if (importedConfig.instances && !Array.isArray(importedConfig.instances)) {
+          errors.push('Campo "instances" deve ser um array');
+        }
+        if (importedConfig.operationMode && !['interception', 'simple'].includes(importedConfig.operationMode)) {
+          errors.push(`operationMode inválido: "${importedConfig.operationMode}"`);
+        }
+
+        if (errors.length > 0) {
+          alert(`❌ Erros de validação:\n\n${errors.join('\n')}`);
+          return;
+        }
+
+        // Merge imported config over defaults
+        setConfig(prev => ({
+          ...prev,
+          ...importedConfig,
+          // Ensure instanceCount stays in sync
+          instanceCount: importedConfig.instances?.length ?? prev.instanceCount,
+        }));
+        setConfigSource('wizard_form');
+        setStep(0);
+        alert(`✅ Configuração importada com sucesso!\n\nOrigem: ${source}\nHostname: ${importedConfig.hostname || '(não definido)'}\nInstâncias: ${importedConfig.instances?.length ?? '(mantidas)'}\n\n⚠ Revise os campos antes de aplicar.`);
+      } catch (err: any) {
+        if (err instanceof SyntaxError) {
+          alert('❌ Arquivo JSON inválido — erro de sintaxe.');
+        } else {
+          alert(`❌ Erro ao importar: ${err.message}`);
+        }
+      }
+    };
+    input.click();
   };
 
   // ═══ Step renderers ═══
@@ -1285,59 +1382,181 @@ export default function Wizard() {
     return renderer ? renderer() : null;
   };
 
-  const [importLoading, setImportLoading] = useState(false);
-  const handleImportHost = async () => {
-    setImportLoading(true);
+  const [hostSyncLoading, setHostSyncLoading] = useState(false);
+  const [hostSyncResult, setHostSyncResult] = useState<{ instances: number; vips: number; listeners: number } | null>(null);
+
+  const handleReadFromHost = async () => {
+    setHostSyncLoading(true);
+    setHostSyncResult(null);
     try {
-      const r = await api.importHostState();
+      // Use runtime inventory for comprehensive discovery
+      const r = await api.getRuntimeInventory();
       if (r.success && r.data) {
-        const imported = r.data as any;
+        const inv = r.data as any;
         const newConfig: Partial<WizardConfig> = {};
-        if (imported.hostname) newConfig.hostname = imported.hostname;
-        if (imported.instances?.length > 0) {
-          newConfig.instances = imported.instances.map((inst: any, i: number) => ({
+
+        // Hostname
+        if (inv.hostname) newConfig.hostname = inv.hostname;
+
+        // Main interface & IP from network
+        if (inv.network?.main_interface) newConfig.mainInterface = inv.network.main_interface;
+        if (inv.network?.ipv4_address) newConfig.ipv4Address = inv.network.ipv4_address;
+        if (inv.network?.ipv4_gateway) newConfig.ipv4Gateway = inv.network.ipv4_gateway;
+        if (inv.network?.ipv6_address) {
+          newConfig.enableIpv6 = true;
+          newConfig.ipv6Address = inv.network.ipv6_address;
+        }
+        if (inv.network?.ipv6_gateway) newConfig.ipv6Gateway = inv.network.ipv6_gateway;
+
+        // Instances from runtime discovery
+        const discoveredInstances = inv.instances || [];
+        if (discoveredInstances.length > 0) {
+          newConfig.instances = discoveredInstances.map((inst: any, i: number) => ({
             name: inst.name || `unbound${String(i + 1).padStart(2, '0')}`,
             bindIp: inst.bind_ip || inst.bindIp || '',
-            bindIpv6: inst.bind_ipv6 || '',
+            bindIpv6: inst.bind_ipv6 || inst.bindIpv6 || '',
             publicListenerIp: '',
             controlInterface: inst.control_interface || inst.controlInterface || `127.0.0.${11 + i}`,
             controlPort: inst.control_port || inst.controlPort || 8953,
-            egressIpv4: inst.egress_ipv4 || inst.egressIpv4 || '',
-            egressIpv6: inst.egress_ipv6 || '',
+            egressIpv4: inst.egress_ipv4 || inst.egressIpv4 || inst.outgoing_interface || '',
+            egressIpv6: inst.egress_ipv6 || inst.egressIpv6 || '',
           }));
           newConfig.instanceCount = newConfig.instances!.length;
         }
-        if (imported.egress_delivery_mode) newConfig.egressDeliveryMode = imported.egress_delivery_mode;
+
+        // VIPs from loopback
+        const vips = inv.vips || [];
+        if (vips.length > 0) {
+          newConfig.interceptedVips = vips.map((v: any) => ({
+            vipIp: v.ip || v.address || '',
+            vipIpv6: '',
+            vipType: 'intercepted' as const,
+            captureMode: 'dnat' as CaptureMode,
+            backendInstance: '',
+            backendTargetIp: '',
+            description: `Discovered VIP on ${v.interface || 'lo'}`,
+            expectedLocalLatencyMs: 5,
+            validationMode: 'relaxed' as const,
+            protocol: 'udp+tcp' as const,
+            port: 53,
+          }));
+        }
+
+        // DNAT rules → try to infer interception mode
+        const dnatRules = inv.dnat_rules || [];
+        if (dnatRules.length > 0 || vips.length > 0) {
+          newConfig.operationMode = 'interception';
+          newConfig.deploymentMode = 'vip-routed-border';
+        }
+
+        // Listeners
+        const listeners = inv.listeners || [];
+
+        // Egress delivery mode inference
+        if (inv.egress_delivery_mode) newConfig.egressDeliveryMode = inv.egress_delivery_mode;
+
         setConfig(prev => ({ ...prev, ...newConfig }));
-        alert(`✅ Estado importado: ${newConfig.instances?.length || 0} instâncias`);
-      } else { alert(`❌ Falha: ${r.error}`); }
+        setConfigSource('host_runtime');
+        setHostSyncResult({
+          instances: newConfig.instances?.length || 0,
+          vips: vips.length,
+          listeners: listeners.length,
+        });
+      } else {
+        // Fallback to legacy import endpoint
+        const legacy = await api.importHostState();
+        if (legacy.success && legacy.data) {
+          const imported = legacy.data as any;
+          const newConfig: Partial<WizardConfig> = {};
+          if (imported.hostname) newConfig.hostname = imported.hostname;
+          if (imported.instances?.length > 0) {
+            newConfig.instances = imported.instances.map((inst: any, i: number) => ({
+              name: inst.name || `unbound${String(i + 1).padStart(2, '0')}`,
+              bindIp: inst.bind_ip || inst.bindIp || '',
+              bindIpv6: inst.bind_ipv6 || '',
+              publicListenerIp: '',
+              controlInterface: inst.control_interface || inst.controlInterface || `127.0.0.${11 + i}`,
+              controlPort: inst.control_port || inst.controlPort || 8953,
+              egressIpv4: inst.egress_ipv4 || inst.egressIpv4 || '',
+              egressIpv6: inst.egress_ipv6 || '',
+            }));
+            newConfig.instanceCount = newConfig.instances!.length;
+          }
+          setConfig(prev => ({ ...prev, ...newConfig }));
+          setConfigSource('host_runtime');
+          setHostSyncResult({ instances: newConfig.instances?.length || 0, vips: 0, listeners: 0 });
+        } else {
+          alert(`❌ Falha ao ler do host: ${legacy.error || r.error}`);
+        }
+      }
     } catch (err: any) { alert(`❌ Exceção: ${err.message}`); }
-    finally { setImportLoading(false); }
+    finally { setHostSyncLoading(false); }
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">
-            {isInterception ? 'DNS Recursivo — Interceptação' : 'DNS Recursivo — Simples'}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {isInterception
-              ? 'Multi-instância · VIP → nftables DNAT → Unbound → Egress'
-              : `Frontend local${config.frontendDnsIp ? ` (${config.frontendDnsIp})` : ''} · balanceamento local → backends internos`}
-          </p>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold">
+              {isInterception ? 'DNS Recursivo — Interceptação' : 'DNS Recursivo — Simples'}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {isInterception
+                ? 'Multi-instância · VIP → nftables DNAT → Unbound → Egress'
+                : `Frontend local${config.frontendDnsIp ? ` (${config.frontendDnsIp})` : ''} · balanceamento local → backends internos`}
+            </p>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <button onClick={handleImportHost} disabled={importLoading}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-accent/20 text-accent rounded border border-accent/30 hover:bg-accent/30 disabled:opacity-50">
-            {importLoading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-            {importLoading ? 'Importando...' : 'Sincronizar com Host'}
-          </button>
-          <button onClick={exportConfig} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
-            <Download size={12} /> Exportar JSON
-          </button>
+
+        {/* ═══ ACTION BAR: Host Sync / Export / Import ═══ */}
+        <div className="flex flex-wrap items-center gap-2 p-3 rounded-md bg-secondary/30 border border-border/50">
+          {/* 1. Ler do Host */}
+          <div className="flex flex-col items-start">
+            <button onClick={handleReadFromHost} disabled={hostSyncLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent/15 text-accent rounded border border-accent/30 hover:bg-accent/25 disabled:opacity-50 transition-colors">
+              {hostSyncLoading ? <Loader2 size={12} className="animate-spin" /> : <MonitorDown size={12} />}
+              {hostSyncLoading ? 'Lendo...' : 'Ler Configuração do Host'}
+            </button>
+            <span className="text-[9px] text-muted-foreground/60 mt-0.5 ml-1">Leitura apenas — não altera produção</span>
+          </div>
+
+          <div className="w-px h-8 bg-border/40 mx-1 hidden sm:block" />
+
+          {/* 2. Exportar JSON */}
+          <div className="flex flex-col items-start">
+            <button onClick={exportConfig}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80 transition-colors">
+              <Download size={12} /> Exportar JSON
+            </button>
+            <span className="text-[9px] text-muted-foreground/60 mt-0.5 ml-1">
+              {configSource === 'host_runtime' ? 'Exporta config observada do host' : 'Exporta estado atual do wizard'}
+            </span>
+          </div>
+
+          <div className="w-px h-8 bg-border/40 mx-1 hidden sm:block" />
+
+          {/* 3. Importar JSON */}
+          <div className="flex flex-col items-start">
+            <button onClick={importConfigFromFile}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80 transition-colors">
+              <Upload size={12} /> Importar JSON
+            </button>
+            <span className="text-[9px] text-muted-foreground/60 mt-0.5 ml-1">Preenche wizard a partir de arquivo salvo</span>
+          </div>
         </div>
+
+        {/* Host sync result banner */}
+        {hostSyncResult && (
+          <div className="flex items-center gap-2 p-2 rounded bg-accent/10 border border-accent/20 text-xs text-accent">
+            <Check size={12} />
+            <span>
+              Leitura do host concluída — {hostSyncResult.instances} instância{hostSyncResult.instances !== 1 ? 's' : ''}, {hostSyncResult.vips} VIP{hostSyncResult.vips !== 1 ? 's' : ''}, {hostSyncResult.listeners} listener{hostSyncResult.listeners !== 1 ? 's' : ''}
+            </span>
+            <span className="text-accent/60 ml-auto">Fonte: runtime</span>
+            <button onClick={() => setHostSyncResult(null)} className="text-accent/40 hover:text-accent"><X size={10} /></button>
+          </div>
+        )}
       </div>
 
       {/* Step Navigation */}
