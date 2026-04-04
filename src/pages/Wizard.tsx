@@ -882,9 +882,9 @@ export default function Wizard() {
 
   const renderSecurity = () => (
     <div className="space-y-4">
-      <InfoBox>Configure controle de acesso, proteção contra amplificação e autenticação do painel.</InfoBox>
+      <InfoBox>Configure controle de acesso DNS via nftables (camada EDGE). As ACLs são aplicadas na chain INPUT do nftables ANTES do DNAT, garantindo que tráfego não autorizado seja bloqueado antes de atingir o Unbound.</InfoBox>
       <div className="space-y-3">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">ACLs IPv4 (access-control do Unbound)</div>
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">ACLs IPv4 (nftables filter INPUT — EDGE)</div>
         {config.accessControlIpv4.map((acl, i) => (
           <div key={i} className="grid grid-cols-3 md:grid-cols-4 gap-3 p-3 rounded bg-secondary border border-border">
             <FieldGroup label="Rede" error={fieldError(`accessControlIpv4[${i}].network`)}>
