@@ -827,25 +827,10 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     });
   }
 
-  // Rate limiting chains (if enabled) — inside table block
-  if (config.enableDnsProtection) {
-    files.push({
-      path: '/etc/nftables.d/0060-table-filter.nft',
-      content: `table ip filter {\n}\n`,
-    });
-    files.push({
-      path: '/etc/nftables.d/0061-hook-input.nft',
-      content: [
-        'table ip filter {',
-        '    chain INPUT {',
-        '        type filter hook input priority 0; policy accept;',
-        '        udp dport 53 limit rate over 100/second burst 50 packets drop',
-        '        tcp dport 53 limit rate over 50/second burst 25 packets drop',
-        '    }',
-        '}',
-      ].join('\n') + '\n',
-    });
-  }
+  // ═══ TABLE FILTER — EDGE ACL (security boundary) ═══
+  // ACL is enforced HERE at nftables INPUT, BEFORE DNAT reaches Unbound.
+  // Unbound remains 0.0.0.0/0 allow — it trusts nftables to filter.
+  files.push(...generateNftablesFilterTable(config));
 
   // VIP definitions — 'define' stays at top level (outside table blocks)
   const allVipIpv4s: string[] = [];
