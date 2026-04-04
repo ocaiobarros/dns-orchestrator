@@ -5,12 +5,13 @@ Read-only infrastructure adoption + service mode management.
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.api.deps import get_current_user, require_admin
 from app.models.user import User
 from app.services.import_service import execute_import, get_imported_vips, clear_import
-from app.services.service_mode import get_service_mode, MODE_IMPORTED
+from app.services.service_mode import get_service_mode, set_service_mode, MODE_IMPORTED, MODE_OBSERVED, MODE_MANAGED
 
 router = APIRouter()
 
@@ -82,7 +83,7 @@ def remove_import(db: Session = Depends(get_db), user: User = Depends(require_ad
 
 @router.get("/service-mode")
 def get_mode(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    """Return current service mode (managed | imported)."""
+    """Return current service mode (managed | imported | observed)."""
     mode = get_service_mode(db)
 
     # Include import metadata if imported
@@ -92,5 +93,31 @@ def get_mode(db: Session = Depends(get_db), _: User = Depends(get_current_user))
         ts_row = db.query(Setting).filter(Setting.key == "import_timestamp").first()
         extra["import_timestamp"] = ts_row.value if ts_row else None
         extra["imported_vips"] = get_imported_vips(db)
+    elif mode == MODE_OBSERVED:
+        # Include runtime inventory summary
+        try:
+            from app.services.runtime_inventory_service import get_full_inventory
+            inv = get_full_inventory()
+            extra["inventory_summary"] = {
+                "instances": inv["instance_count"],
+                "vips": inv["vip_count"],
+                "dnat_rules": inv["dnat_rule_count"],
+                "listeners": inv["listener_count"],
+            }
+        except Exception:
+            extra["inventory_summary"] = None
 
     return {"service_mode": mode, **extra}
+
+
+class ServiceModeRequest(BaseModel):
+    mode: str
+
+
+@router.post("/service-mode")
+def set_mode(body: ServiceModeRequest, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    """Set the service mode (managed | imported | observed)."""
+    if body.mode not in (MODE_MANAGED, MODE_IMPORTED, MODE_OBSERVED):
+        raise HTTPException(400, f"Invalid mode: {body.mode}. Valid: managed, imported, observed")
+    new_mode = set_service_mode(db, body.mode)
+    return {"mode": new_mode}

@@ -49,7 +49,8 @@ export default function Dashboard() {
     return <SimpleDashboard />;
   }
 
-  // Default: interception dashboard (or unknown mode)
+  // observed/imported/interception all use the interception dashboard
+  // (observed mode uses runtime discovery, not deploy state)
   return <InterceptionDashboard />;
 }
 

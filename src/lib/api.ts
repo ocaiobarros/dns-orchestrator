@@ -280,11 +280,19 @@ export const api = {
 
   // Import mode (read-only infrastructure adoption)
   getServiceMode: () =>
-    apiCall<{ service_mode: string; import_timestamp?: string; imported_vips?: any[] }>('GET', '/config/service-mode'),
+    apiCall<{ service_mode: string; import_timestamp?: string; imported_vips?: any[]; inventory_summary?: { instances: number; vips: number; dnat_rules: number; listeners: number } }>('GET', '/config/service-mode'),
   executeImport: () =>
     apiCall<any>('POST', '/config/import'),
   clearImport: () =>
     apiCall<{ success: boolean; mode: string }>('DELETE', '/config/import'),
+
+  // Observed mode (runtime discovery)
+  setServiceMode: (mode: string) =>
+    apiCall<{ mode: string }>('POST', '/config/service-mode', { mode }),
+  getRuntimeInventory: () =>
+    apiCall<any>('GET', '/inventory/full'),
+  syncRuntimeInstances: () =>
+    apiCall<any>('POST', '/inventory/sync'),
 };
 
 // ---- Mock Response Router ----
@@ -425,13 +433,18 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path.match(/\/api\/actions\/(remove|restore)-backend/)) return { success: true };
   if (path === '/api/actions/reconcile-now' && method === 'POST') return { instances_checked: 4, instances_failed: 0, backends_removed: 0, backends_restored: 0 };
 
+  // Service mode & inventory mocks
+  if (path === '/api/config/service-mode' && method === 'GET') return { service_mode: 'managed' };
+  if (path === '/api/config/service-mode' && method === 'POST') return { mode: (body as any)?.mode ?? 'managed' };
+  if (path === '/api/inventory/full') return { collected_at: new Date().toISOString(), instances: [], vips: [], dnat_rules: [], sticky_sets: [], listeners: [], vip_backend_map: {}, instance_count: 0, vip_count: 0, dnat_rule_count: 0, listener_count: 0 };
+  if (path === '/api/inventory/sync' && method === 'POST') return { discovered: 0, created: 0, updated: 0, unchanged: 0, instances: [] };
+
   // Telemetry mock
   if (path === '/api/telemetry/latest') return mockTelemetryLatest();
   if (path === '/api/telemetry/status') return { collector_status: 'ok', last_update: new Date().toISOString(), file_age_seconds: 5, stale: false, mode: 'recursive_simple' };
   if (path === '/api/telemetry/history') return mockTelemetryHistoryData();
 
-  // Import / service mode
-  if (path === '/api/config/service-mode') return { service_mode: 'managed' };
+  // Import
   if (path === '/api/config/import' && method === 'POST') return { success: true, mode: 'imported', discovery: { instances: [], vip_mappings: [], dns_listeners: [] }, audit: [], errors: [] };
   if (path === '/api/config/import' && method === 'DELETE') return { success: true, mode: 'managed' };
   if (path === '/api/config/import-host') return { hostname: 'mock-host', instances: [], instanceCount: 0, network: { interfaces: [], listeners: [] } };

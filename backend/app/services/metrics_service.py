@@ -154,8 +154,8 @@ def _parse_dnat_backends(ruleset: str) -> list[dict]:
             continue
 
         # Match jump chain rules with counters (sticky/dispatch pattern)
-        # e.g.: ip saddr @ipv4_users_unbound01 counter packets 0 bytes 0 jump ipv4_dns_tcp_unbound01
-        # or: counter packets 123 bytes 456 jump ipv4_dns_udp_unbound01
+        # Name-agnostic: follows ANY jump with counters, then resolves DNAT
+        # in the target chain to find the real backend IP.
         jump_match = re.search(
             r'counter\s+packets\s+(\d+)\s+bytes\s+(\d+)\s+jump\s+(\S+)',
             stripped,
@@ -165,19 +165,20 @@ def _parse_dnat_backends(ruleset: str) -> list[dict]:
             bytes_val = int(jump_match.group(2))
             jump_target = jump_match.group(3)
 
-            # Extract backend name from jump target: ipv4_dns_udp_unbound01 → unbound01
-            name_match = re.search(r'(unbound\d+)', jump_target)
-            if not name_match:
-                continue
-            backend_name = name_match.group(1)
+            # Detect protocol from chain name or line content
+            proto = "tcp" if "tcp" in jump_target or "tcp" in stripped.split("counter")[0] else \
+                    "udp" if "udp" in jump_target or "udp" in stripped.split("counter")[0] else "unknown"
 
-            # Detect protocol from chain name or line
-            proto = "tcp" if "tcp" in jump_target else "udp" if "udp" in jump_target else "unknown"
+            # Try to resolve the jump target chain to find DNAT backend IP
+            backend_key = _resolve_jump_to_backend(ruleset, jump_target)
+            if not backend_key:
+                # Fallback: use jump target chain name as key
+                backend_key = jump_target
 
-            if backend_name not in backends:
-                backends[backend_name] = {
-                    "backend": backend_name,
-                    "name": backend_name,
+            if backend_key not in backends:
+                backends[backend_key] = {
+                    "backend": backend_key,
+                    "name": backend_key,
                     "chain": current_chain,
                     "packets": 0,
                     "bytes": 0,
@@ -189,7 +190,7 @@ def _parse_dnat_backends(ruleset: str) -> list[dict]:
                     "target": jump_target,
                 }
 
-            entry = backends[backend_name]
+            entry = backends[backend_key]
             entry["packets"] += packets
             entry["bytes"] += bytes_val
             if proto == "tcp":
@@ -200,6 +201,32 @@ def _parse_dnat_backends(ruleset: str) -> list[dict]:
                 entry["udp_bytes"] += bytes_val
 
     return list(backends.values())
+
+
+def _resolve_jump_to_backend(ruleset: str, chain_name: str) -> str | None:
+    """
+    Follow a jump chain in the ruleset and find the DNAT target IP.
+    Returns the backend IP if found, None otherwise.
+    """
+    in_chain = False
+    for line in ruleset.split("\n"):
+        stripped = line.strip()
+        if re.match(rf'chain\s+{re.escape(chain_name)}\s*\{{', stripped):
+            in_chain = True
+            continue
+        if in_chain:
+            if stripped == "}":
+                break
+            dnat = re.search(r'dnat to (\d+\.\d+\.\d+\.\d+)', stripped)
+            if dnat:
+                return dnat.group(1)
+            # Follow nested jumps
+            nested = re.search(r'jump\s+(\S+)', stripped)
+            if nested:
+                result = _resolve_jump_to_backend(ruleset, nested.group(1))
+                if result:
+                    return result
+    return None
 
 
 def _parse_entry_counters(ruleset: str) -> list[dict]:
@@ -240,44 +267,78 @@ def get_nat_backends() -> list[dict]:
 
 
 def get_nat_sticky() -> list[dict]:
-    """Get sticky set entries from nftables sets."""
+    """
+    Get sticky set entries from nftables sets.
+    Name-agnostic: detects dynamic sets with timeout and IP type,
+    not by name pattern like 'ipv4_users_*'.
+    """
     entries = []
-    # List all sets and their elements
+
+    # First try: discover dynamic sets via runtime_inventory (name-agnostic)
+    try:
+        from app.services.runtime_inventory_service import discover_sticky_sets
+        dynamic_sets = discover_sticky_sets()
+        dynamic_set_names = {s["name"] for s in dynamic_sets}
+    except Exception:
+        dynamic_set_names = None  # fallback: accept all sets
+
+    # List all sets with elements
     result = run_command("nft", ["list", "sets"], timeout=10, use_privilege=True)
     if result["exit_code"] != 0:
         return entries
 
     current_set = ""
+    current_has_timeout = False
+    current_flags = []
+
     for line in result["stdout"].split("\n"):
         stripped = line.strip()
         set_match = re.match(r'set\s+(\S+)\s*\{', stripped)
         if set_match:
             current_set = set_match.group(1)
+            current_has_timeout = False
+            current_flags = []
             continue
-        if current_set and "elements" in stripped:
-            # Parse elements like: elements = { 10.0.0.1 timeout 19m50s, 10.0.0.2 timeout 18m30s }
-            elem_match = re.search(r'elements\s*=\s*\{([^}]*)\}', stripped)
-            if elem_match:
-                for elem in elem_match.group(1).split(","):
-                    elem = elem.strip()
-                    if elem:
-                        parts = elem.split()
-                        ip = parts[0] if parts else ""
-                        timeout_val = ""
-                        if "timeout" in elem:
-                            idx = parts.index("timeout") if "timeout" in parts else -1
-                            if idx >= 0 and idx + 1 < len(parts):
-                                timeout_val = parts[idx + 1]
-                        if ip:
-                            # Map set name to backend
-                            backend = current_set.replace("ipv4_users_", "")
-                            entries.append({
-                                "sourceIp": ip,
-                                "backend": backend,
-                                "set_name": current_set,
-                                "expires": timeout_val,
-                                "packets": 0,
-                            })
+
+        if current_set:
+            if "flags" in stripped:
+                current_flags = [f.strip() for f in stripped.split("flags")[-1].strip().rstrip(";").split(",")]
+            if "timeout" in stripped:
+                current_has_timeout = True
+
+            if "elements" in stripped:
+                # Determine if this is a sticky set:
+                # 1. If we discovered dynamic sets, only include those
+                # 2. Otherwise include sets with dynamic flag or timeout
+                is_sticky = False
+                if dynamic_set_names is not None:
+                    is_sticky = current_set in dynamic_set_names
+                else:
+                    is_sticky = "dynamic" in current_flags or current_has_timeout
+
+                if not is_sticky:
+                    continue
+
+                elem_match = re.search(r'elements\s*=\s*\{([^}]*)\}', stripped)
+                if elem_match:
+                    for elem in elem_match.group(1).split(","):
+                        elem = elem.strip()
+                        if elem:
+                            parts = elem.split()
+                            ip = parts[0] if parts else ""
+                            timeout_val = ""
+                            if "timeout" in elem:
+                                idx = parts.index("timeout") if "timeout" in parts else -1
+                                if idx >= 0 and idx + 1 < len(parts):
+                                    timeout_val = parts[idx + 1]
+                            if ip:
+                                entries.append({
+                                    "sourceIp": ip,
+                                    "backend": current_set,
+                                    "set_name": current_set,
+                                    "expires": timeout_val,
+                                    "packets": 0,
+                                })
 
     return entries
 

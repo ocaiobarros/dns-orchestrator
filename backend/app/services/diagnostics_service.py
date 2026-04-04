@@ -258,11 +258,38 @@ def get_dashboard_summary() -> dict:
     # nftables state from ruleset, not service
     nft_state = _get_nftables_state()
 
-    # Get operation mode from deploy state
-    from app.services.deploy_service import get_deploy_state
-    deploy_state = get_deploy_state()
-    operation_mode = deploy_state.get("operationMode", "")
-    frontend_dns_ip = deploy_state.get("frontendDnsIp", "")
+    # Get operation mode: check service_mode first, then deploy state
+    operation_mode = ""
+    frontend_dns_ip = ""
+    try:
+        from app.core.database import SessionLocal as _SM_Session
+        from app.services.service_mode import get_service_mode
+        _sm_db = _SM_Session()
+        try:
+            svc_mode = get_service_mode(_sm_db)
+            if svc_mode == "observed":
+                operation_mode = "observed"
+            elif svc_mode == "imported":
+                operation_mode = "imported"
+        finally:
+            _sm_db.close()
+    except Exception:
+        pass
+
+    if not operation_mode:
+        from app.services.deploy_service import get_deploy_state
+        deploy_state = get_deploy_state()
+        operation_mode = deploy_state.get("operationMode", "")
+        frontend_dns_ip = deploy_state.get("frontendDnsIp", "")
+    else:
+        # In observed/imported mode, try to get frontendDnsIp from VIP discovery
+        try:
+            from app.services.runtime_inventory_service import discover_vips
+            vips = discover_vips()
+            if vips:
+                frontend_dns_ip = vips[0]["ip"]
+        except Exception:
+            pass
 
     return {
         "total_queries": dns_metrics.get("total_queries", 0),
