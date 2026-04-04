@@ -773,13 +773,18 @@ export function generateSimpleNftablesModular(config: WizardConfig): { path: str
     });
   }
 
-  // Round-robin fallback (always present)
+  // Round-robin fallback — numgen inc mod N decrementing (Part2 pattern)
+  let rrRuleid = 5600;
   for (const proto of ['tcp', 'udp']) {
     const topchain = `local_${proto}_dns`;
-    const vmapEntries = config.instances.map((inst, i) => `${i} : jump local_dns_${proto}_${inst.name}`).join(', ');
-    files.push({
-      path: `/etc/nftables.d/5600-local-rule-rr-${proto}.nft`,
-      content: `table ip nat {\n    chain ${topchain} {\n        numgen random mod ${config.instances.length} vmap { ${vmapEntries} }\n    }\n}\n`,
+    let randnum = config.instances.length;
+    config.instances.forEach(inst => {
+      files.push({
+        path: `/etc/nftables.d/${rrRuleid}-local-rule-rr-${proto}-${inst.name}.nft`,
+        content: `table ip nat {\n    chain ${topchain} {\n        numgen inc mod ${randnum} 0 counter packets 0 bytes 0 jump local_dns_${proto}_${inst.name}\n    }\n}\n`,
+      });
+      rrRuleid++;
+      randnum--;
     });
   }
 
