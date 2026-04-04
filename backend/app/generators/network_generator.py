@@ -101,11 +101,8 @@ post-up /etc/network/post-up.sh
         if ipv6_gateway:
             post_up_lines.append(f"     /usr/sbin/ip -6 route add default via {ipv6_gateway}")
 
-    # IPv6 egress on lo
-    if egress_ipv6 and not is_border_routed:
-        post_up_lines.append(f"")
-        for eip6 in egress_ipv6:
-            post_up_lines.append(f"     /usr/sbin/ip addr add {eip6}/128 dev lo")
+    # IPv6 egress on lo0 (runtime vdns-02: egress IPv6 lives on lo0, NOT lo)
+    # Will be added after lo0 creation below
 
     # ── Create dummy lo0 for listeners and VIPs ──
     post_up_lines.append(f"")

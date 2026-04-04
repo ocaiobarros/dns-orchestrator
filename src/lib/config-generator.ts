@@ -557,6 +557,17 @@ export function generatePostUpScript(config: WizardConfig): string {
     }
   }
 
+  // Egress IPv6 on lo0 (runtime vdns-02: egress IPv6 is on lo0, not lo)
+  if (config.enableIpv6 && !isBorderRouted) {
+    const ipv6Egress = config.instances.filter(i => i.egressIpv6);
+    if (ipv6Egress.length > 0) {
+      lines.push('');
+      ipv6Egress.forEach(inst => {
+        lines.push(`     /usr/sbin/ip addr add ${inst.egressIpv6}/128 dev lo0`);
+      });
+    }
+  }
+
   // Anycast VIPs on lo0 — commented by default, uncomment at end of deploy
   const allVipIpv4: string[] = [];
   const allVipIpv6: string[] = [];
