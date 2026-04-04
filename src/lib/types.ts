@@ -205,6 +205,7 @@ export interface WizardConfig {
   networkType: 'point-to-point' | 'broadcast';
 
   // Step 8 - Segurança
+  securityProfile: 'legacy' | 'isp-hardened';
   accessControlIpv4: AccessControlEntry[];
   accessControlIpv6: AccessControlEntry[];
   openResolverConfirmed: boolean;
