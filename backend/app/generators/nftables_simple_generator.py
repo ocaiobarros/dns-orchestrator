@@ -72,7 +72,14 @@ def generate_simple_nftables_config(payload: dict[str, Any], validation_mode: bo
     if validation_mode:
         return _generate_validation(frontend_ip, backends, sticky_timeout_min, use_sticky)
 
-    return _generate_modular(frontend_ip, backends, sticky_timeout_min, use_sticky)
+    files = _generate_modular(frontend_ip, backends, sticky_timeout_min, use_sticky)
+
+    # ═══ TABLE FILTER — EDGE ACL ═══
+    from app.generators.nftables_generator import _generate_filter_table
+    enable_ipv6 = payload.get("enableIpv6") or (payload.get("_wizardConfig", {}) or {}).get("enableIpv6", False)
+    files.extend(_generate_filter_table(payload, enable_ipv6))
+
+    return files
 
 
 def _generate_modular(
