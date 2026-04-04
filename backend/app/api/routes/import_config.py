@@ -5,12 +5,13 @@ Read-only infrastructure adoption + service mode management.
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.api.deps import get_current_user, require_admin
 from app.models.user import User
 from app.services.import_service import execute_import, get_imported_vips, clear_import
-from app.services.service_mode import get_service_mode, MODE_IMPORTED
+from app.services.service_mode import get_service_mode, set_service_mode, MODE_IMPORTED, MODE_OBSERVED, MODE_MANAGED
 
 router = APIRouter()
 
