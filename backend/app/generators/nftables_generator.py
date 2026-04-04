@@ -357,9 +357,14 @@ def _generate_filter_table(payload: dict[str, Any], enable_ipv6: bool) -> list[d
     """Generate table ip filter / table ip6 filter with INPUT chain for DNS ACL.
     Security boundary: access control is enforced at nftables EDGE before DNAT.
     Unbound remains 0.0.0.0/0 allow — it trusts nftables to filter.
+    In legacy mode, no filter table is generated (reproduces Part1/Part2 runtime).
     """
-    files: list[dict] = []
     wizard_cfg = payload.get("_wizardConfig", {}) or {}
+    security_profile = payload.get("securityProfile") or wizard_cfg.get("securityProfile", "legacy")
+    if security_profile == "legacy":
+        return []
+
+    files: list[dict] = []
 
     acl_ipv4 = payload.get("accessControlIpv4") or wizard_cfg.get("accessControlIpv4") or []
     acl_ipv6 = payload.get("accessControlIpv6") or wizard_cfg.get("accessControlIpv6") or []
