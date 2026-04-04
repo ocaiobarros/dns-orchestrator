@@ -165,22 +165,61 @@ export default function SettingsPage() {
       </div>
 
       {/* Service Mode Banner */}
-      <div className={`noc-panel border-2 ${isImported ? 'border-yellow-500/50' : 'border-border'}`}>
+      <div className={`noc-panel border-2 ${isObserved ? 'border-blue-500/50' : isImported ? 'border-yellow-500/50' : 'border-border'}`}>
         <div className="noc-panel-header flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {isImported ? <ShieldAlert size={14} className="text-yellow-500" /> : <ShieldCheck size={14} className="text-emerald-500" />}
+            {isObserved ? <Eye size={14} className="text-blue-500" /> : isImported ? <ShieldAlert size={14} className="text-yellow-500" /> : <ShieldCheck size={14} className="text-emerald-500" />}
             Modo de Operação
           </div>
           <span className={`px-2 py-0.5 rounded text-xs font-mono font-bold uppercase ${
-            isImported
-              ? 'bg-yellow-500/20 text-yellow-400'
-              : 'bg-emerald-500/20 text-emerald-400'
+            isObserved
+              ? 'bg-blue-500/20 text-blue-400'
+              : isImported
+                ? 'bg-yellow-500/20 text-yellow-400'
+                : 'bg-emerald-500/20 text-emerald-400'
           }`}>
             {serviceMode}
           </span>
         </div>
 
-        {isImported ? (
+        {isObserved ? (
+          <div className="space-y-3">
+            <div className="text-sm text-blue-400/90">
+              <strong>Modo OBSERVAÇÃO ativo</strong> — O sistema descobre a infraestrutura automaticamente via runtime
+              (systemctl, nft, ip addr, unbound-control). Nenhuma dependência de wizard ou deploy.
+            </div>
+            {serviceModeData?.inventory_summary && (
+              <div className="grid grid-cols-4 gap-3 text-xs">
+                {[
+                  ['Instâncias', serviceModeData.inventory_summary.instances],
+                  ['VIPs', serviceModeData.inventory_summary.vips],
+                  ['DNAT Rules', serviceModeData.inventory_summary.dnat_rules],
+                  ['Listeners', serviceModeData.inventory_summary.listeners],
+                ].map(([k, v]) => (
+                  <div key={k as string} className="bg-muted/30 rounded p-2 text-center">
+                    <div className="text-muted-foreground">{k}</div>
+                    <div className="font-mono text-lg font-bold text-primary">{v}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="text-xs text-muted-foreground">
+              <strong>Auto-sync:</strong> instâncias são descobertas e sincronizadas a cada 60s.
+              Deploy, apply e rollback estão <strong>bloqueados</strong>.
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={handleDisableObserved}
+                disabled={observeLoading}
+              >
+                {observeLoading ? <Loader2 size={12} className="mr-1 animate-spin" /> : <Trash2 size={12} className="mr-1" />}
+                Desativar Observação
+              </Button>
+            </div>
+          </div>
+        ) : isImported ? (
           <div className="space-y-3">
             <div className="text-sm text-yellow-400/90">
               <strong>Modo IMPORT ativo</strong> — O sistema está em observação passiva (somente leitura).
@@ -217,21 +256,34 @@ export default function SettingsPage() {
               <strong>Modo Gerenciado</strong> — Deploy e apply estão habilitados.
             </div>
             <div className="text-sm text-muted-foreground">
-              Para monitorar um servidor já configurado manualmente sem risco de alteração, use o <strong>Import</strong>.
-              Ele lê a topologia ativa (nftables, unbound, rotas) e importa para o banco interno em modo somente leitura.
+              Para monitorar um servidor já configurado manualmente sem risco de alteração, use uma das opções abaixo:
             </div>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={handleImport}
-              disabled={importLoading}
-            >
-              {importLoading ? <Loader2 size={12} className="mr-1 animate-spin" /> : <Import size={12} className="mr-1" />}
-              Importar Infraestrutura (Read-Only)
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleEnableObserved}
+                disabled={observeLoading}
+              >
+                {observeLoading ? <Loader2 size={12} className="mr-1 animate-spin" /> : <Eye size={12} className="mr-1" />}
+                Ativar Modo Observação
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleImport}
+                disabled={importLoading}
+              >
+                {importLoading ? <Loader2 size={12} className="mr-1 animate-spin" /> : <Import size={12} className="mr-1" />}
+                Importar Infraestrutura
+              </Button>
+            </div>
             <div className="text-xs text-muted-foreground/70 border-t border-border pt-2">
-              <strong>Garantias:</strong> nenhum arquivo é escrito, nenhum serviço é reiniciado, nenhum sysctl é aplicado.
-              Apenas leitura via nft, ip, ss, unbound-control.
+              <strong>Observação:</strong> descobre automaticamente via systemctl, nft, ip addr — sem wizard.
+              <br />
+              <strong>Import:</strong> lê e persiste a topologia ativa em modo somente leitura.
+              <br />
+              Em ambos os modos, nenhum arquivo é escrito, nenhum serviço é reiniciado.
             </div>
           </div>
         )}
