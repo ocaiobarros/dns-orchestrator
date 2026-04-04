@@ -259,6 +259,14 @@ def run_command(
         }
 
 
+def _is_sudo_password_failure(stderr: str) -> bool:
+    """Detect if sudo failed because it requires a password."""
+    markers = ("a password is required", "no tty present", "sorry, a password is required",
+               "sudo: a password is required", "no askpass program specified")
+    stderr_lower = stderr.lower()
+    return any(m in stderr_lower for m in markers)
+
+
 def _sanitize_arg(arg: str) -> str:
     """Remove shell metacharacters from arguments."""
     dangerous_chars = set(";|&$`\\\"'(){}<>!")
