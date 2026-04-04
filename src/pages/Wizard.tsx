@@ -11,6 +11,7 @@ import {
   type ObservabilityConfig,
   type OperationMode,
   type VipDeliverySubmode,
+  type CaptureMode,
 } from '@/lib/types';
 import { validateConfig, getStepErrors, isConfigValid, getValidationSummary } from '@/lib/validation';
 import { generateAllFiles, createDefaultInstance } from '@/lib/config-generator';
