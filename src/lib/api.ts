@@ -433,6 +433,12 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path.match(/\/api\/actions\/(remove|restore)-backend/)) return { success: true };
   if (path === '/api/actions/reconcile-now' && method === 'POST') return { instances_checked: 4, instances_failed: 0, backends_removed: 0, backends_restored: 0 };
 
+  // Service mode & inventory mocks
+  if (path === '/api/config/service-mode' && method === 'GET') return { service_mode: 'managed' };
+  if (path === '/api/config/service-mode' && method === 'POST') return { mode: (body as any)?.mode ?? 'managed' };
+  if (path === '/api/inventory/full') return { collected_at: new Date().toISOString(), instances: [], vips: [], dnat_rules: [], sticky_sets: [], listeners: [], vip_backend_map: {}, instance_count: 0, vip_count: 0, dnat_rule_count: 0, listener_count: 0 };
+  if (path === '/api/inventory/sync' && method === 'POST') return { discovered: 0, created: 0, updated: 0, unchanged: 0, instances: [] };
+
   // Telemetry mock
   if (path === '/api/telemetry/latest') return mockTelemetryLatest();
   if (path === '/api/telemetry/status') return { collector_status: 'ok', last_update: new Date().toISOString(), file_age_seconds: 5, stale: false, mode: 'recursive_simple' };
