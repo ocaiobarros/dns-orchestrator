@@ -452,6 +452,9 @@ function InterceptionDashboard() {
       {/* ═══ TIER 4D: SERVICE VIP DIAGNOSTICS ═══ */}
       <NocVipDiagnostics data={vipDiagnostics} isLoading={vipDiagLoading} />
 
+      {/* ═══ TIER 4E: DNS ERRORS & FAILURES ═══ */}
+      <NocDnsErrors />
+
       {/* ═══ TIER 5: TOPOLOGY DETAIL (8col) + Health Matrix (4col) ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         <div className="lg:col-span-8">
