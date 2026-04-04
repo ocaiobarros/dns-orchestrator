@@ -37,7 +37,7 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
         .join('\n')
     : '';
 
-  // Collect all interface: directives
+  // Collect all interface: directives (listeners ONLY — egress is strictly outgoing-interface)
   // Primary listener IP (always)
   const interfaces: string[] = [`    interface: ${inst.bindIp}`];
 
@@ -46,13 +46,8 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
     interfaces.push(`    interface: ${inst.bindIpv6}`);
   }
 
-  // In host-owned mode, also bind on egress IP so resolver answers directly on public IP
-  if (config.egressDeliveryMode === 'host-owned' && inst.egressIpv4 && inst.egressIpv4 !== inst.bindIp) {
-    interfaces.push(`    interface: ${inst.egressIpv4}  # egress IP — also listening (host-owned mode)`);
-  }
-  if (config.egressDeliveryMode === 'host-owned' && config.enableIpv6 && inst.egressIpv6 && inst.egressIpv6 !== inst.bindIpv6) {
-    interfaces.push(`    interface: ${inst.egressIpv6}  # egress IPv6 — also listening (host-owned mode)`);
-  }
+  // NOTE: Egress IPs are NEVER added as interface: directives.
+  // Per Part1/Part2 architecture, egress IPs are strictly outgoing-interface.
 
   const interfaceBlock = interfaces.join('\n');
 
