@@ -267,44 +267,78 @@ def get_nat_backends() -> list[dict]:
 
 
 def get_nat_sticky() -> list[dict]:
-    """Get sticky set entries from nftables sets."""
+    """
+    Get sticky set entries from nftables sets.
+    Name-agnostic: detects dynamic sets with timeout and IP type,
+    not by name pattern like 'ipv4_users_*'.
+    """
     entries = []
-    # List all sets and their elements
+
+    # First try: discover dynamic sets via runtime_inventory (name-agnostic)
+    try:
+        from app.services.runtime_inventory_service import discover_sticky_sets
+        dynamic_sets = discover_sticky_sets()
+        dynamic_set_names = {s["name"] for s in dynamic_sets}
+    except Exception:
+        dynamic_set_names = None  # fallback: accept all sets
+
+    # List all sets with elements
     result = run_command("nft", ["list", "sets"], timeout=10, use_privilege=True)
     if result["exit_code"] != 0:
         return entries
 
     current_set = ""
+    current_has_timeout = False
+    current_flags = []
+
     for line in result["stdout"].split("\n"):
         stripped = line.strip()
         set_match = re.match(r'set\s+(\S+)\s*\{', stripped)
         if set_match:
             current_set = set_match.group(1)
+            current_has_timeout = False
+            current_flags = []
             continue
-        if current_set and "elements" in stripped:
-            # Parse elements like: elements = { 10.0.0.1 timeout 19m50s, 10.0.0.2 timeout 18m30s }
-            elem_match = re.search(r'elements\s*=\s*\{([^}]*)\}', stripped)
-            if elem_match:
-                for elem in elem_match.group(1).split(","):
-                    elem = elem.strip()
-                    if elem:
-                        parts = elem.split()
-                        ip = parts[0] if parts else ""
-                        timeout_val = ""
-                        if "timeout" in elem:
-                            idx = parts.index("timeout") if "timeout" in parts else -1
-                            if idx >= 0 and idx + 1 < len(parts):
-                                timeout_val = parts[idx + 1]
-                        if ip:
-                            # Map set name to backend
-                            backend = current_set.replace("ipv4_users_", "")
-                            entries.append({
-                                "sourceIp": ip,
-                                "backend": backend,
-                                "set_name": current_set,
-                                "expires": timeout_val,
-                                "packets": 0,
-                            })
+
+        if current_set:
+            if "flags" in stripped:
+                current_flags = [f.strip() for f in stripped.split("flags")[-1].strip().rstrip(";").split(",")]
+            if "timeout" in stripped:
+                current_has_timeout = True
+
+            if "elements" in stripped:
+                # Determine if this is a sticky set:
+                # 1. If we discovered dynamic sets, only include those
+                # 2. Otherwise include sets with dynamic flag or timeout
+                is_sticky = False
+                if dynamic_set_names is not None:
+                    is_sticky = current_set in dynamic_set_names
+                else:
+                    is_sticky = "dynamic" in current_flags or current_has_timeout
+
+                if not is_sticky:
+                    continue
+
+                elem_match = re.search(r'elements\s*=\s*\{([^}]*)\}', stripped)
+                if elem_match:
+                    for elem in elem_match.group(1).split(","):
+                        elem = elem.strip()
+                        if elem:
+                            parts = elem.split()
+                            ip = parts[0] if parts else ""
+                            timeout_val = ""
+                            if "timeout" in elem:
+                                idx = parts.index("timeout") if "timeout" in parts else -1
+                                if idx >= 0 and idx + 1 < len(parts):
+                                    timeout_val = parts[idx + 1]
+                            if ip:
+                                entries.append({
+                                    "sourceIp": ip,
+                                    "backend": current_set,
+                                    "set_name": current_set,
+                                    "expires": timeout_val,
+                                    "packets": 0,
+                                })
 
     return entries
 
