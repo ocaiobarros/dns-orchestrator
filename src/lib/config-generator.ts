@@ -475,7 +475,7 @@ export function generateSystemdUnit(_config: WizardConfig, instanceIndex: number
   if (!inst) return '# Error: Instance not found';
 
   return `[Unit]
-Description=Unbound DNS server (${inst.name})
+Description=Unbound DNS server
 Documentation=man:unbound(8)
 After=network.target
 Before=nss-lookup.target
