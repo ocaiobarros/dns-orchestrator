@@ -67,13 +67,7 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
     }
   }
 
-  return `# DNS Control — Unbound instance: ${inst.name}
-# Generated configuration — do not edit manually
-# Config path: /etc/unbound/${inst.name}.conf
-# Listener: ${inst.bindIp}:53
-# Control: ${inst.controlInterface}:${inst.controlPort}
-# Egress: ${inst.egressIpv4} (${config.egressDeliveryMode})
-
+  return `
 server:
     verbosity: ${config.enableDetailedLogs ? 2 : 1}
     statistics-interval: 20
@@ -89,9 +83,6 @@ ${egressBlock}
 
     msg-cache-size: ${config.msgCacheSize}
     rrset-cache-size: ${config.rrsetCacheSize}
-
-    msg-cache-slabs: ${config.threads}
-    rrset-cache-slabs: ${config.threads}
 
     cache-max-ttl: ${config.maxTtl}
     cache-min-ttl: ${config.minTtl}
