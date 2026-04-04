@@ -293,6 +293,20 @@ export const api = {
     apiCall<any>('GET', '/inventory/full'),
   syncRuntimeInstances: () =>
     apiCall<any>('POST', '/inventory/sync'),
+
+  // DNS Error Metrics
+  getDnsErrorSummary: (minutes: number = 60) =>
+    apiCall<any>('GET', `/metrics/dns/errors/summary?minutes=${minutes}`),
+  getDnsErrorsLive: (since: number = 60) =>
+    apiCall<any>('GET', `/metrics/dns/errors/live?since=${since}`),
+  getDnsErrorStats: () =>
+    apiCall<any>('GET', '/metrics/dns/errors/stats'),
+  getDnstapStatus: () =>
+    apiCall<any>('GET', '/metrics/dns/errors/dnstap/status'),
+  getDnstapEvents: (limit: number = 100) =>
+    apiCall<any[]>('GET', `/metrics/dns/errors/dnstap/events?limit=${limit}`),
+  getDnstapSummary: () =>
+    apiCall<any>('GET', '/metrics/dns/errors/dnstap/summary'),
 };
 
 // ---- Mock Response Router ----
