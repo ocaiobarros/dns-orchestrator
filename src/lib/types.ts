@@ -747,6 +747,7 @@ export const DEFAULT_CONFIG: WizardConfig = {
   networkType: 'point-to-point',
 
   // Step 8 - Segurança
+  securityProfile: 'legacy',
   accessControlIpv4: [
     { network: '127.0.0.0/8', action: 'allow', label: 'Loopback' },
   ],
