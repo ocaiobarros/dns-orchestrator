@@ -69,7 +69,7 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
 
   return `
 server:
-    verbosity: ${config.enableDetailedLogs ? 2 : 1}
+    verbosity: 1
     statistics-interval: 20
     extended-statistics: yes
     num-threads: ${config.threads}
@@ -78,14 +78,25 @@ ${interfaceBlock}
 
 ${egressBlock}
 
-    outgoing-range: 512
-    num-queries-per-thread: 3200
+    outgoing-range: 8192
+    outgoing-port-avoid: 0-1024
+    outgoing-port-permit: 1025-65535
+    num-queries-per-thread: 2048
+
+    so-rcvbuf: 8m
+    so-sndbuf: 8m
+    so-reuseport: yes
 
     msg-cache-size: ${config.msgCacheSize}
     rrset-cache-size: ${config.rrsetCacheSize}
 
+    prefetch: yes
+    prefetch-key: yes
+
+    msg-cache-slabs: ${config.threads}
+    rrset-cache-slabs: ${config.threads}
+
     cache-max-ttl: ${config.maxTtl}
-    cache-min-ttl: ${config.minTtl}
     infra-host-ttl: 60
     infra-lame-ttl: 120
 
@@ -98,28 +109,25 @@ ${egressBlock}
     do-tcp: yes
     do-daemonize: yes
 
-${aclLines}
-${aclIpv6Lines}
+    access-control: 0.0.0.0/0 allow
+    access-control: ::/0 allow
 
     username: "unbound"
     directory: "/etc/unbound"
     logfile: ""
-    use-syslog: yes
+    use-syslog: no
     pidfile: "/var/run/unbound.pid"
     root-hints: "${config.rootHintsPath}"
-    auto-trust-anchor-file: "/var/lib/unbound/root.key"
 
     identity: "${config.dnsIdentity || config.hostname}"
     version: "${config.dnsVersion}"
     hide-identity: yes
     hide-version: yes
     harden-glue: yes
-    harden-dnssec-stripped: yes
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
-    module-config: "validator iterator"
+    module-config: "iterator"
 
-    #zone localhost
     local-zone: "localhost." static
     local-data: "localhost. 10800 IN NS localhost."
     local-data: "localhost. 10800 IN SOA localhost. nobody.invalid. 1 3600 1200 604800 10800"
@@ -129,23 +137,24 @@ ${aclIpv6Lines}
     local-data: "127.in-addr.arpa. 10800 IN NS localhost."
     local-data: "127.in-addr.arpa. 10800 IN SOA localhost. nobody.invalid. 2 3600 1200 604800 10800"
     local-data: "1.0.0.127.in-addr.arpa. 10800 IN PTR localhost."
-${config.enableBlocklist ? `
+
     include: /etc/unbound/unbound-block-domains.conf
-` : ''}
-#forward-zone:
-#    name: "."
-#    forward-addr: 8.8.8.8
-#    forward-addr: 8.8.4.4
+
+forward-zone:
+    name: "."
+    forward-addr: 1.1.1.1
+    forward-addr: 8.8.8.8
+    forward-first: yes
 
 remote-control:
     control-enable: yes
     control-interface: ${inst.controlInterface}
     control-port: ${inst.controlPort}
     control-use-cert: "no"
-${config.enableBlocklist ? `
+
 server:
     include: /etc/unbound/anablock.conf
-` : ''}`;
+`;
 }
 
 // ═══ BLOCKLIST / ANABLOCK ═══
@@ -466,7 +475,7 @@ export function generateSystemdUnit(_config: WizardConfig, instanceIndex: number
   if (!inst) return '# Error: Instance not found';
 
   return `[Unit]
-Description=Unbound DNS server (${inst.name})
+Description=Unbound DNS server
 Documentation=man:unbound(8)
 After=network.target
 Before=nss-lookup.target
@@ -492,101 +501,97 @@ WantedBy=multi-user.target
 export function generatePostUpScript(config: WizardConfig): string {
   const lines: string[] = [
     '#!/bin/sh',
-    '# DNS Control — Network post-up script',
-    `# Generated for: ${config.hostname || 'dns-control'}`,
-    `# Instances: ${config.instances.map(i => i.name).join(', ')}`,
-    `# Architecture: ${config.instances.length} resolvers · ${config.serviceVips.length} VIPs · ${config.egressDeliveryMode} egress`,
-    '',
   ];
 
   const isBorderRouted = config.egressDeliveryMode === 'border-routed';
 
-  // Egress IPs FIRST (outgoing-interface sources) — host-owned only
+  // Egress IPv4 on lo (host-owned only)
   if (config.instances.some(i => i.egressIpv4) && !isBorderRouted) {
-    lines.push('     # Egress IPv4 (outgoing-interface sources)');
     config.instances.forEach(inst => {
       if (inst.egressIpv4) {
-        lines.push(`     /usr/sbin/ip -4 addr add ${inst.egressIpv4}/32 dev lo 2>/dev/null || true`);
+        lines.push(`     /usr/sbin/ip -4 addr add ${inst.egressIpv4}/32 dev lo`);
       }
     });
-    lines.push('');
   }
 
   // IPv4 default gateway
   if (config.ipv4Gateway) {
-    lines.push(`     /usr/sbin/ip -4 route add default via ${config.ipv4Gateway} 2>/dev/null || true`);
-    lines.push('');
+    lines.push(`     /usr/sbin/ip -4 route add default via ${config.ipv4Gateway}`);
   }
 
   // IPv6 address on main interface + gateway
   if (config.enableIpv6 && config.ipv6Address) {
-    lines.push(`     /usr/sbin/ip -6 addr add ${config.ipv6Address} dev ${config.mainInterface} 2>/dev/null || true`);
-    if (config.ipv6Gateway) {
-      lines.push(`     /usr/sbin/ip -6 route add default via ${config.ipv6Gateway} 2>/dev/null || true`);
-    }
     lines.push('');
+    lines.push(`     /usr/sbin/ip -6 addr add ${config.ipv6Address} dev ${config.mainInterface}`);
+    if (config.ipv6Gateway) {
+      lines.push(`     /usr/sbin/ip -6 route add default via ${config.ipv6Gateway}`);
+    }
   }
 
-  // IPv6 egress IPs on loopback (host-owned only)
+  // IPv6 egress on lo (host-owned only)
   if (config.enableIpv6 && !isBorderRouted) {
     const ipv6Egress = config.instances.filter(i => i.egressIpv6);
     if (ipv6Egress.length > 0) {
-      lines.push('     # Egress IPv6 (outgoing-interface sources)');
-      ipv6Egress.forEach(inst => {
-        lines.push(`     /usr/sbin/ip addr add ${inst.egressIpv6}/128 dev lo 2>/dev/null || true`);
-      });
       lines.push('');
+      ipv6Egress.forEach(inst => {
+        lines.push(`     /usr/sbin/ip addr add ${inst.egressIpv6}/128 dev lo`);
+      });
     }
   }
 
-  // Listener IPv4 IPs on loopback
+  // Create dummy lo0 for listeners and VIPs
+  lines.push('');
+  lines.push('     /usr/sbin/ip link add lo0 type dummy 2>/dev/null || true');
+  lines.push('     /usr/sbin/ip link set lo0 up');
+
+  // Listener IPv4 on lo0
   if (config.instances.some(i => i.bindIp)) {
-    lines.push('     # Listener IPv4 (Unbound bind addresses)');
+    lines.push('');
     config.instances.forEach(inst => {
       if (inst.bindIp) {
-        lines.push(`     /usr/sbin/ip addr add ${inst.bindIp}/32 dev lo 2>/dev/null || true`);
+        lines.push(`     /usr/sbin/ip addr add ${inst.bindIp}/32 dev lo0`);
       }
     });
-    lines.push('');
   }
 
-  // Listener IPv6 IPs on loopback
+  // Listener IPv6 on lo0
   if (config.enableIpv6) {
     const ipv6Listeners = config.instances.filter(i => i.bindIpv6);
     if (ipv6Listeners.length > 0) {
-      lines.push('     # Listener IPv6 (Unbound bind addresses)');
-      ipv6Listeners.forEach(inst => {
-        lines.push(`     /usr/sbin/ip addr add ${inst.bindIpv6}/128 dev lo 2>/dev/null || true`);
-      });
       lines.push('');
+      ipv6Listeners.forEach(inst => {
+        lines.push(`     /usr/sbin/ip addr add ${inst.bindIpv6}/128 dev lo0`);
+      });
     }
   }
 
-  // Service VIPs — commented by default, uncomment at end of deploy
-  if (config.serviceVips.length > 0) {
-    lines.push('     # Anycast publico, descomentar ao final do deploy');
-    config.serviceVips.forEach(vip => {
-      lines.push(`     #/usr/sbin/ip addr add ${vip.ipv4}/32 dev lo`);
-      if (config.enableIpv6 && vip.ipv6) {
-        lines.push(`     #/usr/sbin/ip addr add ${vip.ipv6}/128 dev lo`);
-      }
-    });
-    lines.push('');
-  }
+  // Anycast VIPs on lo0 — commented by default, uncomment at end of deploy
+  const allVipIpv4: string[] = [];
+  const allVipIpv6: string[] = [];
 
-  // Intercepted VIPs — commented by default
-  if (config.interceptedVips && config.interceptedVips.length > 0) {
-    lines.push('     # Anycast publico interceptado, descomentar para ativar');
+  config.serviceVips.forEach(vip => {
+    if (vip.ipv4) allVipIpv4.push(vip.ipv4);
+    if (config.enableIpv6 && vip.ipv6) allVipIpv6.push(vip.ipv6);
+  });
+  if (config.interceptedVips) {
     config.interceptedVips.forEach(vip => {
-      if (!vip.vipIp) return;
-      lines.push(`     #/usr/sbin/ip addr add ${vip.vipIp}/32 dev lo`);
-      if (config.enableIpv6 && vip.vipIpv6) {
-        lines.push(`     #/usr/sbin/ip addr add ${vip.vipIpv6}/128 dev lo`);
-      }
+      if (vip.vipIp && !allVipIpv4.includes(vip.vipIp)) allVipIpv4.push(vip.vipIp);
+      if (config.enableIpv6 && vip.vipIpv6 && !allVipIpv6.includes(vip.vipIpv6)) allVipIpv6.push(vip.vipIpv6);
     });
-    lines.push('');
   }
 
+  if (allVipIpv4.length > 0 || allVipIpv6.length > 0) {
+    lines.push('');
+    lines.push('     # Anycast publico, descomentar ao final do artigo/tutorial');
+    allVipIpv4.forEach(ip => {
+      lines.push(`     #/usr/sbin/ip addr add ${ip}/32 dev lo0`);
+    });
+    allVipIpv6.forEach(ip => {
+      lines.push(`     #/usr/sbin/ip addr add ${ip}/128 dev lo0`);
+    });
+  }
+
+  lines.push('');
   lines.push('exit 0');
   return lines.join('\n');
 }
