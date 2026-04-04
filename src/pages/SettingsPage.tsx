@@ -113,6 +113,45 @@ export default function SettingsPage() {
     }
   };
 
+  const handleEnableObserved = async () => {
+    setObserveLoading(true);
+    try {
+      const res = await api.setServiceMode('observed');
+      if (res.success) {
+        toast.success('Modo Observação ativado — descoberta automática habilitada');
+        queryClient.invalidateQueries({ queryKey: ['service-mode'] });
+        queryClient.invalidateQueries({ queryKey: ['settings'] });
+        queryClient.invalidateQueries({ queryKey: ['v2-instances'] });
+        refetchMode();
+      } else {
+        toast.error(`Falha ao ativar observação: ${res.error}`);
+      }
+    } catch (e) {
+      toast.error('Erro ao ativar modo observação');
+    } finally {
+      setObserveLoading(false);
+    }
+  };
+
+  const handleDisableObserved = async () => {
+    setObserveLoading(true);
+    try {
+      const res = await api.setServiceMode('managed');
+      if (res.success) {
+        toast.success('Modo gerenciado restaurado');
+        queryClient.invalidateQueries({ queryKey: ['service-mode'] });
+        queryClient.invalidateQueries({ queryKey: ['settings'] });
+        refetchMode();
+      } else {
+        toast.error(`Falha ao restaurar modo: ${res.error}`);
+      }
+    } catch (e) {
+      toast.error('Erro ao restaurar modo gerenciado');
+    } finally {
+      setObserveLoading(false);
+    }
+  };
+
   if (isLoading) return <LoadingState />;
   if (error instanceof Error) return <ErrorState message={error.message} onRetry={() => refetch()} />;
 
