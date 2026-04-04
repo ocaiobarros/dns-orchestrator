@@ -11,6 +11,7 @@ from app.api.deps import get_current_user
 from app.models.user import User
 from app.services.dns_error_collector_service import (
     collect_dns_errors_from_logs,
+    collect_dns_errors_from_stats_delta,
     get_dns_error_stats_from_unbound,
     get_dns_error_summary,
 )
@@ -26,12 +27,23 @@ def dns_error_summary(
 ):
     """
     DNS error summary from persisted events.
-    Returns rcode counts, top failing domains/clients/instances, and timeline.
-    Falls back to unbound-control aggregate stats if no events are persisted.
+    Falls back to unbound-control stats_delta or aggregate if no events persisted.
     """
     summary = get_dns_error_summary(db, minutes=minutes)
     if summary["total_errors"] == 0:
-        # Fallback: try unbound-control aggregate stats
+        # Fallback 1: try stats_delta (live)
+        delta = collect_dns_errors_from_stats_delta()
+        if delta["total_errors"] > 0:
+            summary.update({
+                "rcode_counts": delta["rcode_counts"],
+                "total_errors": delta["total_errors"],
+                "source": delta["source"],
+                "fidelity": delta["fidelity"],
+                "top_error_instances": delta["top_error_instances"],
+            })
+            return summary
+
+        # Fallback 2: absolute aggregate
         fallback = get_dns_error_stats_from_unbound()
         if fallback["total_errors"] > 0:
             summary.update({
@@ -50,10 +62,7 @@ def dns_errors_live(
     since: int = Query(60, ge=10, le=600),
     _: User = Depends(get_current_user),
 ):
-    """
-    Live DNS error collection from journalctl.
-    Parses unbound logs in real-time for SERVFAIL, NXDOMAIN, timeouts.
-    """
+    """Live DNS error collection from journalctl."""
     return collect_dns_errors_from_logs(since_seconds=since)
 
 
@@ -61,24 +70,28 @@ def dns_errors_live(
 def dns_error_stats(
     _: User = Depends(get_current_user),
 ):
-    """
-    Aggregate error stats from unbound-control.
-    Lower fidelity but always available.
-    """
+    """Aggregate error stats from unbound-control."""
     return get_dns_error_stats_from_unbound()
+
+
+@router.get("/stats_delta")
+def dns_error_stats_delta(
+    _: User = Depends(get_current_user),
+):
+    """Stats delta: error counts computed from counter differences."""
+    return collect_dns_errors_from_stats_delta()
 
 
 @router.get("/dnstap/status")
 def dnstap_status(_: User = Depends(get_current_user)):
     """Check dnstap collector status."""
-    from backend.collector.dnstap_collector import check_dnstap_status
     try:
+        from backend.collector.dnstap_collector import check_dnstap_status
         return check_dnstap_status()
     except Exception:
-        # Import from different path in production
         try:
-            sys_path = "/opt/dns-control/collector"
             import sys
+            sys_path = "/opt/dns-control/collector"
             if sys_path not in sys.path:
                 sys.path.insert(0, sys_path)
             from dnstap_collector import check_dnstap_status as _check
