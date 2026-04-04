@@ -376,7 +376,7 @@ def _generate_filter_table(payload: dict[str, Any], enable_ipv6: bool) -> list[d
         "        # ═══ DNS Access Control (EDGE) ═══",
     ]
 
-    # Explicit deny/refuse first
+    # 1. Explicit deny/refuse first
     for acl in acl_ipv4:
         if not isinstance(acl, dict):
             continue
@@ -386,7 +386,21 @@ def _generate_filter_table(payload: dict[str, Any], enable_ipv6: bool) -> list[d
             lines.append(f"        ip saddr {network} udp dport 53 counter drop")
             lines.append(f"        ip saddr {network} tcp dport 53 counter drop")
 
-    # Accept entries
+    # 2. Anti-amplification (drop BEFORE any accept)
+    if enable_anti_amp:
+        lines.append("")
+        lines.append("        # Anti-amplificação DNS")
+        lines.append("        udp dport 53 ip length > 512 counter drop")
+        lines.append("        udp dport 53 ct state new limit rate over 1000/second counter drop")
+
+    # 3. Rate limit (drop excess BEFORE any accept)
+    if enable_rate_limit:
+        lines.append("")
+        lines.append("        # Rate limiting DNS")
+        lines.append("        udp dport 53 limit rate over 2000/second counter drop")
+        lines.append("        tcp dport 53 limit rate over 2000/second counter drop")
+
+    # 4. Accept entries (only reached after protections)
     for acl in acl_ipv4:
         if not isinstance(acl, dict):
             continue
@@ -396,21 +410,7 @@ def _generate_filter_table(payload: dict[str, Any], enable_ipv6: bool) -> list[d
             lines.append(f"        ip saddr {network} udp dport 53 counter accept")
             lines.append(f"        ip saddr {network} tcp dport 53 counter accept")
 
-    # Rate limit
-    if enable_rate_limit:
-        lines.append("")
-        lines.append("        # Rate limiting DNS")
-        lines.append("        udp dport 53 limit rate 2000/second accept")
-        lines.append("        tcp dport 53 limit rate 2000/second accept")
-
-    # Anti-amplification
-    if enable_anti_amp:
-        lines.append("")
-        lines.append("        # Anti-amplificação DNS")
-        lines.append("        udp dport 53 ip length > 512 counter drop")
-        lines.append("        udp dport 53 ct state new limit rate 1000/second counter accept")
-
-    # Default deny
+    # 5. Default deny
     is_open = any(
         isinstance(a, dict) and str(a.get("network", "")).strip() == "0.0.0.0/0" and str(a.get("action", "")).strip() == "allow"
         for a in acl_ipv4
