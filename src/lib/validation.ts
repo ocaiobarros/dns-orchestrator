@@ -126,6 +126,21 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
   const dupListeners = findDuplicates(listenerIps);
   if (dupListeners.length > 0) e('instances', instStep, `Listener IPs duplicados: ${dupListeners.join(', ')}`);
 
+  // IPv6 listener count must match instance count when IPv6 enabled
+  if (config.enableIpv6) {
+    const v6ListenerCount = config.instances.filter(i => i.bindIpv6?.trim()).length;
+    if (v6ListenerCount > 0 && v6ListenerCount < config.instances.length) {
+      e('instances', instStep, `Apenas ${v6ListenerCount} de ${config.instances.length} instâncias possuem listener IPv6 — todas devem ter quando IPv6 está habilitado`);
+    }
+  }
+
+  // IPv6 listener duplicates
+  if (config.enableIpv6) {
+    const v6Listeners = config.instances.map(i => i.bindIpv6).filter(Boolean);
+    const dupV6 = findDuplicates(v6Listeners);
+    if (dupV6.length > 0) e('instances', instStep, `Listener IPv6 duplicados: ${dupV6.join(', ')}`);
+  }
+
   const controlIps = config.instances.map(i => `${i.controlInterface}:${i.controlPort}`).filter(i => i !== ':');
   const dupControls = findDuplicates(controlIps);
   if (dupControls.length > 0) e('instances', instStep, `Control interfaces duplicadas: ${dupControls.join(', ')}`);
