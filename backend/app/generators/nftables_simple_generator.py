@@ -32,6 +32,8 @@ def _collect_backends(instances: list[dict[str, Any]]) -> list[dict[str, str]]:
 
 
 def generate_simple_nftables_config(payload: dict[str, Any], validation_mode: bool = False) -> list[dict]:
+    """Generate nftables local balancing rules for simple mode.
+    Also generates filter table with EDGE ACL."""
     """Generate nftables local balancing rules for simple mode."""
     instances = payload.get("instances", []) if isinstance(payload.get("instances", []), list) else []
     backends = _collect_backends(instances)

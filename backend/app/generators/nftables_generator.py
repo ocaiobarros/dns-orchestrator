@@ -351,3 +351,140 @@ def _generate_monolithic_validation(
         "permissions": "0644",
         "owner": "root:root",
     }]
+
+
+def _generate_filter_table(payload: dict[str, Any], enable_ipv6: bool) -> list[dict]:
+    """Generate table ip filter / table ip6 filter with INPUT chain for DNS ACL.
+    Security boundary: access control is enforced at nftables EDGE before DNAT.
+    Unbound remains 0.0.0.0/0 allow — it trusts nftables to filter.
+    """
+    files: list[dict] = []
+    wizard_cfg = payload.get("_wizardConfig", {}) or {}
+
+    acl_ipv4 = payload.get("accessControlIpv4") or wizard_cfg.get("accessControlIpv4") or []
+    acl_ipv6 = payload.get("accessControlIpv6") or wizard_cfg.get("accessControlIpv6") or []
+    enable_rate_limit = payload.get("enableDnsProtection") or wizard_cfg.get("enableDnsProtection", False)
+    enable_anti_amp = payload.get("enableAntiAmplification") or wizard_cfg.get("enableAntiAmplification", False)
+    open_resolver_confirmed = payload.get("openResolverConfirmed") or wizard_cfg.get("openResolverConfirmed", False)
+
+    # ── table ip filter ──
+    lines = [
+        "table ip filter {",
+        "    chain INPUT {",
+        "        type filter hook input priority 0; policy accept;",
+        "",
+        "        # ═══ DNS Access Control (EDGE) ═══",
+    ]
+
+    # Explicit deny/refuse first
+    for acl in acl_ipv4:
+        if not isinstance(acl, dict):
+            continue
+        network = str(acl.get("network", "")).strip()
+        action = str(acl.get("action", "")).strip()
+        if network and action in ("refuse", "deny"):
+            lines.append(f"        ip saddr {network} udp dport 53 counter drop")
+            lines.append(f"        ip saddr {network} tcp dport 53 counter drop")
+
+    # Accept entries
+    for acl in acl_ipv4:
+        if not isinstance(acl, dict):
+            continue
+        network = str(acl.get("network", "")).strip()
+        action = str(acl.get("action", "")).strip()
+        if network and action == "allow" and network != "0.0.0.0/0":
+            lines.append(f"        ip saddr {network} udp dport 53 counter accept")
+            lines.append(f"        ip saddr {network} tcp dport 53 counter accept")
+
+    # Rate limit
+    if enable_rate_limit:
+        lines.append("")
+        lines.append("        # Rate limiting DNS")
+        lines.append("        udp dport 53 limit rate 2000/second accept")
+        lines.append("        tcp dport 53 limit rate 2000/second accept")
+
+    # Anti-amplification
+    if enable_anti_amp:
+        lines.append("")
+        lines.append("        # Anti-amplificação DNS")
+        lines.append("        udp dport 53 ip length > 512 counter drop")
+        lines.append("        udp dport 53 ct state new limit rate 1000/second counter accept")
+
+    # Default deny
+    is_open = any(
+        isinstance(a, dict) and str(a.get("network", "")).strip() == "0.0.0.0/0" and str(a.get("action", "")).strip() == "allow"
+        for a in acl_ipv4
+    ) and open_resolver_confirmed
+    if not is_open:
+        lines.append("")
+        lines.append("        # DEFAULT DENY")
+        lines.append("        udp dport 53 counter drop")
+        lines.append("        tcp dport 53 counter drop")
+
+    lines.append("    }")
+    lines.append("}")
+
+    files.append({
+        "path": "/etc/nftables.d/0060-filter-table-ipv4.nft",
+        "content": "\n".join(lines) + "\n",
+        "permissions": "0644",
+        "owner": "root:root",
+    })
+
+    # ── table ip6 filter ──
+    if enable_ipv6:
+        lines6 = [
+            "table ip6 filter {",
+            "    chain INPUT {",
+            "        type filter hook input priority 0; policy accept;",
+            "",
+            "        # ═══ DNS Access Control IPv6 (EDGE) ═══",
+        ]
+
+        for acl in acl_ipv6:
+            if not isinstance(acl, dict):
+                continue
+            network = str(acl.get("network", "")).strip()
+            action = str(acl.get("action", "")).strip()
+            if network and action in ("refuse", "deny"):
+                lines6.append(f"        ip6 saddr {network} udp dport 53 counter drop")
+                lines6.append(f"        ip6 saddr {network} tcp dport 53 counter drop")
+
+        for acl in acl_ipv6:
+            if not isinstance(acl, dict):
+                continue
+            network = str(acl.get("network", "")).strip()
+            action = str(acl.get("action", "")).strip()
+            if network and action == "allow" and network != "::/0":
+                lines6.append(f"        ip6 saddr {network} udp dport 53 counter accept")
+                lines6.append(f"        ip6 saddr {network} tcp dport 53 counter accept")
+
+        if enable_rate_limit:
+            lines6.append("")
+            lines6.append("        udp dport 53 limit rate 2000/second accept")
+            lines6.append("        tcp dport 53 limit rate 2000/second accept")
+
+        if enable_anti_amp:
+            lines6.append("")
+            lines6.append("        udp dport 53 ip6 length > 512 counter drop")
+
+        is_open_v6 = any(
+            isinstance(a, dict) and str(a.get("network", "")).strip() == "::/0" and str(a.get("action", "")).strip() == "allow"
+            for a in acl_ipv6
+        ) and open_resolver_confirmed
+        if not is_open_v6:
+            lines6.append("")
+            lines6.append("        udp dport 53 counter drop")
+            lines6.append("        tcp dport 53 counter drop")
+
+        lines6.append("    }")
+        lines6.append("}")
+
+        files.append({
+            "path": "/etc/nftables.d/0061-filter-table-ipv6.nft",
+            "content": "\n".join(lines6) + "\n",
+            "permissions": "0644",
+            "owner": "root:root",
+        })
+
+    return files
