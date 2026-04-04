@@ -694,6 +694,127 @@ post-up /etc/network/post-up.sh
 
 // ═══ NFTABLES — MODULAR GENERATION ═══
 
+// ═══ NFTABLES FILTER TABLE — EDGE ACL ═══
+// Security boundary: all DNS access control is enforced at nftables INPUT
+// chain BEFORE DNAT reaches Unbound. Unbound remains 0.0.0.0/0 allow.
+
+export function generateNftablesFilterTable(config: WizardConfig): { path: string; content: string }[] {
+  const files: { path: string; content: string }[] = [];
+
+  // Collect allowed networks from wizard ACLs
+  const ipv4Allows = config.accessControlIpv4.filter(a => a.network && a.action === 'allow');
+  const ipv4Denies = config.accessControlIpv4.filter(a => a.network && (a.action === 'refuse' || a.action === 'deny'));
+  const ipv6Allows = config.enableIpv6 ? config.accessControlIpv6.filter(a => a.network && a.action === 'allow') : [];
+  const ipv6Denies = config.enableIpv6 ? config.accessControlIpv6.filter(a => a.network && (a.action === 'refuse' || a.action === 'deny')) : [];
+
+  // ── table ip filter ──
+  const ipv4Lines: string[] = [
+    'table ip filter {',
+    '    chain INPUT {',
+    '        type filter hook input priority 0; policy accept;',
+    '',
+    '        # ═══ DNS Access Control (EDGE) ═══',
+    '        # Regras geradas pelo Wizard — controle de acesso antes do DNAT',
+  ];
+
+  // 1. Explicit DENY/REFUSE entries first (block before allow)
+  for (const acl of ipv4Denies) {
+    ipv4Lines.push(`        ip saddr ${acl.network} udp dport 53 counter drop${acl.label ? ` comment "${acl.label}"` : ''}`);
+    ipv4Lines.push(`        ip saddr ${acl.network} tcp dport 53 counter drop${acl.label ? ` comment "${acl.label}"` : ''}`);
+  }
+
+  // 2. ACCEPT entries (allowed networks)
+  for (const acl of ipv4Allows) {
+    // Skip 0.0.0.0/0 — it means "open resolver", handled by absence of drop
+    if (acl.network === '0.0.0.0/0') continue;
+    ipv4Lines.push(`        ip saddr ${acl.network} udp dport 53 counter accept${acl.label ? ` comment "${acl.label}"` : ''}`);
+    ipv4Lines.push(`        ip saddr ${acl.network} tcp dport 53 counter accept${acl.label ? ` comment "${acl.label}"` : ''}`);
+  }
+
+  // 3. Rate limit (if enabled)
+  if (config.enableDnsProtection) {
+    ipv4Lines.push('');
+    ipv4Lines.push('        # Rate limiting DNS');
+    ipv4Lines.push('        udp dport 53 limit rate 2000/second accept');
+    ipv4Lines.push('        tcp dport 53 limit rate 2000/second accept');
+  }
+
+  // 4. Anti-amplification (if enabled)
+  if (config.enableAntiAmplification) {
+    ipv4Lines.push('');
+    ipv4Lines.push('        # Anti-amplificação DNS');
+    ipv4Lines.push('        udp dport 53 ip length > 512 counter drop');
+    ipv4Lines.push('        udp dport 53 ct state new limit rate 1000/second counter accept');
+  }
+
+  // 5. DEFAULT DENY — always present unless open resolver confirmed
+  const isOpenResolver = config.accessControlIpv4.some(a => a.network === '0.0.0.0/0' && a.action === 'allow') && config.openResolverConfirmed;
+  if (!isOpenResolver) {
+    ipv4Lines.push('');
+    ipv4Lines.push('        # DEFAULT DENY — tráfego DNS não autorizado');
+    ipv4Lines.push('        udp dport 53 counter drop');
+    ipv4Lines.push('        tcp dport 53 counter drop');
+  }
+
+  ipv4Lines.push('    }');
+  ipv4Lines.push('}');
+
+  files.push({
+    path: '/etc/nftables.d/0060-filter-table-ipv4.nft',
+    content: ipv4Lines.join('\n') + '\n',
+  });
+
+  // ── table ip6 filter (when IPv6 enabled) ──
+  if (config.enableIpv6) {
+    const ipv6Lines: string[] = [
+      'table ip6 filter {',
+      '    chain INPUT {',
+      '        type filter hook input priority 0; policy accept;',
+      '',
+      '        # ═══ DNS Access Control IPv6 (EDGE) ═══',
+    ];
+
+    for (const acl of ipv6Denies) {
+      ipv6Lines.push(`        ip6 saddr ${acl.network} udp dport 53 counter drop${acl.label ? ` comment "${acl.label}"` : ''}`);
+      ipv6Lines.push(`        ip6 saddr ${acl.network} tcp dport 53 counter drop${acl.label ? ` comment "${acl.label}"` : ''}`);
+    }
+
+    for (const acl of ipv6Allows) {
+      if (acl.network === '::/0') continue;
+      ipv6Lines.push(`        ip6 saddr ${acl.network} udp dport 53 counter accept${acl.label ? ` comment "${acl.label}"` : ''}`);
+      ipv6Lines.push(`        ip6 saddr ${acl.network} tcp dport 53 counter accept${acl.label ? ` comment "${acl.label}"` : ''}`);
+    }
+
+    if (config.enableDnsProtection) {
+      ipv6Lines.push('');
+      ipv6Lines.push('        udp dport 53 limit rate 2000/second accept');
+      ipv6Lines.push('        tcp dport 53 limit rate 2000/second accept');
+    }
+
+    if (config.enableAntiAmplification) {
+      ipv6Lines.push('');
+      ipv6Lines.push('        udp dport 53 ip6 length > 512 counter drop');
+    }
+
+    const isOpenV6 = config.accessControlIpv6.some(a => a.network === '::/0' && a.action === 'allow') && config.openResolverConfirmed;
+    if (!isOpenV6) {
+      ipv6Lines.push('');
+      ipv6Lines.push('        udp dport 53 counter drop');
+      ipv6Lines.push('        tcp dport 53 counter drop');
+    }
+
+    ipv6Lines.push('    }');
+    ipv6Lines.push('}');
+
+    files.push({
+      path: '/etc/nftables.d/0061-filter-table-ipv6.nft',
+      content: ipv6Lines.join('\n') + '\n',
+    });
+  }
+
+  return files;
+}
+
 export function generateNftablesConf(config: WizardConfig): string {
   return `#!/usr/sbin/nft -f
 # DNS Control — nftables master configuration
