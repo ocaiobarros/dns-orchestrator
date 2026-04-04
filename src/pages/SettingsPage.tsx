@@ -13,6 +13,7 @@ export default function SettingsPage() {
   const queryClient = useQueryClient();
   const [importLoading, setImportLoading] = useState(false);
   const [clearLoading, setClearLoading] = useState(false);
+  const [observeLoading, setObserveLoading] = useState(false);
 
   const { data: settingsData, isLoading, error, refetch } = useQuery({
     queryKey: ['settings', 'runtime'],
