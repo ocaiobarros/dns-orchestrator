@@ -1,8 +1,8 @@
 """
 DNS Control — Systemd Unit File Generator
-Generates per-instance service units for Unbound and the DNS Control API.
+Generates per-instance service units for Unbound matching Part1 production template:
+Type=notify, package-helper chroot lifecycle, EnvironmentFile, Before=nss-lookup.target.
 Units placed in /usr/lib/systemd/system/ matching Debian production layout.
-Uses package-helper scripts for chroot setup and root trust anchor updates.
 Config path: /etc/unbound/{name}.conf
 """
 
@@ -15,17 +15,22 @@ def generate_systemd_units(payload: dict[str, Any]) -> list[dict]:
 
     for inst in instances:
         name = inst.get("name", "unbound")
-        unit = f"""[Unit]
-Description=Unbound DNS server ({name})
+        unit = f"""
+[Unit]
+Description=Unbound DNS server
 Documentation=man:unbound(8)
-After=network-online.target
-Wants=network-online.target
+After=network.target
+Before=nss-lookup.target
+Wants=nss-lookup.target
 
 [Service]
-Type=simple
-Restart=on-failure
-RestartSec=3
-ExecStart=/usr/sbin/unbound -d -p -c /etc/unbound/{name}.conf
+Type=notify
+Restart=always
+EnvironmentFile=-/etc/default/unbound
+ExecStartPre=-/usr/lib/unbound/package-helper chroot_setup
+ExecStartPre=-/usr/lib/unbound/package-helper root_trust_anchor_update
+ExecStart=/usr/sbin/unbound -c /etc/unbound/{name}.conf -d -p $DAEMON_OPTS
+ExecStopPost=-/usr/lib/unbound/package-helper chroot_teardown
 ExecReload=+/bin/kill -HUP $MAINPID
 
 [Install]
