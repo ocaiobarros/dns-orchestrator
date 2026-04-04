@@ -154,8 +154,8 @@ def _parse_dnat_backends(ruleset: str) -> list[dict]:
             continue
 
         # Match jump chain rules with counters (sticky/dispatch pattern)
-        # e.g.: ip saddr @ipv4_users_unbound01 counter packets 0 bytes 0 jump ipv4_dns_tcp_unbound01
-        # or: counter packets 123 bytes 456 jump ipv4_dns_udp_unbound01
+        # Name-agnostic: follows ANY jump with counters, then resolves DNAT
+        # in the target chain to find the real backend IP.
         jump_match = re.search(
             r'counter\s+packets\s+(\d+)\s+bytes\s+(\d+)\s+jump\s+(\S+)',
             stripped,
@@ -165,19 +165,20 @@ def _parse_dnat_backends(ruleset: str) -> list[dict]:
             bytes_val = int(jump_match.group(2))
             jump_target = jump_match.group(3)
 
-            # Extract backend name from jump target: ipv4_dns_udp_unbound01 → unbound01
-            name_match = re.search(r'(unbound\d+)', jump_target)
-            if not name_match:
-                continue
-            backend_name = name_match.group(1)
+            # Detect protocol from chain name or line content
+            proto = "tcp" if "tcp" in jump_target or "tcp" in stripped.split("counter")[0] else \
+                    "udp" if "udp" in jump_target or "udp" in stripped.split("counter")[0] else "unknown"
 
-            # Detect protocol from chain name or line
-            proto = "tcp" if "tcp" in jump_target else "udp" if "udp" in jump_target else "unknown"
+            # Try to resolve the jump target chain to find DNAT backend IP
+            backend_key = _resolve_jump_to_backend(ruleset, jump_target)
+            if not backend_key:
+                # Fallback: use jump target chain name as key
+                backend_key = jump_target
 
-            if backend_name not in backends:
-                backends[backend_name] = {
-                    "backend": backend_name,
-                    "name": backend_name,
+            if backend_key not in backends:
+                backends[backend_key] = {
+                    "backend": backend_key,
+                    "name": backend_key,
                     "chain": current_chain,
                     "packets": 0,
                     "bytes": 0,
@@ -189,7 +190,7 @@ def _parse_dnat_backends(ruleset: str) -> list[dict]:
                     "target": jump_target,
                 }
 
-            entry = backends[backend_name]
+            entry = backends[backend_key]
             entry["packets"] += packets
             entry["bytes"] += bytes_val
             if proto == "tcp":
@@ -200,6 +201,32 @@ def _parse_dnat_backends(ruleset: str) -> list[dict]:
                 entry["udp_bytes"] += bytes_val
 
     return list(backends.values())
+
+
+def _resolve_jump_to_backend(ruleset: str, chain_name: str) -> str | None:
+    """
+    Follow a jump chain in the ruleset and find the DNAT target IP.
+    Returns the backend IP if found, None otherwise.
+    """
+    in_chain = False
+    for line in ruleset.split("\n"):
+        stripped = line.strip()
+        if re.match(rf'chain\s+{re.escape(chain_name)}\s*\{{', stripped):
+            in_chain = True
+            continue
+        if in_chain:
+            if stripped == "}":
+                break
+            dnat = re.search(r'dnat to (\d+\.\d+\.\d+\.\d+)', stripped)
+            if dnat:
+                return dnat.group(1)
+            # Follow nested jumps
+            nested = re.search(r'jump\s+(\S+)', stripped)
+            if nested:
+                result = _resolve_jump_to_backend(ruleset, nested.group(1))
+                if result:
+                    return result
+    return None
 
 
 def _parse_entry_counters(ruleset: str) -> list[dict]:
