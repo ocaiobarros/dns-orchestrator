@@ -773,13 +773,18 @@ export function generateSimpleNftablesModular(config: WizardConfig): { path: str
     });
   }
 
-  // Round-robin fallback (always present)
+  // Round-robin fallback — numgen inc mod N decrementing (Part2 pattern)
+  let rrRuleid = 5600;
   for (const proto of ['tcp', 'udp']) {
     const topchain = `local_${proto}_dns`;
-    const vmapEntries = config.instances.map((inst, i) => `${i} : jump local_dns_${proto}_${inst.name}`).join(', ');
-    files.push({
-      path: `/etc/nftables.d/5600-local-rule-rr-${proto}.nft`,
-      content: `table ip nat {\n    chain ${topchain} {\n        numgen random mod ${config.instances.length} vmap { ${vmapEntries} }\n    }\n}\n`,
+    let randnum = config.instances.length;
+    config.instances.forEach(inst => {
+      files.push({
+        path: `/etc/nftables.d/${rrRuleid}-local-rule-rr-${proto}-${inst.name}.nft`,
+        content: `table ip nat {\n    chain ${topchain} {\n        numgen inc mod ${randnum} 0 counter packets 0 bytes 0 jump local_dns_${proto}_${inst.name}\n    }\n}\n`,
+      });
+      rrRuleid++;
+      randnum--;
     });
   }
 
@@ -956,18 +961,19 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     }
   });
 
-  // Nth balancing fallback — numgen inc mod N vmap inside table block
+  // Nth balancing fallback — numgen inc mod N decrementing (Part2 pattern: mod 4, mod 3, mod 2, mod 1)
   ruleid = 7201;
   for (const proto of ['tcp', 'udp']) {
     const topchain = `ipv4_${proto}_dns`;
-    const vmapEntries = config.instances
-      .map((inst, i) => `${i} : jump ipv4_dns_${proto}_${inst.name}`)
-      .join(', ');
-    files.push({
-      path: `/etc/nftables.d/${ruleid}-nat-rule-nth-ipv4_${proto}_dns.nft`,
-      content: `table ip nat {\n    chain ${topchain} {\n        numgen random mod ${config.instances.length} vmap { ${vmapEntries} }\n    }\n}\n`,
+    let randnum = config.instances.length;
+    config.instances.forEach(inst => {
+      files.push({
+        path: `/etc/nftables.d/${ruleid}-nat-rule-nth-ipv4_${proto}_dns_${inst.name}.nft`,
+        content: `table ip nat {\n    chain ${topchain} {\n        numgen inc mod ${randnum} 0 counter packets 0 bytes 0 jump ipv4_dns_${proto}_${inst.name}\n    }\n}\n`,
+      });
+      ruleid++;
+      randnum--;
     });
-    ruleid++;
   }
 
   // IPv6 rules — all using table block syntax
@@ -1051,14 +1057,15 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     const ipv6Instances = config.instances.filter(i => i.bindIpv6);
     for (const proto of ['tcp', 'udp']) {
       const topchain = `ipv6_${proto}_dns`;
-      const vmapEntries = ipv6Instances
-        .map((inst, i) => `${i} : jump ipv6_dns_${proto}_${inst.name}`)
-        .join(', ');
-      files.push({
-        path: `/etc/nftables.d/${ruleid}-nat-rule-nth-ipv6_${proto}_dns.nft`,
-        content: `table ip6 nat {\n    chain ${topchain} {\n        numgen random mod ${ipv6Instances.length} vmap { ${vmapEntries} }\n    }\n}\n`,
+      let randnum = ipv6Instances.length;
+      ipv6Instances.forEach(inst => {
+        files.push({
+          path: `/etc/nftables.d/${ruleid}-nat-rule-nth-ipv6_${proto}_dns_${inst.name}.nft`,
+          content: `table ip6 nat {\n    chain ${topchain} {\n        numgen inc mod ${randnum} 0 counter packets 0 bytes 0 jump ipv6_dns_${proto}_${inst.name}\n    }\n}\n`,
+        });
+        ruleid++;
+        randnum--;
       });
-      ruleid++;
     }
   }
 
