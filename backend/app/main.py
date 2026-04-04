@@ -21,6 +21,7 @@ from app.api.routes import (
 from app.api.routes import (
     health_v2, metrics_v2, events, actions, instances,
 )
+from app.api.routes import inventory as inventory_route
 
 
 @asynccontextmanager
