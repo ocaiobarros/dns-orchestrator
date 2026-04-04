@@ -104,8 +104,8 @@ ${aclIpv6Lines}
     username: "unbound"
     directory: "/etc/unbound"
     logfile: ""
-    use-syslog: no
-    pidfile: "/var/run/${inst.name}.pid"
+    use-syslog: yes
+    pidfile: "/var/run/unbound.pid"
     root-hints: "${config.rootHintsPath}"
     auto-trust-anchor-file: "/var/lib/unbound/root.key"
 
