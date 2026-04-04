@@ -2,8 +2,8 @@
 DNS Control — Network Configuration Generator
 Generates ifupdown2 configuration and post-up script.
 Matches vdns-02 runtime: dual-plane model:
-  - lo  = egress IPv4 + egress IPv6
-  - lo0 = dummy interface for listeners IPv4/IPv6 + VIPs IPv4/IPv6
+  - lo  = egress IPv4 ONLY
+  - lo0 = dummy interface for listeners IPv4/IPv6 + VIPs IPv4/IPv6 + egress IPv6
 """
 
 from typing import Any
@@ -101,11 +101,8 @@ post-up /etc/network/post-up.sh
         if ipv6_gateway:
             post_up_lines.append(f"     /usr/sbin/ip -6 route add default via {ipv6_gateway}")
 
-    # IPv6 egress on lo
-    if egress_ipv6 and not is_border_routed:
-        post_up_lines.append(f"")
-        for eip6 in egress_ipv6:
-            post_up_lines.append(f"     /usr/sbin/ip addr add {eip6}/128 dev lo")
+    # IPv6 egress on lo0 (runtime vdns-02: egress IPv6 lives on lo0, NOT lo)
+    # Will be added after lo0 creation below
 
     # ── Create dummy lo0 for listeners and VIPs ──
     post_up_lines.append(f"")
@@ -123,6 +120,12 @@ post-up /etc/network/post-up.sh
         post_up_lines.append(f"")
         for lip6 in listener_ipv6:
             post_up_lines.append(f"     /usr/sbin/ip addr add {lip6}/128 dev lo0")
+
+    # Egress IPv6 on lo0 (runtime vdns-02: egress IPv6 lives on lo0)
+    if egress_ipv6 and not is_border_routed:
+        post_up_lines.append(f"")
+        for eip6 in egress_ipv6:
+            post_up_lines.append(f"     /usr/sbin/ip addr add {eip6}/128 dev lo0")
 
     # Intercepted VIPs on lo0 (anycast public)
     vip_ipv4s = []

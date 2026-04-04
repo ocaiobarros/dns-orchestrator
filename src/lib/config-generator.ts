@@ -528,16 +528,8 @@ export function generatePostUpScript(config: WizardConfig): string {
     }
   }
 
-  // IPv6 egress on lo (host-owned only)
-  if (config.enableIpv6 && !isBorderRouted) {
-    const ipv6Egress = config.instances.filter(i => i.egressIpv6);
-    if (ipv6Egress.length > 0) {
-      lines.push('');
-      ipv6Egress.forEach(inst => {
-        lines.push(`     /usr/sbin/ip addr add ${inst.egressIpv6}/128 dev lo`);
-      });
-    }
-  }
+  // IPv6 egress on lo0 (runtime vdns-02: egress IPv6 lives on lo0, NOT lo)
+  // Will be added after lo0 creation below
 
   // Create dummy lo0 for listeners and VIPs
   lines.push('');
@@ -561,6 +553,17 @@ export function generatePostUpScript(config: WizardConfig): string {
       lines.push('');
       ipv6Listeners.forEach(inst => {
         lines.push(`     /usr/sbin/ip addr add ${inst.bindIpv6}/128 dev lo0`);
+      });
+    }
+  }
+
+  // Egress IPv6 on lo0 (runtime vdns-02: egress IPv6 is on lo0, not lo)
+  if (config.enableIpv6 && !isBorderRouted) {
+    const ipv6Egress = config.instances.filter(i => i.egressIpv6);
+    if (ipv6Egress.length > 0) {
+      lines.push('');
+      ipv6Egress.forEach(inst => {
+        lines.push(`     /usr/sbin/ip addr add ${inst.egressIpv6}/128 dev lo0`);
       });
     }
   }
