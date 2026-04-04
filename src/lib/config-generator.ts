@@ -1052,14 +1052,15 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     const ipv6Instances = config.instances.filter(i => i.bindIpv6);
     for (const proto of ['tcp', 'udp']) {
       const topchain = `ipv6_${proto}_dns`;
-      const vmapEntries = ipv6Instances
-        .map((inst, i) => `${i} : jump ipv6_dns_${proto}_${inst.name}`)
-        .join(', ');
-      files.push({
-        path: `/etc/nftables.d/${ruleid}-nat-rule-nth-ipv6_${proto}_dns.nft`,
-        content: `table ip6 nat {\n    chain ${topchain} {\n        numgen random mod ${ipv6Instances.length} vmap { ${vmapEntries} }\n    }\n}\n`,
+      let randnum = ipv6Instances.length;
+      ipv6Instances.forEach(inst => {
+        files.push({
+          path: `/etc/nftables.d/${ruleid}-nat-rule-nth-ipv6_${proto}_dns_${inst.name}.nft`,
+          content: `table ip6 nat {\n    chain ${topchain} {\n        numgen inc mod ${randnum} 0 counter packets 0 bytes 0 jump ipv6_dns_${proto}_${inst.name}\n    }\n}\n`,
+        });
+        ruleid++;
+        randnum--;
       });
-      ruleid++;
     }
   }
 
