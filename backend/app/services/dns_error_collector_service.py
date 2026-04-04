@@ -192,18 +192,21 @@ def collect_dns_errors_from_stats_delta(
 
         # Compute deltas against cache
         prev = _stats_delta_cache.get(name, {})
+        is_first_run = len(prev) == 0
+
         for rcode in TRACKED_RCODES:
             cur = current_values.get(rcode, 0)
-            last = prev.get(rcode, 0)
 
-            # First run: seed cache, no delta
-            if rcode not in prev:
-                continue
-
-            delta = cur - last
-            if delta < 0:
-                # Counter reset (unbound restarted)
+            if is_first_run:
+                # First run: use absolute values as initial signal
+                # This ensures on-demand calls return data immediately
                 delta = cur
+            else:
+                last = prev.get(rcode, 0)
+                delta = cur - last
+                if delta < 0:
+                    # Counter reset (unbound restarted)
+                    delta = cur
 
             if delta > 0:
                 rcode_counts[rcode] += delta
@@ -218,7 +221,7 @@ def collect_dns_errors_from_stats_delta(
                         "status": rcode.lower(),
                         "instance_name": name,
                         "source": "stats_delta",
-                        "confidence": 0.5,
+                        "confidence": 0.3 if is_first_run else 0.5,
                     })
 
         # Update cache
