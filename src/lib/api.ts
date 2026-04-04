@@ -444,8 +444,7 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path === '/api/telemetry/status') return { collector_status: 'ok', last_update: new Date().toISOString(), file_age_seconds: 5, stale: false, mode: 'recursive_simple' };
   if (path === '/api/telemetry/history') return mockTelemetryHistoryData();
 
-  // Import / service mode
-  if (path === '/api/config/service-mode') return { service_mode: 'managed' };
+  // Import
   if (path === '/api/config/import' && method === 'POST') return { success: true, mode: 'imported', discovery: { instances: [], vip_mappings: [], dns_listeners: [] }, audit: [], errors: [] };
   if (path === '/api/config/import' && method === 'DELETE') return { success: true, mode: 'managed' };
   if (path === '/api/config/import-host') return { hostname: 'mock-host', instances: [], instanceCount: 0, network: { interfaces: [], listeners: [] } };
