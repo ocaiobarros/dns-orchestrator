@@ -285,6 +285,14 @@ export const api = {
     apiCall<any>('POST', '/config/import'),
   clearImport: () =>
     apiCall<{ success: boolean; mode: string }>('DELETE', '/config/import'),
+
+  // Observed mode (runtime discovery)
+  setServiceMode: (mode: string) =>
+    apiCall<{ mode: string }>('POST', '/config/service-mode', { mode }),
+  getRuntimeInventory: () =>
+    apiCall<any>('GET', '/inventory/full'),
+  syncRuntimeInstances: () =>
+    apiCall<any>('POST', '/inventory/sync'),
 };
 
 // ---- Mock Response Router ----
