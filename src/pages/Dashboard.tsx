@@ -24,6 +24,7 @@ import NocDnsPathFlow from '@/components/noc/NocDnsPathFlow';
 import NocIncidentDetector from '@/components/noc/NocIncidentDetector';
 import NocDeploySimulation from '@/components/noc/NocDeploySimulation';
 import NocVipDiagnostics from '@/components/noc/NocVipDiagnostics';
+import NocDnsErrors from '@/components/noc/NocDnsErrors';
 
 import SimpleDashboard from '@/pages/SimpleDashboard';
 
