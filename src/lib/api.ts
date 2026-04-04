@@ -280,7 +280,7 @@ export const api = {
 
   // Import mode (read-only infrastructure adoption)
   getServiceMode: () =>
-    apiCall<{ service_mode: string; import_timestamp?: string; imported_vips?: any[] }>('GET', '/config/service-mode'),
+    apiCall<{ service_mode: string; import_timestamp?: string; imported_vips?: any[]; inventory_summary?: { instances: number; vips: number; dnat_rules: number; listeners: number } }>('GET', '/config/service-mode'),
   executeImport: () =>
     apiCall<any>('POST', '/config/import'),
   clearImport: () =>
