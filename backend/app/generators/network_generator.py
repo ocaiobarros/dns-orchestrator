@@ -2,8 +2,8 @@
 DNS Control — Network Configuration Generator
 Generates ifupdown2 configuration and post-up script.
 Matches vdns-02 runtime: dual-plane model:
-  - lo  = egress IPv4 + egress IPv6
-  - lo0 = dummy interface for listeners IPv4/IPv6 + VIPs IPv4/IPv6
+  - lo  = egress IPv4 ONLY
+  - lo0 = dummy interface for listeners IPv4/IPv6 + VIPs IPv4/IPv6 + egress IPv6
 """
 
 from typing import Any
