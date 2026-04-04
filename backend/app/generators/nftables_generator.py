@@ -224,7 +224,7 @@ def _generate_modular(
                 content = "\n".join([
                     f"add rule ip6 nat {subchain} add @{subusers} {{ ip6 saddr }} counter",
                     f"add rule ip6 nat {subchain} set update ip6 saddr timeout 0s @{subusers} counter",
-                    f"add rule ip6 nat {subchain} {proto} dport 53 counter dnat to {bind_ipv6}:53",
+                    f"add rule ip6 nat {subchain} {proto} dport 53 counter dnat to [{bind_ipv6}]:53",
                 ]) + "\n"
                 _file(f"/etc/nftables.d/{ruleid}-nat-rule-action-{subchain}.nft", content)
                 ruleid += 1
