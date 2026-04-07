@@ -601,65 +601,61 @@ export default function SimpleDashboard() {
       {/* ═══ INSTANCE TABLE ═══ */}
       <NocInstanceTable instances={safeV2} />
 
-      {/* ═══ HEALTH MATRIX + SERVICES ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div className="lg:col-span-8">
-          <NocHealthMatrix
-            services={safeServices}
-            dnsHealthy={healthyCount === totalInstances && totalInstances > 0}
-            networkOk={allRunning}
-            dnsAvailable={telemetryConnected}
-            privilegeLimited={false}
-          />
-        </div>
-        <div className="lg:col-span-4">
-          <NocResolverPanel services={safeServices} />
-        </div>
-      </div>
-
-      {/* ═══ EVENTS + SYSTEM INFO ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* ═══ SUBSYSTEM MATRIX + OPERATIONAL FEED + SERVICE STATUS — 3 cols ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <NocHealthMatrix
+          services={safeServices}
+          dnsHealthy={healthyCount === totalInstances && totalInstances > 0}
+          networkOk={allRunning}
+          dnsAvailable={telemetryConnected}
+          privilegeLimited={false}
+        />
         <NocEventsTimeline events={eventItems} />
-        <NocSystemInfoGrid sysInfo={sysInfo} />
+        <NocResolverPanel services={safeServices} />
       </div>
 
-      {/* ═══ DEPLOY STATE ═══ */}
-      {deployState && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="noc-surface">
-          <div className="noc-surface-header flex items-center gap-2">
-            <FileText size={12} />
-            <span className="text-[10px] font-mono font-bold uppercase tracking-widest">Deploy State</span>
-          </div>
-          <div className="noc-surface-body">
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 text-xs">
-              <div>
-                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Config Version</div>
-                <div className="font-mono font-bold">{deployState.configVersion || '—'}</div>
+      {/* ═══ PLATFORM METADATA ═══ */}
+      <NocSystemInfoGrid sysInfo={sysInfo} />
+
+      {/* ═══ DEPLOY STATE + DNS REPLAY — Side by side ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {deployState && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="noc-surface">
+            <div className="noc-surface-header flex items-center gap-2">
+              <FileText size={12} />
+              <span className="text-[10px] font-mono font-bold uppercase tracking-widest">Deploy State</span>
+            </div>
+            <div className="noc-surface-body">
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Config Version</div>
+                  <div className="font-mono font-bold">{deployState.configVersion || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Last Apply</div>
+                  <div className="font-mono">{safeDate(deployState.lastApplyAt)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Operator</div>
+                  <div className="font-mono">{deployState.lastApplyOperator || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Status</div>
+                  <div className={`font-mono font-bold ${
+                    deployState.lastApplyStatus === 'success' ? 'text-success' :
+                    deployState.lastApplyStatus === 'failed' ? 'text-destructive' : ''
+                  }`}>{deployState.lastApplyStatus || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Total Deploys</div>
+                  <div className="font-mono font-bold">{deployState.totalDeployments}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Modo</div>
+                  <div className="font-mono text-accent">Recursivo Simples</div>
+                </div>
               </div>
-              <div>
-                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Last Apply</div>
-                <div className="font-mono">{safeDate(deployState.lastApplyAt)}</div>
-              </div>
-              <div>
-                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Operator</div>
-                <div className="font-mono">{deployState.lastApplyOperator || '—'}</div>
-              </div>
-              <div>
-                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Status</div>
-                <div className={`font-mono font-bold ${
-                  deployState.lastApplyStatus === 'success' ? 'text-success' :
-                  deployState.lastApplyStatus === 'failed' ? 'text-destructive' : ''
-                }`}>{deployState.lastApplyStatus || '—'}</div>
-              </div>
-              <div>
-                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Total Deploys</div>
-                <div className="font-mono font-bold">{deployState.totalDeployments}</div>
-              </div>
-              <div>
-                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Modo</div>
-                <div className="font-mono text-accent">Recursivo Simples</div>
-              </div>
-              <div className="flex items-end gap-2">
+              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/30">
                 <button onClick={() => navigate('/history')}
                   className="px-2 py-1 text-[10px] bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80 flex items-center gap-1">
                   <Clock size={10} /> Histórico
@@ -673,40 +669,39 @@ export default function SimpleDashboard() {
                   <Zap size={10} /> Deploy
                 </button>
               </div>
+              {selfTestResult && (
+                <div className="mt-3 pt-3 border-t border-border/60 space-y-1.5">
+                  <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider">
+                    <span className="text-muted-foreground/70">System self-test</span>
+                    <span className={selfTestResult.overall === 'ok' ? 'text-success font-bold' : 'text-destructive font-bold'}>
+                      {selfTestResult.overall === 'ok' ? 'OK' : 'FAILED'}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    {selfTestResult.checks.map((check) => (
+                      <div key={check.name} className="grid grid-cols-[auto_1fr_auto] gap-2 text-[10px] font-mono items-center">
+                        <span className={check.status === 'pass' ? 'text-success' : check.status === 'warn' ? 'text-warning' : 'text-destructive'}>
+                          {check.status.toUpperCase()}
+                        </span>
+                        <span className="text-foreground/85 truncate">{check.name}: {check.detail}</span>
+                        <span className="text-muted-foreground/55">{check.duration_ms}ms</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-            {selfTestResult && (
-              <div className="mt-4 pt-4 border-t border-border/60 space-y-2">
-                <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider">
-                  <span className="text-muted-foreground/70">System self-test</span>
-                  <span className={selfTestResult.overall === 'ok' ? 'text-success font-bold' : 'text-destructive font-bold'}>
-                    {selfTestResult.overall === 'ok' ? 'OK' : 'FAILED'}
-                  </span>
-                </div>
-                <div className="space-y-1.5">
-                  {selfTestResult.checks.map((check) => (
-                    <div key={check.name} className="grid grid-cols-[auto_1fr_auto] gap-2 text-[10px] font-mono items-center">
-                      <span className={check.status === 'pass' ? 'text-success' : check.status === 'warn' ? 'text-warning' : 'text-destructive'}>
-                        {check.status.toUpperCase()}
-                      </span>
-                      <span className="text-foreground/85 truncate">{check.name}: {check.detail}</span>
-                      <span className="text-muted-foreground/55">{check.duration_ms}ms</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </motion.div>
-      )}
+          </motion.div>
+        )}
 
-      {/* ═══ DNS REPLAY ═══ */}
-      <NocDeploySimulation
-        listeners={backends.length > 0
-          ? backends.map((b: any) => ({ name: b.name, ip: b.ip || '127.0.0.1' }))
-          : safeV2.length > 0
-            ? safeV2.map(inst => ({ name: inst.instance_name || `backend-${inst.id}`, ip: inst.bind_ip || '127.0.0.1' }))
-            : []}
-      />
+        <NocDeploySimulation
+          listeners={backends.length > 0
+            ? backends.map((b: any) => ({ name: b.name, ip: b.ip || '127.0.0.1' }))
+            : safeV2.length > 0
+              ? safeV2.map(inst => ({ name: inst.instance_name || `backend-${inst.id}`, ip: inst.bind_ip || '127.0.0.1' }))
+              : []}
+        />
+      </div>
 
       {/* ═══ COMMAND CONSOLE ═══ */}
       <NocQuickActions />
