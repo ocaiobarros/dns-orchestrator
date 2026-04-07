@@ -32,47 +32,51 @@ interface Props {
 export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' }: Props) {
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
 
-  const { positions, viewWidth, viewHeight } = useMemo(() => {
+  const { positions, viewWidth, viewHeight, isCompact } = useMemo(() => {
     const vips = nodes.filter(n => n.type === 'vip');
     const resolvers = nodes.filter(n => n.type === 'resolver');
     const upstreams = nodes.filter(n => n.type === 'upstream');
 
-    // Diamond layout: VIP left, Resolvers center column, Upstream right
-    const nodeSpacing = 72; // vertical spacing between resolver nodes
     const resolverCount = Math.max(resolvers.length, 1);
+    // Dynamic spacing: more nodes = tighter spacing, min 44px
+    const compact = resolverCount > 6;
+    const nodeSpacing = compact
+      ? Math.max(44, Math.round(320 / resolverCount))
+      : Math.max(64, Math.round(400 / resolverCount));
+
     const resolverColumnHeight = (resolverCount - 1) * nodeSpacing;
-    const padding = 80;
-    const totalHeight = Math.max(resolverColumnHeight + padding * 2, 300);
+    const padding = compact ? 50 : 70;
+    const totalHeight = Math.max(resolverColumnHeight + padding * 2, 240);
     const centerY = totalHeight / 2;
 
-    const w = 1000;
-    const vipX = 120;
+    const w = 900;
+    const vipX = 100;
     const resolverX = w / 2;
-    const upstreamX = w - 120;
+    const upstreamX = w - 100;
 
     const pos: Record<string, { x: number; y: number }> = {};
 
-    // VIPs stacked vertically on the left, centered
-    const vipSpacing = 70;
+    // VIPs centered left
+    const vipSpacing = 60;
     const vipHeight = (vips.length - 1) * vipSpacing;
     vips.forEach((n, i) => {
       pos[n.id] = { x: vipX, y: centerY - vipHeight / 2 + i * vipSpacing };
     });
 
-    // Resolvers in center column, evenly spaced vertically
+    // Resolvers center column
     const resolverStartY = centerY - resolverColumnHeight / 2;
     resolvers.forEach((n, i) => {
       pos[n.id] = { x: resolverX, y: resolverStartY + i * nodeSpacing };
     });
 
-    // Upstreams stacked vertically on the right, centered
-    const upSpacing = 70;
+    // Upstreams centered right
+    const upSpacing = 60;
     const upHeight = (upstreams.length - 1) * upSpacing;
     upstreams.forEach((n, i) => {
       pos[n.id] = { x: upstreamX, y: centerY - upHeight / 2 + i * upSpacing };
     });
 
-    return { positions: pos, viewWidth: w, viewHeight: totalHeight };
+    return { positions: pos, viewWidth: w, viewHeight: totalHeight, isCompact: compact };
   }, [nodes]);
 
   const maxQps = useMemo(() => {
@@ -95,7 +99,7 @@ export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' 
         </div>
       </div>
 
-      <div className="relative w-full" style={{ minHeight: Math.max(viewHeight + 20, 320) }}>
+      <div className="relative w-full" style={{ minHeight: Math.max(viewHeight + 20, 280) }}>
         {/* Background grid */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-[0.04]">
           <defs>
@@ -107,23 +111,17 @@ export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' 
         </svg>
 
         {/* Main SVG canvas */}
-        <svg viewBox={`0 0 ${viewWidth} ${viewHeight}`} className="w-full h-full" style={{ minHeight: Math.max(viewHeight + 20, 320) }} preserveAspectRatio="xMidYMid meet">
+        <svg
+          viewBox={`0 0 ${viewWidth} ${viewHeight}`}
+          className="w-full h-full"
+          style={{ minHeight: Math.max(viewHeight + 20, 280) }}
+          preserveAspectRatio="xMidYMid meet"
+        >
           <defs>
             <filter id="map-glow-green">
               <feGaussianBlur stdDeviation="4" result="blur" />
               <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
             </filter>
-            <filter id="map-glow-amber">
-              <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="hsl(38, 95%, 50%)" floodOpacity="0.4" />
-            </filter>
-            <filter id="map-glow-red">
-              <feDropShadow dx="0" dy="0" stdDeviation="8" floodColor="hsl(0, 76%, 50%)" floodOpacity="0.5" />
-            </filter>
-            <linearGradient id="flow-particle" x1="0" x2="1" y1="0" y2="0">
-              <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0" />
-              <stop offset="50%" stopColor="hsl(var(--primary))" stopOpacity="0.8" />
-              <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
-            </linearGradient>
           </defs>
 
           {/* EDGES / LINKS */}
@@ -166,12 +164,13 @@ export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' 
                 isHovered={hoveredNode === node.id}
                 onHover={() => setHoveredNode(node.id)}
                 onLeave={() => setHoveredNode(null)}
+                compact={isCompact && node.type === 'resolver'}
               />
             );
           })}
         </svg>
 
-        {/* Event overlay corner */}
+        {/* Event overlay */}
         <AnimatePresence>
           {nodes.some(n => n.status === 'failed' || n.status === 'degraded') && (
             <motion.div
@@ -189,11 +188,6 @@ export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' 
                   }
                 </span>
               </div>
-              {nodes.filter(n => n.status === 'degraded' || n.status === 'failed').slice(0, 2).map(n => (
-                <div key={n.id} className="text-[9px] font-mono text-muted-foreground/50 mt-0.5">
-                  {n.label} — {n.status === 'failed' ? 'down' : 'latency spike detected'}
-                </div>
-              ))}
             </motion.div>
           )}
         </AnimatePresence>
@@ -203,7 +197,6 @@ export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' 
           <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-success rounded" /> &lt;30ms</span>
           <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-warning rounded" /> 30–100ms</span>
           <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-destructive rounded" /> &gt;100ms</span>
-          <span className="flex items-center gap-1"><span className="w-6 h-0.5 border-t border-dashed border-muted-foreground/30" /> degraded</span>
         </div>
       </div>
     </div>
