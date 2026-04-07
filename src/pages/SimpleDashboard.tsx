@@ -455,65 +455,67 @@ export default function SimpleDashboard() {
         return <NocGeoMap nodes={mapNodes} edges={mapEdges} />;
       })()}
 
-      {/* ═══ TOP DOMAINS + TOP CLIENTS ═══ */}
-      {(topDomains.length > 0 || topClients.length > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Top Domains */}
-          {topDomains.length > 0 && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="noc-surface">
-              <div className="noc-surface-header flex items-center gap-2">
-                <Search size={12} />
-                <span className="text-[10px] font-mono font-bold uppercase tracking-widest">Top Domínios</span>
-                <span className="text-[8px] font-mono text-muted-foreground/40 ml-auto">Fonte: {queryAnalytics.log_source ?? 'query log'}</span>
-              </div>
-              <div className="noc-surface-body">
-                <div className="space-y-1.5">
-                  {topDomains.slice(0, 10).map((d: any, i: number) => {
-                    const maxCount = topDomains[0]?.count || 1;
-                    return (
-                      <div key={d.domain} className="flex items-center gap-2 text-[10px] font-mono">
-                        <span className="text-muted-foreground/40 w-4 text-right">{i + 1}</span>
-                        <div className="flex-1 relative">
-                          <div className="absolute inset-y-0 left-0 bg-primary/10 rounded-sm" style={{ width: `${(d.count / maxCount) * 100}%` }} />
-                          <span className="relative z-10 text-foreground pl-1">{d.domain}</span>
-                        </div>
-                        <span className="text-muted-foreground/60 w-12 text-right">{d.count}</span>
+      {/* ═══ TOP DOMAINS + TOP CLIENTS — always show side by side ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {/* Top Domains */}
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="noc-surface">
+          <div className="noc-surface-header flex items-center gap-2">
+            <Search size={12} />
+            <span className="text-[10px] font-mono font-bold uppercase tracking-widest">Top Domínios</span>
+            <span className="text-[8px] font-mono text-muted-foreground/40 ml-auto">Fonte: {queryAnalytics.log_source ?? 'query log'}</span>
+          </div>
+          <div className="noc-surface-body">
+            {topDomains.length > 0 ? (
+              <div className="space-y-1">
+                {topDomains.slice(0, 10).map((d: any, i: number) => {
+                  const maxCount = topDomains[0]?.count || 1;
+                  return (
+                    <div key={d.domain} className="flex items-center gap-2 text-[10px] font-mono">
+                      <span className="text-muted-foreground/40 w-4 text-right">{i + 1}</span>
+                      <div className="flex-1 relative">
+                        <div className="absolute inset-y-0 left-0 bg-primary/10 rounded-sm" style={{ width: `${(d.count / maxCount) * 100}%` }} />
+                        <span className="relative z-10 text-foreground pl-1">{d.domain}</span>
                       </div>
-                    );
-                  })}
-                </div>
+                      <span className="text-muted-foreground/60 w-12 text-right">{d.count}</span>
+                    </div>
+                  );
+                })}
               </div>
-            </motion.div>
-          )}
+            ) : (
+              <div className="text-[10px] font-mono text-muted-foreground/40 py-2">Nenhum domínio capturado</div>
+            )}
+          </div>
+        </motion.div>
 
-          {/* Top Clients */}
-          {topClients.length > 0 && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="noc-surface">
-              <div className="noc-surface-header flex items-center gap-2">
-                <Users size={12} />
-                <span className="text-[10px] font-mono font-bold uppercase tracking-widest">Top Clientes</span>
-              </div>
-              <div className="noc-surface-body">
-                <div className="space-y-1.5">
-                  {topClients.slice(0, 10).map((c: any, i: number) => {
-                    const maxQ = topClients[0]?.queries || 1;
-                    return (
-                      <div key={c.ip} className="flex items-center gap-2 text-[10px] font-mono">
-                        <span className="text-muted-foreground/40 w-4 text-right">{i + 1}</span>
-                        <div className="flex-1 relative">
-                          <div className="absolute inset-y-0 left-0 bg-accent/10 rounded-sm" style={{ width: `${(c.queries / maxQ) * 100}%` }} />
-                          <span className="relative z-10 text-foreground pl-1">{c.ip}</span>
-                        </div>
-                        <span className="text-muted-foreground/60 w-12 text-right">{c.queries}</span>
+        {/* Top Clients */}
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="noc-surface">
+          <div className="noc-surface-header flex items-center gap-2">
+            <Users size={12} />
+            <span className="text-[10px] font-mono font-bold uppercase tracking-widest">Top Clientes</span>
+          </div>
+          <div className="noc-surface-body">
+            {topClients.length > 0 ? (
+              <div className="space-y-1">
+                {topClients.slice(0, 10).map((c: any, i: number) => {
+                  const maxQ = topClients[0]?.queries || 1;
+                  return (
+                    <div key={c.ip} className="flex items-center gap-2 text-[10px] font-mono">
+                      <span className="text-muted-foreground/40 w-4 text-right">{i + 1}</span>
+                      <div className="flex-1 relative">
+                        <div className="absolute inset-y-0 left-0 bg-accent/10 rounded-sm" style={{ width: `${(c.queries / maxQ) * 100}%` }} />
+                        <span className="relative z-10 text-foreground pl-1">{c.ip}</span>
                       </div>
-                    );
-                  })}
-                </div>
+                      <span className="text-muted-foreground/60 w-12 text-right">{c.queries}</span>
+                    </div>
+                  );
+                })}
               </div>
-            </motion.div>
-          )}
-        </div>
-      )}
+            ) : (
+              <div className="text-[10px] font-mono text-muted-foreground/40 py-2">Nenhum cliente capturado</div>
+            )}
+          </div>
+        </motion.div>
+      </div>
 
       {/* ═══ RECENT QUERIES ═══ */}
       {recentQueries.length > 0 && (
