@@ -88,11 +88,11 @@ export default function NocNetworkLink({
         );
       })}
 
-      {/* Latency badge - only on highlighted links */}
-      {highlighted && latency != null && Number.isFinite(latency) && (
-        <g>
+      {/* Latency badge */}
+      {latency != null && Number.isFinite(latency) && (
+        <g opacity={highlighted ? 1 : 0.7}>
           <rect x={bx - 18} y={by - 7} width={36} height={14} rx={3}
-            fill="hsl(var(--card))" fillOpacity={0.95} stroke={color} strokeWidth={0.5} strokeOpacity={0.4} />
+            fill="hsl(var(--card))" fillOpacity={0.9} stroke={color} strokeWidth={0.5} strokeOpacity={0.3} />
           <text x={bx} y={by + 1} textAnchor="middle" dominantBaseline="middle"
             fill={color} fontSize="7" fontWeight="700" fontFamily="'JetBrains Mono', monospace">
             {latency}ms

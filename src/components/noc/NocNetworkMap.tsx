@@ -38,26 +38,27 @@ export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' 
     const upstreams = nodes.filter(n => n.type === 'upstream');
 
     const resolverCount = Math.max(resolvers.length, 1);
-    // Dynamic spacing: more nodes = tighter spacing, min 44px
-    const compact = resolverCount > 6;
+    const compact = resolverCount > 4;
+
+    // Each resolver needs space for label + 2 IPs + latency ≈ 80-100px
     const nodeSpacing = compact
-      ? Math.max(44, Math.round(320 / resolverCount))
-      : Math.max(64, Math.round(400 / resolverCount));
+      ? Math.max(70, Math.round(420 / resolverCount))
+      : Math.max(90, Math.round(500 / resolverCount));
 
     const resolverColumnHeight = (resolverCount - 1) * nodeSpacing;
-    const padding = compact ? 50 : 70;
-    const totalHeight = Math.max(resolverColumnHeight + padding * 2, 240);
+    const padding = 80;
+    const totalHeight = Math.max(resolverColumnHeight + padding * 2, 280);
     const centerY = totalHeight / 2;
 
-    const w = 900;
-    const vipX = 100;
+    const w = 960;
+    const vipX = 120;
     const resolverX = w / 2;
-    const upstreamX = w - 100;
+    const upstreamX = w - 120;
 
     const pos: Record<string, { x: number; y: number }> = {};
 
     // VIPs centered left
-    const vipSpacing = 60;
+    const vipSpacing = 70;
     const vipHeight = (vips.length - 1) * vipSpacing;
     vips.forEach((n, i) => {
       pos[n.id] = { x: vipX, y: centerY - vipHeight / 2 + i * vipSpacing };
@@ -70,7 +71,7 @@ export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' 
     });
 
     // Upstreams centered right
-    const upSpacing = 60;
+    const upSpacing = 70;
     const upHeight = (upstreams.length - 1) * upSpacing;
     upstreams.forEach((n, i) => {
       pos[n.id] = { x: upstreamX, y: centerY - upHeight / 2 + i * upSpacing };
