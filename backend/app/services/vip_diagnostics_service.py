@@ -311,7 +311,7 @@ def run_vip_diagnostics(service_vips: list[dict] | None = None, debug: bool = Fa
         result = _probe_single_vip(
             ipv4, vip, nft_stdout, lo_stdout, chain_map,
             nft_parse_error=nft_parse_error,
-            nft_permission_limited=nft_unavailable_in_readonly,
+            nft_permission_limited=nft_permission_limited,
             debug=debug,
             poll_ts=poll_ts,
             source_timestamps=source_timestamps,
