@@ -85,6 +85,14 @@ export default function SimpleDashboard() {
     onSuccess: (data) => setSelfTestResult(data),
   });
 
+  const { data: serviceModeData } = useQuery({
+    queryKey: ['service-mode'],
+    queryFn: async () => { const r = await api.getServiceMode(); return r.success ? r.data : { service_mode: 'managed' }; },
+    refetchInterval: 30000,
+  });
+  const isObservedMode = serviceModeData?.service_mode === 'observed';
+  const isReadonlyMode = serviceModeData?.service_mode === 'imported' || isObservedMode;
+
   const isLoading = svcLoading && telLoading;
 
   const safeServices = Array.isArray(services) ? services.filter(Boolean) : [];

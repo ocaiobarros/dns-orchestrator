@@ -155,7 +155,8 @@ export default function SettingsPage() {
   if (isLoading) return <LoadingState />;
   if (error instanceof Error) return <ErrorState message={error.message} onRetry={() => refetch()} />;
 
-  const jobs = Array.isArray(schedulerStatus?.jobs) ? schedulerStatus.jobs : [];
+  const scheduler = (schedulerStatus as any)?.scheduler ?? schedulerStatus;
+  const jobs = Array.isArray(scheduler?.jobs) ? scheduler.jobs : [];
 
   return (
     <div className="space-y-6">
@@ -298,7 +299,7 @@ export default function SettingsPage() {
             ['Modo', import.meta.env.MODE],
             ['API Base', import.meta.env.VITE_API_URL || 'não configurado'],
             ['Service Mode', serviceMode],
-            ['Scheduler', schedulerStatus?.running ? 'ativo' : 'indisponível'],
+            ['Scheduler', scheduler?.running ? 'ativo' : 'indisponível'],
             ['Jobs agendados', jobs.length.toString()],
           ].map(([k, v]) => (
             <div key={k} className="flex justify-between py-1 border-b border-border last:border-0">
