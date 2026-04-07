@@ -46,6 +46,7 @@ REASON_CODES = {
     "DEAD": "BACKEND_UNREACHABLE_NO_TRAFFIC",
     "NEVER_SELECTED": "BACKEND_HEALTHY_ZERO_DNAT",
     "STALE_DATA": "SOURCE_DATA_EXPIRED",
+    "PERMISSION_LIMITED": "INSUFFICIENT_PERMISSIONS",
 }
 
 
@@ -252,6 +253,41 @@ def _requires_nft_validation(vip_meta: dict) -> bool:
     return capture_mode == "dnat" or vip_type == "intercepted"
 
 
+def _extract_ip_literals(raw: str) -> set[str]:
+    return set(re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", raw or ""))
+
+
+def _parse_named_ip_sets(nft_stdout: str) -> dict[str, set[str]]:
+    named_sets: dict[str, set[str]] = {}
+
+    for match in re.finditer(r"define\s+([A-Za-z0-9_]+)\s*=\s*\{(.*?)\}", nft_stdout, re.DOTALL):
+        named_sets[match.group(1)] = _extract_ip_literals(match.group(2))
+
+    for match in re.finditer(r"set\s+([A-Za-z0-9_]+)\s*\{.*?elements\s*=\s*\{(.*?)\}.*?\}", nft_stdout, re.DOTALL):
+        named_sets[match.group(1)] = _extract_ip_literals(match.group(2))
+
+    return named_sets
+
+
+def _line_matches_vip(line: str, vip_ip: str, named_ip_sets: dict[str, set[str]] | None = None) -> bool:
+    stripped = (line or "").strip()
+    if not stripped:
+        return False
+
+    if vip_ip in _extract_ip_literals(stripped):
+        return True
+
+    inline_set = re.search(r"ip\s+daddr\s+\{([^}]+)\}", stripped)
+    if inline_set and vip_ip in _extract_ip_literals(inline_set.group(1)):
+        return True
+
+    for var_name in re.findall(r"ip\s+daddr\s+\$([A-Za-z0-9_]+)", stripped):
+        if vip_ip in (named_ip_sets or {}).get(var_name, set()):
+            return True
+
+    return False
+
+
 # ── Public API ──────────────────────────────────────────────
 
 
@@ -302,6 +338,7 @@ def run_vip_diagnostics(service_vips: list[dict] | None = None, debug: bool = Fa
 
     # Parse full chain structure once
     chain_map, parse_errors = _parse_chain_structure(nft_stdout)
+    named_ip_sets = _parse_named_ip_sets(nft_stdout)
 
     vip_results = []
     for vip in service_vips:
@@ -310,6 +347,7 @@ def run_vip_diagnostics(service_vips: list[dict] | None = None, debug: bool = Fa
             continue
         result = _probe_single_vip(
             ipv4, vip, nft_stdout, lo_stdout, chain_map,
+            named_ip_sets=named_ip_sets,
             nft_parse_error=nft_parse_error,
             nft_permission_limited=nft_permission_limited,
             debug=debug,
@@ -408,6 +446,7 @@ def _parse_chain_structure(nft_stdout: str) -> tuple[dict, list[str]]:
 
 def _probe_single_vip(
     ip: str, vip_meta: dict, nft_stdout: str, lo_stdout: str, chain_map: dict,
+    named_ip_sets: dict[str, set[str]] | None = None,
     nft_parse_error: str | None = None, debug: bool = False,
     nft_permission_limited: bool = False,
     poll_ts: float = 0, source_timestamps: dict | None = None,
@@ -457,10 +496,10 @@ def _probe_single_vip(
         }
 
     # 4. Per-VIP entry counters
-    vip_entry, entry_debug = _extract_vip_entry_counters(nft_stdout, ip, debug=debug)
+    vip_entry, entry_debug = _extract_vip_entry_counters(nft_stdout, ip, named_ip_sets, debug=debug)
 
     # 5. Per-VIP×backend×protocol DNAT counters
-    backend_paths, path_debug = _extract_vip_backend_paths(nft_stdout, ip, chain_map, debug=debug)
+    backend_paths, path_debug = _extract_vip_backend_paths(nft_stdout, ip, chain_map, named_ip_sets, debug=debug)
 
     # 6. Per-backend latency probes
     backend_ips_seen = set()
@@ -539,8 +578,8 @@ def _probe_single_vip(
         elif nft_permission_limited:
             healthy = False
             status = "UNKNOWN"
-            reason = f"NFT indisponível sem privilégio no modo passivo para VIP {ip} — validação de DNAT parcial"
-            reason_code = REASON_CODES["UNKNOWN"]
+            reason = "Diagnóstico limitado por permissão (nftables)"
+            reason_code = REASON_CODES["PERMISSION_LIMITED"]
         elif dnat_active and total_entry == INACTIVE_THRESHOLD_PACKETS:
             healthy = False
             status = "INACTIVE_VIP"
@@ -595,8 +634,9 @@ def _probe_single_vip(
         "reason_code": reason_code,
         "healthy": healthy,
         "inactive": inactive,
+        "severity": "info" if reason_code == REASON_CODES.get("PERMISSION_LIMITED") else None,
         "parse_error": parse_error,
-        "nft_unavailable": nft_permission_limited,
+        "nft_unavailable": requires_nft and nft_permission_limited,
         "counter_mismatch": counter_mismatch,
         "validation_layers": validation_layers,
         "dns_probe": dns_probe,
@@ -636,7 +676,7 @@ def _probe_single_vip(
     if debug and debug_info is not None:
         debug_info["matched_rules"].extend(entry_debug)
         debug_info["matched_chains"].extend(path_debug)
-        debug_info["literal_rules"] = _extract_literal_rules(nft_stdout, ip, chain_map)
+        debug_info["literal_rules"] = _extract_literal_rules(nft_stdout, ip, chain_map, named_ip_sets)
         if parse_error:
             debug_info["parse_notes"].append(parse_error)
         if counter_mismatch:
@@ -651,11 +691,11 @@ def _probe_single_vip(
 # ── Literal rule extraction for debug ───────────────────────
 
 
-def _extract_literal_rules(nft_stdout: str, vip_ip: str, chain_map: dict) -> list[dict]:
+def _extract_literal_rules(nft_stdout: str, vip_ip: str, chain_map: dict, named_ip_sets: dict[str, set[str]] | None = None) -> list[dict]:
     rules = []
 
     for line in nft_stdout.split("\n"):
-        if vip_ip in line:
+        if _line_matches_vip(line, vip_ip, named_ip_sets):
             stripped = line.strip()
             if not stripped or stripped.startswith("type ") or stripped.startswith("policy "):
                 continue
@@ -678,7 +718,7 @@ def _extract_literal_rules(nft_stdout: str, vip_ip: str, chain_map: dict) -> lis
                 "bytes": int(counter.group(2)) if counter else None,
             })
 
-    vip_jump_chains = _find_vip_jump_chains(nft_stdout, vip_ip)
+    vip_jump_chains = _find_vip_jump_chains(nft_stdout, vip_ip, named_ip_sets)
     for chain_name, proto_hint in vip_jump_chains:
         if chain_name in chain_map:
             for rule_line in chain_map[chain_name]:
@@ -733,14 +773,14 @@ def _probe_dns(target_ip: str) -> dict:
 # ── nftables per-VIP entry counters ────────────────────────
 
 
-def _extract_vip_entry_counters(nft_stdout: str, vip_ip: str, debug: bool = False) -> tuple[dict, list[str]]:
+def _extract_vip_entry_counters(nft_stdout: str, vip_ip: str, named_ip_sets: dict[str, set[str]] | None = None, debug: bool = False) -> tuple[dict, list[str]]:
     udp_packets, udp_bytes = 0, 0
     tcp_packets, tcp_bytes = 0, 0
     unknown_packets, unknown_bytes = 0, 0
     debug_lines = []
 
     for line in nft_stdout.split("\n"):
-        if vip_ip not in line:
+        if not _line_matches_vip(line, vip_ip, named_ip_sets):
             continue
         counter = re.search(r"counter packets (\d+) bytes (\d+)", line)
         if not counter:
@@ -793,13 +833,13 @@ def _detect_protocol_from_rule(rule: str) -> str:
 
 
 def _extract_vip_backend_paths(
-    nft_stdout: str, vip_ip: str, chain_map: dict, debug: bool = False,
+    nft_stdout: str, vip_ip: str, chain_map: dict, named_ip_sets: dict[str, set[str]] | None = None, debug: bool = False,
 ) -> tuple[list[dict], list[str]]:
     paths = []
     debug_lines = []
 
     for line in nft_stdout.split("\n"):
-        if vip_ip not in line or "dnat to" not in line:
+        if "dnat to" not in line or not _line_matches_vip(line, vip_ip, named_ip_sets):
             continue
         path = _parse_dnat_line(line)
         if path:
@@ -808,7 +848,7 @@ def _extract_vip_backend_paths(
             if debug:
                 debug_lines.append(f"[direct] {path['protocol']} -> {path['backend_ip']} pkts={path['packets']}")
 
-    vip_jump_chains = _find_vip_jump_chains(nft_stdout, vip_ip)
+    vip_jump_chains = _find_vip_jump_chains(nft_stdout, vip_ip, named_ip_sets)
     for jump_chain, jump_protocol in vip_jump_chains:
         if jump_chain not in chain_map:
             if debug:
@@ -880,7 +920,7 @@ def _parse_dnat_line(line: str, protocol_hint: str | None = None) -> dict | None
 def _find_vip_jump_chains(nft_stdout: str, vip_ip: str) -> list[tuple[str, str]]:
     results = []
     for line in nft_stdout.split("\n"):
-        if vip_ip not in line:
+        if not _line_matches_vip(line, vip_ip, named_ip_sets):
             continue
         jump_match = re.search(r"jump\s+(\S+)", line)
         if not jump_match:

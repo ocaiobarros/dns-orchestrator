@@ -18,11 +18,12 @@ interface NocHeroBarProps {
   dnsStatus?: string;
   lastEvent?: any;
   activeIncidents?: number;
+  readOnlyMode?: boolean;
 }
 
 export default function NocHeroBar({
   allHealthy, failedCount, totalInstances, healthyCount,
-  onReconcile, reconciling, dnsAvailable, dnsStatus, lastEvent, activeIncidents = 0,
+  onReconcile, reconciling, dnsAvailable, dnsStatus, lastEvent, activeIncidents = 0, readOnlyMode = false,
 }: NocHeroBarProps) {
   const [now, setNow] = useState(new Date());
   const [showMenu, setShowMenu] = useState(false);
@@ -146,9 +147,9 @@ export default function NocHeroBar({
               </div>
             </div>
 
-            <button onClick={onReconcile} disabled={reconciling} className="noc-btn-action">
+            <button onClick={readOnlyMode ? undefined : onReconcile} disabled={reconciling || readOnlyMode} className="noc-btn-action">
               <RefreshCw size={12} className={reconciling ? 'animate-spin' : ''} />
-              Reconcile
+              {readOnlyMode ? 'Read-only' : 'Reconcile'}
             </button>
 
             <button

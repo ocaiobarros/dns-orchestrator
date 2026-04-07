@@ -13,6 +13,7 @@ from app.models.user import User
 from app.services.event_service import get_actions
 from app.services.decision_service import manual_remove_backend, manual_restore_backend, reconcile
 from app.services.health_service import run_health_checks_for_instance
+from app.services.service_mode import require_managed_mode
 from app.models.operational import DnsInstance
 from app.core.logging import log_event
 
@@ -26,6 +27,7 @@ def list_actions(db: Session = Depends(get_db), _: User = Depends(get_current_us
 
 @router.post("/remove-backend/{instance_id}")
 def remove_backend(instance_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    require_managed_mode(db)
     result = manual_remove_backend(db, instance_id)
     if not result["success"]:
         raise HTTPException(400, result["error"])
@@ -35,6 +37,7 @@ def remove_backend(instance_id: str, db: Session = Depends(get_db), user: User =
 
 @router.post("/restore-backend/{instance_id}")
 def restore_backend(instance_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    require_managed_mode(db)
     result = manual_restore_backend(db, instance_id)
     if not result["success"]:
         raise HTTPException(400, result["error"])
@@ -44,6 +47,7 @@ def restore_backend(instance_id: str, db: Session = Depends(get_db), user: User 
 
 @router.post("/reconcile-now")
 def reconcile_now(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    require_managed_mode(db)
     """
     Manual reconciliation: run health checks immediately for all instances,
     then run the reconciliation engine.

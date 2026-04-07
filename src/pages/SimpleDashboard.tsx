@@ -258,6 +258,12 @@ export default function SimpleDashboard() {
         </span>
       </div>
 
+      {isReadonlyMode && (
+        <div className="rounded-md border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">
+          <strong>{isObservedMode ? 'Modo Observação Ativo' : 'Modo Importação Ativo'}</strong> — Nenhuma configuração será alterada. O painel opera apenas em leitura.
+        </div>
+      )}
+
       {/* ═══ HERO BAR ═══ */}
       <NocHeroBar
         allHealthy={allRunning && failedCount === 0}
@@ -266,6 +272,7 @@ export default function SimpleDashboard() {
         healthyCount={healthyCount}
         onReconcile={() => reconcileMutation.mutate()}
         reconciling={reconcileMutation.isPending}
+        readOnlyMode={isReadonlyMode}
         dnsAvailable={telemetryConnected}
         dnsStatus={collectorOk ? 'ok' : 'error'}
         lastEvent={lastMeaningfulEvent}
