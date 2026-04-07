@@ -243,7 +243,7 @@ export default function SimpleDashboard() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* ═══ MODE BADGE ═══ */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className="px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-widest rounded bg-primary/10 text-primary border border-primary/20">
