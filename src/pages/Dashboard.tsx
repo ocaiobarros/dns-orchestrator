@@ -286,93 +286,103 @@ function InterceptionDashboard() {
         </motion.div>
       )}
 
-      {/* ═══ TIER 4: DNS GEO MAP — Real world map centerpiece ═══ */}
-      {(() => {
-        const mapNodes: MapNode[] = [];
-        const mapEdges: MapEdge[] = [];
+      {/* ═══ TIER 4: GEO MAP + NETWORK MAP — Side by side ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Geo Map */}
+        {(() => {
+          const mapNodes: MapNode[] = [];
+          const mapEdges: MapEdge[] = [];
 
-        // VIP node
-        mapNodes.push({
-          id: 'vip-anycast',
-          label: vipConfigured ? (vipAddress || 'VIP Anycast') : 'VIP Anycast',
-          type: 'vip',
-          status: vipConfigured ? 'ok' : 'inactive',
-          qps: dnsAvail ? totalQps : undefined,
-          extra: vipConfigured ? 'Anycast active' : 'Not configured',
-          bindIp: vipAddress || undefined,
-        });
-
-        // Resolver nodes — prefer v2 DB instances, fallback to live stats discovery
-        const resolverSource = safeV2.length > 0 ? safeV2 : null;
-        const liveResolvers = resolverSource ? null : safeStats;
-
-        if (resolverSource) {
-          resolverSource.forEach(inst => {
-            const instStat = safeStats.find((s: any) => s.instance_id === inst.id);
-            const instLat = instStat ? getInstanceLatency(instStat) : (dnsAvail ? Number(avgLatency) : undefined);
-            const instQps = instStat ? getInstanceQueries(instStat) : undefined;
-            const instCh = instStat ? Math.round(getInstanceCacheHit(instStat)) : (dnsAvail ? Math.round(Number(avgCacheHit)) : undefined);
-            mapNodes.push({
-              id: `resolver-${inst.id}`,
-              label: inst.instance_name || `Resolver ${inst.id}`,
-              type: 'resolver',
-              status: inst.current_status === 'healthy' ? 'ok' : inst.current_status === 'degraded' ? 'degraded' : inst.current_status === 'failed' || inst.current_status === 'withdrawn' ? 'failed' : 'inactive',
-              latency: instLat != null ? Math.round(instLat) : undefined,
-              qps: instQps,
-              cacheHit: instCh,
-              bindIp: inst.bind_ip,
-            });
-            mapEdges.push({ from: 'vip-anycast', to: `resolver-${inst.id}`, latency: instLat != null ? Math.round(instLat) : undefined, qps: instQps ?? 0 });
-          });
-        } else if (liveResolvers && liveResolvers.length > 0) {
-          // Use live stats from /dns/instances (systemd discovery)
-          liveResolvers.forEach((inst: any) => {
-            const name = String(inst.instance ?? inst.name ?? 'resolver');
-            const instQps = getInstanceQueries(inst);
-            const instLat = getInstanceLatency(inst);
-            const instCh = Math.round(getInstanceCacheHit(inst));
-            const isLive = inst.source === 'live';
-            mapNodes.push({
-              id: `resolver-${name}`,
-              label: name,
-              type: 'resolver',
-              status: isLive ? 'ok' : 'inactive',
-              latency: instLat > 0 ? Math.round(instLat) : undefined,
-              qps: instQps > 0 ? instQps : undefined,
-              cacheHit: instCh > 0 ? instCh : undefined,
-              bindIp: inst.bind_ip || inst.bind_ips?.[0],
-            });
-            mapEdges.push({ from: 'vip-anycast', to: `resolver-${name}`, latency: instLat > 0 ? Math.round(instLat) : undefined, qps: instQps });
-          });
-        } else if (totalInstances > 0) {
           mapNodes.push({
-            id: 'resolver-main', label: 'Resolver Local', type: 'resolver',
-            status: resolverHealthState === 'healthy' ? 'ok' : resolverHealthState === 'degraded' ? 'degraded' : resolverHealthState === 'critical' ? 'failed' : 'unknown',
-            latency: dnsAvail ? Math.round(Number(avgLatency)) : undefined, qps: dnsAvail ? totalQps : undefined, cacheHit: dnsAvail ? Math.round(Number(avgCacheHit)) : undefined,
+            id: 'vip-anycast',
+            label: vipConfigured ? (vipAddress || 'VIP Anycast') : 'VIP Anycast',
+            type: 'vip',
+            status: vipConfigured ? 'ok' : 'inactive',
+            qps: dnsAvail ? totalQps : undefined,
+            extra: vipConfigured ? 'Anycast active' : 'Not configured',
+            bindIp: vipAddress || undefined,
           });
-          mapEdges.push({ from: 'vip-anycast', to: 'resolver-main', latency: dnsAvail ? Math.round(Number(avgLatency)) : undefined, qps: dnsAvail ? totalQps : 0 });
-        }
 
-        // Upstream
-        mapNodes.push({
-          id: 'upstream-primary', label: 'Upstream DNS', type: 'upstream',
-          status: upstreamOk === true ? 'ok' : upstreamOk === false ? 'failed' : 'unknown',
-          latency: dnsAvail ? Math.max(Math.round(Number(avgLatency)) - 2, 1) : undefined,
-          extra: upstreamOk === true ? 'Reachable' : upstreamOk === false ? 'Unreachable' : 'Unknown',
-          bindIp: '8.8.8.8',
-        });
-        const resolverIds = mapNodes.filter(n => n.type === 'resolver').map(n => n.id);
-        resolverIds.forEach(rid => {
-          const rn = mapNodes.find(n => n.id === rid);
-          mapEdges.push({ from: rid, to: 'upstream-primary', latency: dnsAvail ? Math.max(Math.round(Number(avgLatency)) - 2, 1) : undefined, qps: rn?.qps ?? 0 });
-        });
+          const resolverSource = safeV2.length > 0 ? safeV2 : null;
+          const liveResolvers = resolverSource ? null : safeStats;
 
-        return <NocGeoMap nodes={mapNodes} edges={mapEdges} />;
-      })()}
+          if (resolverSource) {
+            resolverSource.forEach(inst => {
+              const instStat = safeStats.find((s: any) => s.instance_id === inst.id);
+              const instLat = instStat ? getInstanceLatency(instStat) : (dnsAvail ? Number(avgLatency) : undefined);
+              const instQps = instStat ? getInstanceQueries(instStat) : undefined;
+              const instCh = instStat ? Math.round(getInstanceCacheHit(instStat)) : (dnsAvail ? Math.round(Number(avgCacheHit)) : undefined);
+              mapNodes.push({
+                id: `resolver-${inst.id}`,
+                label: inst.instance_name || `Resolver ${inst.id}`,
+                type: 'resolver',
+                status: inst.current_status === 'healthy' ? 'ok' : inst.current_status === 'degraded' ? 'degraded' : inst.current_status === 'failed' || inst.current_status === 'withdrawn' ? 'failed' : 'inactive',
+                latency: instLat != null ? Math.round(instLat) : undefined,
+                qps: instQps,
+                cacheHit: instCh,
+                bindIp: inst.bind_ip,
+              });
+              mapEdges.push({ from: 'vip-anycast', to: `resolver-${inst.id}`, latency: instLat != null ? Math.round(instLat) : undefined, qps: instQps ?? 0 });
+            });
+          } else if (liveResolvers && liveResolvers.length > 0) {
+            liveResolvers.forEach((inst: any) => {
+              const name = String(inst.instance ?? inst.name ?? 'resolver');
+              const instQps = getInstanceQueries(inst);
+              const instLat = getInstanceLatency(inst);
+              const instCh = Math.round(getInstanceCacheHit(inst));
+              const isLive = inst.source === 'live';
+              mapNodes.push({
+                id: `resolver-${name}`,
+                label: name,
+                type: 'resolver',
+                status: isLive ? 'ok' : 'inactive',
+                latency: instLat > 0 ? Math.round(instLat) : undefined,
+                qps: instQps > 0 ? instQps : undefined,
+                cacheHit: instCh > 0 ? instCh : undefined,
+                bindIp: inst.bind_ip || inst.bind_ips?.[0],
+              });
+              mapEdges.push({ from: 'vip-anycast', to: `resolver-${name}`, latency: instLat > 0 ? Math.round(instLat) : undefined, qps: instQps });
+            });
+          } else if (totalInstances > 0) {
+            mapNodes.push({
+              id: 'resolver-main', label: 'Resolver Local', type: 'resolver',
+              status: resolverHealthState === 'healthy' ? 'ok' : resolverHealthState === 'degraded' ? 'degraded' : resolverHealthState === 'critical' ? 'failed' : 'unknown',
+              latency: dnsAvail ? Math.round(Number(avgLatency)) : undefined, qps: dnsAvail ? totalQps : undefined, cacheHit: dnsAvail ? Math.round(Number(avgCacheHit)) : undefined,
+            });
+            mapEdges.push({ from: 'vip-anycast', to: 'resolver-main', latency: dnsAvail ? Math.round(Number(avgLatency)) : undefined, qps: dnsAvail ? totalQps : 0 });
+          }
+
+          mapNodes.push({
+            id: 'upstream-primary', label: 'Upstream DNS', type: 'upstream',
+            status: upstreamOk === true ? 'ok' : upstreamOk === false ? 'failed' : 'unknown',
+            latency: dnsAvail ? Math.max(Math.round(Number(avgLatency)) - 2, 1) : undefined,
+            extra: upstreamOk === true ? 'Reachable' : upstreamOk === false ? 'Unreachable' : 'Unknown',
+            bindIp: '8.8.8.8',
+          });
+          const resolverIds = mapNodes.filter(n => n.type === 'resolver').map(n => n.id);
+          resolverIds.forEach(rid => {
+            const rn = mapNodes.find(n => n.id === rid);
+            mapEdges.push({ from: rid, to: 'upstream-primary', latency: dnsAvail ? Math.max(Math.round(Number(avgLatency)) - 2, 1) : undefined, qps: rn?.qps ?? 0 });
+          });
+
+          return <NocGeoMap nodes={mapNodes} edges={mapEdges} />;
+        })()}
+
+        {/* DNS Network Map (Topology) */}
+        <NocTopologyPanel
+          health={health}
+          vipConfigured={vipConfigured}
+          vipAddress={vipAddress}
+          dnsAvailable={dnsAvail}
+          totalQueries={totalQps}
+          cacheHitRatio={Number(avgCacheHit)}
+          avgLatency={Number(avgLatency)}
+          dnsMetricsAvailable={dnsAvail}
+        />
+      </div>
 
       {/* ═══ TIER 4B: DNS PATH FLOW ═══ */}
       {(() => {
-        // Build resolver list: prefer v2 DB, fallback to live stats
         const resolvers = safeV2.length > 0
           ? safeV2.map(inst => ({
               id: `r-${inst.id}`, label: inst.instance_name || 'Resolver',
@@ -424,7 +434,6 @@ function InterceptionDashboard() {
             latencyMs: dnsAvail ? Math.max(Math.round(Number(avgLatency)) - 3, 1) : undefined,
           })),
         ];
-        // Final fallback: no resolvers discovered at all
         if (resolvers.length === 0 && totalInstances > 0) {
           pathNodes.splice(2, 0, {
             id: 'r-main', label: 'Resolver', type: 'resolver' as const,
@@ -464,30 +473,14 @@ function InterceptionDashboard() {
       {/* ═══ TIER 4E: DNS ERRORS & FAILURES ═══ */}
       <NocDnsErrors />
 
-      {/* ═══ TIER 5: TOPOLOGY DETAIL (8col) + Health Matrix (4col) ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div className="lg:col-span-8">
-          <NocTopologyPanel
-            health={health}
-            vipConfigured={vipConfigured}
-            vipAddress={vipAddress}
-            dnsAvailable={dnsAvail}
-            totalQueries={totalQps}
-            cacheHitRatio={Number(avgCacheHit)}
-            avgLatency={Number(avgLatency)}
-            dnsMetricsAvailable={dnsAvail}
-          />
-        </div>
-        <div className="lg:col-span-4">
-          <NocHealthMatrix
-            services={safeServices}
-            dnsHealthy={healthyCount === totalInstances && totalInstances > 0}
-            networkOk={allRunning}
-            dnsAvailable={dnsAvail}
-            privilegeLimited={dnsStatus === 'privilege_limited'}
-          />
-        </div>
-      </div>
+      {/* ═══ TIER 5: HEALTH MATRIX ═══ */}
+      <NocHealthMatrix
+        services={safeServices}
+        dnsHealthy={healthyCount === totalInstances && totalInstances > 0}
+        networkOk={allRunning}
+        dnsAvailable={dnsAvail}
+        privilegeLimited={dnsStatus === 'privilege_limited'}
+      />
 
       {/* ═══ TIER 5B: INSTANCE TABLE ═══ */}
       <NocInstanceTable instances={safeV2} />
