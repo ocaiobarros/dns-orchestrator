@@ -274,9 +274,10 @@ def run_vip_diagnostics(service_vips: list[dict] | None = None, debug: bool = Fa
     nft_r = _safe_run("nft", ["list", "ruleset"], timeout=10, use_privilege=True)
     nft_ok = nft_r["exit_code"] == 0
     nft_permission_limited = _is_nft_permission_limited(nft_r)
-    nft_unavailable_in_readonly = nft_permission_limited and service_mode in READ_ONLY_MODES
+    # Permission errors are NEVER parse failures — suppress regardless of service mode
+    nft_suppressed = nft_permission_limited  # was: nft_permission_limited and service_mode in READ_ONLY_MODES
     nft_stdout = nft_r.get("stdout", "") if nft_ok else ""
-    nft_parse_error = None if (nft_ok or nft_unavailable_in_readonly) else (nft_r.get("stderr", "") or "nft command failed")
+    nft_parse_error = None if (nft_ok or nft_suppressed) else (nft_r.get("stderr", "") or "nft command failed")
     source_timestamps["nft"] = {
         "collected_at": datetime.now(timezone.utc).isoformat(),
         "duration_ms": round((time.monotonic() - nft_start) * 1000, 1),
@@ -284,8 +285,8 @@ def run_vip_diagnostics(service_vips: list[dict] | None = None, debug: bool = Fa
         "stale_threshold_s": stale_cfg["nft"],
         "permission_limited": nft_permission_limited,
         "mode": service_mode,
-        "availability": "unavailable" if nft_unavailable_in_readonly else ("ok" if nft_ok else "error"),
-        "error": None if (nft_ok or nft_unavailable_in_readonly) else (nft_r.get("stderr", "") or "nft command failed"),
+        "availability": "unavailable" if nft_suppressed else ("ok" if nft_ok else "error"),
+        "error": None if (nft_ok or nft_suppressed) else (nft_r.get("stderr", "") or "nft command failed"),
     }
 
     # Fetch loopback addresses once
@@ -310,7 +311,7 @@ def run_vip_diagnostics(service_vips: list[dict] | None = None, debug: bool = Fa
         result = _probe_single_vip(
             ipv4, vip, nft_stdout, lo_stdout, chain_map,
             nft_parse_error=nft_parse_error,
-            nft_permission_limited=nft_unavailable_in_readonly,
+            nft_permission_limited=nft_permission_limited,
             debug=debug,
             poll_ts=poll_ts,
             source_timestamps=source_timestamps,
