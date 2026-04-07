@@ -47,7 +47,7 @@ function buildTopology(
   const vipHealthy = health.vip?.healthy ?? Boolean(vipConfigured);
   nodes.push({
     id: 'vip-entry',
-    label: 'VIP',
+    label: entryLabel || 'VIP',
     type: 'vip',
     status: !vipConfigured && !health.vip ? 'inactive' : vipHealthy ? 'ok' : 'failed',
     qps: totalQueries,
