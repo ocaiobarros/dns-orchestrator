@@ -73,6 +73,12 @@ export default function DnsPage() {
   const recentQueries = Array.isArray(queryAnalytics?.recent_queries) ? queryAnalytics.recent_queries : [];
   const telemetryConnected = collectorOk && safeNum(resolver.instances_live) > 0;
 
+  // Logless mode detection
+  const telemetryMode = telemetry?.telemetry_mode ?? queryAnalytics?.telemetry_mode ?? 'log';
+  const isLogless = telemetryMode === 'logless';
+  const domainsAvailable = queryAnalytics?.domains_available !== false && !isLogless;
+  const clientsAvailable = queryAnalytics?.clients_available !== false && !isLogless;
+
   const totalQueries = safeNum(resolver.total_queries);
   const cacheHitRatio = safeNum(resolver.cache_hit_ratio);
   const avgLatency = safeNum(resolver.avg_latency_ms);
@@ -86,11 +92,18 @@ export default function DnsPage() {
           <h1 className="text-xl font-semibold">DNS</h1>
           <p className="text-sm text-muted-foreground">Métricas reais via collector (unbound-control + nftables)</p>
         </div>
-        {!collectorOk && (
-          <span className="px-2 py-1 text-xs rounded border bg-destructive/10 text-destructive border-destructive/20 font-mono">
-            Collector inativo
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {isLogless && (
+            <span className="px-2 py-1 text-xs rounded border bg-warning/10 text-warning border-warning/20 font-mono font-bold uppercase tracking-wider">
+              Mode: Logless
+            </span>
+          )}
+          {!collectorOk && (
+            <span className="px-2 py-1 text-xs rounded border bg-destructive/10 text-destructive border-destructive/20 font-mono">
+              Collector inativo
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -174,14 +187,27 @@ export default function DnsPage() {
         ) : null}
       </Suspense>
 
-      {(topDomains.length > 0 || topDomainsFromAnalytics.length > 0) && (
+      {/* Top Domains */}
+      {domainsAvailable && (topDomains.length > 0 || topDomainsFromAnalytics.length > 0) ? (
         <Suspense fallback={<ChartGridSkeleton />}>
           <DnsTopDomains topDomains={topDomains.length > 0 ? topDomains : topDomainsFromAnalytics} />
         </Suspense>
-      )}
+      ) : isLogless && telemetryConnected ? (
+        <div className="noc-panel">
+          <div className="noc-panel-header flex items-center justify-between">
+            <span>Top Domínios Consultados</span>
+            <span className="px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider rounded bg-warning/10 text-warning border border-warning/20">Logless</span>
+          </div>
+          <div className="p-6 text-center space-y-2">
+            <AlertTriangle size={20} className="text-warning mx-auto opacity-60" />
+            <div className="text-sm font-medium text-muted-foreground">Métricas de domínios indisponíveis — logging DNS desativado neste servidor</div>
+            <div className="text-xs text-muted-foreground/50">Sistema operando em modo de telemetria reduzida (sem logs). Métricas básicas de QPS, cache e latência continuam disponíveis via unbound-control.</div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Top Clients */}
-      {topClients.length > 0 && (
+      {clientsAvailable && topClients.length > 0 ? (
         <div className="noc-panel">
           <div className="noc-panel-header">Top Clientes</div>
           <div className="overflow-x-auto">
@@ -203,10 +229,22 @@ export default function DnsPage() {
             </table>
           </div>
         </div>
-      )}
+      ) : isLogless && telemetryConnected ? (
+        <div className="noc-panel">
+          <div className="noc-panel-header flex items-center justify-between">
+            <span>Top Clientes DNS</span>
+            <span className="px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider rounded bg-warning/10 text-warning border border-warning/20">Logless</span>
+          </div>
+          <div className="p-6 text-center space-y-2">
+            <AlertTriangle size={20} className="text-warning mx-auto opacity-60" />
+            <div className="text-sm font-medium text-muted-foreground">Métricas de clientes indisponíveis — logging DNS desativado neste servidor</div>
+            <div className="text-xs text-muted-foreground/50">Sistema operando em modo de telemetria reduzida (sem logs). Métricas básicas continuam disponíveis via unbound-control.</div>
+          </div>
+        </div>
+      ) : null}
 
-      {/* Recent Queries */}
-      {recentQueries.length > 0 && (
+      {/* Recent Queries — only in log mode */}
+      {!isLogless && recentQueries.length > 0 && (
         <div className="noc-panel">
           <div className="noc-panel-header">Consultas Recentes</div>
           <div className="overflow-x-auto">

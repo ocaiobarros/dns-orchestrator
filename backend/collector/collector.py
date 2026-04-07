@@ -329,10 +329,99 @@ def compute_qps(current_total: int, prev_state: dict) -> float:
     return round(delta / elapsed, 1)
 
 
+# ── Log Availability Detection ──
+
+def detect_log_availability(instances: list[dict]) -> dict:
+    """
+    Detect whether Unbound instances are configured to emit query logs.
+    Checks: logfile config, use-syslog, and journalctl presence.
+    Returns telemetry_mode: 'log' or 'logless' with details.
+    """
+    has_log_config = False
+    has_syslog = False
+    has_journal_entries = False
+    details = []
+
+    for inst in instances:
+        name = inst["name"]
+        conf_path = f"/etc/unbound/{name}.conf"
+        inst_has_log = False
+        inst_has_syslog = False
+
+        try:
+            with open(conf_path) as f:
+                for line in f:
+                    s = line.strip()
+                    if s.startswith("#"):
+                        continue
+                    if s.startswith("log-queries:") and "yes" in s.lower():
+                        inst_has_log = True
+                    if s.startswith("use-syslog:") and "yes" in s.lower():
+                        inst_has_syslog = True
+                    if s.startswith("logfile:"):
+                        val = s.split(":", 1)[1].strip().strip('"').strip("'")
+                        if val and val != '""' and val != "''":
+                            inst_has_log = True
+        except FileNotFoundError:
+            pass
+
+        if inst_has_log:
+            has_log_config = True
+        if inst_has_syslog:
+            has_syslog = True
+        details.append({
+            "instance": name,
+            "log_queries": inst_has_log,
+            "use_syslog": inst_has_syslog,
+        })
+
+    # Quick journal check — look for any unbound query entries in last 60s
+    svc = instances[0]["name"] if instances else "unbound01"
+    code, stdout, _ = run_cmd([
+        "sudo", "journalctl", "--no-pager",
+        "-u", f"{svc}.service",
+        "--since", "60 seconds ago",
+        "-n", "5", "-o", "short-iso",
+    ], timeout=10)
+    if code == 0 and stdout.strip():
+        for line in stdout.split("\n"):
+            if "info:" in line:
+                has_journal_entries = True
+                break
+
+    log_available = has_log_config or has_syslog or has_journal_entries
+    return {
+        "telemetry_mode": "log" if log_available else "logless",
+        "log_queries_configured": has_log_config,
+        "use_syslog": has_syslog,
+        "journal_entries_found": has_journal_entries,
+        "domains_available": log_available,
+        "clients_available": log_available,
+        "details": details,
+    }
+
+
 # ── Query Log Parsing ──
 
-def collect_query_logs(instances: list[dict], since_seconds: int = 60) -> dict:
-    """Parse unbound query logs from journalctl for top domains/clients."""
+def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detection: dict | None = None) -> dict:
+    """Parse unbound query logs from journalctl for top domains/clients.
+    If log_detection indicates logless mode, skip parsing and return empty with mode flag."""
+
+    # If we already know logs are unavailable, skip all parsing attempts
+    if log_detection and log_detection.get("telemetry_mode") == "logless":
+        return {
+            "top_domains": [],
+            "top_clients": [],
+            "top_query_types": [],
+            "recent_queries": [],
+            "log_source": "none",
+            "queries_parsed": 0,
+            "telemetry_mode": "logless",
+            "domains_available": False,
+            "clients_available": False,
+            "diag": {"skipped": True, "reason": "logless_mode_detected"},
+        }
+
     domains: Counter = Counter()
     clients: Counter = Counter()
     query_types: Counter = Counter()
@@ -494,6 +583,10 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60) -> dict:
         "query_types": dict(hist_types.most_common(50)),
     })
 
+    # Determine if we actually got any data
+    has_data = parsed_count > 0 or len(hist_domains) > 0
+    telemetry_mode = "log" if has_data else "logless"
+
     return {
         "top_domains": [{"domain": d, "count": c} for d, c in hist_domains.most_common(MAX_TOP_ENTRIES)],
         "top_clients": [{"ip": ip, "queries": c} for ip, c in hist_clients.most_common(MAX_TOP_ENTRIES)],
@@ -501,6 +594,9 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60) -> dict:
         "recent_queries": list(recent),
         "log_source": log_source,
         "queries_parsed": parsed_count,
+        "telemetry_mode": telemetry_mode,
+        "domains_available": has_data,
+        "clients_available": has_data,
         "diag": {
             "total_lines": len(all_lines),
             "info_lines": len(info_lines),
@@ -641,8 +737,9 @@ def collect_all() -> dict:
     # Frontend health
     frontend = check_frontend_health(frontend_ip)
 
-    # Query logs
-    query_analytics = collect_query_logs(instances, since_seconds=30)
+    # Query logs — detect log availability first
+    log_detection = detect_log_availability(instances)
+    query_analytics = collect_query_logs(instances, since_seconds=30, log_detection=log_detection)
 
     # Service status
     service_checks = []
@@ -703,8 +800,12 @@ def collect_all() -> dict:
             },
         })
 
+    # Determine telemetry mode from query analytics
+    telemetry_mode = query_analytics.get("telemetry_mode", log_detection.get("telemetry_mode", "log"))
+
     output = {
         "mode": mode,
+        "telemetry_mode": telemetry_mode,
         "timestamp": timestamp,
         "epoch": epoch,
         "collector_version": "1.0.0",
@@ -742,8 +843,13 @@ def collect_all() -> dict:
         "query_analytics": {
             "log_source": query_analytics.get("log_source", "none"),
             "queries_parsed": query_analytics.get("queries_parsed", 0),
+            "telemetry_mode": telemetry_mode,
+            "domains_available": query_analytics.get("domains_available", False),
+            "clients_available": query_analytics.get("clients_available", False),
             "diag": query_analytics.get("diag", {}),
         },
+
+        "log_detection": log_detection,
 
         "services": service_checks,
         "listeners": listeners,
