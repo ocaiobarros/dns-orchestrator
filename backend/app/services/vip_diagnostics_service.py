@@ -652,7 +652,7 @@ def _probe_single_vip(
         "reason_code": reason_code,
         "healthy": healthy,
         "inactive": inactive,
-        "severity": "info" if reason_code == REASON_CODES.get("PERMISSION_LIMITED") else None,
+        "severity": "info" if reason_code in (REASON_CODES.get("PERMISSION_LIMITED"), REASON_CODES.get("HEALTHY")) else ("warning" if status == "UNKNOWN" else None),
         "parse_error": parse_error,
         "nft_unavailable": requires_nft and nft_permission_limited,
         "counter_mismatch": counter_mismatch,
