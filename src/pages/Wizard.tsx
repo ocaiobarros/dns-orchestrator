@@ -1515,6 +1515,38 @@ export default function Wizard() {
     finally { setHostSyncLoading(false); }
   };
 
+  if (isReadonlyMode) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-xl font-semibold">Wizard</h1>
+          <p className="text-sm text-muted-foreground">Configuração de infraestrutura DNS</p>
+        </div>
+        <div className="noc-panel border-2 border-blue-500/50 p-6">
+          <div className="flex items-center gap-3 mb-3">
+            <Lock size={20} className="text-blue-400" />
+            <h2 className="text-lg font-semibold text-blue-400">
+              {serviceMode === 'observed' ? 'Modo Observação Ativo' : 'Modo Importação Ativo'}
+            </h2>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            O Wizard e o Deploy estão <strong>bloqueados</strong> neste modo.
+            O sistema opera em leitura passiva — nenhuma configuração será alterada no host.
+          </p>
+          <p className="text-sm text-muted-foreground mb-4">
+            Para usar o Wizard, desative o modo de observação em <strong>Configurações → Modo de Operação</strong>.
+          </p>
+          <button
+            onClick={() => navigate('/settings')}
+            className="px-4 py-2 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            Ir para Configurações
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3">

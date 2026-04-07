@@ -49,7 +49,7 @@ def load_config() -> dict:
 
 
 def detect_mode() -> str:
-    """Auto-detect DNS service mode from deploy-state.json."""
+    """Auto-detect DNS service mode from deploy-state.json or runtime inspection."""
     for path in [
         "/var/lib/dns-control/deploy-state.json",
         "/opt/dns-control/deploy-state.json",
@@ -64,11 +64,17 @@ def detect_mode() -> str:
                 return "recursive_interception"
         except (FileNotFoundError, json.JSONDecodeError):
             continue
+
+    # Fallback: detect from runtime — if nftables has DNAT rules, it's interception
+    code, stdout, _ = run_cmd(["sudo", "nft", "list", "ruleset"], timeout=10)
+    if code == 0 and "dnat to" in stdout.lower():
+        return "recursive_interception"
+
     return "recursive_simple"
 
 
 def detect_frontend_ip() -> str:
-    """Detect frontend DNS IP from deploy state."""
+    """Detect frontend DNS IP from deploy state or runtime."""
     for path in [
         "/var/lib/dns-control/deploy-state.json",
         "/opt/dns-control/deploy-state.json",
@@ -78,6 +84,21 @@ def detect_frontend_ip() -> str:
                 return json.load(f).get("frontendDnsIp", "")
         except Exception:
             continue
+
+    # Fallback: discover from loopback VIPs (first VIP found)
+    code, stdout, _ = run_cmd(["ip", "-j", "addr", "show"])
+    if code == 0:
+        try:
+            ifaces = json.loads(stdout)
+            for iface in ifaces:
+                ifname = iface.get("ifname", "")
+                if not (ifname == "lo" or ifname.startswith("lo") or ifname.startswith("dummy")):
+                    continue
+                for addr in iface.get("addr_info", []):
+                    if addr.get("family") == "inet" and addr.get("local") != "127.0.0.1":
+                        return addr["local"]
+        except (json.JSONDecodeError, KeyError):
+            pass
     return ""
 
 
