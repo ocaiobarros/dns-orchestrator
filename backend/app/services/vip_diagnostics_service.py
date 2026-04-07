@@ -23,6 +23,7 @@ logger = logging.getLogger("dns-control.vip-diagnostics")
 
 PROBE_DOMAIN = "google.com"
 INACTIVE_THRESHOLD_PACKETS = 0
+READ_ONLY_MODES = {"imported", "observed"}
 
 # ── Configurable stale thresholds per source (seconds) ──────
 STALE_THRESHOLDS = {
@@ -218,6 +219,39 @@ def _hybrid_mismatch_check(entry_total: int, paths_total: int) -> bool:
     return delta > max(pct_tolerance, abs_tolerance)
 
 
+def _get_runtime_service_mode() -> str:
+    """Best-effort read of the current service mode without failing diagnostics."""
+    try:
+        from app.services.service_mode import get_service_mode
+        db = _get_db_session()
+        try:
+            return get_service_mode(db)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.debug(f"Failed to read service mode for VIP diagnostics: {e}")
+        return "managed"
+
+
+def _is_nft_permission_limited(result: dict) -> bool:
+    """Detect expected read-only nft failures when backend has no root access."""
+    stderr = (result.get("stderr") or "").lower()
+    markers = (
+        "operation not permitted",
+        "you must be root",
+        "cache initialization failed",
+        "permission denied",
+        "not permitted",
+    )
+    return result.get("exit_code") != 0 and any(marker in stderr for marker in markers)
+
+
+def _requires_nft_validation(vip_meta: dict) -> bool:
+    capture_mode = (vip_meta.get("capture_mode") or "").lower()
+    vip_type = vip_meta.get("vipType", vip_meta.get("vip_type", "owned"))
+    return capture_mode == "dnat" or vip_type == "intercepted"
+
+
 # ── Public API ──────────────────────────────────────────────
 
 
@@ -225,6 +259,7 @@ def run_vip_diagnostics(service_vips: list[dict] | None = None, debug: bool = Fa
                         stale_overrides: dict[str, int] | None = None) -> dict:
     poll_ts = time.time()
     stale_cfg = {**STALE_THRESHOLDS, **(stale_overrides or {})}
+    service_mode = _get_runtime_service_mode()
 
     if not service_vips:
         # Check for imported VIP mappings first (passive mode)
@@ -238,13 +273,19 @@ def run_vip_diagnostics(service_vips: list[dict] | None = None, debug: bool = Fa
     nft_start = time.monotonic()
     nft_r = _safe_run("nft", ["list", "ruleset"], timeout=10, use_privilege=True)
     nft_ok = nft_r["exit_code"] == 0
+    nft_permission_limited = _is_nft_permission_limited(nft_r)
+    nft_unavailable_in_readonly = nft_permission_limited and service_mode in READ_ONLY_MODES
     nft_stdout = nft_r.get("stdout", "") if nft_ok else ""
-    nft_parse_error = None if nft_ok else (nft_r.get("stderr", "") or "nft command failed")
+    nft_parse_error = None if (nft_ok or nft_unavailable_in_readonly) else (nft_r.get("stderr", "") or "nft command failed")
     source_timestamps["nft"] = {
         "collected_at": datetime.now(timezone.utc).isoformat(),
         "duration_ms": round((time.monotonic() - nft_start) * 1000, 1),
         "ok": nft_ok,
         "stale_threshold_s": stale_cfg["nft"],
+        "permission_limited": nft_permission_limited,
+        "mode": service_mode,
+        "availability": "unavailable" if nft_unavailable_in_readonly else ("ok" if nft_ok else "error"),
+        "error": None if (nft_ok or nft_unavailable_in_readonly) else (nft_r.get("stderr", "") or "nft command failed"),
     }
 
     # Fetch loopback addresses once
@@ -269,6 +310,7 @@ def run_vip_diagnostics(service_vips: list[dict] | None = None, debug: bool = Fa
         result = _probe_single_vip(
             ipv4, vip, nft_stdout, lo_stdout, chain_map,
             nft_parse_error=nft_parse_error,
+            nft_permission_limited=nft_unavailable_in_readonly,
             debug=debug,
             poll_ts=poll_ts,
             source_timestamps=source_timestamps,
@@ -366,6 +408,7 @@ def _parse_chain_structure(nft_stdout: str) -> tuple[dict, list[str]]:
 def _probe_single_vip(
     ip: str, vip_meta: dict, nft_stdout: str, lo_stdout: str, chain_map: dict,
     nft_parse_error: str | None = None, debug: bool = False,
+    nft_permission_limited: bool = False,
     poll_ts: float = 0, source_timestamps: dict | None = None,
     stale_cfg: dict | None = None,
 ) -> dict:
@@ -373,6 +416,7 @@ def _probe_single_vip(
     description = vip_meta.get("description", ip)
     ipv6 = vip_meta.get("ipv6", "")
     stale_cfg = stale_cfg or STALE_THRESHOLDS
+    requires_nft = _requires_nft_validation(vip_meta)
 
     debug_info = {
         "matched_rules": [],
@@ -444,7 +488,7 @@ def _probe_single_vip(
     parse_error = None
     if nft_parse_error:
         parse_error = nft_parse_error
-    elif not nft_stdout.strip():
+    elif requires_nft and not nft_permission_limited and not nft_stdout.strip():
         parse_error = "Empty nftables ruleset — cannot validate VIP"
 
     # 10. QPS from counter delta (hardened)
@@ -491,6 +535,11 @@ def _probe_single_vip(
             healthy = True
             status = "HEALTHY"
             reason_code = REASON_CODES["HEALTHY"]
+        elif nft_permission_limited:
+            healthy = False
+            status = "UNKNOWN"
+            reason = f"NFT indisponível sem privilégio no modo passivo para VIP {ip} — validação de DNAT parcial"
+            reason_code = REASON_CODES["UNKNOWN"]
         elif dnat_active and total_entry == INACTIVE_THRESHOLD_PACKETS:
             healthy = False
             status = "INACTIVE_VIP"
@@ -546,6 +595,7 @@ def _probe_single_vip(
         "healthy": healthy,
         "inactive": inactive,
         "parse_error": parse_error,
+        "nft_unavailable": nft_permission_limited,
         "counter_mismatch": counter_mismatch,
         "validation_layers": validation_layers,
         "dns_probe": dns_probe,
