@@ -461,13 +461,14 @@ export default function SimpleDashboard() {
         <div className="lg:col-span-3">
           <NocTopologyPanel
             health={health}
-            vipConfigured={false}
-            vipAddress={null}
+            vipConfigured={!!frontendIp}
+            vipAddress={frontendIp || null}
             dnsAvailable={telemetryConnected}
             totalQueries={totalQueries}
             cacheHitRatio={cacheHitRatio}
             avgLatency={avgLatency}
             dnsMetricsAvailable={telemetryConnected}
+            entryLabel="FRONTEND"
           />
         </div>
       </div>
