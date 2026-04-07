@@ -94,7 +94,7 @@ def get_mode(db: Session = Depends(get_db), _: User = Depends(get_current_user))
         extra["import_timestamp"] = ts_row.value if ts_row else None
         extra["imported_vips"] = get_imported_vips(db)
     elif mode == MODE_OBSERVED:
-        # Include runtime inventory summary
+        # Include runtime inventory summary + details
         try:
             from app.services.runtime_inventory_service import get_full_inventory
             inv = get_full_inventory()
@@ -104,8 +104,19 @@ def get_mode(db: Session = Depends(get_db), _: User = Depends(get_current_user))
                 "dnat_rules": inv["dnat_rule_count"],
                 "listeners": inv["listener_count"],
             }
-        except Exception:
+            extra["inventory_details"] = {
+                "instances": inv["instances"],
+                "vips": inv["vips"],
+                "dnat_rules": inv["dnat_rules"][:30],
+                "listeners": inv["listeners"],
+                "sticky_sets": inv.get("sticky_sets", []),
+                "collected_at": inv.get("collected_at"),
+            }
+        except Exception as e:
+            import logging
+            logging.getLogger("dns-control").warning(f"Failed to get inventory: {e}")
             extra["inventory_summary"] = None
+            extra["inventory_details"] = None
 
     return {"service_mode": mode, **extra}
 
