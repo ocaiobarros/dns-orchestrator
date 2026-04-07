@@ -571,20 +571,32 @@ def _probe_single_vip(
         reason = parse_error
         reason_code = REASON_CODES["PARSE_ERROR"]
     elif vip_type == "intercepted":
-        if dnat_active and total_entry > INACTIVE_THRESHOLD_PACKETS and dns_probe["resolves"]:
+        if nft_permission_limited and dns_probe["resolves"]:
+            # Permission limited but DNS works — VIP is functionally healthy
+            healthy = True
+            status = "HEALTHY"
+            reason = "DNS resolve OK — diagnóstico nftables limitado por permissão"
+            reason_code = REASON_CODES["PERMISSION_LIMITED"]
+        elif nft_permission_limited and not dns_probe["resolves"]:
+            healthy = False
+            status = "UNKNOWN"
+            reason = "Diagnóstico limitado por permissão (nftables) e DNS não responde"
+            reason_code = REASON_CODES["PERMISSION_LIMITED"]
+        elif dnat_active and total_entry > INACTIVE_THRESHOLD_PACKETS and dns_probe["resolves"]:
             healthy = True
             status = "HEALTHY"
             reason_code = REASON_CODES["HEALTHY"]
-        elif nft_permission_limited:
-            healthy = False
-            status = "UNKNOWN"
-            reason = "Diagnóstico limitado por permissão (nftables)"
-            reason_code = REASON_CODES["PERMISSION_LIMITED"]
         elif dnat_active and total_entry == INACTIVE_THRESHOLD_PACKETS:
             healthy = False
             status = "INACTIVE_VIP"
             reason = f"VIP {ip} has DNAT rules but zero entry packets — no traffic observed"
             reason_code = REASON_CODES["INACTIVE_VIP"]
+        elif not dnat_active and dns_probe["resolves"]:
+            # No DNAT found but DNS resolves — VIP works (likely local bind or routing)
+            healthy = True
+            status = "HEALTHY"
+            reason = "DNS resolve OK — sem DNAT visível (possível bind local ou roteamento)"
+            reason_code = REASON_CODES["HEALTHY"]
         elif not dnat_active:
             healthy = False
             status = "UNKNOWN"
@@ -599,6 +611,12 @@ def _probe_single_vip(
         if dns_probe["resolves"] and locally_bound:
             healthy = True
             status = "HEALTHY"
+            reason_code = REASON_CODES["HEALTHY"]
+        elif dns_probe["resolves"] and not locally_bound:
+            # Might be routed/anycast — still resolves
+            healthy = True
+            status = "HEALTHY"
+            reason = "DNS resolve OK — VIP não detectado em loopback (possível roteamento)"
             reason_code = REASON_CODES["HEALTHY"]
         elif not locally_bound:
             healthy = False
