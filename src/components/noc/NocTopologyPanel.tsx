@@ -13,6 +13,8 @@ interface NocTopologyPanelProps {
   cacheHitRatio?: number;
   avgLatency?: number;
   dnsMetricsAvailable?: boolean;
+  /** Override the entry-point label (defaults to 'VIP') */
+  entryLabel?: string;
 }
 
 function UnavailableState({ message, sub }: { message: string; sub: string }) {
