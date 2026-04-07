@@ -13,6 +13,8 @@ interface NocTopologyPanelProps {
   cacheHitRatio?: number;
   avgLatency?: number;
   dnsMetricsAvailable?: boolean;
+  /** Override the entry-point label (defaults to 'VIP') */
+  entryLabel?: string;
 }
 
 function UnavailableState({ message, sub }: { message: string; sub: string }) {
@@ -34,6 +36,7 @@ function buildTopology(
   totalQueries?: number,
   cacheHitRatio?: number,
   avgLatency?: number,
+  entryLabel?: string,
 ): { nodes: MapNode[]; edges: MapEdge[] } {
   const nodes: MapNode[] = [];
   const edges: MapEdge[] = [];
@@ -44,7 +47,7 @@ function buildTopology(
   const vipHealthy = health.vip?.healthy ?? Boolean(vipConfigured);
   nodes.push({
     id: 'vip-entry',
-    label: 'VIP',
+    label: entryLabel || 'VIP',
     type: 'vip',
     status: !vipConfigured && !health.vip ? 'inactive' : vipHealthy ? 'ok' : 'failed',
     qps: totalQueries,
@@ -144,13 +147,14 @@ export default function NocTopologyPanel({
   cacheHitRatio,
   avgLatency,
   dnsMetricsAvailable,
+  entryLabel,
 }: NocTopologyPanelProps) {
   const hasData = Boolean(health && Array.isArray(health.instances) && health.instances.length > 0);
 
   const { nodes, edges } = useMemo(() => {
     if (!hasData || !health) return { nodes: [], edges: [] };
-    return buildTopology(health, vipConfigured, vipAddress, totalQueries, cacheHitRatio, avgLatency);
-  }, [health, vipConfigured, vipAddress, totalQueries, cacheHitRatio, avgLatency, hasData]);
+    return buildTopology(health, vipConfigured, vipAddress, totalQueries, cacheHitRatio, avgLatency, entryLabel);
+  }, [health, vipConfigured, vipAddress, totalQueries, cacheHitRatio, avgLatency, hasData, entryLabel]);
 
   return (
     <motion.div
