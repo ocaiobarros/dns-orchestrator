@@ -36,6 +36,7 @@ function buildTopology(
   totalQueries?: number,
   cacheHitRatio?: number,
   avgLatency?: number,
+  entryLabel?: string,
 ): { nodes: MapNode[]; edges: MapEdge[] } {
   const nodes: MapNode[] = [];
   const edges: MapEdge[] = [];
