@@ -737,8 +737,9 @@ def collect_all() -> dict:
     # Frontend health
     frontend = check_frontend_health(frontend_ip)
 
-    # Query logs
-    query_analytics = collect_query_logs(instances, since_seconds=30)
+    # Query logs — detect log availability first
+    log_detection = detect_log_availability(instances)
+    query_analytics = collect_query_logs(instances, since_seconds=30, log_detection=log_detection)
 
     # Service status
     service_checks = []
@@ -799,8 +800,12 @@ def collect_all() -> dict:
             },
         })
 
+    # Determine telemetry mode from query analytics
+    telemetry_mode = query_analytics.get("telemetry_mode", log_detection.get("telemetry_mode", "log"))
+
     output = {
         "mode": mode,
+        "telemetry_mode": telemetry_mode,
         "timestamp": timestamp,
         "epoch": epoch,
         "collector_version": "1.0.0",
@@ -838,8 +843,13 @@ def collect_all() -> dict:
         "query_analytics": {
             "log_source": query_analytics.get("log_source", "none"),
             "queries_parsed": query_analytics.get("queries_parsed", 0),
+            "telemetry_mode": telemetry_mode,
+            "domains_available": query_analytics.get("domains_available", False),
+            "clients_available": query_analytics.get("clients_available", False),
             "diag": query_analytics.get("diag", {}),
         },
+
+        "log_detection": log_detection,
 
         "services": service_checks,
         "listeners": listeners,

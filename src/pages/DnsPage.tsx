@@ -73,6 +73,12 @@ export default function DnsPage() {
   const recentQueries = Array.isArray(queryAnalytics?.recent_queries) ? queryAnalytics.recent_queries : [];
   const telemetryConnected = collectorOk && safeNum(resolver.instances_live) > 0;
 
+  // Logless mode detection
+  const telemetryMode = telemetry?.telemetry_mode ?? queryAnalytics?.telemetry_mode ?? 'log';
+  const isLogless = telemetryMode === 'logless';
+  const domainsAvailable = queryAnalytics?.domains_available !== false && !isLogless;
+  const clientsAvailable = queryAnalytics?.clients_available !== false && !isLogless;
+
   const totalQueries = safeNum(resolver.total_queries);
   const cacheHitRatio = safeNum(resolver.cache_hit_ratio);
   const avgLatency = safeNum(resolver.avg_latency_ms);
