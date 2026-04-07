@@ -56,6 +56,7 @@ interface VipDiagResult {
   reason_code?: string | null;
   counter_mismatch: boolean;
   parse_error: string | null;
+  nft_unavailable?: boolean;
   backends?: Array<{
     ip: string;
     status: string;
@@ -213,7 +214,7 @@ function detectIncidents(
   if (vipData?.vip_diagnostics) {
     for (const vip of vipData.vip_diagnostics) {
       // PARSE_ERROR = critical
-      if (vip.parse_error) {
+      if (vip.parse_error && !vip.nft_unavailable) {
         incidents.push({
           id: `vip-${vip.ip}-parse`, timestamp: now, resolver: `VIP ${vip.ip}`,
           type: 'parse_error', severity: 'critical',
