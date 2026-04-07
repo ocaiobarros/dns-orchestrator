@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { LoadingState, ErrorState, EmptyState } from '@/components/DataStates';
 import { Settings2, Activity, Stethoscope, Download, Import, ShieldAlert, ShieldCheck, Trash2, Loader2, Eye } from 'lucide-react';
+import ObservedModePanel from '@/components/ObservedModePanel';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { safeDate } from '@/lib/types';
@@ -184,42 +185,10 @@ export default function SettingsPage() {
         </div>
 
         {isObserved ? (
-          <div className="space-y-3">
-            <div className="text-sm text-blue-400/90">
-              <strong>Modo OBSERVAÇÃO ativo</strong> — O sistema descobre a infraestrutura automaticamente via runtime
-              (systemctl, nft, ip addr, unbound-control). Nenhuma dependência de wizard ou deploy.
-            </div>
-            {serviceModeData?.inventory_summary && (
-              <div className="grid grid-cols-4 gap-3 text-xs">
-                {[
-                  ['Instâncias', serviceModeData.inventory_summary.instances],
-                  ['VIPs', serviceModeData.inventory_summary.vips],
-                  ['DNAT Rules', serviceModeData.inventory_summary.dnat_rules],
-                  ['Listeners', serviceModeData.inventory_summary.listeners],
-                ].map(([k, v]) => (
-                  <div key={k as string} className="bg-muted/30 rounded p-2 text-center">
-                    <div className="text-muted-foreground">{k}</div>
-                    <div className="font-mono text-lg font-bold text-primary">{v}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="text-xs text-muted-foreground">
-              <strong>Auto-sync:</strong> instâncias são descobertas e sincronizadas a cada 60s.
-              Deploy, apply e rollback estão <strong>bloqueados</strong>.
-            </div>
-            <div className="flex gap-2 pt-1">
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={handleDisableObserved}
-                disabled={observeLoading}
-              >
-                {observeLoading ? <Loader2 size={12} className="mr-1 animate-spin" /> : <Trash2 size={12} className="mr-1" />}
-                Desativar Observação
-              </Button>
-            </div>
-          </div>
+          <ObservedModePanel
+            onDisable={handleDisableObserved}
+            disabling={observeLoading}
+          />
         ) : isImported ? (
           <div className="space-y-3">
             <div className="text-sm text-yellow-400/90">
