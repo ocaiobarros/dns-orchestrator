@@ -129,10 +129,23 @@ def _check_nft_access() -> dict[str, Any]:
     start = monotonic()
     result = run_command("nft", ["list", "tables"], timeout=5, use_privilege=True)
     ok = result.get("exit_code") == 0
+    stderr = (result.get("stderr") or "").strip()
+
+    if ok:
+        status = "pass"
+        detail = "nft list tables OK"
+    elif "not permitted" in stderr.lower() or "must be root" in stderr.lower():
+        # Permission denied — degrade gracefully, not a hard failure
+        status = "warn"
+        detail = "nft sem permissão (sudo não disponível ou não autorizado) — diagnóstico parcial"
+    else:
+        status = "fail"
+        detail = stderr or "nft failed"
+
     return {
         "name": "nft_access",
-        "status": "pass" if ok else "fail",
-        "detail": "nft list tables OK" if ok else (result.get("stderr") or "nft failed").strip(),
+        "status": status,
+        "detail": detail,
         "duration_ms": int((monotonic() - start) * 1000),
     }
 
