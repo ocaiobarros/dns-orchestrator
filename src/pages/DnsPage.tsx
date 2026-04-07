@@ -92,11 +92,18 @@ export default function DnsPage() {
           <h1 className="text-xl font-semibold">DNS</h1>
           <p className="text-sm text-muted-foreground">Métricas reais via collector (unbound-control + nftables)</p>
         </div>
-        {!collectorOk && (
-          <span className="px-2 py-1 text-xs rounded border bg-destructive/10 text-destructive border-destructive/20 font-mono">
-            Collector inativo
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {isLogless && (
+            <span className="px-2 py-1 text-xs rounded border bg-warning/10 text-warning border-warning/20 font-mono font-bold uppercase tracking-wider">
+              Mode: Logless
+            </span>
+          )}
+          {!collectorOk && (
+            <span className="px-2 py-1 text-xs rounded border bg-destructive/10 text-destructive border-destructive/20 font-mono">
+              Collector inativo
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
