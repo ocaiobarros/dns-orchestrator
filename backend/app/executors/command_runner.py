@@ -74,32 +74,38 @@ _SUDO_ALLOWED_COMMANDS: list[tuple[str, list[str]]] = [
     ("/etc/network/post-up.d/dns-control", []),
 ]
 
-# Cache for sudo availability check
+# Cache for sudo availability check (with TTL to retry on failure)
 _sudo_available: bool | None = None
+_sudo_checked_at: float = 0.0
+_SUDO_CACHE_TTL_OK = 3600      # Cache positive result for 1 hour
+_SUDO_CACHE_TTL_FAIL = 120     # Retry negative result after 2 minutes
 
 
 def is_sudo_available() -> bool:
     """Check if sudo is available and the current user can use it without password for diagnostics."""
-    global _sudo_available
+    global _sudo_available, _sudo_checked_at
+
+    now = time.monotonic()
     if _sudo_available is not None:
-        return _sudo_available
+        ttl = _SUDO_CACHE_TTL_OK if _sudo_available else _SUDO_CACHE_TTL_FAIL
+        if (now - _sudo_checked_at) < ttl:
+            return _sudo_available
 
     if not shutil.which("sudo"):
         _sudo_available = False
+        _sudo_checked_at = now
         return False
 
     try:
-        # Use sudo -n -l to check if the user has ANY sudo privileges.
-        # We cannot use "sudo -n true" because the sudoers policy only allows specific commands.
         result = subprocess.run(
             ["sudo", "-n", "-l"],
             capture_output=True, text=True, timeout=5, shell=False,
         )
-        # sudo -l returns 0 if the user has any sudo rules configured
         _sudo_available = result.returncode == 0
     except Exception:
         _sudo_available = False
 
+    _sudo_checked_at = now
     logger.info(f"Sudo availability check: {'available' if _sudo_available else 'not available'}")
     return _sudo_available
 
