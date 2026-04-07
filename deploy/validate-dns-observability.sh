@@ -274,18 +274,22 @@ else
   fail "dns-control-api inativo"
 fi
 
-# Auth check
+# Auth check — endpoints require valid token; 404 without auth means middleware rejected
 AUTH_CODE=$(api_get_verbose "/metrics/dns/errors/stats")
-if [ "$AUTH_CODE" = "401" ] || [ "$AUTH_CODE" = "403" ]; then
-  warn "Endpoints requerem autenticação (HTTP $AUTH_CODE)"
-  warn "Use: TOKEN=\$(curl -s $API/auth/login -X POST -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"...\"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)[\"access_token\"])')"
+if [ "$AUTH_CODE" = "401" ] || [ "$AUTH_CODE" = "403" ] || { [ "$AUTH_CODE" = "404" ] && [ -z "$TOKEN" ]; }; then
   if [ -z "$TOKEN" ]; then
+    warn "Endpoints requerem autenticação (HTTP $AUTH_CODE)"
+    warn "Use: TOKEN=\$(curl -s -X POST $API/auth/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"...\"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)[\"token\"])')"
     fail "TOKEN não fornecido — endpoints autenticados falharão"
+  else
+    warn "Endpoint retornou HTTP $AUTH_CODE mesmo com TOKEN (rota pode não existir)"
   fi
 elif [ "$AUTH_CODE" = "000" ]; then
   fail "API não respondeu (conexão recusada)"
+elif [ "$AUTH_CODE" = "200" ]; then
+  ok "API acessível e autenticada (HTTP 200)"
 else
-  ok "API acessível (HTTP $AUTH_CODE)"
+  warn "API respondeu com HTTP $AUTH_CODE (verificar rota ou versão da API)"
 fi
 
 # DNS baseline
