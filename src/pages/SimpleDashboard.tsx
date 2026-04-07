@@ -28,6 +28,7 @@ import NocQuickActions from '@/components/noc/NocQuickActions';
 import NocDeploySimulation from '@/components/noc/NocDeploySimulation';
 import NocGeoMap from '@/components/noc/NocGeoMap';
 import NocNetworkMap, { type MapNode, type MapEdge } from '@/components/noc/NocNetworkMap';
+import NocTopologyPanel from '@/components/noc/NocTopologyPanel';
 
 function formatBytes(b: number): string {
   if (b < 1024) return `${b} B`;
