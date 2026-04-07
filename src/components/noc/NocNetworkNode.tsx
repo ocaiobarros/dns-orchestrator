@@ -9,6 +9,7 @@ interface Props {
   isHovered: boolean;
   onHover: () => void;
   onLeave: () => void;
+  compact?: boolean;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -20,15 +21,15 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const TYPE_ICONS: Record<string, string> = {
-  vip: '◆',
-  resolver: '⬢',
-  upstream: '●',
+  vip: '⚡',
+  resolver: '≡',
+  upstream: '⊕',
 };
 
 const TYPE_RADIUS: Record<string, number> = {
-  vip: 28,
-  resolver: 32,
-  upstream: 26,
+  vip: 24,
+  resolver: 18,
+  upstream: 22,
 };
 
 function formatQps(qps?: number): string {
@@ -38,15 +39,14 @@ function formatQps(qps?: number): string {
   return `${qps} qps`;
 }
 
-export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave }: Props) {
+export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave, compact = false }: Props) {
   const color = STATUS_COLORS[node.status] ?? STATUS_COLORS.unknown;
-  const radius = safeR(TYPE_RADIUS[node.type], 28);
+  const radius = safeR(compact ? Math.round(TYPE_RADIUS[node.type] * 0.85) : TYPE_RADIUS[node.type], 18);
   const icon = TYPE_ICONS[node.type] ?? '●';
   const sx = safeNum(x, 100);
   const sy = safeNum(y, 100);
 
   const isAlertState = node.status === 'failed' || node.status === 'degraded';
-  const pulseDuration = isAlertState ? 1.5 : 3;
 
   return (
     <g
@@ -54,124 +54,87 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
       onMouseLeave={onLeave}
       style={{ cursor: 'pointer' }}
     >
-      {/* Outer pulse ring */}
-      <motion.circle
-        cx={safeNum(sx)}
-        cy={safeNum(sy)}
-        fill="none"
-        stroke={color}
-        strokeWidth={safeSW(1, 1)}
-        initial={{ r: safeR(radius + 8, 36), strokeOpacity: safeOpacity(0.15, 0.15) }}
-        animate={{
-          r: [safeR(radius + 8, 36), safeR(radius + 18, 46), safeR(radius + 8, 36)],
-          strokeOpacity: [safeOpacity(0.15, 0.15), safeOpacity(0.05, 0.05), safeOpacity(0.15, 0.15)],
-        }}
-        transition={{ duration: pulseDuration, repeat: Infinity, ease: 'easeInOut' }}
-      />
-
-      {/* Glow ring */}
-      {isAlertState && (
+      {/* Outer pulse ring - only for VIP/upstream or alert */}
+      {(isAlertState || node.type !== 'resolver') && (
         <motion.circle
-          cx={safeNum(sx)}
-          cy={safeNum(sy)}
-          fill="none"
-          stroke={color}
-          strokeWidth={safeSW(2, 2)}
-          initial={{ r: safeR(radius + 4, 32), strokeOpacity: safeOpacity(0.3, 0.3) }}
+          cx={sx} cy={sy}
+          fill="none" stroke={color}
+          strokeWidth={safeSW(1, 1)}
+          initial={{ r: safeR(radius + 6, 24), strokeOpacity: 0.12 }}
           animate={{
-            strokeOpacity: [safeOpacity(0.3, 0.3), safeOpacity(0.6, 0.6), safeOpacity(0.3, 0.3)],
-            r: [safeR(radius + 4, 32), safeR(radius + 12, 40), safeR(radius + 4, 32)],
+            r: [safeR(radius + 6, 24), safeR(radius + 14, 32), safeR(radius + 6, 24)],
+            strokeOpacity: [0.12, 0.04, 0.12],
           }}
-          transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+          transition={{ duration: isAlertState ? 1.5 : 3, repeat: Infinity, ease: 'easeInOut' }}
         />
       )}
 
       {/* Main node circle */}
       <motion.circle
-        cx={safeNum(sx)}
-        cy={safeNum(sy)}
+        cx={sx} cy={sy}
         fill={`${color}15`}
         stroke={color}
-        strokeWidth={safeSW(isHovered ? 2.5 : 1.5, 1.5)}
-        initial={{ r: safeR(radius, 28) }}
-        animate={{ r: isHovered ? safeR(radius + 3, 31) : safeR(radius, 28) }}
+        strokeWidth={safeSW(isHovered ? 2 : 1.5, 1.5)}
+        initial={{ r: safeR(radius, 18) }}
+        animate={{ r: isHovered ? safeR(radius + 2, 20) : safeR(radius, 18) }}
         transition={{ duration: 0.2 }}
         style={{
           filter: isAlertState
-            ? `drop-shadow(0 0 12px ${color})`
-            : `drop-shadow(0 0 6px ${color}40)`,
+            ? `drop-shadow(0 0 8px ${color})`
+            : `drop-shadow(0 0 4px ${color}40)`,
         }}
       />
 
-      {/* Inner glow */}
-      <circle
-        cx={safeNum(sx)}
-        cy={safeNum(sy)}
-        r={safeR(radius * 0.6, 10)}
-        fill={`${color}08`}
-      />
-
       {/* Status dot */}
-      <motion.circle
-        cx={safeNum(sx)}
-        cy={safeNum(sy - radius + 6)}
-        fill={color}
-        initial={{ r: safeR(3, 3) }}
-        animate={isAlertState ? { r: safeR(3, 3), scale: [1, 1.4, 1] } : { r: safeR(3, 3) }}
-        transition={{ duration: 1, repeat: Infinity }}
-      />
+      <circle cx={sx + radius - 2} cy={sy - radius + 2} r={safeR(3, 3)} fill={color} />
 
       {/* Type icon */}
       <text
-        x={sx}
-        y={sy - 2}
-        textAnchor="middle"
-        dominantBaseline="middle"
+        x={sx} y={sy + 1}
+        textAnchor="middle" dominantBaseline="middle"
         fill={color}
-        fontSize={node.type === 'resolver' ? 16 : 14}
+        fontSize={compact ? 12 : 14}
         fontFamily="monospace"
-        style={{ opacity: 0.8 }}
+        style={{ opacity: 0.9 }}
       >
         {icon}
       </text>
 
-      {/* Label */}
+      {/* Label - always show */}
       <text
         x={sx}
-        y={sy + radius + 16}
-        textAnchor="middle"
-        dominantBaseline="middle"
+        y={sy + radius + (compact ? 11 : 14)}
+        textAnchor="middle" dominantBaseline="middle"
         fill="hsl(var(--foreground))"
         fillOpacity={0.85}
-        fontSize="11"
+        fontSize={compact ? '8' : '10'}
         fontWeight="700"
         fontFamily="'JetBrains Mono', monospace"
       >
         {node.label}
       </text>
 
-      {/* Metrics below label */}
-      {node.qps != null && Number.isFinite(node.qps) && (
+      {/* Bind IP - compact: show truncated, full: show full */}
+      {node.bindIp && (
         <text
           x={sx}
-          y={sy + radius + 30}
-          textAnchor="middle"
-          dominantBaseline="middle"
-          fill="hsl(var(--primary))"
-          fillOpacity={0.7}
-          fontSize="9"
+          y={sy + radius + (compact ? 21 : 27)}
+          textAnchor="middle" dominantBaseline="middle"
+          fill="hsl(var(--muted-foreground))"
+          fillOpacity={0.4}
+          fontSize={compact ? '6' : '8'}
           fontFamily="'JetBrains Mono', monospace"
         >
-          {formatQps(node.qps)}
+          {compact && node.bindIp.length > 18 ? node.bindIp.slice(0, 16) + '…' : node.bindIp}
         </text>
       )}
 
-      {node.latency != null && Number.isFinite(node.latency) && (
+      {/* Latency badge - only for non-compact or VIP/upstream */}
+      {!compact && node.latency != null && Number.isFinite(node.latency) && (
         <text
           x={sx}
-          y={sy + radius + 42}
-          textAnchor="middle"
-          dominantBaseline="middle"
+          y={sy + radius + 39}
+          textAnchor="middle" dominantBaseline="middle"
           fill={node.latency < 30 ? 'hsl(152, 76%, 50%)' : node.latency < 100 ? 'hsl(38, 95%, 55%)' : 'hsl(0, 76%, 55%)'}
           fillOpacity={0.8}
           fontSize="9"
@@ -181,24 +144,24 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
         </text>
       )}
 
-      {node.cacheHit != null && Number.isFinite(node.cacheHit) && (
+      {/* QPS - only for VIP node */}
+      {node.type === 'vip' && node.qps != null && Number.isFinite(node.qps) && node.qps > 0 && (
         <text
           x={sx}
-          y={sy + radius + 54}
-          textAnchor="middle"
-          dominantBaseline="middle"
-          fill="hsl(var(--foreground))"
-          fillOpacity={0.4}
-          fontSize="8"
+          y={sy + radius + (node.latency != null ? 51 : 39)}
+          textAnchor="middle" dominantBaseline="middle"
+          fill="hsl(var(--primary))"
+          fillOpacity={0.7}
+          fontSize="9"
           fontFamily="'JetBrains Mono', monospace"
         >
-          cache {node.cacheHit}%
+          {formatQps(node.qps)}
         </text>
       )}
 
       {/* Tooltip on hover */}
       {isHovered && (
-        <foreignObject x={sx + radius + 14} y={sy - 50} width={180} height={130}>
+        <foreignObject x={sx + radius + 10} y={sy - 60} width={200} height={140}>
           <div className="bg-card/95 backdrop-blur-md border border-border/40 rounded-lg px-3 py-2.5 shadow-xl">
             <div className="text-[10px] font-mono font-bold text-foreground/90 mb-1.5">{node.label}</div>
             <div className="space-y-1 text-[9px] font-mono text-muted-foreground/60">
@@ -209,7 +172,7 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
               {node.bindIp && (
                 <div className="flex justify-between">
                   <span>Bind IP</span>
-                  <span className="text-foreground/70">{node.bindIp}</span>
+                  <span className="text-foreground/70 text-[8px]">{node.bindIp}</span>
                 </div>
               )}
               {node.latency != null && (
