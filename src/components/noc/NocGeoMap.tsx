@@ -199,7 +199,7 @@ export default function NocGeoMap({
         </div>
       </div>
 
-      <div className="relative w-full" style={{ height: 500 }}>
+      <div className="relative w-full" style={{ height: 420 }}>
         <MapContainer
           center={[serverLat, serverLng]}
           zoom={4}

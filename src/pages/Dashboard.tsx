@@ -286,9 +286,10 @@ function InterceptionDashboard() {
         </motion.div>
       )}
 
-      {/* ═══ TIER 4: GEO MAP + NETWORK MAP — Side by side ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Geo Map */}
+      {/* ═══ TIER 4: GEO MAP (compact) + NETWORK MAP (expanded) — Side by side ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        {/* Geo Map — 2/5 width */}
+        <div className="lg:col-span-2">
         {(() => {
           const mapNodes: MapNode[] = [];
           const mapEdges: MapEdge[] = [];
@@ -367,8 +368,10 @@ function InterceptionDashboard() {
 
           return <NocGeoMap nodes={mapNodes} edges={mapEdges} />;
         })()}
+        </div>
 
-        {/* DNS Network Map (Topology) */}
+        {/* DNS Network Map (Topology) — 3/5 width */}
+        <div className="lg:col-span-3">
         <NocTopologyPanel
           health={health}
           vipConfigured={vipConfigured}
@@ -379,6 +382,7 @@ function InterceptionDashboard() {
           avgLatency={Number(avgLatency)}
           dnsMetricsAvailable={dnsAvail}
         />
+        </div>
       </div>
 
       {/* ═══ TIER 4B: DNS PATH FLOW ═══ */}
@@ -450,91 +454,91 @@ function InterceptionDashboard() {
         return <NocDnsPathFlow nodes={pathNodes} edges={pathEdges} />;
       })()}
 
-      {/* ═══ TIER 4C: INCIDENT DETECTION ═══ */}
-      <NocIncidentDetector
-        resolvers={safeV2.map(inst => {
-          const instStat = safeStats.find((s: any) => s.instance_id === inst.id);
-          return {
-            name: inst.instance_name || `Resolver ${inst.id}`,
-            latencyMs: dnsAvail ? Number(avgLatency) : 0,
-            servfailPct: 0.3,
-            cacheHitPct: dnsAvail ? Number(avgCacheHit) : 100,
-            qps: instStat ? getInstanceQueries(instStat) : (dnsAvail ? Math.round(totalQps / Math.max(safeV2.length, 1)) : 0),
-            healthy: inst.current_status === 'healthy',
-            upstreamReachable: upstreamOk !== false,
-          };
-        })}
-        vipDiagnostics={vipDiagnostics}
-      />
+      {/* ═══ TIER 4C: INCIDENT + VIP DIAGNOSTICS + DNS ERRORS — 3 cols ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <NocIncidentDetector
+          resolvers={safeV2.map(inst => {
+            const instStat = safeStats.find((s: any) => s.instance_id === inst.id);
+            return {
+              name: inst.instance_name || `Resolver ${inst.id}`,
+              latencyMs: dnsAvail ? Number(avgLatency) : 0,
+              servfailPct: 0.3,
+              cacheHitPct: dnsAvail ? Number(avgCacheHit) : 100,
+              qps: instStat ? getInstanceQueries(instStat) : (dnsAvail ? Math.round(totalQps / Math.max(safeV2.length, 1)) : 0),
+              healthy: inst.current_status === 'healthy',
+              upstreamReachable: upstreamOk !== false,
+            };
+          })}
+          vipDiagnostics={vipDiagnostics}
+        />
+        <NocVipDiagnostics data={vipDiagnostics} isLoading={vipDiagLoading} />
+        <NocDnsErrors />
+      </div>
 
-      {/* ═══ TIER 4D: SERVICE VIP DIAGNOSTICS ═══ */}
-      <NocVipDiagnostics data={vipDiagnostics} isLoading={vipDiagLoading} />
-
-      {/* ═══ TIER 4E: DNS ERRORS & FAILURES ═══ */}
-      <NocDnsErrors />
-
-      {/* ═══ TIER 5: HEALTH MATRIX ═══ */}
-      <NocHealthMatrix
-        services={safeServices}
-        dnsHealthy={healthyCount === totalInstances && totalInstances > 0}
-        networkOk={allRunning}
-        dnsAvailable={dnsAvail}
-        privilegeLimited={dnsStatus === 'privilege_limited'}
-      />
+      {/* ═══ TIER 5: SUBSYSTEM MATRIX + OPERATIONAL FEED + SERVICE STATUS — 3 cols ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <NocHealthMatrix
+          services={safeServices}
+          dnsHealthy={healthyCount === totalInstances && totalInstances > 0}
+          networkOk={allRunning}
+          dnsAvailable={dnsAvail}
+          privilegeLimited={dnsStatus === 'privilege_limited'}
+        />
+        <NocEventsTimeline events={eventItems} />
+        <NocResolverPanel services={safeServices} />
+      </div>
 
       {/* ═══ TIER 5B: INSTANCE TABLE ═══ */}
       <NocInstanceTable instances={safeV2} />
 
-      {/* ═══ TIER 6: EVENTS + SERVICES + SYSTEM INFO (4+4+4) ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <NocEventsTimeline events={eventItems} />
-        <NocResolverPanel services={safeServices} />
-        <NocSystemInfoGrid sysInfo={sysInfo} />
-      </div>
+      {/* ═══ TIER 6: PLATFORM METADATA ═══ */}
+      <NocSystemInfoGrid sysInfo={sysInfo} />
 
-      {/* ═══ TIER 7: DEPLOYMENT STATE ═══ */}
-      {deployState && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="noc-surface"
-        >
-          <div className="noc-surface-header flex items-center gap-2">
-            <FileText size={12} />
-            <span className="text-[10px] font-mono font-bold uppercase tracking-widest">Deploy State</span>
-          </div>
-          <div className="noc-surface-body">
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 text-xs">
-              <div>
-                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Config Version</div>
-                <div className="font-mono font-bold">{deployState.configVersion || '—'}</div>
-              </div>
-              <div>
-                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Last Apply</div>
-                <div className="font-mono">{safeDate(deployState.lastApplyAt)}</div>
-              </div>
-              <div>
-                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Operator</div>
-                <div className="font-mono">{deployState.lastApplyOperator || '—'}</div>
-              </div>
-              <div>
-                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Status</div>
-                <div className={`font-mono font-bold ${
-                  deployState.lastApplyStatus === 'success' ? 'text-success' :
-                  deployState.lastApplyStatus === 'failed' ? 'text-destructive' : ''
-                }`}>{deployState.lastApplyStatus || '—'}</div>
-              </div>
-              <div>
-                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Total Deploys</div>
-                <div className="font-mono font-bold">{deployState.totalDeployments}</div>
-              </div>
-              <div>
-                <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Rollback</div>
-                <div className={`font-mono ${deployState.rollbackAvailable ? 'text-accent' : 'text-muted-foreground'}`}>
-                  {deployState.rollbackAvailable ? 'Disponível' : 'Indisponível'}
+      {/* ═══ TIER 7: DEPLOY STATE + DNS REPLAY — Side by side ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {deployState && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="noc-surface"
+          >
+            <div className="noc-surface-header flex items-center gap-2">
+              <FileText size={12} />
+              <span className="text-[10px] font-mono font-bold uppercase tracking-widest">Deploy State</span>
+            </div>
+            <div className="noc-surface-body">
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                <div>
+                  <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Config Version</div>
+                  <div className="font-mono font-bold">{deployState.configVersion || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Last Apply</div>
+                  <div className="font-mono">{safeDate(deployState.lastApplyAt)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Operator</div>
+                  <div className="font-mono">{deployState.lastApplyOperator || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Status</div>
+                  <div className={`font-mono font-bold ${
+                    deployState.lastApplyStatus === 'success' ? 'text-success' :
+                    deployState.lastApplyStatus === 'failed' ? 'text-destructive' : ''
+                  }`}>{deployState.lastApplyStatus || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Total Deploys</div>
+                  <div className="font-mono font-bold">{deployState.totalDeployments}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">Rollback</div>
+                  <div className={`font-mono ${deployState.rollbackAvailable ? 'text-accent' : 'text-muted-foreground'}`}>
+                    {deployState.rollbackAvailable ? 'Disponível' : 'Indisponível'}
+                  </div>
                 </div>
               </div>
-              <div className="flex items-end gap-2">
+              <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border/30">
                 <button onClick={() => navigate('/history')}
                   className="px-2 py-1 text-[10px] bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80 flex items-center gap-1">
                   <Clock size={10} /> Histórico
@@ -549,61 +553,60 @@ function InterceptionDashboard() {
                   <Zap size={10} /> Deploy
                 </button>
               </div>
+              {selfTestResult && (
+                <div className="mt-4 pt-4 border-t border-border/60 space-y-2">
+                  <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider">
+                    <span className="text-muted-foreground/70">System self-test</span>
+                    <span className={selfTestResult.overall === 'ok' ? 'text-success font-bold' : 'text-destructive font-bold'}>
+                      {selfTestResult.overall === 'ok' ? 'OK' : 'FAILED'}
+                    </span>
+                  </div>
+                  <div className="text-[10px] font-mono text-muted-foreground/70">
+                    pass={selfTestResult.passed} warn={selfTestResult.warned} fail={selfTestResult.failed}
+                  </div>
+                  <div className="space-y-1.5">
+                    {selfTestResult.checks.map((check) => (
+                      <div key={check.name} className="grid grid-cols-[auto_1fr_auto] gap-2 text-[10px] font-mono items-center">
+                        <span className={
+                          check.status === 'pass'
+                            ? 'text-success'
+                            : check.status === 'warn'
+                              ? 'text-warning'
+                              : 'text-destructive'
+                        }>
+                          {check.status.toUpperCase()}
+                        </span>
+                        <span className="text-foreground/85 truncate">{check.name}: {check.detail}</span>
+                        <span className="text-muted-foreground/55">{check.duration_ms}ms</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-            {selfTestResult && (
-              <div className="mt-4 pt-4 border-t border-border/60 space-y-2">
-                <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider">
-                  <span className="text-muted-foreground/70">System self-test</span>
-                  <span className={selfTestResult.overall === 'ok' ? 'text-success font-bold' : 'text-destructive font-bold'}>
-                    {selfTestResult.overall === 'ok' ? 'OK' : 'FAILED'}
-                  </span>
-                </div>
-                <div className="text-[10px] font-mono text-muted-foreground/70">
-                  pass={selfTestResult.passed} warn={selfTestResult.warned} fail={selfTestResult.failed}
-                </div>
-                <div className="space-y-1.5">
-                  {selfTestResult.checks.map((check) => (
-                    <div key={check.name} className="grid grid-cols-[auto_1fr_auto] gap-2 text-[10px] font-mono items-center">
-                      <span className={
-                        check.status === 'pass'
-                          ? 'text-success'
-                          : check.status === 'warn'
-                            ? 'text-warning'
-                            : 'text-destructive'
-                      }>
-                        {check.status.toUpperCase()}
-                      </span>
-                      <span className="text-foreground/85 truncate">{check.name}: {check.detail}</span>
-                      <span className="text-muted-foreground/55">{check.duration_ms}ms</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </motion.div>
-      )}
+          </motion.div>
+        )}
 
-      {/* ═══ TIER 8: DNS REPLAY SIMULATION ═══ */}
-      <NocDeploySimulation
-        listeners={
-          safeV2.length > 0
-            ? safeV2.map(inst => ({
-                name: inst.instance_name || `resolver-${inst.id}`,
-                ip: inst.bind_ip || '127.0.0.1',
-              }))
-            : health?.instances?.length
-              ? health.instances.map(inst => ({
-                  name: inst.instance || 'resolver',
+        <NocDeploySimulation
+          listeners={
+            safeV2.length > 0
+              ? safeV2.map(inst => ({
+                  name: inst.instance_name || `resolver-${inst.id}`,
                   ip: inst.bind_ip || '127.0.0.1',
                 }))
-              : totalInstances > 0
-                ? [{ name: 'resolver-local', ip: '127.0.0.1' }]
-                : []
-        }
-      />
+              : health?.instances?.length
+                ? health.instances.map(inst => ({
+                    name: inst.instance || 'resolver',
+                    ip: inst.bind_ip || '127.0.0.1',
+                  }))
+                : totalInstances > 0
+                  ? [{ name: 'resolver-local', ip: '127.0.0.1' }]
+                  : []
+          }
+        />
+      </div>
 
-      {/* ═══ TIER 9: COMMAND CONSOLE ═══ */}
+      {/* ═══ TIER 8: COMMAND CONSOLE ═══ */}
       <NocQuickActions />
     </div>
   );
