@@ -32,28 +32,47 @@ interface Props {
 export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' }: Props) {
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
 
-  const positions = useMemo(() => {
+  const { positions, viewWidth, viewHeight } = useMemo(() => {
     const vips = nodes.filter(n => n.type === 'vip');
     const resolvers = nodes.filter(n => n.type === 'resolver');
     const upstreams = nodes.filter(n => n.type === 'upstream');
 
+    // Diamond layout: VIP left, Resolvers center column, Upstream right
+    const nodeSpacing = 72; // vertical spacing between resolver nodes
+    const resolverCount = Math.max(resolvers.length, 1);
+    const resolverColumnHeight = (resolverCount - 1) * nodeSpacing;
+    const padding = 80;
+    const totalHeight = Math.max(resolverColumnHeight + padding * 2, 300);
+    const centerY = totalHeight / 2;
+
+    const w = 1000;
+    const vipX = 120;
+    const resolverX = w / 2;
+    const upstreamX = w - 120;
+
     const pos: Record<string, { x: number; y: number }> = {};
 
+    // VIPs stacked vertically on the left, centered
+    const vipSpacing = 70;
+    const vipHeight = (vips.length - 1) * vipSpacing;
     vips.forEach((n, i) => {
-      pos[n.id] = { x: 500, y: 60 + i * 80 };
+      pos[n.id] = { x: vipX, y: centerY - vipHeight / 2 + i * vipSpacing };
     });
 
-    const rSpacing = 900 / (Math.max(resolvers.length, 1) + 1);
+    // Resolvers in center column, evenly spaced vertically
+    const resolverStartY = centerY - resolverColumnHeight / 2;
     resolvers.forEach((n, i) => {
-      pos[n.id] = { x: rSpacing * (i + 1) + 50, y: 220 };
+      pos[n.id] = { x: resolverX, y: resolverStartY + i * nodeSpacing };
     });
 
-    const uSpacing = 900 / (Math.max(upstreams.length, 1) + 1);
+    // Upstreams stacked vertically on the right, centered
+    const upSpacing = 70;
+    const upHeight = (upstreams.length - 1) * upSpacing;
     upstreams.forEach((n, i) => {
-      pos[n.id] = { x: uSpacing * (i + 1) + 50, y: 400 };
+      pos[n.id] = { x: upstreamX, y: centerY - upHeight / 2 + i * upSpacing };
     });
 
-    return pos;
+    return { positions: pos, viewWidth: w, viewHeight: totalHeight };
   }, [nodes]);
 
   const maxQps = useMemo(() => {
@@ -68,10 +87,15 @@ export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' 
           <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
           <span className="text-[11px] font-mono font-bold tracking-widest uppercase text-foreground/80">{title}</span>
         </div>
-        <span className="text-[9px] font-mono text-muted-foreground/30 uppercase tracking-widest">Live Topology</span>
+        <div className="flex items-center gap-4 text-[9px] font-mono text-muted-foreground/40">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-success" /> HEALTHY</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-destructive" /> FAILED</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-muted-foreground/40" /> INACTIVE</span>
+          <span className="flex items-center gap-1"><span className="text-warning">✦</span> TRAFFIC</span>
+        </div>
       </div>
 
-      <div className="relative w-full" style={{ minHeight: 480 }}>
+      <div className="relative w-full" style={{ minHeight: Math.max(viewHeight + 20, 320) }}>
         {/* Background grid */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-[0.04]">
           <defs>
@@ -82,15 +106,8 @@ export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' 
           <rect width="100%" height="100%" fill="url(#noc-map-grid)" />
         </svg>
 
-        {/* Radar rings */}
-        <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-[0.03]">
-          {[120, 200, 300].map((ringRadius) => (
-            <circle key={ringRadius} cx={safeNum(500)} cy={safeNum(240)} r={safeR(ringRadius, 120)} fill="none" stroke="hsl(var(--primary))" strokeWidth="1" />
-          ))}
-        </svg>
-
         {/* Main SVG canvas */}
-        <svg viewBox="0 0 1000 480" className="w-full h-full" style={{ minHeight: 480 }}>
+        <svg viewBox={`0 0 ${viewWidth} ${viewHeight}`} className="w-full h-full" style={{ minHeight: Math.max(viewHeight + 20, 320) }} preserveAspectRatio="xMidYMid meet">
           <defs>
             <filter id="map-glow-green">
               <feGaussianBlur stdDeviation="4" result="blur" />
@@ -152,11 +169,6 @@ export default function NocNetworkMap({ nodes, edges, title = 'DNS Network Map' 
               />
             );
           })}
-
-          {/* Direction label */}
-          <text x="960" y="240" fill="hsl(var(--foreground))" fillOpacity="0.08" fontSize="10" fontFamily="monospace" textAnchor="end" dominantBaseline="middle">
-            QUERY FLOW ↓
-          </text>
         </svg>
 
         {/* Event overlay corner */}
