@@ -88,24 +88,14 @@ export default function NocNetworkLink({
         );
       })}
 
-      {/* Latency badge */}
-      {latency != null && Number.isFinite(latency) && (
+      {/* Latency badge - only on highlighted links */}
+      {highlighted && latency != null && Number.isFinite(latency) && (
         <g>
-          <rect x={bx - 20} y={by - 8} width={40} height={16} rx={4}
-            fill="hsl(var(--card))" fillOpacity={0.9} stroke={color} strokeWidth={0.5} strokeOpacity={0.3} />
+          <rect x={bx - 18} y={by - 7} width={36} height={14} rx={3}
+            fill="hsl(var(--card))" fillOpacity={0.95} stroke={color} strokeWidth={0.5} strokeOpacity={0.4} />
           <text x={bx} y={by + 1} textAnchor="middle" dominantBaseline="middle"
-            fill={color} fontSize="8" fontWeight="700" fontFamily="'JetBrains Mono', monospace">
+            fill={color} fontSize="7" fontWeight="700" fontFamily="'JetBrains Mono', monospace">
             {latency}ms
-          </text>
-        </g>
-      )}
-
-      {/* QPS badge */}
-      {sQps > 0 && (
-        <g>
-          <text x={bx} y={by + 18} textAnchor="middle" dominantBaseline="middle"
-            fill="hsl(var(--foreground))" fillOpacity={0.3} fontSize="7" fontFamily="'JetBrains Mono', monospace">
-            {sQps >= 1000 ? `${(sQps / 1000).toFixed(0)}k` : sQps} qps
           </text>
         </g>
       )}
