@@ -146,6 +146,7 @@ function ModeCard({ selected, onClick, label, desc, disabled = false, badge }: {
 export default function Wizard() {
   const [step, setStep] = useState(0);
   const [config, setConfig] = useState<WizardConfig>({ ...DEFAULT_CONFIG });
+  const [serviceMode, setServiceMode] = useState<'managed' | 'imported' | 'observed'>('managed');
   const [applyResult, setApplyResult] = useState<ApplyResult | null>(null);
   const [showValidation, setShowValidation] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
@@ -161,9 +162,20 @@ export default function Wizard() {
   const { names: STEPS, icons: STEP_ICONS } = getSteps(config.operationMode, config.vipDeliverySubmode);
   const LAST_STEP = STEPS.length - 1;
 
-  const validationErrors = validateConfig(config);
+  const isReadonlyMode = serviceMode === 'observed' || serviceMode === 'imported';
+  const validationErrors = isReadonlyMode ? [] : validateConfig(config);
   const validationSummary = getValidationSummary(validationErrors);
   const stepErrors = (s: number) => getStepErrors(validationErrors, s);
+
+  useEffect(() => {
+    let active = true;
+    api.getServiceMode().then((res) => {
+      if (active && res.success && res.data?.service_mode) {
+        setServiceMode(res.data.service_mode as 'managed' | 'imported' | 'observed');
+      }
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   const set = <K extends keyof WizardConfig>(key: K, val: WizardConfig[K]) =>
     setConfig(prev => ({ ...prev, [key]: val }));
@@ -275,6 +287,11 @@ export default function Wizard() {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const handleApply = async (dryRun: boolean) => {
+    if (isReadonlyMode) {
+      setSubmitError('Modo observação/importação ativo — nenhuma configuração será alterada neste host.');
+      setSubmitState('error');
+      return;
+    }
     setShowValidation(true);
     setSubmitError(null);
     setSubmitState('validating');
@@ -333,6 +350,11 @@ export default function Wizard() {
   };
 
   const handleForceDryRun = async () => {
+    if (isReadonlyMode) {
+      setSubmitError('Modo observação/importação ativo — dry-run e deploy estão desabilitados.');
+      setSubmitState('error');
+      return;
+    }
     setSubmitError(null);
     setSubmitState('dispatching');
     try {
@@ -1546,6 +1568,12 @@ export default function Wizard() {
           </div>
         </div>
 
+        {isReadonlyMode && (
+          <div className="rounded-md border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">
+            <strong>{serviceMode === 'observed' ? 'Modo Observação Ativo' : 'Modo Importação Ativo'}</strong> — Nenhuma configuração será alterada. Deploy e apply ficam desabilitados neste host.
+          </div>
+        )}
+
         {/* Host sync result banner */}
         {hostSyncResult && (
           <div className="flex items-center gap-2 p-2 rounded bg-accent/10 border border-accent/20 text-xs text-accent">
@@ -1611,7 +1639,7 @@ export default function Wizard() {
           <ChevronLeft size={16} /> Anterior
         </button>
         <div className="flex gap-2">
-          {step === LAST_STEP && !applyResult && (
+          {step === LAST_STEP && !applyResult && !isReadonlyMode && (
             <>
               <button onClick={() => handleApply(true)} disabled={submitState === 'dispatching'}
                 className="flex items-center gap-1 px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded border border-border disabled:opacity-60">
@@ -1623,6 +1651,11 @@ export default function Wizard() {
                 {submitState === 'dispatching' ? 'Aplicando...' : 'Aplicar Deploy'}
               </button>
             </>
+          )}
+          {step === LAST_STEP && !applyResult && isReadonlyMode && (
+            <div className="rounded border border-accent/30 bg-accent/10 px-4 py-2 text-sm text-accent">
+              Modo observação ativo — apply desabilitado.
+            </div>
           )}
           {step < LAST_STEP && (
             <button onClick={handleNext} className="flex items-center gap-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded font-medium hover:bg-primary/90">

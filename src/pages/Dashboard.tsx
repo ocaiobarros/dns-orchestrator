@@ -109,6 +109,8 @@ function InterceptionDashboard() {
     },
   });
 
+  const isReadonlyMode = sysInfo?.operation_mode === 'observed' || sysInfo?.operation_mode === 'imported';
+  const isObservedMode = sysInfo?.operation_mode === 'observed';
   const isLoading = sysLoading && svcLoading;
 
   if (sysError && !sysInfo) return <ErrorState message={sysError.message} onRetry={() => qc.invalidateQueries({ queryKey: ['system', 'info'] })} />;
@@ -227,6 +229,12 @@ function InterceptionDashboard() {
         </span>
       </div>
 
+      {isReadonlyMode && (
+        <div className="rounded-md border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">
+          <strong>{isObservedMode ? 'Modo Observação Ativo' : 'Modo Importação Ativo'}</strong> — Nenhuma configuração será alterada. O painel opera apenas em leitura.
+        </div>
+      )}
+
       {/* ═══ TIER 1: HERO BAR — Operational state at a glance ═══ */}
       <NocHeroBar
         allHealthy={allRunning && failedCount === 0}
@@ -235,6 +243,7 @@ function InterceptionDashboard() {
         healthyCount={healthyCount}
         onReconcile={() => reconcileMutation.mutate()}
         reconciling={reconciling}
+        readOnlyMode={isReadonlyMode}
         dnsAvailable={dnsAvail}
         dnsStatus={dnsStatus}
         lastEvent={lastMeaningfulEvent}

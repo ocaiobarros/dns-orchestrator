@@ -666,7 +666,7 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
             </span>
             {summary.has_parse_errors && <StatusBadge status="PARSE_ERROR" />}
             {summary.has_counter_mismatch && <StatusBadge status="COUNTER_MISMATCH" />}
-            {nftPermissionLimited && <StatusBadge status="STALE_DATA" />}
+            {nftPermissionLimited && <StatusBadge status="UNKNOWN" />}
             {anyStale && <StatusBadge status="STALE_DATA" />}
           </>
         )}
@@ -705,7 +705,7 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
               {nftPermissionLimited && (
                 <div className="mb-2 flex items-start gap-2 rounded border border-accent/25 bg-accent/10 p-2 text-[10px] font-mono text-accent">
                   <AlertTriangle size={10} className="mt-0.5 shrink-0" />
-                  <span>Modo passivo degradado: leitura de nftables indisponível sem privilégio; bind, rota, probe DNS e contadores locais continuam ativos.</span>
+                  <span>Diagnóstico limitado por permissão (nftables). O DNS continua funcional e o painel usa somente sinais passivos disponíveis.</span>
                 </div>
               )}
               <div className="grid grid-cols-1 gap-3">
