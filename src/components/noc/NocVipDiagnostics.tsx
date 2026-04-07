@@ -59,6 +59,10 @@ interface SourceTimestamp {
   duration_ms: number;
   ok: boolean;
   stale_threshold_s?: number;
+  permission_limited?: boolean;
+  mode?: string;
+  availability?: string;
+  error?: string | null;
 }
 
 interface BackendProbe {
@@ -118,6 +122,7 @@ interface VipDiagResult {
   healthy: boolean;
   inactive: boolean;
   parse_error: string | null;
+  nft_unavailable?: boolean;
   counter_mismatch: boolean;
   validation_layers?: ValidationLayers;
   dns_probe: VipDnsProbe;
@@ -272,11 +277,11 @@ function SourceTimestampsBar({ sources }: { sources?: Record<string, SourceTimes
           <span
             key={name}
             className={`text-[8px] font-mono px-1 py-0.5 rounded border ${
-              stale ? 'bg-warning/10 text-warning border-warning/30' : ts.ok ? 'bg-success/5 text-success border-success/20' : 'bg-destructive/5 text-destructive border-destructive/20'
+              stale ? 'bg-warning/10 text-warning border-warning/30' : ts.permission_limited ? 'bg-accent/10 text-accent border-accent/25' : ts.ok ? 'bg-success/5 text-success border-success/20' : 'bg-destructive/5 text-destructive border-destructive/20'
             }`}
-            title={`Collected: ${ts.collected_at}, Duration: ${ts.duration_ms}ms`}
+            title={`Collected: ${ts.collected_at}, Duration: ${ts.duration_ms}ms${ts.error ? `, Error: ${ts.error}` : ''}`}
           >
-            {name} {age}s ago {!ts.ok && '✗'}
+            {name} {age}s ago {ts.permission_limited ? '△' : !ts.ok && '✗'}
           </span>
         );
       })}
@@ -639,6 +644,7 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
   const hasData = !!data;
   const summary = data?.summary;
   const overallOk = summary ? summary.all_healthy && summary.root_recursion_ok : null;
+  const nftPermissionLimited = data?.source_timestamps?.nft?.permission_limited;
 
   // Check for stale data
   const anyStale = data?.source_timestamps
@@ -660,6 +666,7 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
             </span>
             {summary.has_parse_errors && <StatusBadge status="PARSE_ERROR" />}
             {summary.has_counter_mismatch && <StatusBadge status="COUNTER_MISMATCH" />}
+            {nftPermissionLimited && <StatusBadge status="STALE_DATA" />}
             {anyStale && <StatusBadge status="STALE_DATA" />}
           </>
         )}
@@ -695,6 +702,12 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
                 </span>
                 <DataSourceTag label="nft list ruleset + dig probes + ip route" stale={data.source_timestamps ? isStale(data.source_timestamps.nft) : false} />
               </div>
+              {nftPermissionLimited && (
+                <div className="mb-2 flex items-start gap-2 rounded border border-accent/25 bg-accent/10 p-2 text-[10px] font-mono text-accent">
+                  <AlertTriangle size={10} className="mt-0.5 shrink-0" />
+                  <span>Modo passivo degradado: leitura de nftables indisponível sem privilégio; bind, rota, probe DNS e contadores locais continuam ativos.</span>
+                </div>
+              )}
               <div className="grid grid-cols-1 gap-3">
                 {data.vip_diagnostics.map((vip, i) => (
                   <motion.div
@@ -734,7 +747,7 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
                     )}
 
                     {/* Parse error banner */}
-                    {vip.parse_error && !vip.reason && (
+                     {vip.parse_error && !vip.reason && !vip.nft_unavailable && (
                       <div className="flex items-center gap-2 p-2 mb-2 rounded bg-destructive/10 border border-destructive/20 text-[10px] font-mono text-destructive">
                         <AlertOctagon size={10} />
                         <span className="font-bold">PARSE ERROR:</span>
@@ -798,10 +811,10 @@ export default function NocVipDiagnostics({ data, isLoading }: Props) {
                         <div className="flex items-center gap-1 text-[9px] uppercase text-muted-foreground/60 font-bold">
                           DNAT Rules <DataSourceTag label="nft" stale={data.source_timestamps ? isStale(data.source_timestamps.nft) : false} />
                         </div>
-                        <div className={`flex items-center gap-1 ${vip.dnat.active ? 'text-success' : 'text-muted-foreground'}`}>
-                          {vip.dnat.active ? <CheckCircle size={10} /> : <Wifi size={10} />}
+                        <div className={`flex items-center gap-1 ${vip.dnat.active ? 'text-success' : vip.nft_unavailable ? 'text-accent' : 'text-muted-foreground'}`}>
+                          {vip.dnat.active ? <CheckCircle size={10} /> : vip.nft_unavailable ? <AlertTriangle size={10} /> : <Wifi size={10} />}
                           <span className="font-mono">
-                            {vip.dnat.active ? `${vip.dnat.rule_count} paths` : 'N/A'}
+                            {vip.dnat.active ? `${vip.dnat.rule_count} paths` : vip.nft_unavailable ? 'UNAVAILABLE' : 'N/A'}
                           </span>
                         </div>
                       </div>
