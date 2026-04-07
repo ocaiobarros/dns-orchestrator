@@ -186,10 +186,12 @@ def discover_dnat_rules() -> list[dict]:
     """
     Discover all DNAT rules from nftables ruleset.
     Name-agnostic: detects by 'dnat to' keyword, not chain names.
+    Also detects vmap-based DNAT (numgen ... vmap { ... } dnat).
     Returns list of DNAT mappings with counters.
     """
     result = _safe_run("nft", ["list", "ruleset"], timeout=10, use_privilege=True)
     if result["exit_code"] != 0:
+        logger.warning(f"nft list ruleset failed (exit={result['exit_code']}): {result.get('stderr', '')[:200]}")
         return []
 
     rules = []
@@ -209,31 +211,23 @@ def discover_dnat_rules() -> list[dict]:
             current_chain = chain_match.group(1)
             continue
 
-        if "dnat to" not in stripped:
+        if "dnat" not in stripped:
             continue
 
-        dnat_match = re.search(r'dnat to (\d+\.\d+\.\d+\.\d+)(?::(\d+))?', stripped)
-        if not dnat_match:
-            continue
+        # Extract counters (present on both simple and vmap rules)
+        counter_match = re.search(r'counter packets (\d+) bytes (\d+)', stripped)
+        packets = int(counter_match.group(1)) if counter_match else 0
+        bytes_val = int(counter_match.group(2)) if counter_match else 0
 
-        backend_ip = dnat_match.group(1)
-        backend_port = int(dnat_match.group(2)) if dnat_match.group(2) else 53
-
-        # Extract destination IP (VIP)
+        # Extract destination IP (VIP) from the rule
         dest_ip = None
         dest_match = re.search(r'ip\s+daddr\s+(\d+\.\d+\.\d+\.\d+)', stripped)
         if dest_match:
             dest_ip = dest_match.group(1)
-        # Also check for set-based daddr
         dest_set_match = re.search(r'ip\s+daddr\s+\{([^}]+)\}', stripped)
         dest_ips = []
         if dest_set_match:
             dest_ips = [ip.strip() for ip in dest_set_match.group(1).split(",") if ip.strip()]
-
-        # Extract counters
-        counter_match = re.search(r'counter packets (\d+) bytes (\d+)', stripped)
-        packets = int(counter_match.group(1)) if counter_match else 0
-        bytes_val = int(counter_match.group(2)) if counter_match else 0
 
         # Detect protocol
         proto = "unknown"
@@ -242,20 +236,50 @@ def discover_dnat_rules() -> list[dict]:
         elif re.search(r'\budp\s+dport\b|\bmeta\s+l4proto\s+udp\b', stripped):
             proto = "udp"
 
-        rule_entry = {
-            "backend_ip": backend_ip,
-            "backend_port": backend_port,
-            "dest_ip": dest_ip,
-            "dest_ips": dest_ips if dest_ips else ([dest_ip] if dest_ip else []),
-            "protocol": proto,
-            "packets": packets,
-            "bytes": bytes_val,
-            "chain": current_chain,
-            "table": current_table,
-            "raw_rule": stripped[:200],
-        }
-        rules.append(rule_entry)
+        # Pattern 1: simple "dnat to IP:PORT"
+        dnat_match = re.search(r'dnat to (\d+\.\d+\.\d+\.\d+)(?::(\d+))?', stripped)
+        if dnat_match:
+            backend_ip = dnat_match.group(1)
+            backend_port = int(dnat_match.group(2)) if dnat_match.group(2) else 53
+            rules.append({
+                "backend_ip": backend_ip,
+                "backend_port": backend_port,
+                "dest_ip": dest_ip,
+                "dest_ips": dest_ips if dest_ips else ([dest_ip] if dest_ip else []),
+                "protocol": proto,
+                "packets": packets,
+                "bytes": bytes_val,
+                "chain": current_chain,
+                "table": current_table,
+                "raw_rule": stripped[:200],
+            })
+            continue
 
+        # Pattern 2: vmap-based DNAT "dnat to ... vmap { 0 : IP, 1 : IP }"
+        # or "numgen ... vmap { 0 : IP:PORT, ... }"
+        vmap_match = re.search(r'vmap\s*\{([^}]+)\}', stripped)
+        if vmap_match and "dnat" in stripped:
+            vmap_content = vmap_match.group(1)
+            for entry in vmap_content.split(","):
+                entry = entry.strip()
+                ip_match = re.search(r'(\d+\.\d+\.\d+\.\d+)(?::(\d+))?', entry)
+                if ip_match:
+                    backend_ip = ip_match.group(1)
+                    backend_port = int(ip_match.group(2)) if ip_match.group(2) else 53
+                    rules.append({
+                        "backend_ip": backend_ip,
+                        "backend_port": backend_port,
+                        "dest_ip": dest_ip,
+                        "dest_ips": dest_ips if dest_ips else ([dest_ip] if dest_ip else []),
+                        "protocol": proto,
+                        "packets": packets,
+                        "bytes": bytes_val,
+                        "chain": current_chain,
+                        "table": current_table,
+                        "raw_rule": stripped[:200],
+                    })
+
+    logger.info(f"DNAT discovery: found {len(rules)} rules")
     return rules
 
 
