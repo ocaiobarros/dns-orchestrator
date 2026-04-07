@@ -164,6 +164,7 @@ export default function NocGeoMap({
   const allPositions = useMemo<[number, number][]>(() => {
     const pts: [number, number][] = geoNodes
       .filter(n => n.lat != null && n.lng != null)
+      .filter(n => n.lng! > -140 && n.lng! < -30)
       .map(n => [n.lat!, n.lng!]);
     CLIENT_ACCESS_POINTS.forEach(c => pts.push([c.lat, c.lng]));
     return pts;
@@ -199,7 +200,7 @@ export default function NocGeoMap({
         </div>
       </div>
 
-      <div className="relative w-full" style={{ height: 500 }}>
+      <div className="relative w-full" style={{ height: 420 }}>
         <MapContainer
           center={[serverLat, serverLng]}
           zoom={4}
