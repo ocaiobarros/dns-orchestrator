@@ -91,6 +91,7 @@ PACKAGES=(
     curl
     sudo
     openssl
+    psmisc
 )
 
 apt-get install -y -qq "${PACKAGES[@]}" >> "${INSTALL_LOG}" 2>&1 \

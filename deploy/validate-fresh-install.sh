@@ -110,20 +110,39 @@ api_call() {
 }
 
 list_managed_unbound_services() {
+    local state_file="/var/lib/dns-control/deploy-state.json"
+    local from_state=""
+
+    if [[ -f "$state_file" ]]; then
+        from_state=$(python3 - "$state_file" <<'PY'
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        data = json.load(f)
+    items = [str(x).strip() for x in data.get("managedInstances", []) if str(x).strip()]
+    if items:
+        print("\n".join(items))
+except Exception:
+    pass
+PY
+)
+        if [[ -n "$from_state" ]]; then
+            echo "$from_state"
+            return
+        fi
+    fi
+
     local conf
     local found=0
     for conf in /etc/unbound/unbound*.conf; do
         [[ -f "$conf" ]] || continue
         [[ "$conf" == *"unbound-block-domains.conf" ]] && continue
+        grep -q "DNS Control" "$conf" 2>/dev/null || continue
         local name
         name=$(basename "$conf" .conf)
         echo "$name"
         found=1
     done
-
-    if [[ "$found" -eq 0 ]] && systemctl list-unit-files --type=service --no-pager --plain 2>/dev/null | grep -q '^unbound\.service'; then
-        echo "unbound"
-    fi
 }
 
 API_HOST="127.0.0.1"

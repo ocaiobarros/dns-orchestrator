@@ -52,11 +52,11 @@ _REQUIRED_EXECUTABLES: list[tuple[str, str]] = [
 # Privileged command probes — tests that mirror real pipeline usage
 _PRIVILEGED_PROBES: list[tuple[str, list[str], str, str]] = [
     # (exe, args, label, category)
-    ("nft", ["-c", "-f", "/dev/null"], "nft -c -f (validação sintática)", "nft_syntax"),
+    ("nft", ["-c", "-f", "__DNS_CONTROL_NFT_PROBE__"], "nft -c -f (validação sintática)", "nft_syntax"),
     ("nft", ["list", "tables"], "nft list tables (leitura ruleset)", "nft_read"),
     ("systemctl", ["daemon-reload"], "systemctl daemon-reload", "systemctl_reload"),
     ("systemctl", ["is-active", "nftables"], "systemctl is-active (probe)", "systemctl_query"),
-    ("install", ["-m", "0644", "-o", "root", "-g", "root", "/dev/null", "/dev/null"], "install -m 0644 -o root -g root", "install_priv"),
+    ("install", ["-m", "0644", "-o", "root", "-g", "root", "__DNS_CONTROL_INSTALL_SRC__", "__DNS_CONTROL_INSTALL_DST__"], "install -m 0644 -o root -g root", "install_priv"),
 ]
 
 
@@ -285,32 +285,60 @@ def _check_executables() -> list[dict]:
 def _check_privileged_probes(is_root: bool) -> list[dict]:
     """Execute exact command probes that mirror real pipeline usage."""
     checks = []
-    for exe, args, label, cat_id in _PRIVILEGED_PROBES:
-        r = run_command(exe, args, timeout=5, use_privilege=True)
-        # systemctl is-active returns 3 for inactive — that's OK
-        ok = r["exit_code"] == 0 or (exe == "systemctl" and "is-active" in args and r["exit_code"] == 3)
-        if ok and not is_root and not r.get("executed_privileged", False):
-            ok = False
-        stderr = (r.get("stderr") or "")[:200]
-        if ok:
-            checks.append({
-                "id": f"probe_{cat_id}",
-                "category": "privilege_probe",
-                "label": label,
-                "status": "pass",
-                "detail": f"Executado com sucesso",
-                "remediation": "",
-            })
-        else:
-            is_perm = "permission" in stderr.lower() or "not permitted" in stderr.lower()
-            checks.append({
-                "id": f"probe_{cat_id}",
-                "category": "privilege_probe",
-                "label": label,
-                "status": "fail",
-                "detail": f"{'Sem permissão' if is_perm else 'Falhou'}: {stderr}" if stderr else "Falha na execução",
-                "remediation": f"Adicione ao sudoers: dns-control ALL=(root) NOPASSWD: /usr/sbin/{exe} {' '.join(args[:2])}..." if is_perm else f"Verifique a instalação de '{exe}'",
-            })
+    probe_dir = tempfile.mkdtemp(prefix="dns-control-preflight-")
+    nft_probe_path = os.path.join(probe_dir, "probe.nft")
+    install_src_path = os.path.join(probe_dir, "install-src.txt")
+    install_dst_path = os.path.join(probe_dir, "install-dst.txt")
+
+    try:
+        with open(nft_probe_path, "w") as f:
+            f.write("table inet dns_control_preflight {}\n")
+        with open(install_src_path, "w") as f:
+            f.write("probe\n")
+
+        replacements = {
+            "__DNS_CONTROL_NFT_PROBE__": nft_probe_path,
+            "__DNS_CONTROL_INSTALL_SRC__": install_src_path,
+            "__DNS_CONTROL_INSTALL_DST__": install_dst_path,
+        }
+
+        for exe, args, label, cat_id in _PRIVILEGED_PROBES:
+            resolved_args = [replacements.get(arg, arg) for arg in args]
+            r = run_command(exe, resolved_args, timeout=5, use_privilege=True)
+            ok = r["exit_code"] == 0 or (exe == "systemctl" and "is-active" in resolved_args and r["exit_code"] == 3)
+            if ok and not is_root and not r.get("executed_privileged", False):
+                ok = False
+            stderr = (r.get("stderr") or "")[:200]
+            if ok:
+                checks.append({
+                    "id": f"probe_{cat_id}",
+                    "category": "privilege_probe",
+                    "label": label,
+                    "status": "pass",
+                    "detail": "Executado com sucesso",
+                    "remediation": "",
+                })
+            else:
+                is_perm = "permission" in stderr.lower() or "not permitted" in stderr.lower() or "sudo" in stderr.lower()
+                checks.append({
+                    "id": f"probe_{cat_id}",
+                    "category": "privilege_probe",
+                    "label": label,
+                    "status": "fail",
+                    "detail": f"{'Sem permissão' if is_perm else 'Falhou'}: {stderr}" if stderr else "Falha na execução",
+                    "remediation": f"Adicione ao sudoers: dns-control ALL=(root) NOPASSWD: /usr/sbin/{exe} {' '.join(resolved_args[:2])}..." if is_perm else f"Verifique a instalação de '{exe}'",
+                })
+    finally:
+        for probe_path in (install_dst_path, install_src_path, nft_probe_path):
+            try:
+                if os.path.exists(probe_path):
+                    os.remove(probe_path)
+            except OSError:
+                pass
+        try:
+            os.rmdir(probe_dir)
+        except OSError:
+            pass
     return checks
 
 
