@@ -93,6 +93,12 @@ def deploy_preflight(
     return run_preflight(scope=scope)
 
 
+@router.get("/preflight/check")
+def deploy_preflight_public(scope: str = Query("full")):
+    """Public preflight check (no auth required) — for validation scripts."""
+    return run_preflight(scope=scope)
+
+
 @router.post("/dry-run")
 def deploy_dry_run(body: DeployRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Execute dry-run: validate, generate, check — no changes applied."""

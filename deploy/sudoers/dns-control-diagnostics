@@ -44,6 +44,7 @@ dns-control ALL=(root) NOPASSWD: \
     /usr/bin/systemctl disable systemd-resolved, \
     /usr/bin/systemctl stop systemd-resolved, \
     /usr/bin/systemctl mask unbound.service, \
+    /usr/bin/systemctl unmask unbound*, \
     /usr/bin/systemctl status unbound*, \
     /usr/bin/systemctl status frr, \
     /usr/bin/systemctl status nftables, \
@@ -63,8 +64,10 @@ dns-control ALL=(root) NOPASSWD: \
     /usr/bin/systemctl is-enabled networking, \
     /usr/bin/systemctl list-units --type=service *, \
     /usr/sbin/sysctl --load *, \
+    /usr/sbin/sysctl --system, \
     /usr/sbin/ifreload -a, \
     /usr/bin/killall -q unbound, \
+    /usr/bin/systemctl show-environment, \
     /usr/sbin/nft flush ruleset, \
     /usr/sbin/ip addr *, \
     /usr/sbin/ip -4 addr *, \

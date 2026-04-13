@@ -726,7 +726,7 @@ def _execute_deploy_locked(
                 ddir = os.path.dirname(original_path)
                 mode = _infer_permissions(original_path)
                 run_command("mkdir", ["-p", ddir], timeout=5, use_privilege=True)
-                result = run_command("install", ["-o", "root", "-g", "root", "-m", mode, src, original_path], timeout=10, use_privilege=True)
+                result = run_command("install", ["-m", mode, "-o", "root", "-g", "root", src, original_path], timeout=10, use_privilege=True)
                 if result["exit_code"] == 0:
                     restored += 1
 
@@ -866,6 +866,19 @@ def _execute_deploy_locked(
     instances = payload.get("instances", [])
     for inst in instances:
         name = inst.get("name", "unbound")
+
+        # Unmask first (may have been masked by bootstrap or previous deploy)
+        s_unmask = _step(order, f"Desmascarar {name}", f"systemctl unmask {name}")
+        def unmask_svc(svc_name=name):
+            # Unmask both the service name and unbound.service (legacy)
+            run_command("systemctl", ["unmask", svc_name], timeout=10, use_privilege=True)
+            if svc_name == "unbound":
+                run_command("systemctl", ["unmask", "unbound.service"], timeout=10, use_privilege=True)
+            return {"status": "success", "output": f"{svc_name} desmascarado"}
+        _run_step(s_unmask, unmask_svc)
+        steps.append(s_unmask)
+        _update_live_state(completedSteps=order)
+        order += 1
 
         # Enable
         s_enable = _step(order, f"Habilitar {name} no boot", f"systemctl enable {name}")
@@ -1067,7 +1080,7 @@ def _execute_rollback_locked(backup_id: str, operator: str = "system") -> dict:
             ddir = os.path.dirname(original_path)
             mode = _infer_permissions(original_path)
             run_command("mkdir", ["-p", ddir], timeout=5, use_privilege=True)
-            run_command("install", ["-o", "root", "-g", "root", "-m", mode, src, original_path], timeout=10, use_privilege=True)
+            run_command("install", ["-m", mode, "-o", "root", "-g", "root", src, original_path], timeout=10, use_privilege=True)
             restored_files.append(original_path)
             if "/unbound/" in original_path and original_path.endswith(".service"):
                 name = os.path.basename(original_path).replace(".service", "")
@@ -1242,8 +1255,9 @@ def _install_file_from_staging(staging_dir: str, target_path: str, permissions: 
 
     mode = _infer_permissions(target_path, permissions)
     # Use install(1) for atomic ownership + mode in a single operation
+    # Arg order MUST match sudoers pattern: -m <mode> -o <owner> -g <group>
     return run_command(
-        "install", ["-o", "root", "-g", "root", "-m", mode, staged_path, target_path],
+        "install", ["-m", mode, "-o", "root", "-g", "root", staged_path, target_path],
         timeout=15, use_privilege=True,
     )
 

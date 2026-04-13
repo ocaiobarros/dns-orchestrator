@@ -56,7 +56,7 @@ _PRIVILEGED_PROBES: list[tuple[str, list[str], str, str]] = [
     ("nft", ["list", "tables"], "nft list tables (leitura ruleset)", "nft_read"),
     ("systemctl", ["daemon-reload"], "systemctl daemon-reload", "systemctl_reload"),
     ("systemctl", ["is-active", "nftables"], "systemctl is-active (probe)", "systemctl_query"),
-    ("install", ["-o", "root", "-g", "root", "-m", "0644", "/dev/null", "/dev/null"], "install -o root -g root", "install_priv"),
+    ("install", ["-m", "0644", "-o", "root", "-g", "root", "/dev/null", "/dev/null"], "install -m 0644 -o root -g root", "install_priv"),
 ]
 
 
