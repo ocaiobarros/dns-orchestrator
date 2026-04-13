@@ -62,54 +62,40 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
   const cacheMinTtl = config.cacheMinTtl ?? 300;
   const serveExpired = config.serveExpired !== false;
   const serveExpiredTtl = config.serveExpiredTtl ?? 86400;
+  const numQueriesPerThread = config.numQueriesPerThread || 3200;
 
-  // Slabs must be power of 2 — use 4 for consistency
-  const slabs = 4;
+  // Slabs — derived from threads, must be power of 2
+  const slabs = computeSlabs(threads);
 
   // Forward addrs — always use forward mode for simple, configurable for interception
   const forwardAddrs = config.forwardAddrs?.length > 0
     ? config.forwardAddrs
     : ['1.1.1.1', '1.0.0.1', '8.8.8.8', '9.9.9.9'];
 
-  // Build forward zones
-  let forwardZonesBlock = `
-forward-zone:
-    name: "."
-`;
-  for (const addr of forwardAddrs) {
-    forwardZonesBlock += `    forward-addr: ${addr}\n`;
-  }
-  if (config.forwardFirst && !isSimple) {
-    forwardZonesBlock += `    forward-first: yes\n`;
-  }
-
-  // AD forward zones
-  if (config.adForwardZones?.length > 0) {
-    for (const ad of config.adForwardZones) {
-      if (!ad.domain || ad.dnsServers.length === 0) continue;
-      // Main domain
-      forwardZonesBlock += `\nforward-zone:\n    name: "${ad.domain}"\n`;
-      for (const srv of ad.dnsServers) {
-        forwardZonesBlock += `    forward-addr: ${srv}\n`;
-      }
-      // _msdcs subdomain for AD
-      forwardZonesBlock += `\nforward-zone:\n    name: "_msdcs.${ad.domain}"\n`;
-      for (const srv of ad.dnsServers) {
-        forwardZonesBlock += `    forward-addr: ${srv}\n`;
-      }
-    }
-  }
+  // Access control — derive from host CIDR if available
+  const accessControlBlock = generateAccessControlBlock(config);
 
   // Root hints — only for interception mode with forward-first
   const rootHintsLine = isSimple
     ? `    # root-hints: REMOVED — forward-only mode (no iterator/root recursion)`
     : `    root-hints: "${config.rootHintsPath}"`;
 
-  // Module config — validator+iterator for DNSSEC, or iterator-only
-  const moduleConfig = isSimple ? `"iterator"` : `"iterator"`;
+  // Hardening — optional
+  const hardenDnssec = config.hardenDnssecStripped !== false;
+  const capsForId = config.useCapsForId === true;
 
-  return `
-server:
+  // AD private-domain directives
+  let privateDomainBlock = '';
+  if (config.adForwardZones?.length > 0) {
+    for (const ad of config.adForwardZones) {
+      if (!ad.domain || ad.dnsServers.length === 0) continue;
+      privateDomainBlock += `    private-domain: "${ad.domain}"\n`;
+      privateDomainBlock += `    private-domain: "_msdcs.${ad.domain}"\n`;
+    }
+  }
+
+  // ═══ BLOCK 1: server: ═══
+  let serverBlock = `server:
     verbosity: 1
     statistics-interval: 20
     extended-statistics: yes
@@ -122,7 +108,7 @@ ${egressBlock}
     outgoing-range: 8192
     outgoing-port-avoid: 0-1024
     outgoing-port-permit: 1025-65535
-    num-queries-per-thread: 4096
+    num-queries-per-thread: ${numQueriesPerThread}
 
     so-rcvbuf: 8m
     so-sndbuf: 8m
@@ -155,8 +141,7 @@ ${egressBlock}
     do-tcp: yes
     do-daemonize: yes
 
-    access-control: 0.0.0.0/0 allow
-    access-control: ::/0 allow
+${accessControlBlock}
 
     username: "unbound"
     directory: "/etc/unbound"
@@ -170,13 +155,13 @@ ${rootHintsLine}
     hide-identity: yes
     hide-version: yes
     harden-glue: yes
-    harden-dnssec-stripped: yes
-    use-caps-for-id: yes
+    harden-dnssec-stripped: ${hardenDnssec ? 'yes' : 'no'}
+    use-caps-for-id: ${capsForId ? 'yes' : 'no'}
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
-    module-config: ${moduleConfig}
+    module-config: "iterator"
 
-    local-zone: "localhost." static
+${privateDomainBlock}    local-zone: "localhost." static
     local-data: "localhost. 10800 IN NS localhost."
     local-data: "localhost. 10800 IN SOA localhost. nobody.invalid. 1 3600 1200 604800 10800"
     local-data: "localhost. 10800 IN A 127.0.0.1"
@@ -187,16 +172,99 @@ ${rootHintsLine}
     local-data: "1.0.0.127.in-addr.arpa. 10800 IN PTR localhost."
 
     include: /etc/unbound/unbound-block-domains.conf
-${forwardZonesBlock}
+`;
+
+  // ═══ BLOCK 2: remote-control: ═══
+  const remoteControlBlock = `
 remote-control:
     control-enable: yes
     control-interface: ${inst.controlInterface}
     control-port: ${inst.controlPort}
     control-use-cert: "no"
+`;
 
+  // ═══ BLOCK 3: forward-zone: ═══
+  let forwardZonesBlock = `
+forward-zone:
+    name: "."
+`;
+  for (const addr of forwardAddrs) {
+    forwardZonesBlock += `    forward-addr: ${addr}\n`;
+  }
+  if (config.forwardFirst && !isSimple) {
+    forwardZonesBlock += `    forward-first: yes\n`;
+  }
+
+  // AD forward zones
+  if (config.adForwardZones?.length > 0) {
+    for (const ad of config.adForwardZones) {
+      if (!ad.domain || ad.dnsServers.length === 0) continue;
+      // Main domain
+      forwardZonesBlock += `\nforward-zone:\n    name: "${ad.domain}"\n`;
+      for (const srv of ad.dnsServers) {
+        forwardZonesBlock += `    forward-addr: ${srv}\n`;
+      }
+      // _msdcs subdomain for AD
+      forwardZonesBlock += `\nforward-zone:\n    name: "_msdcs.${ad.domain}"\n`;
+      for (const srv of ad.dnsServers) {
+        forwardZonesBlock += `    forward-addr: ${srv}\n`;
+      }
+    }
+  }
+
+  // ═══ BLOCK 4: server: include anablock ═══
+  const anablockBlock = `
 server:
     include: /etc/unbound/anablock.conf
 `;
+
+  // Final assembly: server → remote-control → forward-zone → anablock include
+  return serverBlock + remoteControlBlock + forwardZonesBlock + anablockBlock;
+}
+
+// ═══ HELPER: Compute slabs as power of 2 derived from threads ═══
+export function computeSlabs(threads: number): number {
+  if (threads <= 2) return 2;
+  if (threads <= 4) return 4;
+  if (threads <= 8) return 8;
+  return 16;
+}
+
+// ═══ HELPER: Generate access-control block from host CIDR ═══
+function generateAccessControlBlock(config: WizardConfig): string {
+  const lines: string[] = [];
+  // Always allow loopback
+  lines.push('    access-control: 127.0.0.0/8 allow');
+  // Derive from host CIDR
+  if (config.ipv4Address) {
+    const cidrMatch = config.ipv4Address.match(/^(\d+\.\d+\.\d+\.\d+)\/(\d+)$/);
+    if (cidrMatch) {
+      const mask = parseInt(cidrMatch[2]);
+      const ip = cidrMatch[1];
+      const networkAddr = computeNetworkAddress(ip, mask);
+      lines.push(`    access-control: ${networkAddr}/${mask} allow`);
+    }
+  }
+  // RFC1918 ranges for internal resolvers
+  lines.push('    access-control: 100.64.0.0/10 allow');
+  if (config.enableIpv6) {
+    lines.push('    access-control: ::1/128 allow');
+  }
+  return lines.join('\n');
+}
+
+// ═══ HELPER: Compute network address from IP and mask ═══
+function computeNetworkAddress(ip: string, mask: number): string {
+  const octets = ip.split('.').map(Number);
+  const ipNum = ((octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]) >>> 0;
+  const maskBits = mask === 0 ? 0 : (0xFFFFFFFF << (32 - mask)) >>> 0;
+  const network = (ipNum & maskBits) >>> 0;
+  return [
+    (network >>> 24) & 0xFF,
+    (network >>> 16) & 0xFF,
+    (network >>> 8) & 0xFF,
+    network & 0xFF,
+  ].join('.');
 }
 
 // ═══ BLOCKLIST / ANABLOCK ═══
