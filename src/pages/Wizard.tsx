@@ -1531,9 +1531,10 @@ export default function Wizard() {
           );
         })()}
 
-        {/* ═══ Diagnostics Summary (simple mode) ═══ */}
-        {config.operationMode === 'simple' && (() => {
-          const diag = extractDiagnostics(config);
+        {/* ═══ Diagnostics Summary (both modes) ═══ */}
+        {(() => {
+          const diag = isInterception ? extractInterceptionDiagnostics(config) : extractDiagnostics(config);
+          const iDiag = isInterception ? diag as ReturnType<typeof extractInterceptionDiagnostics> : null;
           return (
             <div className="noc-panel border-border/50">
               <div className="noc-panel-header flex items-center gap-2">
@@ -1552,6 +1553,16 @@ export default function Wizard() {
                   ['CIDR', diag.cidrApplied],
                   ['harden-dnssec', diag.hardenDnssecStripped ? 'yes' : 'no'],
                   ['caps-for-id', diag.useCapsForId ? 'yes' : 'no'],
+                  ...(iDiag ? [
+                    ['VIPs', `${iDiag.serviceVipCount} próprios + ${iDiag.interceptedVipCount} interceptados`],
+                    ['Backends', String(iDiag.backendCount)],
+                    ['Sticky', `${iDiag.stickyTimeoutMin}m`],
+                    ['Egress', iDiag.egressDeliveryMode],
+                    ['Segurança', iDiag.securityProfile],
+                    ['IPv6', iDiag.enableIpv6 ? 'dual-stack' : 'IPv4-only'],
+                    ['OUTPUT hook', iDiag.hasOutputHook ? 'SIM' : 'NÃO'],
+                    ['nft files', String(iDiag.nftFilesCount)],
+                  ] : []),
                 ].map(([k, v]) => (
                   <div key={k} className="py-1">
                     <div className="text-muted-foreground uppercase tracking-wider text-[10px]">{k}</div>
@@ -1559,6 +1570,26 @@ export default function Wizard() {
                   </div>
                 ))}
               </div>
+              {iDiag && iDiag.allVipIpv4s.length > 0 && (
+                <div className="mt-3 pt-2 border-t border-border/30">
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">DNS_ANYCAST_IPV4</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {iDiag.allVipIpv4s.map(ip => (
+                      <span key={ip} className="px-2 py-0.5 text-xs font-mono bg-secondary rounded border border-border">{ip}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {iDiag && iDiag.backends.length > 0 && (
+                <div className="mt-3 pt-2 border-t border-border/30">
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Backends (DNAT targets)</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {iDiag.backends.map(b => (
+                      <span key={b} className="px-2 py-0.5 text-xs font-mono bg-secondary rounded border border-border">{b}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
               {diag.upstreams.length > 0 && (
                 <div className="mt-3 pt-2 border-t border-border/30">
                   <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Upstreams Efetivos</div>
@@ -1584,14 +1615,14 @@ export default function Wizard() {
           );
         })()}
 
-        {/* ═══ Generator Decision Log (simple mode) ═══ */}
-        {config.operationMode === 'simple' && (() => {
+        {/* ═══ Generator Decision Log (both modes) ═══ */}
+        {(() => {
           const decisions = buildDecisionLog(config);
           return (
             <div className="noc-panel border-border/50">
               <div className="noc-panel-header flex items-center gap-2">
                 <FileText size={12} />
-                <span>Log de Decisões do Gerador</span>
+                <span>Log de Decisões do Gerador ({decisions.length})</span>
               </div>
               <div className="space-y-0.5 max-h-[300px] overflow-y-auto">
                 {decisions.map((d, i) => (
@@ -1611,8 +1642,8 @@ export default function Wizard() {
           );
         })()}
 
-        {/* ═══ Dry-Run Staging (backend validation) ═══ */}
-        {config.operationMode === 'simple' && (() => {
+        {/* ═══ Dry-Run Staging (backend validation — both modes) ═══ */}
+        {(() => {
           const runStaging = async () => {
             setStagingLoading(true);
             setStagingResult(null);
@@ -1640,7 +1671,7 @@ export default function Wizard() {
               </div>
               {!stagingResult && !stagingLoading && (
                 <p className="text-xs text-muted-foreground/70 px-2 py-2">
-                  Renderiza arquivos no backend, executa checklist estrutural e <code className="font-mono bg-secondary px-1 rounded">unbound-checkconf</code> sem alterar produção.
+                  Renderiza arquivos no backend, executa checklist estrutural e <code className="font-mono bg-secondary px-1 rounded">unbound-checkconf</code>{isInterception && <> + <code className="font-mono bg-secondary px-1 rounded">nft -c -f</code></>} sem alterar produção.
                 </p>
               )}
               {stagingResult && (
@@ -1670,6 +1701,19 @@ export default function Wizard() {
                         : <AlertCircle size={10} className="text-destructive" />}
                       <span className="font-medium">unbound-checkconf</span>
                       <span className="font-mono text-[10px] text-muted-foreground flex-1 text-right">{stagingResult.unbound_checkconf.detail}</span>
+                    </div>
+                  )}
+                  {stagingResult.nft_validation && (
+                    <div className={`flex items-center gap-3 px-2 py-1.5 rounded text-xs border ${
+                      stagingResult.nft_validation.status === 'pass' ? 'border-success/20 bg-success/5' :
+                      stagingResult.nft_validation.status === 'skip' ? 'border-border bg-secondary/30' :
+                      'border-destructive/20 bg-destructive/5'
+                    }`}>
+                      {stagingResult.nft_validation.status === 'pass' ? <Check size={10} className="text-success" />
+                        : stagingResult.nft_validation.status === 'skip' ? <SkipForward size={10} className="text-muted-foreground" />
+                        : <AlertCircle size={10} className="text-destructive" />}
+                      <span className="font-medium">nft -c -f (validação sintática)</span>
+                      <span className="font-mono text-[10px] text-muted-foreground flex-1 text-right">{stagingResult.nft_validation.detail}</span>
                     </div>
                   )}
                   {stagingResult.error && (
