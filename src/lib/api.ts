@@ -212,6 +212,7 @@ export const api = {
 
   // Deploy State
   getDeployState: () => apiCall<DeployState>('GET', '/deploy/state'),
+  getDeployPreflight: (scope: string = 'full') => apiCall<any>('GET', `/deploy/preflight?scope=${scope}`),
   getDeployBackups: () =>
     apiCall<Array<{ backupId: string; timestamp: string; operator: string; fileCount: number; filePaths: string[] }>>('GET', '/deploy/backups'),
   rollback: (backupId: string, reason: string) =>
