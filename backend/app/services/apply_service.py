@@ -66,10 +66,15 @@ def execute_apply(payload: dict[str, Any], scope: str = "full", dry_run: bool = 
             with open(tmp_file, "w") as fp:
                 fp.write(f["content"])
 
-            # Use sudo install to copy to production path with correct permissions
-            perms = f.get("permissions", "0644")
+            # Infer permissions by artifact type
+            if f["path"].endswith(".sh") or "/post-up.d/" in f["path"]:
+                perms = "0755"
+            else:
+                perms = f.get("permissions", "0644")
+
+            # Use install for atomic ownership + mode
             result = run_command(
-                "install", ["-m", perms, tmp_file, f["path"]],
+                "install", ["-o", "root", "-g", "root", "-m", perms, tmp_file, f["path"]],
                 timeout=10, use_privilege=True,
             )
             if result["exit_code"] != 0:

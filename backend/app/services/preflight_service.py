@@ -39,14 +39,24 @@ _REQUIRED_FILES = [
     "/etc/nftables.conf",
 ]
 
-# Commands the deploy pipeline must be able to execute (with sudo if needed)
-_REQUIRED_COMMANDS: list[tuple[str, list[str], str]] = [
-    ("nft", ["-c", "-f", "/dev/null"], "nft (validação sintática)"),
-    ("systemctl", ["daemon-reload"], "systemctl daemon-reload"),
-    ("cp", ["--no-preserve=ownership", "/dev/null", "/dev/null"], "cp privilegiado"),
-    ("mkdir", ["-p", "/tmp/_dns_control_preflight_test"], "mkdir privilegiado"),
-    ("chmod", ["0644", "/dev/null"], "chmod"),
-    ("sysctl", ["--system"], "sysctl --system"),
+# Commands the deploy pipeline actually uses — preflight validates the EXACT invocations
+_REQUIRED_EXECUTABLES: list[tuple[str, str]] = [
+    ("nft", "nft (nftables)"),
+    ("systemctl", "systemctl (systemd)"),
+    ("install", "install (coreutils)"),
+    ("mkdir", "mkdir"),
+    ("sysctl", "sysctl"),
+    ("killall", "killall (psmisc)"),
+]
+
+# Privileged command probes — tests that mirror real pipeline usage
+_PRIVILEGED_PROBES: list[tuple[str, list[str], str, str]] = [
+    # (exe, args, label, category)
+    ("nft", ["-c", "-f", "/dev/null"], "nft -c -f (validação sintática)", "nft_syntax"),
+    ("nft", ["list", "tables"], "nft list tables (leitura ruleset)", "nft_read"),
+    ("systemctl", ["daemon-reload"], "systemctl daemon-reload", "systemctl_reload"),
+    ("systemctl", ["is-active", "nftables"], "systemctl is-active (probe)", "systemctl_query"),
+    ("install", ["-o", "root", "-g", "root", "-m", "0644", "/dev/null", "/dev/null"], "install -o root -g root", "install_priv"),
 ]
 
 
@@ -117,15 +127,19 @@ def run_preflight(scope: str = "full") -> dict[str, Any]:
             check = _check_write_probe(target_dir, is_root)
             checks.append(check)
 
-    # ─── 5. Privileged command checks ───
-    cmd_checks = _check_commands(is_root, scope)
-    checks.extend(cmd_checks)
+    # ─── 5. Executable availability ───
+    exe_checks = _check_executables()
+    checks.extend(exe_checks)
 
-    # ─── 6. nft flush ruleset capability ───
+    # ─── 6. Privileged command probes (exact pipeline commands) ───
+    priv_checks = _check_privileged_probes(is_root)
+    checks.extend(priv_checks)
+
+    # ─── 7. nft flush ruleset capability ───
     nft_check = _check_nft_capability(is_root)
     checks.append(nft_check)
 
-    # ─── 7. systemctl capability ───
+    # ─── 8. systemctl enable/start/stop capability ───
     sctl_check = _check_systemctl_capability(is_root)
     checks.append(sctl_check)
 
@@ -241,29 +255,59 @@ def _check_write_probe(target_dir: str, is_root: bool) -> dict:
         }
 
 
-def _check_commands(is_root: bool, scope: str) -> list[dict]:
+def _check_executables() -> list[dict]:
+    """Check that all required executables exist in PATH."""
+    import shutil
     checks = []
-    for exe, test_args, label in _REQUIRED_COMMANDS:
-        # Just check if the executable exists
-        import shutil
+    for exe, label in _REQUIRED_EXECUTABLES:
         exe_path = shutil.which(exe)
         if not exe_path:
             checks.append({
-                "id": f"cmd_{exe}",
-                "category": "command",
-                "label": f"Comando {label}",
+                "id": f"exe_{exe}",
+                "category": "executable",
+                "label": f"Executável {label}",
                 "status": "fail",
                 "detail": f"Executável não encontrado: {exe}",
                 "remediation": f"Instale o pacote que fornece '{exe}'",
             })
         else:
             checks.append({
-                "id": f"cmd_{exe}",
-                "category": "command",
-                "label": f"Comando {label}",
+                "id": f"exe_{exe}",
+                "category": "executable",
+                "label": f"Executável {label}",
                 "status": "pass",
                 "detail": f"Disponível em {exe_path}",
                 "remediation": "",
+            })
+    return checks
+
+
+def _check_privileged_probes(is_root: bool) -> list[dict]:
+    """Execute exact command probes that mirror real pipeline usage."""
+    checks = []
+    for exe, args, label, cat_id in _PRIVILEGED_PROBES:
+        r = run_command(exe, args, timeout=5, use_privilege=True)
+        # systemctl is-active returns 3 for inactive — that's OK
+        ok = r["exit_code"] == 0 or (exe == "systemctl" and "is-active" in args and r["exit_code"] == 3)
+        stderr = (r.get("stderr") or "")[:200]
+        if ok:
+            checks.append({
+                "id": f"probe_{cat_id}",
+                "category": "privilege_probe",
+                "label": label,
+                "status": "pass",
+                "detail": f"Executado com sucesso",
+                "remediation": "",
+            })
+        else:
+            is_perm = "permission" in stderr.lower() or "not permitted" in stderr.lower()
+            checks.append({
+                "id": f"probe_{cat_id}",
+                "category": "privilege_probe",
+                "label": label,
+                "status": "fail",
+                "detail": f"{'Sem permissão' if is_perm else 'Falhou'}: {stderr}" if stderr else "Falha na execução",
+                "remediation": f"Adicione ao sudoers: dns-control ALL=(root) NOPASSWD: /usr/sbin/{exe} {' '.join(args[:2])}..." if is_perm else f"Verifique a instalação de '{exe}'",
             })
     return checks
 
@@ -295,26 +339,26 @@ def _check_nft_capability(is_root: bool) -> dict:
 
 
 def _check_systemctl_capability(is_root: bool) -> dict:
-    """Check if systemctl daemon-reload works."""
-    # is-active is non-destructive
-    r = run_command("systemctl", ["is-active", "nftables"], timeout=5)
-    if r["exit_code"] in (0, 3):  # 0=active, 3=inactive — both are valid responses
+    """Check if systemctl enable/start/stop works (the actual pipeline operations)."""
+    # Test show-environment as a non-destructive proxy for daemon-reload privilege
+    r = run_command("systemctl", ["show-environment"], timeout=5, use_privilege=True)
+    if r["exit_code"] == 0:
         return {
             "id": "systemctl_privilege",
             "category": "privilege_test",
-            "label": "systemctl acessível",
+            "label": "systemctl com privilégio (enable/start/stop)",
             "status": "pass",
-            "detail": "systemctl respondendo normalmente",
+            "detail": "systemctl acessível com privilégio para gerenciar serviços",
             "remediation": "",
         }
     else:
         return {
             "id": "systemctl_privilege",
             "category": "privilege_test",
-            "label": "systemctl acessível",
+            "label": "systemctl com privilégio (enable/start/stop)",
             "status": "fail",
             "detail": f"systemctl indisponível para o usuário atual: {(r.get('stderr') or '')[:150]}",
-            "remediation": "Verifique se o systemd está acessível e que o usuário tem permissão para operar serviços",
+            "remediation": "Adicione ao sudoers: dns-control ALL=(root) NOPASSWD: /bin/systemctl daemon-reload, /bin/systemctl enable *, /bin/systemctl start *, /bin/systemctl stop *, /bin/systemctl restart *",
         }
 
 

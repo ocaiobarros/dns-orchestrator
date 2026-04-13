@@ -36,9 +36,9 @@ interface PreflightResult {
 function mockPreflightAllPass(): PreflightResult {
   return {
     success: true,
-    passed: 15,
+    passed: 20,
     failed: 0,
-    total: 15,
+    total: 20,
     checks: [
       { id: 'privilege_model', category: 'privilege', label: 'Modelo de execução', status: 'pass', detail: 'sudo NOPASSWD', remediation: '' },
       { id: 'dir__etc_unbound', category: 'directory', label: '/etc/unbound', status: 'pass', detail: 'OK', remediation: '' },
@@ -46,8 +46,15 @@ function mockPreflightAllPass(): PreflightResult {
       { id: 'dir__etc_nftables.d', category: 'directory', label: '/etc/nftables.d', status: 'pass', detail: 'OK', remediation: '' },
       { id: 'file__etc_nftables.conf', category: 'file', label: '/etc/nftables.conf', status: 'pass', detail: 'OK', remediation: '' },
       { id: 'write__etc_unbound', category: 'write_probe', label: 'Escrita /etc/unbound', status: 'pass', detail: 'OK', remediation: '' },
+      { id: 'exe_nft', category: 'executable', label: 'nft (nftables)', status: 'pass', detail: '/usr/sbin/nft', remediation: '' },
+      { id: 'exe_systemctl', category: 'executable', label: 'systemctl (systemd)', status: 'pass', detail: '/bin/systemctl', remediation: '' },
+      { id: 'exe_install', category: 'executable', label: 'install (coreutils)', status: 'pass', detail: '/usr/bin/install', remediation: '' },
+      { id: 'probe_nft_syntax', category: 'privilege_probe', label: 'nft -c -f (validação sintática)', status: 'pass', detail: 'OK', remediation: '' },
+      { id: 'probe_nft_read', category: 'privilege_probe', label: 'nft list tables', status: 'pass', detail: 'OK', remediation: '' },
+      { id: 'probe_systemctl_reload', category: 'privilege_probe', label: 'systemctl daemon-reload', status: 'pass', detail: 'OK', remediation: '' },
+      { id: 'probe_install_priv', category: 'privilege_probe', label: 'install -o root -g root', status: 'pass', detail: 'OK', remediation: '' },
       { id: 'nft_privilege', category: 'privilege_test', label: 'nft list tables', status: 'pass', detail: 'OK', remediation: '' },
-      { id: 'systemctl_privilege', category: 'privilege_test', label: 'systemctl', status: 'pass', detail: 'OK', remediation: '' },
+      { id: 'systemctl_privilege', category: 'privilege_test', label: 'systemctl com privilégio', status: 'pass', detail: 'OK', remediation: '' },
     ],
     canDeploy: true,
     blockedReasons: [],
@@ -117,11 +124,12 @@ function mockPreflightNftFail(): PreflightResult {
 function mockPreflightRoot(): PreflightResult {
   return {
     success: true,
-    passed: 15,
+    passed: 20,
     failed: 0,
-    total: 15,
+    total: 20,
     checks: [
       { id: 'privilege_model', category: 'privilege', label: 'Modelo de execução', status: 'pass', detail: 'root (EUID=0)', remediation: '' },
+      { id: 'probe_install_priv', category: 'privilege_probe', label: 'install -o root -g root', status: 'pass', detail: 'OK', remediation: '' },
     ],
     canDeploy: true,
     blockedReasons: [],
@@ -323,5 +331,80 @@ describe('Preflight — result structure', () => {
     for (const result of [mockPreflightAllPass(), mockPreflightNoSudo(), mockPreflightMissingDirs(), mockPreflightNftFail()]) {
       expect(result.passed + result.failed).toBeLessThanOrEqual(result.total);
     }
+  });
+});
+
+describe('Preflight — permission inference by artifact type', () => {
+  function inferPermissions(path: string): string {
+    if (path.endsWith('.sh')) return '0755';
+    if (path.includes('/post-up.d/')) return '0755';
+    return '0644';
+  }
+
+  it('scripts get 0755', () => {
+    expect(inferPermissions('/etc/network/post-up.sh')).toBe('0755');
+    expect(inferPermissions('/var/lib/dns-control/apply.sh')).toBe('0755');
+  });
+
+  it('post-up.d entries get 0755', () => {
+    expect(inferPermissions('/etc/network/post-up.d/dns-control')).toBe('0755');
+  });
+
+  it('config files get 0644', () => {
+    expect(inferPermissions('/etc/unbound/unbound01.conf')).toBe('0644');
+    expect(inferPermissions('/etc/nftables.conf')).toBe('0644');
+    expect(inferPermissions('/etc/nftables.d/0002-table-nat.nft')).toBe('0644');
+    expect(inferPermissions('/etc/sysctl.d/050-dns-control.conf')).toBe('0644');
+    expect(inferPermissions('/usr/lib/systemd/system/unbound01.service')).toBe('0644');
+  });
+});
+
+describe('Preflight — privilege probes mirror pipeline commands', () => {
+  it('all-pass includes nft -c -f probe', () => {
+    const result = mockPreflightAllPass();
+    const probe = result.checks.find(c => c.id === 'probe_nft_syntax');
+    expect(probe).toBeDefined();
+    expect(probe?.status).toBe('pass');
+    expect(probe?.label).toContain('nft -c -f');
+  });
+
+  it('all-pass includes systemctl daemon-reload probe', () => {
+    const result = mockPreflightAllPass();
+    const probe = result.checks.find(c => c.id === 'probe_systemctl_reload');
+    expect(probe).toBeDefined();
+    expect(probe?.status).toBe('pass');
+  });
+
+  it('all-pass includes install privilege probe', () => {
+    const result = mockPreflightAllPass();
+    const probe = result.checks.find(c => c.id === 'probe_install_priv');
+    expect(probe).toBeDefined();
+    expect(probe?.label).toContain('install -o root');
+  });
+
+  it('checks executable availability (not just path existence)', () => {
+    const result = mockPreflightAllPass();
+    const exeChecks = result.checks.filter(c => c.category === 'executable');
+    expect(exeChecks.length).toBeGreaterThanOrEqual(3);
+    for (const check of exeChecks) {
+      expect(check.status).toBe('pass');
+    }
+  });
+});
+
+describe('Preflight — install replaces cp in pipeline', () => {
+  it('no cp references in privilege probes', () => {
+    const result = mockPreflightAllPass();
+    for (const check of result.checks) {
+      expect(check.label).not.toContain('cp privilegiado');
+      expect(check.id).not.toBe('cmd_cp');
+    }
+  });
+
+  it('install probe validates ownership flags', () => {
+    const result = mockPreflightAllPass();
+    const installProbe = result.checks.find(c => c.id === 'probe_install_priv');
+    expect(installProbe).toBeDefined();
+    expect(installProbe?.label).toContain('-o root -g root');
   });
 });

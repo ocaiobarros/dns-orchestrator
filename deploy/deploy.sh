@@ -112,32 +112,38 @@ fi
 step "Criando diretórios"
 # ═══════════════════════════════════════════════════════════════
 
-mkdir -p "${DATA_DIR}"/{backups,generated,staging,deployments,telemetry,tmp}
-mkdir -p "${LOG_DIR}"
-mkdir -p "${ENV_DIR}"
-mkdir -p /etc/unbound/unbound.conf.d
-mkdir -p /etc/nftables.d
-mkdir -p /etc/network/post-up.d
-mkdir -p /etc/sysctl.d
-mkdir -p /etc/frr
-mkdir -p /etc/default
-mkdir -p /etc/systemd/system
-mkdir -p /usr/lib/systemd/system
+# Diretórios de sistema (root:root 0755)
+install -d -o root -g root -m 0755 /etc/unbound
+install -d -o root -g root -m 0755 /etc/unbound/unbound.conf.d
+install -d -o root -g root -m 0755 /etc/nftables.d
+install -d -o root -g root -m 0755 /etc/network
+install -d -o root -g root -m 0755 /etc/network/post-up.d
+install -d -o root -g root -m 0755 /etc/sysctl.d
+install -d -o root -g root -m 0755 /etc/frr
+install -d -o root -g root -m 0755 /etc/default
+install -d -o root -g root -m 0755 /etc/systemd/system
+install -d -o root -g root -m 0755 /usr/lib/systemd/system
 
-# Garantir que arquivos base existam (deploy precisa deles pré-criados)
-touch /etc/nftables.conf 2>/dev/null || true
-touch /etc/unbound/unbound-block-domains.conf 2>/dev/null || true
-touch /etc/unbound/anablock.conf 2>/dev/null || true
+# Diretórios de dados (dns-control:dns-control 0755)
+install -d -o "${APP_USER}" -g "${APP_USER}" -m 0755 "${DATA_DIR}"
+for sub in backups generated staging deployments telemetry tmp; do
+    install -d -o "${APP_USER}" -g "${APP_USER}" -m 0755 "${DATA_DIR}/${sub}"
+done
+install -d -o "${APP_USER}" -g "${APP_USER}" -m 0755 "${LOG_DIR}"
+install -d -o root -g root -m 0700 "${ENV_DIR}"
 
-# Ownership root nos diretórios de sistema
-chown root:root /etc/unbound /etc/unbound/unbound.conf.d /etc/frr /etc/nftables.d /etc/sysctl.d /etc/network /etc/network/post-up.d 2>/dev/null || true
-chmod 0755 /etc/unbound /etc/unbound/unbound.conf.d /etc/frr /etc/nftables.d /etc/sysctl.d /etc/network /etc/network/post-up.d 2>/dev/null || true
+# Arquivos base mínimos — placeholders com conteúdo válido (não vazios)
+if [[ ! -f "/etc/unbound/unbound-block-domains.conf" ]]; then
+    echo "# DNS Control — managed blocklist (empty until configured)" > /etc/unbound/unbound-block-domains.conf
+    chmod 0644 /etc/unbound/unbound-block-domains.conf
+fi
+if [[ ! -f "/etc/unbound/anablock.conf" ]]; then
+    echo "# DNS Control — analytics blocklist (empty until configured)" > /etc/unbound/anablock.conf
+    chmod 0644 /etc/unbound/anablock.conf
+fi
+# nftables.conf is created properly in Step 9 (nftables) if missing
 
-# Ownership dns-control nos diretórios de dados
-chown -R "${APP_USER}:${APP_USER}" "${DATA_DIR}"
-chown -R "${APP_USER}:${APP_USER}" "${LOG_DIR}"
-chmod 700 "${ENV_DIR}"
-ok "Diretórios criados e permissões aplicadas"
+ok "Diretórios criados com permissões corretas (dirs=0755, configs=0644)"
 
 # ═══════════════════════════════════════════════════════════════
 step "Configurando virtualenv Python"
@@ -236,10 +242,8 @@ chown "${APP_USER}:${APP_USER}" /etc/nftables.d 2>/dev/null || true
 # Instalar sudoers do repositório (fonte de verdade única)
 SUDOERS_SRC="${APP_ROOT}/deploy/sudoers/dns-control-diagnostics"
 if [[ -f "${SUDOERS_SRC}" ]]; then
-    cp "${SUDOERS_SRC}" /etc/sudoers.d/dns-control-diagnostics
-    chmod 440 /etc/sudoers.d/dns-control-diagnostics
-    cp "${SUDOERS_SRC}" /etc/sudoers.d/dns-control
-    chmod 440 /etc/sudoers.d/dns-control
+    install -o root -g root -m 0440 "${SUDOERS_SRC}" /etc/sudoers.d/dns-control-diagnostics
+    install -o root -g root -m 0440 "${SUDOERS_SRC}" /etc/sudoers.d/dns-control
 
     if visudo -c -f /etc/sudoers.d/dns-control >/dev/null 2>&1; then
         ok "Sudoers instalado e validado"
@@ -258,7 +262,7 @@ NGINX_SRC="${APP_ROOT}/deploy/nginx/dns-control.conf"
 NGINX_DEST="/etc/nginx/sites-available/dns-control"
 
 if [[ -f "${NGINX_SRC}" ]]; then
-    cp "${NGINX_SRC}" "${NGINX_DEST}"
+    install -o root -g root -m 0644 "${NGINX_SRC}" "${NGINX_DEST}"
     ln -sf "${NGINX_DEST}" /etc/nginx/sites-enabled/dns-control
     rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
 
@@ -298,11 +302,14 @@ ok "nftables habilitado para persistência"
 step "Configurando serviços systemd"
 # ═══════════════════════════════════════════════════════════════
 
-# Preparar placeholders necessários antes do start
-touch /etc/unbound/unbound-block-domains.conf 2>/dev/null || true
-touch /etc/unbound/anablock.conf 2>/dev/null || true
-chown "${APP_USER}:${APP_USER}" /etc/unbound/unbound-block-domains.conf 2>/dev/null || true
-chown "${APP_USER}:${APP_USER}" /etc/unbound/anablock.conf 2>/dev/null || true
+# Garantir placeholders com conteúdo válido (não vazios) antes do start
+for placeholder in /etc/unbound/unbound-block-domains.conf /etc/unbound/anablock.conf; do
+    if [[ ! -s "${placeholder}" ]]; then
+        echo "# DNS Control — placeholder (empty until configured)" > "${placeholder}"
+    fi
+    chown root:root "${placeholder}" 2>/dev/null || true
+    chmod 0644 "${placeholder}" 2>/dev/null || true
+done
 
 # Mascarar unbound padrão para evitar conflito na porta 53
 if systemctl is-active unbound.service >/dev/null 2>&1; then
@@ -315,7 +322,7 @@ info "unbound.service padrão mascarado (DNS Control gerencia instâncias própr
 # ── API service ──
 API_UNIT_SRC="${APP_ROOT}/deploy/systemd/dns-control-api.service"
 if [[ -f "${API_UNIT_SRC}" ]]; then
-    cp "${API_UNIT_SRC}" /usr/lib/systemd/system/dns-control-api.service
+    install -o root -g root -m 0644 "${API_UNIT_SRC}" /usr/lib/systemd/system/dns-control-api.service
     rm -f /etc/systemd/system/dns-control-api.service 2>/dev/null || true
     ok "dns-control-api.service instalado"
 else
@@ -326,8 +333,8 @@ fi
 COLLECTOR_SVC="${APP_ROOT}/deploy/systemd/dns-control-collector.service"
 COLLECTOR_TMR="${APP_ROOT}/deploy/systemd/dns-control-collector.timer"
 if [[ -f "${COLLECTOR_SVC}" ]] && [[ -f "${COLLECTOR_TMR}" ]]; then
-    cp "${COLLECTOR_SVC}" /usr/lib/systemd/system/dns-control-collector.service
-    cp "${COLLECTOR_TMR}" /usr/lib/systemd/system/dns-control-collector.timer
+    install -o root -g root -m 0644 "${COLLECTOR_SVC}" /usr/lib/systemd/system/dns-control-collector.service
+    install -o root -g root -m 0644 "${COLLECTOR_TMR}" /usr/lib/systemd/system/dns-control-collector.timer
     rm -f /etc/systemd/system/dns-control-collector.service /etc/systemd/system/dns-control-collector.timer 2>/dev/null || true
     ok "dns-control-collector units instalados"
 else
