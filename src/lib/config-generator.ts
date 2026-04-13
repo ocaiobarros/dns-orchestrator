@@ -27,26 +27,20 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
   const inst = config.instances[instanceIndex];
   if (!inst) return '# Error: Instance not found';
 
-  // ACL is now enforced at EDGE (nftables filter INPUT chain).
-  // Unbound MUST remain open — security is handled before DNAT.
+  const isSimple = config.operationMode === 'simple';
 
-  // Collect all interface: directives (listeners ONLY — egress is strictly outgoing-interface)
-  // Primary listener IP (always)
+  // Collect all interface: directives (listeners ONLY)
   const interfaces: string[] = [`    interface: ${inst.bindIp}`];
-
-  // IPv6 listener
   if (config.enableIpv6 && inst.bindIpv6) {
     interfaces.push(`    interface: ${inst.bindIpv6}`);
   }
-
-  // NOTE: Egress IPs are NEVER added as interface: directives.
-  // Per Part1/Part2 architecture, egress IPs are strictly outgoing-interface.
-
   const interfaceBlock = interfaces.join('\n');
 
   // Egress outgoing-interface
   let egressBlock: string;
-  if (config.egressDeliveryMode === 'border-routed') {
+  if (isSimple || !inst.egressIpv4) {
+    egressBlock = `    # outgoing-interface: não aplicável — modo recursivo simples`;
+  } else if (config.egressDeliveryMode === 'border-routed') {
     egressBlock = `    # outgoing-interface: ${inst.egressIpv4}  # SUPPRESSED — border-routed mode
     # Egress identity enforced at border device (SNAT/policy/static return path)
     # Unbound will use the host's default IP for recursive queries`;
@@ -60,12 +54,66 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
     }
   }
 
+  // Performance tuning — ISP/enterprise grade
+  const threads = config.threads || 4;
+  const msgCacheSize = config.msgCacheSize || '512m';
+  const rrsetCacheSize = config.rrsetCacheSize || '512m';
+  const maxTtl = config.maxTtl || 7200;
+  const cacheMinTtl = config.cacheMinTtl ?? 300;
+  const serveExpired = config.serveExpired !== false;
+  const serveExpiredTtl = config.serveExpiredTtl ?? 86400;
+
+  // Slabs must be power of 2 — use 4 for consistency
+  const slabs = 4;
+
+  // Forward addrs — always use forward mode for simple, configurable for interception
+  const forwardAddrs = config.forwardAddrs?.length > 0
+    ? config.forwardAddrs
+    : ['1.1.1.1', '1.0.0.1', '8.8.8.8', '9.9.9.9'];
+
+  // Build forward zones
+  let forwardZonesBlock = `
+forward-zone:
+    name: "."
+`;
+  for (const addr of forwardAddrs) {
+    forwardZonesBlock += `    forward-addr: ${addr}\n`;
+  }
+  if (config.forwardFirst && !isSimple) {
+    forwardZonesBlock += `    forward-first: yes\n`;
+  }
+
+  // AD forward zones
+  if (config.adForwardZones?.length > 0) {
+    for (const ad of config.adForwardZones) {
+      if (!ad.domain || ad.dnsServers.length === 0) continue;
+      // Main domain
+      forwardZonesBlock += `\nforward-zone:\n    name: "${ad.domain}"\n`;
+      for (const srv of ad.dnsServers) {
+        forwardZonesBlock += `    forward-addr: ${srv}\n`;
+      }
+      // _msdcs subdomain for AD
+      forwardZonesBlock += `\nforward-zone:\n    name: "_msdcs.${ad.domain}"\n`;
+      for (const srv of ad.dnsServers) {
+        forwardZonesBlock += `    forward-addr: ${srv}\n`;
+      }
+    }
+  }
+
+  // Root hints — only for interception mode with forward-first
+  const rootHintsLine = isSimple
+    ? `    # root-hints: REMOVED — forward-only mode (no iterator/root recursion)`
+    : `    root-hints: "${config.rootHintsPath}"`;
+
+  // Module config — validator+iterator for DNSSEC, or iterator-only
+  const moduleConfig = isSimple ? `"iterator"` : `"iterator"`;
+
   return `
 server:
     verbosity: 1
     statistics-interval: 20
     extended-statistics: yes
-    num-threads: ${config.threads}
+    num-threads: ${threads}
 
 ${interfaceBlock}
 
@@ -74,22 +122,27 @@ ${egressBlock}
     outgoing-range: 8192
     outgoing-port-avoid: 0-1024
     outgoing-port-permit: 1025-65535
-    num-queries-per-thread: 2048
+    num-queries-per-thread: 4096
 
     so-rcvbuf: 8m
     so-sndbuf: 8m
     so-reuseport: yes
 
-    msg-cache-size: ${config.msgCacheSize}
-    rrset-cache-size: ${config.rrsetCacheSize}
+    msg-cache-size: ${msgCacheSize}
+    rrset-cache-size: ${rrsetCacheSize}
+
+    msg-cache-slabs: ${slabs}
+    rrset-cache-slabs: ${slabs}
+    infra-cache-slabs: ${slabs}
+    key-cache-slabs: ${slabs}
 
     prefetch: yes
     prefetch-key: yes
+    serve-expired: ${serveExpired ? 'yes' : 'no'}
+    serve-expired-ttl: ${serveExpiredTtl}
 
-    msg-cache-slabs: ${config.threads}
-    rrset-cache-slabs: ${config.threads}
-
-    cache-max-ttl: ${config.maxTtl}
+    cache-min-ttl: ${cacheMinTtl}
+    cache-max-ttl: ${maxTtl}
     infra-host-ttl: 60
     infra-lame-ttl: 120
 
@@ -110,16 +163,18 @@ ${egressBlock}
     logfile: ""
     use-syslog: no
     pidfile: "/var/run/unbound.pid"
-    root-hints: "${config.rootHintsPath}"
+${rootHintsLine}
 
     identity: "${config.dnsIdentity || config.hostname}"
     version: "${config.dnsVersion}"
     hide-identity: yes
     hide-version: yes
     harden-glue: yes
+    harden-dnssec-stripped: yes
+    use-caps-for-id: yes
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
-    module-config: "iterator"
+    module-config: ${moduleConfig}
 
     local-zone: "localhost." static
     local-data: "localhost. 10800 IN NS localhost."
@@ -132,13 +187,7 @@ ${egressBlock}
     local-data: "1.0.0.127.in-addr.arpa. 10800 IN PTR localhost."
 
     include: /etc/unbound/unbound-block-domains.conf
-
-forward-zone:
-    name: "."
-    forward-addr: 1.1.1.1
-    forward-addr: 8.8.8.8
-    forward-first: yes
-
+${forwardZonesBlock}
 remote-control:
     control-enable: yes
     control-interface: ${inst.controlInterface}
