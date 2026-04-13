@@ -289,6 +289,8 @@ def _check_privileged_probes(is_root: bool) -> list[dict]:
         r = run_command(exe, args, timeout=5, use_privilege=True)
         # systemctl is-active returns 3 for inactive — that's OK
         ok = r["exit_code"] == 0 or (exe == "systemctl" and "is-active" in args and r["exit_code"] == 3)
+        if ok and not is_root and not r.get("executed_privileged", False):
+            ok = False
         stderr = (r.get("stderr") or "")[:200]
         if ok:
             checks.append({
@@ -342,7 +344,7 @@ def _check_systemctl_capability(is_root: bool) -> dict:
     """Check if systemctl enable/start/stop works (the actual pipeline operations)."""
     # Test show-environment as a non-destructive proxy for daemon-reload privilege
     r = run_command("systemctl", ["show-environment"], timeout=5, use_privilege=True)
-    if r["exit_code"] == 0:
+    if r["exit_code"] == 0 and (is_root or r.get("executed_privileged", False)):
         return {
             "id": "systemctl_privilege",
             "category": "privilege_test",

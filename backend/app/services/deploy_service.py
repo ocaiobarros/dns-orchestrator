@@ -192,6 +192,77 @@ def get_live_deploy_state() -> dict:
     }
 
 
+def _is_system_target(target_path: str) -> bool:
+    return target_path.startswith("/etc/") or target_path.startswith("/usr/lib/systemd/system/")
+
+
+def _verify_file_metadata(target_path: str, expected_mode: str) -> dict[str, Any]:
+    try:
+        stat_result = os.stat(target_path)
+    except FileNotFoundError:
+        return {
+            "exit_code": 1,
+            "stdout": "",
+            "stderr": f"Arquivo não encontrado após install: {target_path}",
+            "duration_ms": 0,
+        }
+
+    actual_mode = format(stat_result.st_mode & 0o777, "04o")
+    metadata_errors: list[str] = []
+
+    if _is_system_target(target_path) and (stat_result.st_uid != 0 or stat_result.st_gid != 0):
+        metadata_errors.append(
+            f"owner incorreto {stat_result.st_uid}:{stat_result.st_gid} (esperado 0:0)"
+        )
+
+    if actual_mode != expected_mode:
+        metadata_errors.append(f"modo incorreto {actual_mode} (esperado {expected_mode})")
+
+    if metadata_errors:
+        return {
+            "exit_code": 1,
+            "stdout": "",
+            "stderr": "; ".join(metadata_errors),
+            "duration_ms": 0,
+        }
+
+    return {"exit_code": 0, "stdout": "OK", "stderr": "", "duration_ms": 0}
+
+
+def _install_file_to_target(source_path: str, target_path: str, permissions: str = "0644") -> dict[str, Any]:
+    target_dir = os.path.dirname(target_path)
+    mkdir_result = run_command("mkdir", ["-p", target_dir], timeout=10, use_privilege=True)
+    if mkdir_result["exit_code"] != 0:
+        return mkdir_result
+
+    mode = _infer_permissions(target_path, permissions)
+    result = run_command(
+        "install", ["-m", mode, "-o", "root", "-g", "root", source_path, target_path],
+        timeout=15, use_privilege=True,
+    )
+    if result["exit_code"] != 0:
+        return result
+
+    if _is_system_target(target_path) and os.geteuid() != 0 and not result.get("executed_privileged", False):
+        return {
+            "exit_code": 1,
+            "stdout": result.get("stdout", ""),
+            "stderr": (
+                f"install executado sem privilégio efetivo para {target_path}; "
+                "o pipeline recusou gravar artefato de sistema sem root/sudo"
+            ),
+            "duration_ms": result.get("duration_ms", 0),
+        }
+
+    verification = _verify_file_metadata(target_path, mode)
+    if verification["exit_code"] != 0:
+        verification["stdout"] = result.get("stdout", "")
+        verification["duration_ms"] = result.get("duration_ms", 0)
+        return verification
+
+    return result
+
+
 def execute_deploy(
     payload: dict[str, Any],
     scope: str = "full",
@@ -726,7 +797,7 @@ def _execute_deploy_locked(
                 ddir = os.path.dirname(original_path)
                 mode = _infer_permissions(original_path)
                 run_command("mkdir", ["-p", ddir], timeout=5, use_privilege=True)
-                result = run_command("install", ["-m", mode, "-o", "root", "-g", "root", src, original_path], timeout=10, use_privilege=True)
+                result = _install_file_to_target(src, original_path, mode)
                 if result["exit_code"] == 0:
                     restored += 1
 
@@ -1080,7 +1151,9 @@ def _execute_rollback_locked(backup_id: str, operator: str = "system") -> dict:
             ddir = os.path.dirname(original_path)
             mode = _infer_permissions(original_path)
             run_command("mkdir", ["-p", ddir], timeout=5, use_privilege=True)
-            run_command("install", ["-m", mode, "-o", "root", "-g", "root", src, original_path], timeout=10, use_privilege=True)
+            result = _install_file_to_target(src, original_path, mode)
+            if result["exit_code"] != 0:
+                raise RuntimeError(f"Falha ao restaurar {original_path}: {result.get('stderr', '')[:200]}")
             restored_files.append(original_path)
             if "/unbound/" in original_path and original_path.endswith(".service"):
                 name = os.path.basename(original_path).replace(".service", "")
@@ -1247,19 +1320,7 @@ def _install_file_from_staging(staging_dir: str, target_path: str, permissions: 
     staged_path = os.path.join(staging_dir, target_path.lstrip("/"))
     if not os.path.exists(staged_path):
         return {"exit_code": -1, "stdout": "", "stderr": f"Arquivo staging ausente: {staged_path}", "duration_ms": 0}
-
-    target_dir = os.path.dirname(target_path)
-    mkdir_result = run_command("mkdir", ["-p", target_dir], timeout=10, use_privilege=True)
-    if mkdir_result["exit_code"] != 0:
-        return mkdir_result
-
-    mode = _infer_permissions(target_path, permissions)
-    # Use install(1) for atomic ownership + mode in a single operation
-    # Arg order MUST match sudoers pattern: -m <mode> -o <owner> -g <group>
-    return run_command(
-        "install", ["-m", mode, "-o", "root", "-g", "root", staged_path, target_path],
-        timeout=15, use_privilege=True,
-    )
+    return _install_file_to_target(staged_path, target_path, permissions)
 
 
 def _get_scoped_sysctl_files(files: list[dict[str, Any]], scope: str) -> list[str]:
