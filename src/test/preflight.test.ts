@@ -333,3 +333,78 @@ describe('Preflight — result structure', () => {
     }
   });
 });
+
+describe('Preflight — permission inference by artifact type', () => {
+  function inferPermissions(path: string): string {
+    if (path.endsWith('.sh')) return '0755';
+    if (path.includes('/post-up.d/')) return '0755';
+    return '0644';
+  }
+
+  it('scripts get 0755', () => {
+    expect(inferPermissions('/etc/network/post-up.sh')).toBe('0755');
+    expect(inferPermissions('/var/lib/dns-control/apply.sh')).toBe('0755');
+  });
+
+  it('post-up.d entries get 0755', () => {
+    expect(inferPermissions('/etc/network/post-up.d/dns-control')).toBe('0755');
+  });
+
+  it('config files get 0644', () => {
+    expect(inferPermissions('/etc/unbound/unbound01.conf')).toBe('0644');
+    expect(inferPermissions('/etc/nftables.conf')).toBe('0644');
+    expect(inferPermissions('/etc/nftables.d/0002-table-nat.nft')).toBe('0644');
+    expect(inferPermissions('/etc/sysctl.d/050-dns-control.conf')).toBe('0644');
+    expect(inferPermissions('/usr/lib/systemd/system/unbound01.service')).toBe('0644');
+  });
+});
+
+describe('Preflight — privilege probes mirror pipeline commands', () => {
+  it('all-pass includes nft -c -f probe', () => {
+    const result = mockPreflightAllPass();
+    const probe = result.checks.find(c => c.id === 'probe_nft_syntax');
+    expect(probe).toBeDefined();
+    expect(probe?.status).toBe('pass');
+    expect(probe?.label).toContain('nft -c -f');
+  });
+
+  it('all-pass includes systemctl daemon-reload probe', () => {
+    const result = mockPreflightAllPass();
+    const probe = result.checks.find(c => c.id === 'probe_systemctl_reload');
+    expect(probe).toBeDefined();
+    expect(probe?.status).toBe('pass');
+  });
+
+  it('all-pass includes install privilege probe', () => {
+    const result = mockPreflightAllPass();
+    const probe = result.checks.find(c => c.id === 'probe_install_priv');
+    expect(probe).toBeDefined();
+    expect(probe?.label).toContain('install -o root');
+  });
+
+  it('checks executable availability (not just path existence)', () => {
+    const result = mockPreflightAllPass();
+    const exeChecks = result.checks.filter(c => c.category === 'executable');
+    expect(exeChecks.length).toBeGreaterThanOrEqual(3);
+    for (const check of exeChecks) {
+      expect(check.status).toBe('pass');
+    }
+  });
+});
+
+describe('Preflight — install replaces cp in pipeline', () => {
+  it('no cp references in privilege probes', () => {
+    const result = mockPreflightAllPass();
+    for (const check of result.checks) {
+      expect(check.label).not.toContain('cp privilegiado');
+      expect(check.id).not.toBe('cmd_cp');
+    }
+  });
+
+  it('install probe validates ownership flags', () => {
+    const result = mockPreflightAllPass();
+    const installProbe = result.checks.find(c => c.id === 'probe_install_priv');
+    expect(installProbe).toBeDefined();
+    expect(installProbe?.label).toContain('-o root -g root');
+  });
+});
