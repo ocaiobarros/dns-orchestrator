@@ -288,16 +288,25 @@ def _is_nftables_system_path(target_path: str) -> bool:
     return target_path.startswith("/etc/nftables.d/") and target_path.endswith(".nft")
 
 
-def _collect_nftables_owner_report() -> dict[str, Any]:
-    report: list[str] = []
-    non_root: list[str] = []
-    for nft_path in sorted(glob.glob("/etc/nftables.d/*.nft")):
-        owner, group_name = _get_file_owner_group(nft_path)
-        entry = f"{owner}:{group_name} {nft_path}"
-        report.append(entry)
-        if owner != "root" or group_name != "root":
-            non_root.append(entry)
-    return {"report": report, "non_root": non_root}
+def _collect_nftables_owner_report(paths: list[str] | None = None) -> dict[str, Any]:
+    nft_paths = sorted(paths or glob.glob("/etc/nftables.d/*.nft"))
+    if not nft_paths:
+        return {"command": "stat -c %U:%G %n /etc/nftables.d/*.nft", "report": [], "non_root": []}
+
+    stat_result = run_command("stat", ["-c", "%U:%G %n", *nft_paths], timeout=10)
+    report = [line.strip() for line in (stat_result.get("stdout") or "").splitlines() if line.strip()]
+    if not report:
+        report = []
+        for nft_path in nft_paths:
+            owner, group_name = _get_file_owner_group(nft_path)
+            report.append(f"{owner}:{group_name} {nft_path}")
+
+    non_root = [line for line in report if not line.startswith("root:root ")]
+    return {
+        "command": stat_result.get("command") or f"stat -c %U:%G %n {' '.join(nft_paths)}",
+        "report": report,
+        "non_root": non_root,
+    }
 
 
 def _install_file_to_target(source_path: str, target_path: str, permissions: str = "0644") -> dict[str, Any]:
