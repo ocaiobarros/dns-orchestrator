@@ -28,6 +28,8 @@ import shutil
 import time
 import uuid
 import logging
+import pwd
+import grp
 from datetime import datetime, timezone
 from typing import Any
 
@@ -257,77 +259,117 @@ def _verify_file_metadata(target_path: str, expected_mode: str) -> dict[str, Any
     return {"exit_code": 0, "stdout": "OK", "stderr": "", "duration_ms": 0}
 
 
-def _install_file_to_target(source_path: str, target_path: str, permissions: str = "0644") -> dict[str, Any]:
-    """Install file to target with root ownership.
+def _get_effective_user_group() -> tuple[str, str]:
+    try:
+        user = pwd.getpwuid(os.geteuid()).pw_name
+    except Exception:
+        user = str(os.geteuid())
+    try:
+        group = grp.getgrgid(os.getegid()).gr_name
+    except Exception:
+        group = str(os.getegid())
+    return user, group
 
-    Strategy (belt-and-suspenders):
-      1. Try 'install -m MODE -o root -g root SRC DST' via sudo
-      2. If install fails or leaves wrong ownership, fallback to
-         'cp --no-preserve=ownership SRC DST' + 'chmod MODE DST' via sudo
-      3. Verify final metadata; if still wrong, delete the target to prevent
-         leaving partial state on disk.
-    """
+
+def _get_file_owner_group(target_path: str) -> tuple[str, str]:
+    stat_result = os.stat(target_path)
+    try:
+        owner = pwd.getpwuid(stat_result.st_uid).pw_name
+    except Exception:
+        owner = str(stat_result.st_uid)
+    try:
+        group_name = grp.getgrgid(stat_result.st_gid).gr_name
+    except Exception:
+        group_name = str(stat_result.st_gid)
+    return owner, group_name
+
+
+def _is_nftables_system_path(target_path: str) -> bool:
+    return target_path.startswith("/etc/nftables.d/") and target_path.endswith(".nft")
+
+
+def _collect_nftables_owner_report() -> dict[str, Any]:
+    report: list[str] = []
+    non_root: list[str] = []
+    for nft_path in sorted(glob.glob("/etc/nftables.d/*.nft")):
+        owner, group_name = _get_file_owner_group(nft_path)
+        entry = f"{owner}:{group_name} {nft_path}"
+        report.append(entry)
+        if owner != "root" or group_name != "root":
+            non_root.append(entry)
+    return {"report": report, "non_root": non_root}
+
+
+def _install_file_to_target(source_path: str, target_path: str, permissions: str = "0644") -> dict[str, Any]:
+    """Install file to target with root ownership using install only."""
     target_dir = os.path.dirname(target_path)
     mkdir_result = run_command("mkdir", ["-p", target_dir], timeout=10, use_privilege=True)
     if mkdir_result["exit_code"] != 0:
         return mkdir_result
 
     mode = _infer_permissions(target_path, permissions)
+    install_args = ["-m", mode, "-o", "root", "-g", "root", source_path, target_path]
+    result = run_command("install", install_args, timeout=15, use_privilege=True)
 
-    # ── Attempt 1: install (atomic mode+ownership) ──
-    result = run_command(
-        "install", ["-m", mode, "-o", "root", "-g", "root", source_path, target_path],
-        timeout=15, use_privilege=True,
-    )
-
-    needs_fallback = False
-    if result["exit_code"] != 0:
-        logger.warning(
-            f"install failed for {target_path} (exit={result['exit_code']}): "
-            f"{(result.get('stderr') or '')[:200]}"
-        )
-        needs_fallback = True
-    else:
-        # install returned 0 — verify ownership is actually root:root
-        verification = _verify_file_metadata(target_path, mode)
-        if verification["exit_code"] != 0:
-            logger.warning(
-                f"install returned 0 but metadata wrong for {target_path}: "
-                f"{(verification.get('stderr') or '')[:200]}"
-            )
-            needs_fallback = True
-
-    # ── Attempt 2: cp + chmod fallback ──
-    if needs_fallback:
-        logger.info(f"Falling back to cp+chmod for {target_path}")
-        cp_result = run_command(
-            "cp", ["--no-preserve=ownership", source_path, target_path],
-            timeout=15, use_privilege=True,
-        )
-        if cp_result["exit_code"] != 0:
-            logger.error(f"cp fallback also failed for {target_path}: {cp_result.get('stderr', '')[:200]}")
-            # Clean up partial file to avoid leaving dns-control:dns-control on disk
-            _cleanup_partial_file(target_path)
-            return cp_result
-
-        chmod_result = run_command(
-            "chmod", [mode, target_path],
-            timeout=10, use_privilege=True,
-        )
-        if chmod_result["exit_code"] != 0:
-            logger.warning(f"chmod failed for {target_path}: {chmod_result.get('stderr', '')[:200]}")
-
-    # ── Final verification ──
     final_check = _verify_file_metadata(target_path, mode)
-    if final_check["exit_code"] != 0:
-        logger.error(f"Final metadata check FAILED for {target_path}: {final_check.get('stderr', '')[:200]}")
-        # Remove file to prevent leaving wrong-ownership artifacts on disk
-        _cleanup_partial_file(target_path)
-        final_check["stdout"] = result.get("stdout", "")
-        final_check["duration_ms"] = result.get("duration_ms", 0)
-        return final_check
+    effective_user, effective_group = _get_effective_user_group()
+    owner_after = "missing:missing"
+    if os.path.exists(target_path):
+        owner_name, group_name = _get_file_owner_group(target_path)
+        owner_after = f"{owner_name}:{group_name}"
 
-    return {"exit_code": 0, "stdout": "OK", "stderr": "", "duration_ms": result.get("duration_ms", 0)}
+    audit = {
+        "command": result.get("command") or f"install {' '.join(install_args)}",
+        "effective_uid": os.geteuid(),
+        "effective_gid": os.getegid(),
+        "effective_user": effective_user,
+        "effective_group": effective_group,
+        "target": target_path,
+        "owner_after": owner_after,
+        "mode_expected": mode,
+        "executed_privileged": result.get("executed_privileged", False),
+    }
+
+    if result["exit_code"] != 0 or final_check["exit_code"] != 0:
+        logger.error(
+            "Install failed or metadata invalid for %s | command=%s | euid=%s(%s) egid=%s(%s) | owner=%s | stderr=%s",
+            target_path,
+            audit["command"],
+            audit["effective_uid"],
+            audit["effective_user"],
+            audit["effective_gid"],
+            audit["effective_group"],
+            audit["owner_after"],
+            (result.get("stderr") or final_check.get("stderr") or "")[:300],
+        )
+        _cleanup_partial_file(target_path)
+        return {
+            "exit_code": result["exit_code"] if result["exit_code"] != 0 else final_check["exit_code"],
+            "stdout": result.get("stdout", ""),
+            "stderr": result.get("stderr") or final_check.get("stderr", ""),
+            "duration_ms": result.get("duration_ms", 0),
+            "audit": audit,
+            "command": audit["command"],
+        }
+
+    logger.info(
+        "Install OK for %s | command=%s | euid=%s(%s) egid=%s(%s) | owner=%s",
+        target_path,
+        audit["command"],
+        audit["effective_uid"],
+        audit["effective_user"],
+        audit["effective_gid"],
+        audit["effective_group"],
+        audit["owner_after"],
+    )
+    return {
+        "exit_code": 0,
+        "stdout": "OK",
+        "stderr": "",
+        "duration_ms": result.get("duration_ms", 0),
+        "audit": audit,
+        "command": audit["command"],
+    }
 
 
 def _cleanup_partial_file(target_path: str):
@@ -934,6 +976,7 @@ def _execute_deploy_locked(
 
         written = 0
         apply_errors: list[str] = []
+        nft_audits: list[str] = []
         for f in files:
             target_path = f["path"]
             if not _scope_matches(target_path, scope):
@@ -948,17 +991,34 @@ def _execute_deploy_locked(
                 apply_errors.append(f"{target_path}: {result['stderr'][:200]}")
                 continue
 
+            if _is_nftables_system_path(target_path):
+                audit = result.get("audit") or {}
+                nft_audits.append(
+                    f"cmd={audit.get('command', 'install')} | euid={audit.get('effective_uid')} | owner={audit.get('owner_after')} | target={target_path}"
+                )
+
             changed_files.append(target_path)
             written += 1
+
+        if not apply_errors:
+            nft_report = _collect_nftables_owner_report()
+            nft_audits.extend(f"stat={line}" for line in nft_report["report"])
+            if nft_report["non_root"]:
+                apply_errors.append(
+                    "Ownership inválido em /etc/nftables.d: " + "; ".join(nft_report["non_root"])
+                )
 
         if apply_errors:
             return {
                 "status": "failed",
                 "output": f"Falha em {len(apply_errors)} arquivo(s)",
-                "stderr": "; ".join(apply_errors),
+                "stderr": "; ".join(apply_errors + nft_audits),
             }
 
-        return {"status": "success", "output": f"{written} arquivos aplicados"}
+        details = f"{written} arquivos aplicados"
+        if nft_audits:
+            details += " | " + " ; ".join(nft_audits)
+        return {"status": "success", "output": details}
 
     _run_step(s7, apply_from_staging)
     steps.append(s7)
@@ -1267,6 +1327,7 @@ def _execute_rollback_locked(backup_id: str, operator: str = "system") -> dict:
     # Step 3: Restore files
     s3 = _step(3, "Restaurar arquivos do backup")
     def restore():
+        restored_nft_audits: list[str] = []
         for fname in os.listdir(bdir):
             if fname == "manifest.json":
                 continue
@@ -1278,6 +1339,11 @@ def _execute_rollback_locked(backup_id: str, operator: str = "system") -> dict:
             result = _install_file_to_target(src, original_path, mode)
             if result["exit_code"] != 0:
                 raise RuntimeError(f"Falha ao restaurar {original_path}: {result.get('stderr', '')[:200]}")
+            if _is_nftables_system_path(original_path):
+                audit = result.get("audit") or {}
+                restored_nft_audits.append(
+                    f"cmd={audit.get('command', 'install')} | euid={audit.get('effective_uid')} | owner={audit.get('owner_after')} | target={original_path}"
+                )
             restored_files.append(original_path)
             if "/unbound/" in original_path and original_path.endswith(".service"):
                 name = os.path.basename(original_path).replace(".service", "")
@@ -1288,7 +1354,13 @@ def _execute_rollback_locked(backup_id: str, operator: str = "system") -> dict:
                     services_to_restart.add(name)
             if "nftables" in original_path:
                 services_to_restart.add("nftables")
-        return {"status": "success", "output": f"{len(restored_files)} arquivos restaurados"}
+        nft_report = _collect_nftables_owner_report()
+        if nft_report["non_root"]:
+            raise RuntimeError("Ownership inválido após rollback em /etc/nftables.d: " + "; ".join(nft_report["non_root"]))
+        details = f"{len(restored_files)} arquivos restaurados"
+        if restored_nft_audits or nft_report["report"]:
+            details += " | " + " ; ".join(restored_nft_audits + [f"stat={line}" for line in nft_report["report"]])
+        return {"status": "success", "output": details}
     _run_step(s3, restore)
     steps.append(s3)
 
