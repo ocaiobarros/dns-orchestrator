@@ -686,28 +686,71 @@ export default function Wizard() {
       </InfoBox>
       {/* Performance Tuning */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <FieldGroup label="Threads por instância *" error={fieldError('threads')} hint="Slabs serão derivados automaticamente (potência de 2)">
-          <Input type="number" value={config.threads} onChange={v => set('threads', parseInt(v) || 1)} />
+        <FieldGroup label="Threads por instância *" error={fieldError('threads')} hint="1–64. Slabs derivados automaticamente (potência de 2)">
+          <Input type="number" value={config.threads} onChange={v => {
+            const n = Math.max(1, Math.min(64, parseInt(v) || 1));
+            set('threads', n);
+          }} />
         </FieldGroup>
-        <FieldGroup label="Msg Cache" hint="Tamanho do cache de mensagens">
-          <Input value={config.msgCacheSize} onChange={v => set('msgCacheSize', v)} />
+        <FieldGroup label="Msg Cache" hint="Tamanho do cache de mensagens (ex: 256m, 512m, 1g)">
+          <Select value={config.msgCacheSize || '512m'} onChange={v => set('msgCacheSize', v)} options={[
+            { value: '128m', label: '128m — host pequeno' },
+            { value: '256m', label: '256m — moderado' },
+            { value: '512m', label: '512m — produção ISP (recomendado)' },
+            { value: '1g', label: '1g — alta carga' },
+            { value: '2g', label: '2g — host dedicado' },
+          ]} />
         </FieldGroup>
-        <FieldGroup label="RRset Cache" hint="Tamanho do cache de RRsets">
-          <Input value={config.rrsetCacheSize} onChange={v => set('rrsetCacheSize', v)} />
+        <FieldGroup label="RRset Cache" hint="Deve ser ≥ Msg Cache para evitar eviction">
+          <Select value={config.rrsetCacheSize || '512m'} onChange={v => set('rrsetCacheSize', v)} options={[
+            { value: '128m', label: '128m' },
+            { value: '256m', label: '256m' },
+            { value: '512m', label: '512m (recomendado)' },
+            { value: '1g', label: '1g' },
+            { value: '2g', label: '2g' },
+          ]} />
         </FieldGroup>
-        <FieldGroup label="Cache Min TTL" hint="TTL mínimo em cache (segundos)">
-          <Input type="number" value={config.cacheMinTtl} onChange={v => set('cacheMinTtl', parseInt(v) || 0)} />
+        <FieldGroup label="Cache Min TTL (s)" hint="60–3600s. Maior = mais cache hit, menos freshness">
+          <Input type="number" value={config.cacheMinTtl} onChange={v => {
+            const n = Math.max(0, Math.min(3600, parseInt(v) || 0));
+            set('cacheMinTtl', n);
+          }} />
         </FieldGroup>
-        <FieldGroup label="Cache Max TTL" hint="TTL máximo em cache (segundos)">
-          <Input type="number" value={config.maxTtl} onChange={v => set('maxTtl', parseInt(v) || 0)} />
+        <FieldGroup label="Cache Max TTL (s)" hint="Teto de retenção em cache">
+          <Input type="number" value={config.maxTtl} onChange={v => {
+            const n = Math.max(60, Math.min(86400, parseInt(v) || 7200));
+            set('maxTtl', n);
+          }} />
         </FieldGroup>
-        <FieldGroup label="Queries/Thread" hint="num-queries-per-thread (default: 3200)">
-          <Input type="number" value={config.numQueriesPerThread || 3200} onChange={v => set('numQueriesPerThread', parseInt(v) || 3200)} />
+        <FieldGroup label="Queries/Thread" hint="1024–8192. Padrão conservador: 3200">
+          <Input type="number" value={config.numQueriesPerThread || 3200} onChange={v => {
+            const n = Math.max(512, Math.min(8192, parseInt(v) || 3200));
+            set('numQueriesPerThread', n);
+          }} />
         </FieldGroup>
         <FieldGroup label="DNS Identity" hint="Valor do campo identity">
           <Input value={config.dnsIdentity} onChange={v => set('dnsIdentity', v)} placeholder="67-DNS" />
         </FieldGroup>
       </div>
+      {/* Safety warnings */}
+      {config.threads > 16 && (
+        <div className="flex gap-2 p-2 rounded bg-accent/10 border border-accent/20 text-xs text-accent">
+          <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+          <span><strong>Atenção:</strong> {config.threads} threads é incomum — verifique se o host tem CPUs suficientes. Slabs serão 16.</span>
+        </div>
+      )}
+      {config.cacheMinTtl > 900 && (
+        <div className="flex gap-2 p-2 rounded bg-accent/10 border border-accent/20 text-xs text-accent">
+          <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+          <span><strong>Atenção:</strong> cache-min-ttl de {config.cacheMinTtl}s pode causar stale data para domínios com TTL baixo (ex: CDNs, balanceadores).</span>
+        </div>
+      )}
+      {(config.numQueriesPerThread || 3200) > 4096 && (
+        <div className="flex gap-2 p-2 rounded bg-accent/10 border border-accent/20 text-xs text-accent">
+          <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+          <span><strong>Atenção:</strong> num-queries-per-thread acima de 4096 aumenta consumo de memória significativamente.</span>
+        </div>
+      )}
 
       {/* Serve Expired + Root Hints */}
       <div className="flex gap-4 flex-wrap">
