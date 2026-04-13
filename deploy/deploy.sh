@@ -112,7 +112,7 @@ fi
 step "Criando diretórios"
 # ═══════════════════════════════════════════════════════════════
 
-mkdir -p "${DATA_DIR}"/{backups,generated,staging,deployments,telemetry}
+mkdir -p "${DATA_DIR}"/{backups,generated,staging,deployments,telemetry,tmp}
 mkdir -p "${LOG_DIR}"
 mkdir -p "${ENV_DIR}"
 mkdir -p /etc/unbound/unbound.conf.d
@@ -121,7 +121,19 @@ mkdir -p /etc/network/post-up.d
 mkdir -p /etc/sysctl.d
 mkdir -p /etc/frr
 mkdir -p /etc/default
+mkdir -p /etc/systemd/system
+mkdir -p /usr/lib/systemd/system
 
+# Garantir que arquivos base existam (deploy precisa deles pré-criados)
+touch /etc/nftables.conf 2>/dev/null || true
+touch /etc/unbound/unbound-block-domains.conf 2>/dev/null || true
+touch /etc/unbound/anablock.conf 2>/dev/null || true
+
+# Ownership root nos diretórios de sistema
+chown root:root /etc/unbound /etc/unbound/unbound.conf.d /etc/frr /etc/nftables.d /etc/sysctl.d /etc/network /etc/network/post-up.d 2>/dev/null || true
+chmod 0755 /etc/unbound /etc/unbound/unbound.conf.d /etc/frr /etc/nftables.d /etc/sysctl.d /etc/network /etc/network/post-up.d 2>/dev/null || true
+
+# Ownership dns-control nos diretórios de dados
 chown -R "${APP_USER}:${APP_USER}" "${DATA_DIR}"
 chown -R "${APP_USER}:${APP_USER}" "${LOG_DIR}"
 chmod 700 "${ENV_DIR}"

@@ -15,6 +15,7 @@ from app.models.user import User
 from app.models.apply_job import ApplyJob
 from app.models.config_profile import ConfigProfile
 from app.services.deploy_service import execute_deploy, execute_rollback, get_deploy_state, get_live_deploy_state, list_backups
+from app.services.preflight_service import run_preflight
 from app.services.service_mode import require_managed_mode
 
 router = APIRouter()
@@ -83,6 +84,15 @@ def _persist_job(db: Session, result: dict, body: DeployRequest, user: User) -> 
         return {"failed_step": "persist_job", "error": str(exc)}
 
 
+@router.get("/preflight")
+def deploy_preflight(
+    scope: str = Query("full"),
+    _: User = Depends(get_current_user),
+):
+    """Run privilege/permission preflight checks before deploy."""
+    return run_preflight(scope=scope)
+
+
 @router.post("/dry-run")
 def deploy_dry_run(body: DeployRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Execute dry-run: validate, generate, check — no changes applied."""
@@ -102,8 +112,35 @@ def deploy_dry_run(body: DeployRequest, db: Session = Depends(get_db), user: Use
 
 @router.post("/apply")
 def deploy_apply(body: DeployRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Execute full deployment pipeline."""
+    """Execute full deployment pipeline with mandatory preflight gate."""
     require_managed_mode(db)
+
+    # ── Preflight gate: abort before any destructive action ──
+    if not body.dry_run:
+        preflight = run_preflight(scope=body.scope)
+        if not preflight["canDeploy"]:
+            blocked = preflight["blockedReasons"]
+            return {
+                "id": "preflight-blocked",
+                "success": False,
+                "status": "blocked",
+                "steps": [{
+                    "order": 0,
+                    "name": "Preflight de permissões e privilégio",
+                    "status": "failed",
+                    "output": f"{preflight['failed']} verificações falharam",
+                    "durationMs": preflight["durationMs"],
+                    "command": None,
+                    "startedAt": None,
+                    "finishedAt": None,
+                    "rollbackHint": None,
+                    "stderr": "; ".join(blocked[:10]),
+                }],
+                "error": f"Deploy real requer privilégio root ou sudo sem senha. {len(blocked)} verificação(ões) falharam.",
+                "preflight": preflight,
+                "duration": preflight["durationMs"],
+            }
+
     payload = _resolve_payload(body, db)
     result = execute_deploy(
         payload=payload,

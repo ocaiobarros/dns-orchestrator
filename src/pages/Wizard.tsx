@@ -289,6 +289,8 @@ export default function Wizard() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [stagingResult, setStagingResult] = useState<any>(null);
   const [stagingLoading, setStagingLoading] = useState(false);
+  const [preflightResult, setPreflightResult] = useState<any>(null);
+  const [preflightLoading, setPreflightLoading] = useState(false);
 
   const handleApply = async (dryRun: boolean) => {
     if (isReadonlyMode) {
@@ -311,6 +313,14 @@ export default function Wizard() {
     // ═══ Interception structural gate — block deploy if nftables checklist fails ═══
     if (config.operationMode === 'interception' && !dryRun && !isInterceptionConfigValid(config)) {
       setSubmitError('Deploy bloqueado: checklist estrutural nftables com falhas. Corrija os itens marcados como FALHA na Checklist de Aceitação Operacional.');
+      setSubmitState('error');
+      return;
+    }
+
+    // ═══ Preflight privilege gate — block deploy if permissions are insufficient ═══
+    if (!dryRun && preflightResult && !preflightResult.canDeploy) {
+      const reasons = (preflightResult.blockedReasons || []).slice(0, 3).join('; ');
+      setSubmitError(`Deploy bloqueado: preflight de permissões falhou. ${reasons}`);
       setSubmitState('error');
       return;
     }
@@ -1649,7 +1659,83 @@ export default function Wizard() {
           );
         })()}
 
-        {/* ═══ Dry-Run Staging (backend validation — both modes) ═══ */}
+        {/* ═══ Preflight de Permissões e Privilégio ═══ */}
+        {(() => {
+          const runPreflight = async () => {
+            setPreflightLoading(true);
+            setPreflightResult(null);
+            try {
+              const r = await api.getDeployPreflight('full');
+              setPreflightResult(r.success ? r.data : { canDeploy: false, checks: [], blockedReasons: [r.error || 'Erro'] });
+            } catch (err: any) {
+              setPreflightResult({ canDeploy: false, checks: [], blockedReasons: [err.message] });
+            } finally {
+              setPreflightLoading(false);
+            }
+          };
+          return (
+            <div className={`noc-panel ${preflightResult ? (preflightResult.canDeploy ? 'border-success/30' : 'border-destructive/30') : 'border-border/50'}`}>
+              <div className="noc-panel-header flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Lock size={12} />
+                  <span>Preflight de Permissões e Privilégio</span>
+                </div>
+                <button onClick={runPreflight} disabled={preflightLoading}
+                  className="flex items-center gap-1 px-2.5 py-1 text-[10px] bg-accent/15 text-accent rounded border border-accent/30 hover:bg-accent/25 disabled:opacity-50">
+                  {preflightLoading ? <Loader2 size={10} className="animate-spin" /> : <Shield size={10} />}
+                  {preflightLoading ? 'Verificando...' : 'Verificar Privilégios'}
+                </button>
+              </div>
+              {!preflightResult && !preflightLoading && (
+                <p className="text-xs text-muted-foreground/70 px-2 py-2">
+                  Verifica se o backend possui privilégio suficiente para gravar em <code className="font-mono bg-secondary px-1 rounded">/etc/unbound</code>,{' '}
+                  <code className="font-mono bg-secondary px-1 rounded">/etc/nftables.conf</code>, executar <code className="font-mono bg-secondary px-1 rounded">nft</code>,{' '}
+                  <code className="font-mono bg-secondary px-1 rounded">systemctl</code>, etc. <strong>Execute antes do deploy real.</strong>
+                </p>
+              )}
+              {preflightResult && (
+                <div className="space-y-1.5">
+                  <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium ${
+                    preflightResult.canDeploy ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'
+                  }`}>
+                    {preflightResult.canDeploy ? <Check size={12} /> : <AlertCircle size={12} />}
+                    {preflightResult.canDeploy
+                      ? `PREFLIGHT APROVADO — ${preflightResult.passed}/${preflightResult.total} verificações OK (${preflightResult.durationMs}ms)`
+                      : `PREFLIGHT COM FALHAS — ${preflightResult.failed} de ${preflightResult.total} verificações falharam`}
+                  </div>
+                  {/* Privilege info */}
+                  {preflightResult.privilege && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 px-2 py-1.5 text-xs bg-secondary/30 rounded">
+                      <div><span className="text-muted-foreground text-[10px] uppercase">Usuário</span><div className="font-mono">{preflightResult.privilege.backend_running_as_user}</div></div>
+                      <div><span className="text-muted-foreground text-[10px] uppercase">EUID</span><div className="font-mono">{preflightResult.privilege.euid}</div></div>
+                      <div><span className="text-muted-foreground text-[10px] uppercase">Root</span><div className="font-mono">{preflightResult.privilege.is_root ? 'SIM' : 'NÃO'}</div></div>
+                      <div><span className="text-muted-foreground text-[10px] uppercase">Sudo</span><div className="font-mono">{preflightResult.privilege.privilege_wrapper_available ? 'OK' : 'INDISPONÍVEL'}</div></div>
+                    </div>
+                  )}
+                  {/* Check details */}
+                  {preflightResult.checks?.map((c: any) => (
+                    <div key={c.id} className={`flex items-start gap-3 px-2 py-1 text-xs ${c.status === 'fail' ? 'bg-destructive/5 border border-destructive/20 rounded' : ''}`}>
+                      {c.status === 'pass' ? <Check size={10} className="text-success shrink-0 mt-0.5" /> : <AlertCircle size={10} className="text-destructive shrink-0 mt-0.5" />}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{c.label}</span>
+                          <span className={`font-mono text-[10px] px-1 py-0.5 rounded ${c.status === 'pass' ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive font-bold'}`}>
+                            {c.status === 'pass' ? 'OK' : 'FALHA'}
+                          </span>
+                        </div>
+                        <div className="font-mono text-[10px] text-muted-foreground mt-0.5 break-all">{c.detail}</div>
+                        {c.status === 'fail' && c.remediation && (
+                          <div className="font-mono text-[10px] text-accent mt-0.5">💡 {c.remediation}</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {(() => {
           const runStaging = async () => {
             setStagingLoading(true);
@@ -2056,11 +2142,18 @@ export default function Wizard() {
                 className="flex items-center gap-1 px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded border border-border disabled:opacity-60">
                 <Eye size={16} /> Dry Run
               </button>
-              <button onClick={() => handleApply(false)} disabled={submitState === 'dispatching' || !isConfigValid(validationErrors)}
-                className="flex items-center gap-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded font-medium disabled:opacity-60">
-                {submitState === 'dispatching' ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
-                {submitState === 'dispatching' ? 'Aplicando...' : 'Aplicar Deploy'}
-              </button>
+              {preflightResult && !preflightResult.canDeploy ? (
+                <div className="flex items-center gap-2 rounded border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+                  <Lock size={14} />
+                  <span>Deploy bloqueado — preflight com falhas</span>
+                </div>
+              ) : (
+                <button onClick={() => handleApply(false)} disabled={submitState === 'dispatching' || !isConfigValid(validationErrors)}
+                  className="flex items-center gap-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded font-medium disabled:opacity-60">
+                  {submitState === 'dispatching' ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                  {submitState === 'dispatching' ? 'Aplicando...' : 'Aplicar Deploy'}
+                </button>
+              )}
             </>
           )}
           {step === LAST_STEP && !applyResult && isReadonlyMode && (
