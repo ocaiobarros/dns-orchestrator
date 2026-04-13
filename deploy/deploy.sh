@@ -237,7 +237,8 @@ step "Configurando permissões e sudoers"
 chown -R "${APP_USER}:${APP_USER}" "${APP_ROOT}"
 chown -R "${APP_USER}:${APP_USER}" "${DATA_DIR}"
 chown -R "${APP_USER}:${APP_USER}" "${LOG_DIR}"
-chown "${APP_USER}:${APP_USER}" /etc/nftables.d 2>/dev/null || true
+# NÃO alterar ownership de /etc/nftables.d — deve permanecer root:root
+# (o deploy usa sudo install para gravar arquivos lá)
 
 # Instalar sudoers do repositório (fonte de verdade única)
 SUDOERS_SRC="${APP_ROOT}/deploy/sudoers/dns-control-diagnostics"
@@ -289,11 +290,13 @@ if [[ ! -f "/etc/nftables.conf" ]]; then
 flush ruleset
 include "/etc/nftables.d/*.nft"
 NFTEOF
-    chmod 0644 /etc/nftables.conf
     ok "nftables.conf base criado"
 else
     ok "nftables.conf já existe"
 fi
+# Garantir modo 0644 e ownership root:root (Debian default pode ser 755)
+chmod 0644 /etc/nftables.conf
+chown root:root /etc/nftables.conf
 
 systemctl enable nftables >> "${INSTALL_LOG}" 2>&1 || true
 ok "nftables habilitado para persistência"
