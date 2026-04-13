@@ -317,6 +317,14 @@ export default function Wizard() {
       return;
     }
 
+    // ═══ Preflight privilege gate — block deploy if permissions are insufficient ═══
+    if (!dryRun && preflightResult && !preflightResult.canDeploy) {
+      const reasons = (preflightResult.blockedReasons || []).slice(0, 3).join('; ');
+      setSubmitError(`Deploy bloqueado: preflight de permissões falhou. ${reasons}`);
+      setSubmitState('error');
+      return;
+    }
+
     setSubmitState('dispatching');
     setDeployProgress({
       phase: dryRun ? 'dry_run_validating' : 'applying',
