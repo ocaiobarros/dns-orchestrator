@@ -1441,6 +1441,101 @@ export default function Wizard() {
           </div>
         </div>
 
+        {/* ═══ Acceptance Checklist (simple mode) ═══ */}
+        {config.operationMode === 'simple' && (() => {
+          const checks = validateSimpleModeConfig(config);
+          const passed = checks.filter(c => c.status === 'pass').length;
+          const failed = checks.filter(c => c.status === 'fail').length;
+          const total = checks.filter(c => c.status !== 'skip').length;
+          const allOk = failed === 0;
+          return (
+            <div className={`noc-panel ${allOk ? 'border-success/30' : 'border-destructive/30'}`}>
+              <div className="noc-panel-header flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Shield size={12} />
+                  <span>Checklist de Aceitação Operacional ({passed}/{total})</span>
+                </div>
+                {allOk
+                  ? <span className="text-success text-[10px] font-bold uppercase tracking-wider">APROVADO</span>
+                  : <span className="text-destructive text-[10px] font-bold uppercase tracking-wider">{failed} FALHA{failed !== 1 ? 'S' : ''}</span>}
+              </div>
+              <div className="space-y-1">
+                {checks.map(check => (
+                  <div key={check.id} className={`flex items-center gap-3 px-2 py-1.5 rounded text-xs ${
+                    check.status === 'fail' ? 'bg-destructive/5 border border-destructive/20' : ''
+                  }`}>
+                    {check.status === 'pass' ? <Check size={12} className="text-success shrink-0" />
+                      : check.status === 'fail' ? <AlertCircle size={12} className="text-destructive shrink-0" />
+                      : check.status === 'warn' ? <AlertTriangle size={12} className="text-accent shrink-0" />
+                      : <SkipForward size={12} className="text-muted-foreground shrink-0" />}
+                    <span className="font-medium flex-1">{check.label}</span>
+                    <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded ${
+                      check.status === 'pass' ? 'bg-success/10 text-success' :
+                      check.status === 'fail' ? 'bg-destructive/10 text-destructive font-bold' :
+                      check.status === 'warn' ? 'bg-accent/10 text-accent' :
+                      'bg-muted text-muted-foreground'
+                    }`}>{check.status === 'pass' ? 'OK' : check.status === 'fail' ? 'FALHA' : check.status === 'warn' ? 'AVISO' : 'N/A'}</span>
+                    <span className="font-mono text-muted-foreground text-[10px] max-w-[300px] truncate">{check.detail}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ═══ Diagnostics Summary (simple mode) ═══ */}
+        {config.operationMode === 'simple' && (() => {
+          const diag = extractDiagnostics(config);
+          return (
+            <div className="noc-panel border-border/50">
+              <div className="noc-panel-header flex items-center gap-2">
+                <Activity size={12} />
+                <span>Diagnóstico Pré-Deploy</span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                {[
+                  ['Threads', String(diag.threads)],
+                  ['Slabs', String(diag.slabs)],
+                  ['msg-cache', diag.msgCacheSize],
+                  ['rrset-cache', diag.rrsetCacheSize],
+                  ['cache-min-ttl', `${diag.cacheMinTtl}s`],
+                  ['serve-expired', diag.serveExpired ? `yes (${diag.serveExpiredTtl}s)` : 'no'],
+                  ['queries/thread', String(diag.numQueriesPerThread)],
+                  ['CIDR', diag.cidrApplied],
+                  ['harden-dnssec', diag.hardenDnssecStripped ? 'yes' : 'no'],
+                  ['caps-for-id', diag.useCapsForId ? 'yes' : 'no'],
+                ].map(([k, v]) => (
+                  <div key={k} className="py-1">
+                    <div className="text-muted-foreground uppercase tracking-wider text-[10px]">{k}</div>
+                    <div className="font-mono font-medium">{v}</div>
+                  </div>
+                ))}
+              </div>
+              {diag.upstreams.length > 0 && (
+                <div className="mt-3 pt-2 border-t border-border/30">
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Upstreams Efetivos</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {diag.upstreams.map(u => (
+                      <span key={u} className="px-2 py-0.5 text-xs font-mono bg-secondary rounded border border-border">{u}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {diag.adForwardZones.length > 0 && (
+                <div className="mt-3 pt-2 border-t border-border/30">
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Forward-Zones AD</div>
+                  {diag.adForwardZones.map(z => (
+                    <div key={z.domain} className="text-xs font-mono">
+                      <span className="text-primary">{z.domain}</span>
+                      <span className="text-muted-foreground"> → {z.dcs.join(', ')}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         <div className="noc-panel">
           <div className="noc-panel-header flex items-center justify-between">
             <span>Preview dos Arquivos ({generatedFiles.length} artefatos)</span>
