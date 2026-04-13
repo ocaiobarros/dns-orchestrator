@@ -67,7 +67,6 @@ _CLEANUP_GLOBS = {
     "unbound_configs": "/etc/unbound/unbound*.conf",
     "unbound_units": "/usr/lib/systemd/system/unbound*.service",
     "nftables_snippets": "/etc/nftables.d/*.nft",
-    "nftables_conf": "/etc/nftables.conf",
     "sysctl_dns": "/etc/sysctl.d/05[0-9]-*.conf",
     "sysctl_net": "/etc/sysctl.d/06[0-9]-*.conf",
     "sysctl_fs": "/etc/sysctl.d/07[0-9]-*.conf",
@@ -76,6 +75,8 @@ _CLEANUP_GLOBS = {
     "network_postup": "/etc/network/post-up.sh",
     "network_postup_d": "/etc/network/post-up.d/dns-control",
 }
+
+_RUNTIME_BASE_FILES = frozenset({"/etc/nftables.conf"})
 
 # Files NEVER to touch
 _NEVER_TOUCH = frozenset({
@@ -1025,6 +1026,8 @@ def _execute_deploy_locked(
         for f in files:
             target_path = f["path"]
             if not _scope_matches(target_path, scope):
+                continue
+            if target_path in _RUNTIME_BASE_FILES:
                 continue
 
             result = _install_file_from_staging(
