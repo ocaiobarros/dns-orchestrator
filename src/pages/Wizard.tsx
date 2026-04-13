@@ -308,6 +308,13 @@ export default function Wizard() {
       return;
     }
 
+    // ═══ Interception structural gate — block deploy if nftables checklist fails ═══
+    if (config.operationMode === 'interception' && !dryRun && !isInterceptionConfigValid(config)) {
+      setSubmitError('Deploy bloqueado: checklist estrutural nftables com falhas. Corrija os itens marcados como FALHA na Checklist de Aceitação Operacional.');
+      setSubmitState('error');
+      return;
+    }
+
     setSubmitState('dispatching');
     setDeployProgress({
       phase: dryRun ? 'dry_run_validating' : 'applying',
