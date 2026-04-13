@@ -867,6 +867,19 @@ def _execute_deploy_locked(
     for inst in instances:
         name = inst.get("name", "unbound")
 
+        # Unmask first (may have been masked by bootstrap or previous deploy)
+        s_unmask = _step(order, f"Desmascarar {name}", f"systemctl unmask {name}")
+        def unmask_svc(svc_name=name):
+            # Unmask both the service name and unbound.service (legacy)
+            run_command("systemctl", ["unmask", svc_name], timeout=10, use_privilege=True)
+            if svc_name == "unbound":
+                run_command("systemctl", ["unmask", "unbound.service"], timeout=10, use_privilege=True)
+            return {"status": "success", "output": f"{svc_name} desmascarado"}
+        _run_step(s_unmask, unmask_svc)
+        steps.append(s_unmask)
+        _update_live_state(completedSteps=order)
+        order += 1
+
         # Enable
         s_enable = _step(order, f"Habilitar {name} no boot", f"systemctl enable {name}")
         def enable_svc(svc_name=name):
