@@ -317,6 +317,38 @@ def _install_file_to_target(source_path: str, target_path: str, permissions: str
         return mkdir_result
 
     mode = _infer_permissions(target_path, permissions)
+
+    try:
+        if os.path.exists(target_path):
+            with open(source_path, "rb") as src_fp, open(target_path, "rb") as dst_fp:
+                if src_fp.read() == dst_fp.read():
+                    metadata_check = _verify_file_metadata(target_path, mode)
+                    if metadata_check["exit_code"] == 0:
+                        owner_name, group_name = _get_file_owner_group(target_path)
+                        audit = {
+                            "command": f"install skipped (identical file): {target_path}",
+                            "effective_uid": os.geteuid(),
+                            "effective_gid": os.getegid(),
+                            "effective_user": _get_effective_user_group()[0],
+                            "effective_group": _get_effective_user_group()[1],
+                            "target": target_path,
+                            "owner_after": f"{owner_name}:{group_name}",
+                            "mode_expected": mode,
+                            "executed_privileged": False,
+                        }
+                        logger.info("Install skipped for identical file %s | owner=%s", target_path, audit["owner_after"])
+                        return {
+                            "exit_code": 0,
+                            "stdout": "UNCHANGED",
+                            "stderr": "",
+                            "duration_ms": 0,
+                            "audit": audit,
+                            "command": audit["command"],
+                        }
+        
+    except OSError:
+        pass
+
     install_args = ["-m", mode, "-o", "root", "-g", "root", source_path, target_path]
     result = run_command("install", install_args, timeout=15, use_privilege=True)
 
