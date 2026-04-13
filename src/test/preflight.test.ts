@@ -36,9 +36,9 @@ interface PreflightResult {
 function mockPreflightAllPass(): PreflightResult {
   return {
     success: true,
-    passed: 15,
+    passed: 20,
     failed: 0,
-    total: 15,
+    total: 20,
     checks: [
       { id: 'privilege_model', category: 'privilege', label: 'Modelo de execução', status: 'pass', detail: 'sudo NOPASSWD', remediation: '' },
       { id: 'dir__etc_unbound', category: 'directory', label: '/etc/unbound', status: 'pass', detail: 'OK', remediation: '' },
@@ -46,8 +46,15 @@ function mockPreflightAllPass(): PreflightResult {
       { id: 'dir__etc_nftables.d', category: 'directory', label: '/etc/nftables.d', status: 'pass', detail: 'OK', remediation: '' },
       { id: 'file__etc_nftables.conf', category: 'file', label: '/etc/nftables.conf', status: 'pass', detail: 'OK', remediation: '' },
       { id: 'write__etc_unbound', category: 'write_probe', label: 'Escrita /etc/unbound', status: 'pass', detail: 'OK', remediation: '' },
+      { id: 'exe_nft', category: 'executable', label: 'nft (nftables)', status: 'pass', detail: '/usr/sbin/nft', remediation: '' },
+      { id: 'exe_systemctl', category: 'executable', label: 'systemctl (systemd)', status: 'pass', detail: '/bin/systemctl', remediation: '' },
+      { id: 'exe_install', category: 'executable', label: 'install (coreutils)', status: 'pass', detail: '/usr/bin/install', remediation: '' },
+      { id: 'probe_nft_syntax', category: 'privilege_probe', label: 'nft -c -f (validação sintática)', status: 'pass', detail: 'OK', remediation: '' },
+      { id: 'probe_nft_read', category: 'privilege_probe', label: 'nft list tables', status: 'pass', detail: 'OK', remediation: '' },
+      { id: 'probe_systemctl_reload', category: 'privilege_probe', label: 'systemctl daemon-reload', status: 'pass', detail: 'OK', remediation: '' },
+      { id: 'probe_install_priv', category: 'privilege_probe', label: 'install -o root -g root', status: 'pass', detail: 'OK', remediation: '' },
       { id: 'nft_privilege', category: 'privilege_test', label: 'nft list tables', status: 'pass', detail: 'OK', remediation: '' },
-      { id: 'systemctl_privilege', category: 'privilege_test', label: 'systemctl', status: 'pass', detail: 'OK', remediation: '' },
+      { id: 'systemctl_privilege', category: 'privilege_test', label: 'systemctl com privilégio', status: 'pass', detail: 'OK', remediation: '' },
     ],
     canDeploy: true,
     blockedReasons: [],
@@ -117,11 +124,12 @@ function mockPreflightNftFail(): PreflightResult {
 function mockPreflightRoot(): PreflightResult {
   return {
     success: true,
-    passed: 15,
+    passed: 20,
     failed: 0,
-    total: 15,
+    total: 20,
     checks: [
       { id: 'privilege_model', category: 'privilege', label: 'Modelo de execução', status: 'pass', detail: 'root (EUID=0)', remediation: '' },
+      { id: 'probe_install_priv', category: 'privilege_probe', label: 'install -o root -g root', status: 'pass', detail: 'OK', remediation: '' },
     ],
     canDeploy: true,
     blockedReasons: [],
