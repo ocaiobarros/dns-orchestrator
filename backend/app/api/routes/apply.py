@@ -37,7 +37,7 @@ def _run_apply(scope: str, dry_run: bool, body: ApplyRequest, db: Session, user:
     db.refresh(job)
 
     payload = json.loads(profile.payload_json)
-    result = execute_apply(payload, scope=scope, dry_run=dry_run)
+    result = execute_apply(payload, scope=scope, dry_run=dry_run, operator=user.username)
 
     job.status = "success" if result["success"] else "failed"
     job.finished_at = datetime.now(timezone.utc)
