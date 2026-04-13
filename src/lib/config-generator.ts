@@ -1071,6 +1071,18 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     });
   }
 
+  // OUTPUT hooks (local interception — captures DNS from host itself)
+  files.push({
+    path: '/etc/nftables.d/0053-hook-ipv4-output.nft',
+    content: `table ip nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n`,
+  });
+  if (config.enableIpv6) {
+    files.push({
+      path: '/etc/nftables.d/0054-hook-ipv6-output.nft',
+      content: `table ip6 nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n`,
+    });
+  }
+
   // ═══ TABLE FILTER — EDGE ACL (security boundary) ═══
   // ACL is enforced HERE at nftables INPUT, BEFORE DNAT reaches Unbound.
   // Unbound remains 0.0.0.0/0 allow — it trusts nftables to filter.
