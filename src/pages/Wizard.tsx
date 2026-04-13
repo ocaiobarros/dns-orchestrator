@@ -14,6 +14,7 @@ import {
   type CaptureMode,
 } from '@/lib/types';
 import { validateConfig, getStepErrors, isConfigValid, getValidationSummary } from '@/lib/validation';
+import { validateSimpleModeConfig, extractDiagnostics, type ConfigCheckItem } from '@/lib/config-validator';
 import { generateAllFiles, createDefaultInstance } from '@/lib/config-generator';
 import { useApplyConfig } from '@/lib/hooks';
 import { api } from '@/lib/api';
