@@ -1580,7 +1580,105 @@ export default function Wizard() {
           );
         })()}
 
-        <div className="noc-panel">
+        {/* ═══ Generator Decision Log (simple mode) ═══ */}
+        {config.operationMode === 'simple' && (() => {
+          const decisions = buildDecisionLog(config);
+          return (
+            <div className="noc-panel border-border/50">
+              <div className="noc-panel-header flex items-center gap-2">
+                <FileText size={12} />
+                <span>Log de Decisões do Gerador</span>
+              </div>
+              <div className="space-y-0.5 max-h-[300px] overflow-y-auto">
+                {decisions.map((d, i) => (
+                  <div key={i} className="flex items-start gap-3 px-2 py-1.5 text-xs hover:bg-secondary/30 rounded">
+                    <span className="shrink-0 px-1.5 py-0.5 bg-secondary rounded text-[9px] font-medium text-muted-foreground uppercase tracking-wider min-w-[80px] text-center">{d.category}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-medium text-foreground">{d.parameter}</span>
+                        <span className="font-mono text-primary">{d.value}</span>
+                      </div>
+                      <p className="text-muted-foreground text-[10px] mt-0.5">{d.reasoning}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ═══ Dry-Run Staging (backend validation) ═══ */}
+        {config.operationMode === 'simple' && (() => {
+          const [stagingResult, setStagingResult] = useState<any>(null);
+          const [stagingLoading, setStagingLoading] = useState(false);
+          const runStaging = async () => {
+            setStagingLoading(true);
+            setStagingResult(null);
+            try {
+              const r = await api.dryRunStaging(config);
+              setStagingResult(r.success ? r.data : { overall: 'error', checks: [], error: r.error });
+            } catch (err: any) {
+              setStagingResult({ overall: 'error', checks: [], error: err.message });
+            } finally {
+              setStagingLoading(false);
+            }
+          };
+          return (
+            <div className="noc-panel border-border/50">
+              <div className="noc-panel-header flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Shield size={12} />
+                  <span>Validação Staging (Backend)</span>
+                </div>
+                <button onClick={runStaging} disabled={stagingLoading}
+                  className="flex items-center gap-1 px-2.5 py-1 text-[10px] bg-accent/15 text-accent rounded border border-accent/30 hover:bg-accent/25 disabled:opacity-50">
+                  {stagingLoading ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
+                  {stagingLoading ? 'Validando...' : 'Executar Staging'}
+                </button>
+              </div>
+              {!stagingResult && !stagingLoading && (
+                <p className="text-xs text-muted-foreground/70 px-2 py-2">
+                  Renderiza arquivos no backend, executa checklist estrutural e <code className="font-mono bg-secondary px-1 rounded">unbound-checkconf</code> sem alterar produção.
+                </p>
+              )}
+              {stagingResult && (
+                <div className="space-y-1.5">
+                  <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium ${
+                    stagingResult.overall === 'pass' ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'
+                  }`}>
+                    {stagingResult.overall === 'pass' ? <Check size={12} /> : <AlertCircle size={12} />}
+                    {stagingResult.overall === 'pass' ? 'STAGING APROVADO' : 'STAGING COM FALHAS'}
+                  </div>
+                  {stagingResult.checks?.map((c: any) => (
+                    <div key={c.id} className="flex items-center gap-3 px-2 py-1 text-xs">
+                      {c.status === 'pass' ? <Check size={10} className="text-success shrink-0" />
+                        : <AlertCircle size={10} className="text-destructive shrink-0" />}
+                      <span className="flex-1">{c.label}</span>
+                      <span className="font-mono text-[10px] text-muted-foreground">{c.detail}</span>
+                    </div>
+                  ))}
+                  {stagingResult.unbound_checkconf && (
+                    <div className={`flex items-center gap-3 px-2 py-1.5 rounded text-xs border ${
+                      stagingResult.unbound_checkconf.status === 'pass' ? 'border-success/20 bg-success/5' :
+                      stagingResult.unbound_checkconf.status === 'skip' ? 'border-border bg-secondary/30' :
+                      'border-destructive/20 bg-destructive/5'
+                    }`}>
+                      {stagingResult.unbound_checkconf.status === 'pass' ? <Check size={10} className="text-success" />
+                        : stagingResult.unbound_checkconf.status === 'skip' ? <SkipForward size={10} className="text-muted-foreground" />
+                        : <AlertCircle size={10} className="text-destructive" />}
+                      <span className="font-medium">unbound-checkconf</span>
+                      <span className="font-mono text-[10px] text-muted-foreground flex-1 text-right">{stagingResult.unbound_checkconf.detail}</span>
+                    </div>
+                  )}
+                  {stagingResult.error && (
+                    <div className="p-2 bg-destructive/10 border border-destructive/20 rounded text-xs text-destructive font-mono">{stagingResult.error}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
           <div className="noc-panel-header flex items-center justify-between">
             <span>Preview dos Arquivos ({generatedFiles.length} artefatos)</span>
             <button onClick={() => setShowFiles(!showFiles)} className="text-[10px] text-accent hover:underline">{showFiles ? 'Recolher' : 'Expandir todos'}</button>
