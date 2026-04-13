@@ -1236,6 +1236,11 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
         path: `/etc/nftables.d/521${proto === 'tcp' ? '1' : '2'}-nat-rule-ipv6_${proto}_dns.nft`,
         content: `table ip6 nat {\n    chain PREROUTING {\n        ip6 daddr $DNS_ANYCAST_IPV6 ${proto} dport 53 counter packets 0 bytes 0 jump ipv6_${proto}_dns\n    }\n}\n`,
       });
+      // OUTPUT capture (IPv6 local interception)
+      files.push({
+        path: `/etc/nftables.d/521${proto === 'tcp' ? '3' : '4'}-nat-rule-output-ipv6_${proto}_dns.nft`,
+        content: `table ip6 nat {\n    chain OUTPUT {\n        ip6 daddr $DNS_ANYCAST_IPV6 ${proto} dport 53 counter packets 0 bytes 0 jump ipv6_${proto}_dns\n    }\n}\n`,
+      });
     }
 
     ruleid = 6101;
