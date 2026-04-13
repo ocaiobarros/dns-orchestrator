@@ -56,13 +56,15 @@ function baseConfig(overrides: Partial<WizardConfig> = {}): WizardConfig {
 
 describe('Unbound blocklist conditional includes', () => {
   describe('Scenario A — blocklist disabled', () => {
-    it('unbound configs must NOT contain blocklist includes', () => {
+    it('unbound configs always include placeholder includes (empty files) for hot-reload compatibility', () => {
       const config = baseConfig({ enableBlocklist: false });
       
+      // Placeholder includes are ALWAYS present — they reference empty files
+      // This allows enabling blocklist via sync without restarting unbound
       for (let i = 0; i < config.instances.length; i++) {
         const content = generateUnboundConf(config, i);
-        expect(content).not.toContain('unbound-block-domains.conf');
-        expect(content).not.toContain('anablock.conf');
+        expect(content).toContain('unbound-block-domains.conf');
+        expect(content).toContain('anablock.conf');
       }
     });
 

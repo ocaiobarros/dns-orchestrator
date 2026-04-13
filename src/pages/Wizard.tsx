@@ -685,7 +685,7 @@ export default function Wizard() {
       </InfoBox>
       {/* Performance Tuning */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <FieldGroup label="Threads por instância *" error={fieldError('threads')}>
+        <FieldGroup label="Threads por instância *" error={fieldError('threads')} hint="Slabs serão derivados automaticamente (potência de 2)">
           <Input type="number" value={config.threads} onChange={v => set('threads', parseInt(v) || 1)} />
         </FieldGroup>
         <FieldGroup label="Msg Cache" hint="Tamanho do cache de mensagens">
@@ -700,6 +700,9 @@ export default function Wizard() {
         <FieldGroup label="Cache Max TTL" hint="TTL máximo em cache (segundos)">
           <Input type="number" value={config.maxTtl} onChange={v => set('maxTtl', parseInt(v) || 0)} />
         </FieldGroup>
+        <FieldGroup label="Queries/Thread" hint="num-queries-per-thread (default: 3200)">
+          <Input type="number" value={config.numQueriesPerThread || 3200} onChange={v => set('numQueriesPerThread', parseInt(v) || 3200)} />
+        </FieldGroup>
         <FieldGroup label="DNS Identity" hint="Valor do campo identity">
           <Input value={config.dnsIdentity} onChange={v => set('dnsIdentity', v)} placeholder="67-DNS" />
         </FieldGroup>
@@ -713,6 +716,21 @@ export default function Wizard() {
             <Input type="number" value={config.serveExpiredTtl ?? 86400} onChange={v => set('serveExpiredTtl', parseInt(v) || 86400)} />
           </FieldGroup>
         )}
+      </div>
+
+      {/* Advanced Hardening Options */}
+      <div className="border-t border-border pt-4">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Hardening Avançado (Opcional)</div>
+        <div className="flex gap-4 flex-wrap">
+          <div className="space-y-1">
+            <Toggle checked={config.hardenDnssecStripped !== false} onChange={v => set('hardenDnssecStripped', v)} label="harden-dnssec-stripped" />
+            <p className="text-[10px] text-muted-foreground/60 ml-11">Protege contra remoção de DNSSEC. Pode causar problemas com domínios mal-assinados.</p>
+          </div>
+          <div className="space-y-1">
+            <Toggle checked={config.useCapsForId === true} onChange={v => set('useCapsForId', v)} label="use-caps-for-id (0x20)" />
+            <p className="text-[10px] text-muted-foreground/60 ml-11">Randomiza capitalização de queries para proteção contra spoofing. Pode causar problemas com alguns autoritativos.</p>
+          </div>
+        </div>
       </div>
 
       {isInterception && (
@@ -1424,14 +1442,10 @@ export default function Wizard() {
 
         <div className="noc-panel">
           <div className="noc-panel-header flex items-center justify-between">
-            <span>Artefatos ({generatedFiles.length} arquivos)</span>
-            <button onClick={() => setShowFiles(!showFiles)} className="text-[10px] text-accent hover:underline">{showFiles ? 'Ocultar' : 'Mostrar'}</button>
+            <span>Preview dos Arquivos ({generatedFiles.length} artefatos)</span>
+            <button onClick={() => setShowFiles(!showFiles)} className="text-[10px] text-accent hover:underline">{showFiles ? 'Recolher' : 'Expandir todos'}</button>
           </div>
-          {showFiles ? <FilePreviewAccordion files={generatedFiles} /> : (
-            <div className="flex flex-wrap gap-1 max-h-[150px] overflow-y-auto">
-              {generatedFiles.map(f => <span key={f.path} className="text-xs font-mono px-2 py-0.5 bg-secondary text-secondary-foreground rounded border border-border">{f.path}</span>)}
-            </div>
-          )}
+          <FilePreviewAccordion files={generatedFiles} />
         </div>
 
         {(submitState !== 'idle' || submitError) && (

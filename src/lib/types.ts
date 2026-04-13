@@ -150,7 +150,7 @@ export interface WizardConfig {
   vlanTag: string;
   behindFirewall: boolean;
 
-  // Step 2 - Modo de Operação DNS (deterministic)
+  // Step 2 - Modo de Operação DNS
   operationMode: OperationMode;
 
   // Step 2b - Modelo de Entrega do VIP (only when interception)
@@ -178,6 +178,7 @@ export interface WizardConfig {
   cacheMinTtl: number;
   serveExpired: boolean;
   serveExpiredTtl: number;
+  numQueriesPerThread: number;
   rootHintsPath: string;
   enableDetailedLogs: boolean;
   enableBlocklist: boolean;
@@ -204,6 +205,10 @@ export interface WizardConfig {
 
   dnsIdentity: string;
   dnsVersion: string;
+
+  // Advanced hardening options (optional, defaults conservative)
+  hardenDnssecStripped: boolean;
+  useCapsForId: boolean;
 
   // Step 5 - Egress Público (outgoing-interface per instance)
   // (egress fields live on DnsInstance but are edited in step 5)
@@ -732,6 +737,7 @@ export const DEFAULT_CONFIG: WizardConfig = {
   cacheMinTtl: 300,
   serveExpired: true,
   serveExpiredTtl: 86400,
+  numQueriesPerThread: 3200,
   rootHintsPath: '/etc/unbound/named.cache',
   enableDetailedLogs: false,
   enableBlocklist: false,
@@ -753,6 +759,8 @@ export const DEFAULT_CONFIG: WizardConfig = {
   forwardAddrs: ['1.1.1.1', '1.0.0.1', '8.8.8.8', '9.9.9.9'],
   forwardFirst: false,
   adForwardZones: [],
+  hardenDnssecStripped: true,
+  useCapsForId: false,
 
   // Step 5 - Egress Público
   egressFixedIdentity: true,
