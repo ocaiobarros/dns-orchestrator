@@ -242,10 +242,8 @@ chown "${APP_USER}:${APP_USER}" /etc/nftables.d 2>/dev/null || true
 # Instalar sudoers do repositório (fonte de verdade única)
 SUDOERS_SRC="${APP_ROOT}/deploy/sudoers/dns-control-diagnostics"
 if [[ -f "${SUDOERS_SRC}" ]]; then
-    cp "${SUDOERS_SRC}" /etc/sudoers.d/dns-control-diagnostics
-    chmod 440 /etc/sudoers.d/dns-control-diagnostics
-    cp "${SUDOERS_SRC}" /etc/sudoers.d/dns-control
-    chmod 440 /etc/sudoers.d/dns-control
+    install -o root -g root -m 0440 "${SUDOERS_SRC}" /etc/sudoers.d/dns-control-diagnostics
+    install -o root -g root -m 0440 "${SUDOERS_SRC}" /etc/sudoers.d/dns-control
 
     if visudo -c -f /etc/sudoers.d/dns-control >/dev/null 2>&1; then
         ok "Sudoers instalado e validado"
@@ -264,7 +262,7 @@ NGINX_SRC="${APP_ROOT}/deploy/nginx/dns-control.conf"
 NGINX_DEST="/etc/nginx/sites-available/dns-control"
 
 if [[ -f "${NGINX_SRC}" ]]; then
-    cp "${NGINX_SRC}" "${NGINX_DEST}"
+    install -o root -g root -m 0644 "${NGINX_SRC}" "${NGINX_DEST}"
     ln -sf "${NGINX_DEST}" /etc/nginx/sites-enabled/dns-control
     rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
 
