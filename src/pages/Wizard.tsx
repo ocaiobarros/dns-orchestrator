@@ -345,7 +345,26 @@ export default function Wizard() {
         return;
       }
 
-      setApplyResult(result.data);
+      const deployResult = result.data as any;
+      const backendFailed = !deployResult?.success || ['failed', 'blocked'].includes(String(deployResult?.status || ''));
+
+      setApplyResult(deployResult);
+
+      if (backendFailed) {
+        const failedStep = Array.isArray(deployResult?.steps)
+          ? deployResult.steps.find((s: any) => s?.status === 'failed')
+          : null;
+        const detail = deployResult?.error
+          || failedStep?.stderr
+          || failedStep?.output
+          || `status=${deployResult?.status || 'failed'}`;
+        setSubmitError(`Deploy falhou: ${detail}`);
+        setSubmitState('error');
+        setDeployProgress(null);
+        if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+        return;
+      }
+
       setSubmitState('done');
       setDeployProgress(null);
       if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }

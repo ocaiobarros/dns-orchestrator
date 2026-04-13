@@ -148,6 +148,34 @@ def _run_step(step: dict, fn) -> dict:
         return step
 
 
+def _retry_command(
+    executable: str,
+    args: list[str],
+    *,
+    timeout: int = 5,
+    use_privilege: bool = False,
+    attempts: int = 8,
+    wait_seconds: float = 1.0,
+    success_predicate=None,
+) -> dict[str, Any]:
+    last_result: dict[str, Any] | None = None
+    predicate = success_predicate or (lambda result: result.get("exit_code") == 0)
+
+    for attempt in range(attempts):
+        last_result = run_command(executable, args, timeout=timeout, use_privilege=use_privilege)
+        if predicate(last_result):
+            return last_result
+        if attempt < attempts - 1:
+            time.sleep(wait_seconds)
+
+    return last_result or {
+        "exit_code": -1,
+        "stdout": "",
+        "stderr": f"Falha ao executar {' '.join([executable] + args)}",
+        "duration_ms": 0,
+    }
+
+
 def get_live_deploy_state() -> dict:
     """Return current deploy state for the dashboard."""
     disk_state = get_deploy_state()
@@ -971,6 +999,25 @@ def _execute_deploy_locked(
                 journal_r = run_command("journalctl", ["--no-pager", "-n", "40", "-u", svc_name], timeout=10, use_privilege=True)
                 diag = (status_r.get("stdout") or "") + "\n" + (journal_r.get("stdout") or "")
                 return {"status": "failed", "output": r["stdout"][:300], "stderr": (r["stderr"][:500] + "\n" + diag[:2000]).strip()}
+
+            active_result = _retry_command(
+                "systemctl",
+                ["is-active", svc_name],
+                timeout=5,
+                attempts=10,
+                wait_seconds=1.0,
+                success_predicate=lambda result: result.get("exit_code") == 0 and "active" in (result.get("stdout") or "").strip(),
+            )
+            if active_result.get("exit_code") != 0 or "active" not in (active_result.get("stdout") or "").strip():
+                status_r = run_command("systemctl", ["status", svc_name, "--no-pager"], timeout=10, use_privilege=True)
+                journal_r = run_command("journalctl", ["--no-pager", "-n", "40", "-u", svc_name], timeout=10, use_privilege=True)
+                diag = (status_r.get("stdout") or "") + "\n" + (journal_r.get("stdout") or "")
+                return {
+                    "status": "failed",
+                    "output": f"{svc_name} não ficou ativo após restart",
+                    "stderr": ((active_result.get("stderr") or active_result.get("stdout") or "")[:400] + "\n" + diag[:2000]).strip(),
+                }
+
             return {"status": "success", "output": f"{svc_name} iniciado", "stderr": ""}
         _run_step(s_start, start_svc)
         steps.append(s_start)
@@ -1402,7 +1449,14 @@ def _run_health_checks(payload: dict) -> list[dict]:
 
         # systemd status
         t0 = time.monotonic()
-        r = run_command("systemctl", ["is-active", name], timeout=5)
+        r = _retry_command(
+            "systemctl",
+            ["is-active", name],
+            timeout=5,
+            attempts=10,
+            wait_seconds=1.0,
+            success_predicate=lambda result: result.get("exit_code") == 0 and "active" in (result.get("stdout") or "").strip(),
+        )
         checks.append({
             "name": f"{name} systemd status", "target": name,
             "status": "pass" if r["exit_code"] == 0 else "fail",
@@ -1413,7 +1467,14 @@ def _run_health_checks(payload: dict) -> list[dict]:
         # DNS probe
         if bind_ip:
             t0 = time.monotonic()
-            r = run_command("dig", [f"@{bind_ip}", "localhost", "+short", "+time=2", "+tries=1"], timeout=5)
+            r = _retry_command(
+                "dig",
+                [f"@{bind_ip}", "localhost", "+short", "+time=2", "+tries=1"],
+                timeout=5,
+                attempts=8,
+                wait_seconds=1.0,
+                success_predicate=lambda result: result.get("exit_code") == 0 and bool((result.get("stdout") or "").strip()),
+            )
             checks.append({
                 "name": f"{name} DNS probe ({bind_ip})", "target": bind_ip,
                 "status": "pass" if r["exit_code"] == 0 else "fail",
@@ -1424,7 +1485,14 @@ def _run_health_checks(payload: dict) -> list[dict]:
         # Port binding (ss :53)
         if bind_ip:
             t0 = time.monotonic()
-            r = run_command("ss", ["-lntup"], timeout=5)
+            r = _retry_command(
+                "ss",
+                ["-lntup"],
+                timeout=5,
+                attempts=8,
+                wait_seconds=1.0,
+                success_predicate=lambda result: bind_ip in (result.get("stdout") or "") and ":53" in (result.get("stdout") or ""),
+            )
             port_bound = bind_ip in r["stdout"] and ":53" in r["stdout"]
             checks.append({
                 "name": f"{name} port 53 bound ({bind_ip})", "target": f"{bind_ip}:53",
@@ -1436,11 +1504,19 @@ def _run_health_checks(payload: dict) -> list[dict]:
         # Control interface
         if control_iface:
             t0 = time.monotonic()
-            r = run_command("unbound-control", [
-                "-s", f"{control_iface}@{control_port}",
-                "-c", f"/etc/unbound/{name}.conf",
-                "status"
-            ], timeout=5, use_privilege=True)
+            r = _retry_command(
+                "unbound-control",
+                [
+                    "-s", f"{control_iface}@{control_port}",
+                    "-c", f"/etc/unbound/{name}.conf",
+                    "status"
+                ],
+                timeout=5,
+                use_privilege=True,
+                attempts=8,
+                wait_seconds=1.0,
+                success_predicate=lambda result: result.get("exit_code") == 0,
+            )
             checks.append({
                 "name": f"{name} control interface", "target": f"{control_iface}:{control_port}",
                 "status": "pass" if r["exit_code"] == 0 else "fail",
