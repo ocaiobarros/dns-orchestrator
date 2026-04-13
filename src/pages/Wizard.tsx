@@ -1679,6 +1679,7 @@ export default function Wizard() {
           );
         })()}
 
+        <div className="noc-panel">
           <div className="noc-panel-header flex items-center justify-between">
             <span>Preview dos Arquivos ({generatedFiles.length} artefatos)</span>
             <button onClick={() => setShowFiles(!showFiles)} className="text-[10px] text-accent hover:underline">{showFiles ? 'Recolher' : 'Expandir todos'}</button>
