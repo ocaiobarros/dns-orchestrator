@@ -854,7 +854,12 @@ def _execute_deploy_locked(
     # Helper: auto-rollback on critical failure
     # ════════════════════════════════════════════════════════════════
     def _auto_rollback(failed_step_name: str):
-        """Attempt automatic rollback from backup."""
+        """Attempt automatic rollback from backup.
+
+        Two-phase approach:
+          1. Delete files created during the failed deploy that were NOT in the backup
+          2. Restore files from backup with correct ownership
+        """
         nonlocal all_ok
         all_ok = False
         logger.error(f"Auto-rollback triggered by failure at: {failed_step_name}")
@@ -864,6 +869,28 @@ def _execute_deploy_locked(
             if not backup_dir or not os.path.isdir(backup_dir):
                 return {"status": "failed", "output": "Backup não disponível para rollback"}
 
+            # Phase 1: Remove files created during the failed deploy that aren't in backup
+            backup_files = set()
+            for fname in os.listdir(backup_dir):
+                if fname == "manifest.json":
+                    continue
+                backup_files.add("/" + fname.replace("__", "/"))
+
+            cleaned = 0
+            for target_path in changed_files:
+                if target_path not in backup_files:
+                    # This file was created NEW during deploy — remove it
+                    _cleanup_partial_file(target_path)
+                    cleaned += 1
+                    logger.info(f"Rollback: removed new file {target_path}")
+
+            # Also clean up any .nft files not in backup (catch-all for partial installs)
+            for nft_file in glob.glob("/etc/nftables.d/*.nft"):
+                if nft_file not in backup_files:
+                    _cleanup_partial_file(nft_file)
+                    cleaned += 1
+
+            # Phase 2: Restore files from backup
             restored = 0
             for fname in os.listdir(backup_dir):
                 if fname == "manifest.json":
@@ -891,7 +918,7 @@ def _execute_deploy_locked(
                     svc_name = fname.split("__")[-1].replace(".service", "")
                     run_command("systemctl", ["start", svc_name], timeout=15, use_privilege=True)
 
-            return {"status": "success", "output": f"Rollback concluído: {restored} arquivos restaurados de {backup_id}"}
+            return {"status": "success", "output": f"Rollback concluído: {restored} restaurados, {cleaned} removidos de {backup_id}"}
 
         _run_step(rb_step, do_rollback)
         steps.append(rb_step)
