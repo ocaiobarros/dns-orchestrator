@@ -1060,6 +1060,8 @@ def _execute_deploy_locked(
         except Exception:
             pass
 
+    all_ok = all_ok and all(s.get("status") == "success" for s in steps)
+
     # Save deploy state + version manifest
     _save_deploy_state(deploy_id, operator, all_ok, backup_id, payload=payload)
     if all_ok:
@@ -1663,10 +1665,16 @@ def _save_deploy_state(deploy_id: str, operator: str, success: bool, backup_id: 
         # Extract operation mode and frontend IP from payload
         operation_mode = ""
         frontend_dns_ip = ""
+        managed_instances: list[str] = []
         if payload:
             normalized = normalize_payload(payload)
             operation_mode = normalized.get("operationMode", "")
             frontend_dns_ip = normalized.get("frontendDnsIp", "")
+            managed_instances = [
+                str(inst.get("name", "")).strip()
+                for inst in normalized.get("instances", [])
+                if str(inst.get("name", "")).strip()
+            ]
 
         state = {
             "configVersion": f"v{total}",
@@ -1680,6 +1688,7 @@ def _save_deploy_state(deploy_id: str, operator: str, success: bool, backup_id: 
             "lastBackupPath": os.path.join(BACKUP_ROOT, backup_id) if backup_id else None,
             "operationMode": operation_mode,
             "frontendDnsIp": frontend_dns_ip,
+            "managedInstances": managed_instances,
         }
         os.makedirs(os.path.dirname(DEPLOY_STATE_FILE), exist_ok=True)
         with open(DEPLOY_STATE_FILE, "w") as f:

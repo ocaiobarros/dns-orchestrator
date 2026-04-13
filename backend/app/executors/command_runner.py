@@ -123,6 +123,16 @@ def _is_sudo_allowed(executable: str, args: list[str]) -> bool:
     return False
 
 
+def _must_not_fallback_without_privilege(executable: str, args: list[str]) -> bool:
+    """Return True for commands that must fail closed if sudo is unavailable."""
+    if executable in {
+        "install", "mkdir", "systemctl", "nft", "sysctl", "killall", "ip",
+        "/etc/network/post-up.d/dns-control",
+    }:
+        return True
+    return executable == "bash" and bool(args) and args[0] == "-c"
+
+
 def get_privilege_status() -> dict:
     """Return current privilege environment info."""
     try:
@@ -212,6 +222,15 @@ def run_command(
             logger.warning(f"Sudo requires password for {executable}, retrying without sudo")
             global _sudo_available
             _sudo_available = False  # Cache: stop trying sudo
+            if _must_not_fallback_without_privilege(executable, sanitized_args):
+                return {
+                    "exit_code": result.returncode,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "duration_ms": elapsed_ms,
+                    "executed_privileged": False,
+                    "sudo_fallback": False,
+                }
             cmd_nosudo = [executable] + sanitized_args
             start2 = time.monotonic()
             try:
