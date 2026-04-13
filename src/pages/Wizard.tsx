@@ -289,6 +289,8 @@ export default function Wizard() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [stagingResult, setStagingResult] = useState<any>(null);
   const [stagingLoading, setStagingLoading] = useState(false);
+  const [preflightResult, setPreflightResult] = useState<any>(null);
+  const [preflightLoading, setPreflightLoading] = useState(false);
 
   const handleApply = async (dryRun: boolean) => {
     if (isReadonlyMode) {
