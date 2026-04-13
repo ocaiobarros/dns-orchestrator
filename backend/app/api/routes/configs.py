@@ -1,9 +1,14 @@
 """
-DNS Control — Config Profile Routes
+DNS Control — Config Profile Routes + Dry-Run Staging Validation
 """
 
 import json
+import os
+import re
+import tempfile
+import subprocess
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -13,8 +18,148 @@ from app.models.config_profile import ConfigProfile
 from app.models.config_revision import ConfigRevision
 from app.services.config_service import validate_config, generate_preview
 from app.schemas.config import ConfigProfileCreate
+from app.generators.unbound_generator import generate_unbound_configs, _compute_slabs
 
 router = APIRouter()
+
+
+# ═══ Dry-Run Staging Validation ═══
+
+class DryRunStagingRequest(BaseModel):
+    config: dict
+
+
+@router.post("/dry-run-staging")
+def dry_run_staging(body: DryRunStagingRequest, _: User = Depends(get_current_user)):
+    """
+    Staging validation: render files → structural checks → unbound-checkconf.
+    Does NOT write to production paths.
+    """
+    payload = body.config
+    results = {
+        "checks": [],
+        "unbound_checkconf": None,
+        "overall": "pass",
+    }
+
+    # 1. Generate files
+    try:
+        files = generate_unbound_configs(payload)
+    except Exception as exc:
+        results["overall"] = "fail"
+        results["checks"].append({
+            "id": "render", "label": "Renderização dos arquivos",
+            "status": "fail", "detail": str(exc),
+        })
+        return results
+
+    results["checks"].append({
+        "id": "render", "label": "Renderização dos arquivos",
+        "status": "pass", "detail": f"{len(files)} artefatos gerados",
+    })
+
+    # 2. Find instance configs
+    instance_files = [
+        f for f in files
+        if f["path"].startswith("/etc/unbound/") and f["path"].endswith(".conf")
+        and "unbound.conf" not in f["path"] and "block" not in f["path"] and "anablock" not in f["path"]
+    ]
+
+    is_simple = payload.get("operationMode") == "simple" or (payload.get("_wizardConfig", {}) or {}).get("operationMode") == "simple"
+
+    for inst_file in instance_files:
+        content = inst_file["content"]
+        fname = os.path.basename(inst_file["path"])
+
+        # 3. Block order
+        server_idx = content.find("server:")
+        remote_idx = content.find("remote-control:")
+        forward_idx = content.find("forward-zone:")
+        order_ok = server_idx >= 0 and remote_idx > server_idx and forward_idx > remote_idx
+        results["checks"].append({
+            "id": f"block-order-{fname}", "label": f"Ordem de blocos ({fname})",
+            "status": "pass" if order_ok else "fail",
+            "detail": "server → remote-control → forward-zone" if order_ok else "Ordem incorreta",
+        })
+
+        # 4. Forward-zone "."
+        has_global_fwd = 'name: "."' in content
+        results["checks"].append({
+            "id": f"forward-global-{fname}", "label": f'Forward-zone "." ({fname})',
+            "status": "pass" if has_global_fwd else "fail",
+            "detail": "Presente" if has_global_fwd else "AUSENTE",
+        })
+
+        # 5. Root-hints absent in simple mode
+        if is_simple:
+            has_root_hints = bool(re.search(r'^\s*root-hints:\s*"/', content, re.MULTILINE))
+            results["checks"].append({
+                "id": f"no-root-hints-{fname}", "label": f"Root-hints ausente ({fname})",
+                "status": "pass" if not has_root_hints else "fail",
+                "detail": "Nenhum root-hints ativo" if not has_root_hints else "root-hints detectado",
+            })
+
+        # 6. ACL from CIDR
+        ipv4_addr = payload.get("ipv4Address") or (payload.get("_wizardConfig", {}) or {}).get("ipv4Address", "")
+        cidr_match = re.match(r"^(\d+\.\d+\.\d+\.\d+)/(\d+)$", ipv4_addr)
+        if cidr_match:
+            mask = cidr_match.group(2)
+            has_acl = f"/{mask} allow" in content
+            results["checks"].append({
+                "id": f"acl-cidr-{fname}", "label": f"ACL derivada /{mask} ({fname})",
+                "status": "pass" if has_acl else "fail",
+                "detail": f"access-control /{mask} detectado" if has_acl else f"ACL /{mask} não encontrada",
+            })
+
+    # 7. unbound-checkconf
+    checkconf_result = _run_unbound_checkconf(instance_files)
+    results["unbound_checkconf"] = checkconf_result
+    if checkconf_result and checkconf_result["status"] == "fail":
+        results["overall"] = "fail"
+    if any(c["status"] == "fail" for c in results["checks"]):
+        results["overall"] = "fail"
+
+    return results
+
+
+def _run_unbound_checkconf(instance_files: list[dict]) -> dict | None:
+    """Run unbound-checkconf against rendered files in a temp directory."""
+    try:
+        subprocess.run(["which", "unbound-checkconf"], capture_output=True, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return {"status": "skip", "detail": "unbound-checkconf não disponível neste host"}
+
+    errors = []
+    with tempfile.TemporaryDirectory(prefix="dns-control-staging-") as tmpdir:
+        for placeholder in ["unbound-block-domains.conf", "anablock.conf"]:
+            with open(os.path.join(tmpdir, placeholder), "w") as f:
+                f.write("# placeholder\n")
+
+        for inst_file in instance_files:
+            fname = os.path.basename(inst_file["path"])
+            content = inst_file["content"]
+            content = content.replace("/etc/unbound/", f"{tmpdir}/")
+            content = content.replace("/var/run/unbound.pid", f"{tmpdir}/unbound.pid")
+
+            filepath = os.path.join(tmpdir, fname)
+            with open(filepath, "w") as f:
+                f.write(content)
+
+            try:
+                result = subprocess.run(
+                    ["unbound-checkconf", filepath],
+                    capture_output=True, text=True, timeout=10,
+                )
+                if result.returncode != 0:
+                    errors.append(f"{fname}: {result.stderr.strip()}")
+            except subprocess.TimeoutExpired:
+                errors.append(f"{fname}: timeout")
+            except Exception as exc:
+                errors.append(f"{fname}: {str(exc)}")
+
+    if errors:
+        return {"status": "fail", "detail": "; ".join(errors)}
+    return {"status": "pass", "detail": f"{len(instance_files)} arquivo(s) validado(s)"}
 
 
 @router.get("")
