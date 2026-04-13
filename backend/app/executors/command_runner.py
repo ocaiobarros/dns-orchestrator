@@ -62,6 +62,7 @@ _SUDO_ALLOWED_COMMANDS: list[tuple[str, list[str]]] = [
     ("systemctl", ["is-active"]),
     ("systemctl", ["is-enabled"]),
     ("systemctl", ["list-units"]),
+    ("systemctl", ["show-environment"]),
     ("sysctl", ["--load"]),
     ("sysctl", ["--system"]),
     ("ifreload", ["-a"]),
