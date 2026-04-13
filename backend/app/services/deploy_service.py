@@ -258,37 +258,85 @@ def _verify_file_metadata(target_path: str, expected_mode: str) -> dict[str, Any
 
 
 def _install_file_to_target(source_path: str, target_path: str, permissions: str = "0644") -> dict[str, Any]:
+    """Install file to target with root ownership.
+
+    Strategy (belt-and-suspenders):
+      1. Try 'install -m MODE -o root -g root SRC DST' via sudo
+      2. If install fails or leaves wrong ownership, fallback to
+         'cp --no-preserve=ownership SRC DST' + 'chmod MODE DST' via sudo
+      3. Verify final metadata; if still wrong, delete the target to prevent
+         leaving partial state on disk.
+    """
     target_dir = os.path.dirname(target_path)
     mkdir_result = run_command("mkdir", ["-p", target_dir], timeout=10, use_privilege=True)
     if mkdir_result["exit_code"] != 0:
         return mkdir_result
 
     mode = _infer_permissions(target_path, permissions)
+
+    # ── Attempt 1: install (atomic mode+ownership) ──
     result = run_command(
         "install", ["-m", mode, "-o", "root", "-g", "root", source_path, target_path],
         timeout=15, use_privilege=True,
     )
+
+    needs_fallback = False
     if result["exit_code"] != 0:
-        return result
+        logger.warning(
+            f"install failed for {target_path} (exit={result['exit_code']}): "
+            f"{(result.get('stderr') or '')[:200]}"
+        )
+        needs_fallback = True
+    else:
+        # install returned 0 — verify ownership is actually root:root
+        verification = _verify_file_metadata(target_path, mode)
+        if verification["exit_code"] != 0:
+            logger.warning(
+                f"install returned 0 but metadata wrong for {target_path}: "
+                f"{(verification.get('stderr') or '')[:200]}"
+            )
+            needs_fallback = True
 
-    if _is_system_target(target_path) and os.geteuid() != 0 and not result.get("executed_privileged", False):
-        return {
-            "exit_code": 1,
-            "stdout": result.get("stdout", ""),
-            "stderr": (
-                f"install executado sem privilégio efetivo para {target_path}; "
-                "o pipeline recusou gravar artefato de sistema sem root/sudo"
-            ),
-            "duration_ms": result.get("duration_ms", 0),
-        }
+    # ── Attempt 2: cp + chmod fallback ──
+    if needs_fallback:
+        logger.info(f"Falling back to cp+chmod for {target_path}")
+        cp_result = run_command(
+            "cp", ["--no-preserve=ownership", source_path, target_path],
+            timeout=15, use_privilege=True,
+        )
+        if cp_result["exit_code"] != 0:
+            logger.error(f"cp fallback also failed for {target_path}: {cp_result.get('stderr', '')[:200]}")
+            # Clean up partial file to avoid leaving dns-control:dns-control on disk
+            _cleanup_partial_file(target_path)
+            return cp_result
 
-    verification = _verify_file_metadata(target_path, mode)
-    if verification["exit_code"] != 0:
-        verification["stdout"] = result.get("stdout", "")
-        verification["duration_ms"] = result.get("duration_ms", 0)
-        return verification
+        chmod_result = run_command(
+            "chmod", [mode, target_path],
+            timeout=10, use_privilege=True,
+        )
+        if chmod_result["exit_code"] != 0:
+            logger.warning(f"chmod failed for {target_path}: {chmod_result.get('stderr', '')[:200]}")
 
-    return result
+    # ── Final verification ──
+    final_check = _verify_file_metadata(target_path, mode)
+    if final_check["exit_code"] != 0:
+        logger.error(f"Final metadata check FAILED for {target_path}: {final_check.get('stderr', '')[:200]}")
+        # Remove file to prevent leaving wrong-ownership artifacts on disk
+        _cleanup_partial_file(target_path)
+        final_check["stdout"] = result.get("stdout", "")
+        final_check["duration_ms"] = result.get("duration_ms", 0)
+        return final_check
+
+    return {"exit_code": 0, "stdout": "OK", "stderr": "", "duration_ms": result.get("duration_ms", 0)}
+
+
+def _cleanup_partial_file(target_path: str):
+    """Remove a partially-installed file to avoid leaving wrong-ownership artifacts."""
+    try:
+        os.remove(target_path)
+    except OSError:
+        # File might be owned by root or otherwise protected
+        run_command("bash", ["-c", f"rm -f '{target_path}'"], timeout=5, use_privilege=True)
 
 
 def execute_deploy(
@@ -806,7 +854,12 @@ def _execute_deploy_locked(
     # Helper: auto-rollback on critical failure
     # ════════════════════════════════════════════════════════════════
     def _auto_rollback(failed_step_name: str):
-        """Attempt automatic rollback from backup."""
+        """Attempt automatic rollback from backup.
+
+        Two-phase approach:
+          1. Delete files created during the failed deploy that were NOT in the backup
+          2. Restore files from backup with correct ownership
+        """
         nonlocal all_ok
         all_ok = False
         logger.error(f"Auto-rollback triggered by failure at: {failed_step_name}")
@@ -816,6 +869,28 @@ def _execute_deploy_locked(
             if not backup_dir or not os.path.isdir(backup_dir):
                 return {"status": "failed", "output": "Backup não disponível para rollback"}
 
+            # Phase 1: Remove files created during the failed deploy that aren't in backup
+            backup_files = set()
+            for fname in os.listdir(backup_dir):
+                if fname == "manifest.json":
+                    continue
+                backup_files.add("/" + fname.replace("__", "/"))
+
+            cleaned = 0
+            for target_path in changed_files:
+                if target_path not in backup_files:
+                    # This file was created NEW during deploy — remove it
+                    _cleanup_partial_file(target_path)
+                    cleaned += 1
+                    logger.info(f"Rollback: removed new file {target_path}")
+
+            # Also clean up any .nft files not in backup (catch-all for partial installs)
+            for nft_file in glob.glob("/etc/nftables.d/*.nft"):
+                if nft_file not in backup_files:
+                    _cleanup_partial_file(nft_file)
+                    cleaned += 1
+
+            # Phase 2: Restore files from backup
             restored = 0
             for fname in os.listdir(backup_dir):
                 if fname == "manifest.json":
@@ -843,7 +918,7 @@ def _execute_deploy_locked(
                     svc_name = fname.split("__")[-1].replace(".service", "")
                     run_command("systemctl", ["start", svc_name], timeout=15, use_privilege=True)
 
-            return {"status": "success", "output": f"Rollback concluído: {restored} arquivos restaurados de {backup_id}"}
+            return {"status": "success", "output": f"Rollback concluído: {restored} restaurados, {cleaned} removidos de {backup_id}"}
 
         _run_step(rb_step, do_rollback)
         steps.append(rb_step)
