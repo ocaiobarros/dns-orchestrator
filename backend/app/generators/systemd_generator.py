@@ -19,7 +19,8 @@ def generate_systemd_units(payload: dict[str, Any]) -> list[dict]:
 [Unit]
 Description=Unbound DNS server
 Documentation=man:unbound(8)
-After=network.target
+After=network-online.target
+Wants=network-online.target
 Before=nss-lookup.target
 Wants=nss-lookup.target
 

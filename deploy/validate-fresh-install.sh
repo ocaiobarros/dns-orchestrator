@@ -109,6 +109,23 @@ api_call() {
     curl -sf "http://127.0.0.1:8000${endpoint}" 2>/dev/null
 }
 
+list_managed_unbound_services() {
+    local conf
+    local found=0
+    for conf in /etc/unbound/unbound*.conf; do
+        [[ -f "$conf" ]] || continue
+        [[ "$conf" == *"unbound-block-domains.conf" ]] && continue
+        local name
+        name=$(basename "$conf" .conf)
+        echo "$name"
+        found=1
+    done
+
+    if [[ "$found" -eq 0 ]] && systemctl list-unit-files --type=service --no-pager --plain 2>/dev/null | grep -q '^unbound\.service'; then
+        echo "unbound"
+    fi
+}
+
 API_HOST="127.0.0.1"
 API_PORT="8000"
 
@@ -287,8 +304,11 @@ phase_3() {
         fail "dns-control-api NÃO ativo após reboot"
     fi
 
-    for unit in $(systemctl list-unit-files --type=service --no-pager --plain 2>/dev/null | grep '^unbound' | grep enabled | awk '{print $1}'); do
-        name="${unit%.service}"
+    for name in $(list_managed_unbound_services); do
+        if ! systemctl is-enabled "$name" >/dev/null 2>&1; then
+            fail "$name NÃO habilitado para boot"
+            continue
+        fi
         if systemctl is-active "$name" >/dev/null 2>&1; then
             ok "$name ativo após reboot"
         else

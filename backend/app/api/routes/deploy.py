@@ -189,13 +189,13 @@ def deploy_rollback(body: RollbackRequest, db: Session = Depends(get_db), user: 
 
 
 @router.get("/state")
-def deploy_state(_: User = Depends(get_current_user)):
+def deploy_state():
     """Get current deployment state including live pipeline progress."""
     return get_live_deploy_state()
 
 
 @router.get("/backups")
-def deploy_backups(_: User = Depends(get_current_user)):
+def deploy_backups():
     """List available backup snapshots for rollback."""
     return list_backups()
 
@@ -205,7 +205,6 @@ def deploy_history(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=5, le=100),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
 ):
     """Deployment history with pagination."""
     total = db.query(ApplyJob).count()
