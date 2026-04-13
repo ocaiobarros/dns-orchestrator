@@ -1132,6 +1132,14 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     });
   }
 
+  // OUTPUT capture rules (local interception)
+  for (const proto of ['tcp', 'udp']) {
+    files.push({
+      path: `/etc/nftables.d/511${proto === 'tcp' ? '3' : '4'}-nat-rule-output-ipv4_${proto}_dns.nft`,
+      content: `table ip nat {\n    chain OUTPUT {\n        ip daddr $DNS_ANYCAST_IPV4 ${proto} dport 53 counter packets 0 bytes 0 jump ipv4_${proto}_dns\n    }\n}\n`,
+    });
+  }
+
   // Per-instance chains + sticky sets — inside table blocks
   const stickyTimeoutMin = Math.max(1, Math.floor(config.stickyTimeout / 60));
   let ruleid = 6001;
