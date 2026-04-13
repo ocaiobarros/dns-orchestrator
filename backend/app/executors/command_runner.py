@@ -57,6 +57,7 @@ _SUDO_ALLOWED_COMMANDS: list[tuple[str, list[str]]] = [
     ("systemctl", ["enable"]),
     ("systemctl", ["disable"]),
     ("systemctl", ["mask"]),
+    ("systemctl", ["unmask"]),
     ("systemctl", ["status"]),
     ("systemctl", ["is-active"]),
     ("systemctl", ["is-enabled"]),
