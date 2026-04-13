@@ -2142,11 +2142,18 @@ export default function Wizard() {
                 className="flex items-center gap-1 px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded border border-border disabled:opacity-60">
                 <Eye size={16} /> Dry Run
               </button>
-              <button onClick={() => handleApply(false)} disabled={submitState === 'dispatching' || !isConfigValid(validationErrors)}
-                className="flex items-center gap-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded font-medium disabled:opacity-60">
-                {submitState === 'dispatching' ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
-                {submitState === 'dispatching' ? 'Aplicando...' : 'Aplicar Deploy'}
-              </button>
+              {preflightResult && !preflightResult.canDeploy ? (
+                <div className="flex items-center gap-2 rounded border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+                  <Lock size={14} />
+                  <span>Deploy bloqueado — preflight com falhas</span>
+                </div>
+              ) : (
+                <button onClick={() => handleApply(false)} disabled={submitState === 'dispatching' || !isConfigValid(validationErrors)}
+                  className="flex items-center gap-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded font-medium disabled:opacity-60">
+                  {submitState === 'dispatching' ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                  {submitState === 'dispatching' ? 'Aplicando...' : 'Aplicar Deploy'}
+                </button>
+              )}
             </>
           )}
           {step === LAST_STEP && !applyResult && isReadonlyMode && (
