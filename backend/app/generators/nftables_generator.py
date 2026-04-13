@@ -1,12 +1,34 @@
 """
-DNS Control — nftables Configuration Generator
-Generates modular /etc/nftables.d/*.nft snippets matching production reference (Part1/Part2).
-Supports IPv4+IPv6, per-instance sticky sets with counter, nth balancing via
-numgen inc mod N (decrementing), DNAT to backend listeners.
+DNS Control — nftables Configuration Generator (Interception Mode)
+Generates modular /etc/nftables.d/*.nft snippets for DNS interception via DNAT.
 
 Architecture: ALL service VIPs (including intercepted/anycast VIPs) are defined in
 DNS_ANYCAST_IPV4/IPV6 and balanced across ALL backends via sticky source affinity
-+ nth balancing (numgen inc mod N decrementing per backend).
++ nth balancing (numgen inc mod N decrementing).
+
+File ordering convention (lexicographic include):
+  0002  table ip nat (empty, additive)
+  0003  table ip6 nat (empty, additive)
+  0051  PREROUTING hook
+  0052  IPv6 PREROUTING hook
+  0053  OUTPUT hook (local interception)
+  0060  filter table IPv4 (EDGE ACL)
+  0061  filter table IPv6 (EDGE ACL)
+  5100  define DNS_ANYCAST_IPV4
+  5200  define DNS_ANYCAST_IPV6
+  5102  dispatch chain ipv4_tcp_dns
+  5103  dispatch chain ipv4_udp_dns
+  5111  PREROUTING capture rule tcp
+  5112  PREROUTING capture rule udp
+  5113  OUTPUT capture rule tcp (local interception)
+  5114  OUTPUT capture rule udp (local interception)
+  6001+ sticky sets + backend chains
+  6201+ action rules (add, update, DNAT)
+  7001+ memorized-source rules
+  7201+ nth balancing rules
+
+All snippets use block syntax: table ip nat { ... }
+Compatible with Debian 13 nft -f atomic load.
 """
 
 from typing import Any
@@ -108,82 +130,107 @@ def _generate_modular(
     enable_ipv6: bool,
     sticky_timeout_min: int,
 ) -> list[dict]:
-    """Generate /etc/nftables.d/*.nft modular snippets.
-    Matches Part1/Part2 reference exactly:
-    - 'create table' / 'create chain' for structural elements
-    - 'add set' with counter for sticky sets
-    - 'add rule' for action/dispatch rules
-    - numgen inc mod N decrementing (N, N-1, ..., 1) for nth balancing
-    - add + update (no timeout 0s) in action chains
+    """Generate /etc/nftables.d/*.nft modular snippets using block syntax.
+    All snippets wrapped in table ip nat { ... } for Debian 13 compatibility.
     """
     files: list[dict] = []
 
     def _file(path: str, content: str):
         files.append({"path": path, "content": content, "permissions": "0644", "owner": "root:root"})
 
-    # Master nftables.conf
+    # ── Master nftables.conf ──
     _file("/etc/nftables.conf", "#!/usr/sbin/nft -f\n\nflush ruleset\ninclude \"/etc/nftables.d/*.nft\"\n")
 
-    # Tables
-    _file("/etc/nftables.d/0002-table-ipv4-nat.nft", "create table ip nat\n")
+    # ── Tables (empty, additive) ──
+    _file("/etc/nftables.d/0002-table-ipv4-nat.nft", "table ip nat {\n}\n")
     if enable_ipv6:
-        _file("/etc/nftables.d/0003-table-ipv6-nat.nft", "create table ip6 nat\n")
+        _file("/etc/nftables.d/0003-table-ipv6-nat.nft", "table ip6 nat {\n}\n")
 
-    # PREROUTING hooks
+    # ── PREROUTING hooks (block syntax) ──
     _file("/etc/nftables.d/0051-hook-ipv4-prerouting.nft",
-          "    create chain ip nat PREROUTING {\n        type nat hook prerouting priority dstnat;\n        policy accept;\n    }\n")
+          "table ip nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n")
     if enable_ipv6:
         _file("/etc/nftables.d/0052-hook-ipv6-prerouting.nft",
-              "    create chain ip6 nat PREROUTING {\n        type nat hook prerouting priority dstnat;\n        policy accept;\n    }\n")
+              "table ip6 nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n")
 
-    # VIP definitions (define at top level)
+    # ── OUTPUT hook (local interception — captures DNS from host itself) ──
+    _file("/etc/nftables.d/0053-hook-ipv4-output.nft",
+          "table ip nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n")
+    if enable_ipv6:
+        _file("/etc/nftables.d/0054-hook-ipv6-output.nft",
+              "table ip6 nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n")
+
+    # ── VIP definitions ──
     if vip_ipv4s:
-        vip_lines = ",\n    ".join(vip_ipv4s)
+        vip_lines = ", ".join(vip_ipv4s)
         _file("/etc/nftables.d/5100-nat-define-anyaddr-ipv4.nft",
-              f"define DNS_ANYCAST_IPV4 = {{\n    {vip_lines}\n}}\n")
+              f"define DNS_ANYCAST_IPV4 = {{ {vip_lines} }}\n")
 
     if enable_ipv6 and vip_ipv6s:
-        vip6_lines = ",\n    ".join(vip_ipv6s)
+        vip6_lines = ", ".join(vip_ipv6s)
         _file("/etc/nftables.d/5200-nat-define-anyaddr-ipv6.nft",
-              f"define DNS_ANYCAST_IPV6 = {{\n    {vip6_lines}\n}}\n")
+              f"define DNS_ANYCAST_IPV6 = {{ {vip6_lines} }}\n")
 
-    # DNS dispatch chains (IPv4)
+    # ── DNS dispatch chains (IPv4, empty, block syntax) ──
     for proto in ("tcp", "udp"):
         suffix = "2" if proto == "tcp" else "3"
         _file(f"/etc/nftables.d/510{suffix}-nat-chain-ipv4_{proto}_dns.nft",
-              f"add chain ip  nat ipv4_{proto}_dns\n")
+              f"table ip nat {{\n    chain ipv4_{proto}_dns {{\n    }}\n}}\n")
 
-    # PREROUTING capture rules (IPv4)
-    _file("/etc/nftables.d/5111-nat-rule-ipv4_tcp_dns.nft",
-          "add rule ip  nat PREROUTING ip daddr $DNS_ANYCAST_IPV4 tcp dport 53 counter packets 0 bytes 0 jump ipv4_tcp_dns\n")
-    _file("/etc/nftables.d/5112-nat-rule-ipv4_udp_dns.nft",
-          "add rule ip  nat PREROUTING ip daddr $DNS_ANYCAST_IPV4 udp dport 53 counter packets 0 bytes 0 jump ipv4_udp_dns\n")
+    # ── PREROUTING capture rules (IPv4, block syntax) ──
+    for proto in ("tcp", "udp"):
+        suffix = "1" if proto == "tcp" else "2"
+        _file(f"/etc/nftables.d/511{suffix}-nat-rule-ipv4_{proto}_dns.nft",
+              f"table ip nat {{\n    chain PREROUTING {{\n        ip daddr $DNS_ANYCAST_IPV4 {proto} dport 53 counter packets 0 bytes 0 jump ipv4_{proto}_dns\n    }}\n}}\n")
 
-    # IPv6 dispatch chains + capture rules
+    # ── OUTPUT capture rules (IPv4, local interception, block syntax) ──
+    for proto in ("tcp", "udp"):
+        suffix = "3" if proto == "tcp" else "4"
+        _file(f"/etc/nftables.d/511{suffix}-nat-rule-output-ipv4_{proto}_dns.nft",
+              f"table ip nat {{\n    chain OUTPUT {{\n        ip daddr $DNS_ANYCAST_IPV4 {proto} dport 53 counter packets 0 bytes 0 jump ipv4_{proto}_dns\n    }}\n}}\n")
+
+    # ── IPv6 dispatch chains + capture rules ──
     if enable_ipv6:
         for proto in ("tcp", "udp"):
             suffix = "2" if proto == "tcp" else "3"
             _file(f"/etc/nftables.d/520{suffix}-nat-chain-ipv6_{proto}_dns.nft",
-                  f"add chain ip6 nat ipv6_{proto}_dns\n")
-        _file("/etc/nftables.d/5211-nat-rule-ipv6_tcp_dns.nft",
-              "add rule ip6 nat PREROUTING ip6 daddr $DNS_ANYCAST_IPV6 tcp dport 53 counter packets 0 bytes 0 jump ipv6_tcp_dns\n")
-        _file("/etc/nftables.d/5212-nat-rule-ipv6_udp_dns.nft",
-              "add rule ip6 nat PREROUTING ip6 daddr $DNS_ANYCAST_IPV6 udp dport 53 counter packets 0 bytes 0 jump ipv6_udp_dns\n")
+                  f"table ip6 nat {{\n    chain ipv6_{proto}_dns {{\n    }}\n}}\n")
 
-    # Per-instance: sticky sets + backend chains (IPv4)
+        for proto in ("tcp", "udp"):
+            suffix = "1" if proto == "tcp" else "2"
+            _file(f"/etc/nftables.d/521{suffix}-nat-rule-ipv6_{proto}_dns.nft",
+                  f"table ip6 nat {{\n    chain PREROUTING {{\n        ip6 daddr $DNS_ANYCAST_IPV6 {proto} dport 53 counter packets 0 bytes 0 jump ipv6_{proto}_dns\n    }}\n}}\n")
+
+        for proto in ("tcp", "udp"):
+            suffix = "3" if proto == "tcp" else "4"
+            _file(f"/etc/nftables.d/521{suffix}-nat-rule-output-ipv6_{proto}_dns.nft",
+                  f"table ip6 nat {{\n    chain OUTPUT {{\n        ip6 daddr $DNS_ANYCAST_IPV6 {proto} dport 53 counter packets 0 bytes 0 jump ipv6_{proto}_dns\n    }}\n}}\n")
+
+    # ── Per-instance: sticky sets + backend chains (IPv4, block syntax) ──
     ruleid = 6001
     for backend in backends:
         name = backend["name"]
         for proto in ("tcp", "udp"):
             subusers = f"ipv4_users_{name}"
             subchain = f"ipv4_dns_{proto}_{name}"
+            # Set definition inside table block (multi-line)
             _file(f"/etc/nftables.d/{ruleid}-nat-addrlist-{subusers}.nft",
-                  f"add set ip nat {subusers} {{ type ipv4_addr; counter; size 8192; flags dynamic, timeout; timeout {sticky_timeout_min}m; }}\n")
+                  "\n".join([
+                      "table ip nat {",
+                      f"    set {subusers} {{",
+                      f"        type ipv4_addr",
+                      f"        size 8192",
+                      f"        flags dynamic, timeout",
+                      f"        timeout {sticky_timeout_min}m",
+                      f"    }}",
+                      "}",
+                  ]) + "\n")
+            # Chain inside table block
             _file(f"/etc/nftables.d/{ruleid}-nat-chain-{subchain}.nft",
-                  f"add chain ip nat {subchain}\n")
+                  f"table ip nat {{\n    chain {subchain} {{\n    }}\n}}\n")
             ruleid += 1
 
-    # Per-instance: sticky sets + backend chains (IPv6)
+    # ── Per-instance: sticky sets + backend chains (IPv6, block syntax) ──
     if enable_ipv6:
         ruleid = 6101
         for backend in backends:
@@ -194,12 +241,21 @@ def _generate_modular(
                 subusers = f"ipv6_users_{name}"
                 subchain = f"ipv6_dns_{proto}_{name}"
                 _file(f"/etc/nftables.d/{ruleid}-nat-addrlist-{subusers}.nft",
-                      f"add set ip6 nat {subusers} {{ type ipv6_addr; counter; size 8192; flags dynamic, timeout; timeout {sticky_timeout_min}m; }}\n")
+                      "\n".join([
+                          "table ip6 nat {",
+                          f"    set {subusers} {{",
+                          f"        type ipv6_addr",
+                          f"        size 8192",
+                          f"        flags dynamic, timeout",
+                          f"        timeout {sticky_timeout_min}m",
+                          f"    }}",
+                          "}",
+                      ]) + "\n")
                 _file(f"/etc/nftables.d/{ruleid}-nat-chain-{subchain}.nft",
-                      f"add chain ip6 nat {subchain}\n")
+                      f"table ip6 nat {{\n    chain {subchain} {{\n    }}\n}}\n")
                 ruleid += 1
 
-    # Action rules: add + update + DNAT (IPv4) — matches Part1 exactly
+    # ── Action rules: add + update + DNAT (IPv4, block syntax) ──
     ruleid = 6201
     for backend in backends:
         name = backend["name"]
@@ -207,15 +263,19 @@ def _generate_modular(
         for proto in ("tcp", "udp"):
             subchain = f"ipv4_dns_{proto}_{name}"
             subusers = f"ipv4_users_{name}"
-            content = "\n".join([
-                f"add rule ip nat {subchain} add @{subusers} {{ ip saddr }} counter",
-                f"add rule ip nat {subchain} set update ip saddr timeout 0s @{subusers} counter",
-                f"add rule ip nat {subchain} {proto} dport 53 counter dnat to {bind_ip}:53",
-            ]) + "\n"
-            _file(f"/etc/nftables.d/{ruleid}-nat-rule-action-{subchain}.nft", content)
+            _file(f"/etc/nftables.d/{ruleid}-nat-rule-action-{subchain}.nft",
+                  "\n".join([
+                      "table ip nat {",
+                      f"    chain {subchain} {{",
+                      f"        add @{subusers} {{ ip saddr }} counter",
+                      f"        set update ip saddr timeout 0s @{subusers} counter",
+                      f"        {proto} dport 53 counter dnat to {bind_ip}:53",
+                      "    }",
+                      "}",
+                  ]) + "\n")
             ruleid += 1
 
-    # Action rules: add + update + DNAT (IPv6)
+    # ── Action rules: add + update + DNAT (IPv6, block syntax) ──
     if enable_ipv6:
         ruleid = 6301
         for backend in backends:
@@ -226,15 +286,19 @@ def _generate_modular(
             for proto in ("tcp", "udp"):
                 subchain = f"ipv6_dns_{proto}_{name}"
                 subusers = f"ipv6_users_{name}"
-                content = "\n".join([
-                    f"add rule ip6 nat {subchain} add @{subusers} {{ ip6 saddr }} counter",
-                    f"add rule ip6 nat {subchain} set update ip6 saddr timeout 0s @{subusers} counter",
-                    f"add rule ip6 nat {subchain} {proto} dport 53 counter dnat to [{bind_ipv6}]:53",
-                ]) + "\n"
-                _file(f"/etc/nftables.d/{ruleid}-nat-rule-action-{subchain}.nft", content)
+                _file(f"/etc/nftables.d/{ruleid}-nat-rule-action-{subchain}.nft",
+                      "\n".join([
+                          "table ip6 nat {",
+                          f"    chain {subchain} {{",
+                          f"        add @{subusers} {{ ip6 saddr }} counter",
+                          f"        set update ip6 saddr timeout 0s @{subusers} counter",
+                          f"        {proto} dport 53 counter dnat to [{bind_ipv6}]:53",
+                          "    }",
+                          "}",
+                      ]) + "\n")
                 ruleid += 1
 
-    # Memorized source rules (IPv4): sticky clients jump to assigned backend
+    # ── Memorized source rules (IPv4, block syntax) ──
     ruleid = 7001
     for backend in backends:
         name = backend["name"]
@@ -243,10 +307,10 @@ def _generate_modular(
             subchain = f"ipv4_dns_{proto}_{name}"
             subusers = f"ipv4_users_{name}"
             _file(f"/etc/nftables.d/{ruleid}-nat-rule-memorized-{subchain}.nft",
-                  f"add rule ip nat {topchain} ip saddr @{subusers} counter jump {subchain}\n")
+                  f"table ip nat {{\n    chain {topchain} {{\n        ip saddr @{subusers} counter jump {subchain}\n    }}\n}}\n")
             ruleid += 1
 
-    # Memorized source rules (IPv6)
+    # ── Memorized source rules (IPv6, block syntax) ──
     if enable_ipv6:
         ruleid = 7101
         for backend in backends:
@@ -258,23 +322,22 @@ def _generate_modular(
                 subchain = f"ipv6_dns_{proto}_{name}"
                 subusers = f"ipv6_users_{name}"
                 _file(f"/etc/nftables.d/{ruleid}-nat-rule-memorized-{subchain}.nft",
-                      f"add rule ip6 nat {topchain} ip6 saddr @{subusers} counter jump {subchain}\n")
+                      f"table ip6 nat {{\n    chain {topchain} {{\n        ip6 saddr @{subusers} counter jump {subchain}\n    }}\n}}\n")
                 ruleid += 1
 
-    # Nth balancing: numgen inc mod N decrementing (Part1 pattern)
-    # For N backends: first gets mod N, second mod N-1, ..., last mod 1
+    # ── Nth balancing: numgen inc mod N decrementing (Part1 pattern, block syntax) ──
     num_backends = len(backends)
 
     # IPv4
     ruleid = 7201
     for proto in ("tcp", "udp"):
+        topchain = f"ipv4_{proto}_dns"
         randnum = num_backends
         for backend in backends:
             name = backend["name"]
-            topchain = f"ipv4_{proto}_dns"
             subchain = f"ipv4_dns_{proto}_{name}"
-            _file(f"/etc/nftables.d/{ruleid}-nat-rule-memorized-{subchain}.nft",
-                  f"add rule ip nat {topchain} numgen inc mod {randnum} 0 counter jump {subchain}\n")
+            _file(f"/etc/nftables.d/{ruleid}-nat-rule-nth-ipv4_{proto}_dns_{name}.nft",
+                  f"table ip nat {{\n    chain {topchain} {{\n        numgen inc mod {randnum} 0 counter packets 0 bytes 0 jump {subchain}\n    }}\n}}\n")
             ruleid += 1
             randnum -= 1
 
@@ -287,10 +350,9 @@ def _generate_modular(
             randnum = num_v6
             for backend in ipv6_backends:
                 name = backend["name"]
-                topchain = f"ipv6_{proto}_dns"
                 subchain = f"ipv6_dns_{proto}_{name}"
-                _file(f"/etc/nftables.d/{ruleid}-nat-rule-memorized-{subchain}.nft",
-                      f"add rule ip6 nat {topchain} numgen inc mod {randnum} 0 counter jump {subchain}\n")
+                _file(f"/etc/nftables.d/{ruleid}-nat-rule-nth-ipv6_{proto}_dns_{name}.nft",
+                      f"table ip6 nat {{\n    chain {topchain} {{\n        numgen inc mod {randnum} 0 counter packets 0 bytes 0 jump {subchain}\n    }}\n}}\n")
                 ruleid += 1
                 randnum -= 1
 
@@ -306,19 +368,21 @@ def _generate_monolithic_validation(
     """Generate single monolithic file for nft -c -f validation (no flush ruleset)."""
     lines: list[str] = [
         "#!/usr/sbin/nft -f",
-        "# DNS Control — nftables validation artifact",
+        "# DNS Control — nftables interception validation artifact",
         "# flush ruleset  (removed for validation)",
         "",
         "table ip nat {",
-        "    chain PREROUTING {",
-        "        type nat hook prerouting priority dstnat; policy accept;",
-        "    }",
     ]
 
     # Sets with counter
     for backend in backends:
         name = backend["name"]
-        lines.append(f"    set ipv4_users_{name} {{ type ipv4_addr; counter; size 8192; flags dynamic, timeout; timeout {sticky_timeout_min}m; }}")
+        lines.append(f"    set ipv4_users_{name} {{")
+        lines.append(f"        type ipv4_addr")
+        lines.append(f"        size 8192")
+        lines.append(f"        flags dynamic, timeout")
+        lines.append(f"        timeout {sticky_timeout_min}m")
+        lines.append(f"    }}")
 
     # Backend chains
     for backend in backends:
@@ -326,14 +390,22 @@ def _generate_monolithic_validation(
         bind_ip = backend["ipv4"]
         for proto in ("tcp", "udp"):
             subchain = f"ipv4_dns_{proto}_{name}"
+            subusers = f"ipv4_users_{name}"
             lines.append(f"    chain {subchain} {{")
+            lines.append(f"        add @{subusers} {{ ip saddr }} counter")
+            lines.append(f"        set update ip saddr timeout 0s @{subusers} counter")
             lines.append(f"        {proto} dport 53 counter dnat to {bind_ip}:53")
             lines.append("    }")
 
-    # Dispatch chains with numgen inc mod N decrementing
+    # Dispatch chains with sticky + numgen inc mod N decrementing
     num_backends = len(backends)
     for proto in ("tcp", "udp"):
         lines.append(f"    chain ipv4_{proto}_dns {{")
+        # Sticky memorized
+        for backend in backends:
+            name = backend["name"]
+            lines.append(f"        ip saddr @ipv4_users_{name} counter jump ipv4_dns_{proto}_{name}")
+        # Nth balancing
         randnum = num_backends
         for backend in backends:
             name = backend["name"]
@@ -341,6 +413,21 @@ def _generate_monolithic_validation(
             lines.append(f"        numgen inc mod {randnum} 0 counter jump {subchain}")
             randnum -= 1
         lines.append("    }")
+
+    # PREROUTING hook
+    lines.append("    chain PREROUTING {")
+    lines.append("        type nat hook prerouting priority dstnat; policy accept;")
+    vip_str = ", ".join(vip_ipv4s) if vip_ipv4s else "127.0.0.1"
+    for proto in ("tcp", "udp"):
+        lines.append(f"        ip daddr {{ {vip_str} }} {proto} dport 53 counter jump ipv4_{proto}_dns")
+    lines.append("    }")
+
+    # OUTPUT hook (local interception)
+    lines.append("    chain OUTPUT {")
+    lines.append("        type nat hook output priority dstnat; policy accept;")
+    for proto in ("tcp", "udp"):
+        lines.append(f"        ip daddr {{ {vip_str} }} {proto} dport 53 counter jump ipv4_{proto}_dns")
+    lines.append("    }")
 
     lines.append("}")
     lines.append("")
