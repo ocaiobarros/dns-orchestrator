@@ -174,7 +174,7 @@ phase_1() {
 
     # ── 1.7 Preflight via API ──
     info "Executando preflight via API..."
-    PREFLIGHT=$(api_call "/api/deploy/preflight" 2>/dev/null || echo '{"canDeploy":false}')
+    PREFLIGHT=$(api_call "/api/deploy/preflight/check" 2>/dev/null || echo '{"canDeploy":false,"error":"API não respondeu"}')
     CAN_DEPLOY=$(echo "$PREFLIGHT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('canDeploy',False))" 2>/dev/null || echo "False")
     PASSED_COUNT=$(echo "$PREFLIGHT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('passed',0))" 2>/dev/null || echo "0")
     FAILED_COUNT=$(echo "$PREFLIGHT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('failed',0))" 2>/dev/null || echo "?")
