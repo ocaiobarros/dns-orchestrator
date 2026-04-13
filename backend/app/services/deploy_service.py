@@ -724,8 +724,9 @@ def _execute_deploy_locked(
                 original_path = "/" + fname.replace("__", "/")
                 src = os.path.join(backup_dir, fname)
                 ddir = os.path.dirname(original_path)
+                mode = _infer_permissions(original_path)
                 run_command("mkdir", ["-p", ddir], timeout=5, use_privilege=True)
-                result = run_command("cp", ["--no-preserve=ownership", src, original_path], timeout=10, use_privilege=True)
+                result = run_command("install", ["-o", "root", "-g", "root", "-m", mode, src, original_path], timeout=10, use_privilege=True)
                 if result["exit_code"] == 0:
                     restored += 1
 
@@ -1064,8 +1065,9 @@ def _execute_rollback_locked(backup_id: str, operator: str = "system") -> dict:
             original_path = "/" + fname.replace("__", "/")
             src = os.path.join(bdir, fname)
             ddir = os.path.dirname(original_path)
+            mode = _infer_permissions(original_path)
             run_command("mkdir", ["-p", ddir], timeout=5, use_privilege=True)
-            run_command("cp", ["--no-preserve=ownership", src, original_path], timeout=10, use_privilege=True)
+            run_command("install", ["-o", "root", "-g", "root", "-m", mode, src, original_path], timeout=10, use_privilege=True)
             restored_files.append(original_path)
             if "/unbound/" in original_path and original_path.endswith(".service"):
                 name = os.path.basename(original_path).replace(".service", "")
@@ -1211,7 +1213,24 @@ def _add_vr(results: dict, bucket: str, status: str, file_path: str | None,
     })
 
 
+def _infer_permissions(target_path: str, explicit: str | None = None) -> str:
+    """Infer correct permissions based on artifact type.
+    - Directories: 0755
+    - Executable scripts (.sh, post-up.d/*): 0755
+    - Config files (.conf, .nft, .service, sysctl.d/*): 0644
+    """
+    if explicit and explicit != "0644":
+        return explicit
+    if target_path.endswith(".sh"):
+        return "0755"
+    if "/post-up.d/" in target_path:
+        return "0755"
+    # Everything else: config files
+    return "0644"
+
+
 def _install_file_from_staging(staging_dir: str, target_path: str, permissions: str = "0644") -> dict[str, Any]:
+    """Install file from staging to production using 'install' for atomic ownership+mode."""
     staged_path = os.path.join(staging_dir, target_path.lstrip("/"))
     if not os.path.exists(staged_path):
         return {"exit_code": -1, "stdout": "", "stderr": f"Arquivo staging ausente: {staged_path}", "duration_ms": 0}
@@ -1221,11 +1240,12 @@ def _install_file_from_staging(staging_dir: str, target_path: str, permissions: 
     if mkdir_result["exit_code"] != 0:
         return mkdir_result
 
-    result = run_command("cp", ["--no-preserve=ownership", staged_path, target_path], timeout=15, use_privilege=True)
-    if result["exit_code"] != 0:
-        return result
-
-    return run_command("chmod", [permissions, target_path], timeout=10, use_privilege=True)
+    mode = _infer_permissions(target_path, permissions)
+    # Use install(1) for atomic ownership + mode in a single operation
+    return run_command(
+        "install", ["-o", "root", "-g", "root", "-m", mode, staged_path, target_path],
+        timeout=15, use_privilege=True,
+    )
 
 
 def _get_scoped_sysctl_files(files: list[dict[str, Any]], scope: str) -> list[str]:
