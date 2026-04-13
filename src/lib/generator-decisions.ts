@@ -16,6 +16,7 @@ export interface GeneratorDecision {
 export function buildDecisionLog(config: WizardConfig): GeneratorDecision[] {
   const decisions: GeneratorDecision[] = [];
   const isSimple = config.operationMode === 'simple';
+  const isInterception = config.operationMode === 'interception';
 
   // Mode
   decisions.push({
@@ -26,6 +27,94 @@ export function buildDecisionLog(config: WizardConfig): GeneratorDecision[] {
       ? 'Forward-only com forward-zone "." — sem recursão iterativa, sem root-hints'
       : 'Interceptação via nftables DNAT — suporta VIPs e egress público',
   });
+
+  // ═══ INTERCEPTION-SPECIFIC DECISIONS ═══
+  if (isInterception) {
+    // VIP topology
+    const serviceVips = config.serviceVips?.filter(v => v.ipv4) || [];
+    const interceptedVips = config.interceptedVips?.filter(v => v.vipIp) || [];
+    const totalVips = serviceVips.length + interceptedVips.length;
+
+    decisions.push({
+      category: 'Topologia',
+      parameter: 'VIPs',
+      value: `${serviceVips.length} próprios + ${interceptedVips.length} interceptados = ${totalVips} total`,
+      reasoning: totalVips > 0
+        ? `Todos os VIPs são mesclados em DNS_ANYCAST_IPV4 e balanceados para todos os backends via sticky+nth`
+        : 'Nenhum VIP configurado — nftables DNAT não terá alvos de captura',
+    });
+
+    // Intercepted VIPs detail
+    if (interceptedVips.length > 0) {
+      const ips = interceptedVips.map(v => v.vipIp).join(', ');
+      decisions.push({
+        category: 'DNS Seizure',
+        parameter: 'interceptedVips',
+        value: ips,
+        reasoning: `IPs públicos interceptados (${interceptedVips.length}) são capturados via PREROUTING+OUTPUT DNAT — tráfego local e externo para esses IPs é redirecionado para resolvers internos`,
+      });
+    }
+
+    // Egress mode
+    const egressMode = config.egressDeliveryMode || 'host-owned';
+    decisions.push({
+      category: 'Egress',
+      parameter: 'egressDeliveryMode',
+      value: egressMode,
+      reasoning: egressMode === 'border-routed'
+        ? 'Egress via borda — outgoing-interface suprimido no Unbound, SNAT delegado ao dispositivo de borda'
+        : 'Egress host-owned — IPs de egress configurados em loopback /32, Unbound usa outgoing-interface diretamente',
+    });
+
+    // Distribution policy
+    decisions.push({
+      category: 'Balanceamento',
+      parameter: 'distributionPolicy',
+      value: config.distributionPolicy || 'round-robin',
+      reasoning: 'numgen inc mod N decrementing com sticky source — clientes memorizados preservam afinidade, novos são distribuídos uniformemente',
+    });
+
+    // Sticky timeout
+    const stickyMin = Math.max(1, Math.floor((config.stickyTimeout || 1200) / 60));
+    decisions.push({
+      category: 'Balanceamento',
+      parameter: 'stickyTimeout',
+      value: `${stickyMin}m`,
+      reasoning: stickyMin >= 20
+        ? `Timeout de afinidade ${stickyMin}m — adequado para clientes ISP com sessões longas`
+        : `Timeout curto (${stickyMin}m) — redistribuição mais frequente entre backends`,
+    });
+
+    // OUTPUT hook
+    decisions.push({
+      category: 'nftables',
+      parameter: 'OUTPUT hook',
+      value: 'HABILITADO',
+      reasoning: 'Chain OUTPUT captura consultas DNS geradas localmente no host para VIPs interceptados — garante comportamento consistente em diagnóstico local (dig @VIP)',
+    });
+
+    // Security profile
+    decisions.push({
+      category: 'Segurança',
+      parameter: 'securityProfile',
+      value: config.securityProfile || 'legacy',
+      reasoning: config.securityProfile === 'isp-hardened'
+        ? 'Perfil ISP-hardened — ACL enforced no nftables INPUT antes do DNAT, com rate limiting e anti-amplificação'
+        : 'Perfil legacy — sem filter table, reproduz comportamento Part1/Part2 de referência',
+    });
+
+    // IPv6
+    decisions.push({
+      category: 'Rede',
+      parameter: 'enableIpv6',
+      value: config.enableIpv6 ? 'SIM' : 'NÃO',
+      reasoning: config.enableIpv6
+        ? 'Dual-stack ativo — tabelas ip6 nat geradas com dispatch, sets e DNAT IPv6 paralelos'
+        : 'IPv4-only — tabelas IPv6 suprimidas, sem overhead de regras dual-stack',
+    });
+  }
+
+  // ═══ COMMON DECISIONS (both modes) ═══
 
   // Threads & Slabs
   const threads = config.threads || 4;
@@ -120,6 +209,13 @@ export function buildDecisionLog(config: WizardConfig): GeneratorDecision[] {
       value: 'REMOVIDO',
       reasoning: 'Modo simples usa forward-only — root-hints é incompatível e causaria bypass do forward-zone',
     });
+  } else {
+    decisions.push({
+      category: 'Arquitetura',
+      parameter: 'root-hints',
+      value: config.rootHintsPath || '/usr/share/dns/root.hints',
+      reasoning: 'Modo interceptação usa forward-first — root-hints necessário para fallback iterativo quando upstreams falham',
+    });
   }
 
   // AD zones
@@ -147,6 +243,17 @@ export function buildDecisionLog(config: WizardConfig): GeneratorDecision[] {
       capsForId ? '0x20 randomization ativa (anti-spoofing)' : '0x20 desabilitado (compatibilidade com autoritativos antigos)',
     ].join('. '),
   });
+
+  // Instances (interception-specific topology info)
+  if (isInterception && config.instances?.length > 0) {
+    const listeners = config.instances.map(i => `${i.name}@${i.bindIp}`).join(', ');
+    decisions.push({
+      category: 'Topologia',
+      parameter: 'Instâncias',
+      value: `${config.instances.length} backends: ${listeners}`,
+      reasoning: `Cada instância recebe chain própria com set sticky (ipv4_users_*) e DNAT dedicado — isolamento total por backend`,
+    });
+  }
 
   return decisions;
 }

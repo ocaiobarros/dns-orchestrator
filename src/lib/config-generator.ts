@@ -1071,6 +1071,18 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     });
   }
 
+  // OUTPUT hooks (local interception — captures DNS from host itself)
+  files.push({
+    path: '/etc/nftables.d/0053-hook-ipv4-output.nft',
+    content: `table ip nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n`,
+  });
+  if (config.enableIpv6) {
+    files.push({
+      path: '/etc/nftables.d/0054-hook-ipv6-output.nft',
+      content: `table ip6 nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n`,
+    });
+  }
+
   // ═══ TABLE FILTER — EDGE ACL (security boundary) ═══
   // ACL is enforced HERE at nftables INPUT, BEFORE DNAT reaches Unbound.
   // Unbound remains 0.0.0.0/0 allow — it trusts nftables to filter.
@@ -1117,6 +1129,14 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     files.push({
       path: `/etc/nftables.d/511${proto === 'tcp' ? '1' : '2'}-nat-rule-ipv4_${proto}_dns.nft`,
       content: `table ip nat {\n    chain PREROUTING {\n        ip daddr $DNS_ANYCAST_IPV4 ${proto} dport 53 counter packets 0 bytes 0 jump ipv4_${proto}_dns\n    }\n}\n`,
+    });
+  }
+
+  // OUTPUT capture rules (local interception)
+  for (const proto of ['tcp', 'udp']) {
+    files.push({
+      path: `/etc/nftables.d/511${proto === 'tcp' ? '3' : '4'}-nat-rule-output-ipv4_${proto}_dns.nft`,
+      content: `table ip nat {\n    chain OUTPUT {\n        ip daddr $DNS_ANYCAST_IPV4 ${proto} dport 53 counter packets 0 bytes 0 jump ipv4_${proto}_dns\n    }\n}\n`,
     });
   }
 
@@ -1215,6 +1235,11 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
       files.push({
         path: `/etc/nftables.d/521${proto === 'tcp' ? '1' : '2'}-nat-rule-ipv6_${proto}_dns.nft`,
         content: `table ip6 nat {\n    chain PREROUTING {\n        ip6 daddr $DNS_ANYCAST_IPV6 ${proto} dport 53 counter packets 0 bytes 0 jump ipv6_${proto}_dns\n    }\n}\n`,
+      });
+      // OUTPUT capture (IPv6 local interception)
+      files.push({
+        path: `/etc/nftables.d/521${proto === 'tcp' ? '3' : '4'}-nat-rule-output-ipv6_${proto}_dns.nft`,
+        content: `table ip6 nat {\n    chain OUTPUT {\n        ip6 daddr $DNS_ANYCAST_IPV6 ${proto} dport 53 counter packets 0 bytes 0 jump ipv6_${proto}_dns\n    }\n}\n`,
       });
     }
 
