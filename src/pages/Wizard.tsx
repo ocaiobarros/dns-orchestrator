@@ -1611,8 +1611,6 @@ export default function Wizard() {
 
         {/* ═══ Dry-Run Staging (backend validation) ═══ */}
         {config.operationMode === 'simple' && (() => {
-          const [stagingResult, setStagingResult] = useState<any>(null);
-          const [stagingLoading, setStagingLoading] = useState(false);
           const runStaging = async () => {
             setStagingLoading(true);
             setStagingResult(null);
