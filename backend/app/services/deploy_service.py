@@ -811,9 +811,13 @@ def _execute_deploy_locked(
 
         # Discover and stop ALL unbound instances (unbound01, unbound02, etc.)
         r = run_command("bash", ["-c",
-            "systemctl list-units --type=service --all --no-pager --plain 2>/dev/null | grep '^unbound' | awk '{print $1}'"
+            "systemctl list-units --type=service --all --no-pager --plain --no-legend 2>/dev/null | grep '^unbound' | awk '{print $1}'"
         ], timeout=10)
-        discovered_units = [s.strip().replace(".service", "") for s in (r.get("stdout") or "").splitlines() if s.strip()]
+        discovered_units = [
+            s.strip().replace(".service", "")
+            for s in (r.get("stdout") or "").splitlines()
+            if s.strip() and s.strip().startswith("unbound")
+        ]
         for unit in discovered_units:
             run_command("systemctl", ["stop", unit], timeout=15, use_privilege=True)
             run_command("systemctl", ["disable", unit], timeout=10, use_privilege=True)
