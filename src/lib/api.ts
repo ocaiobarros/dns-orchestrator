@@ -293,6 +293,8 @@ export const api = {
     apiCall<any>('GET', '/inventory/full'),
   syncRuntimeInstances: () =>
     apiCall<any>('POST', '/inventory/sync'),
+  dryRunStaging: (config: any) =>
+    apiCall<any>('POST', '/config/dry-run-staging', { config }),
 
   // DNS Error Metrics
   getDnsErrorSummary: (minutes: number = 60) =>
