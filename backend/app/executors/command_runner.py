@@ -242,19 +242,18 @@ def run_command(
         )
         elapsed_ms = int((time.monotonic() - start) * 1000)
 
-        # Detect sudo password failure and auto-retry without sudo
+        # Detect sudo password failure and auto-retry without sudo for non-critical commands.
+        # Do NOT poison the global sudo cache here: command-specific sudoers mismatches
+        # must not disable sudo for subsequent unrelated commands in the same deploy.
         if should_sudo and result.returncode != 0 and _is_sudo_password_failure(result.stderr):
-            # Check if this is a command-specific rejection vs general sudo unavailability.
-            # "not allowed to execute" = specific command not in sudoers (don't poison cache)
-            # "a password is required" without "not allowed" = general sudo needs password (poison cache)
             stderr_lower = result.stderr.lower()
             is_command_specific = "not allowed to execute" in stderr_lower or "not allowed to run" in stderr_lower
-            if not is_command_specific:
-                logger.warning(f"Sudo generally unavailable for {executable}, disabling sudo cache")
-                global _sudo_available
-                _sudo_available = False  # Cache: stop trying sudo
-            else:
-                logger.warning(f"Sudo rejected specific command (not in NOPASSWD list): {executable} {' '.join(sanitized_args[:3])}")
+            logger.warning(
+                "Sudo failed for %s (%s): %s",
+                executable,
+                "command-specific" if is_command_specific else "password-required",
+                " ".join(sanitized_args[:4]),
+            )
             if _must_not_fallback_without_privilege(executable, sanitized_args):
                 return {
                     "exit_code": result.returncode,

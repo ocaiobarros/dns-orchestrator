@@ -49,14 +49,15 @@ _REQUIRED_EXECUTABLES: list[tuple[str, str]] = [
     ("killall", "killall (psmisc)"),
 ]
 
-# Privileged command probes — tests that mirror real pipeline usage
 _PRIVILEGED_PROBES: list[tuple[str, list[str], str, str]] = [
     # (exe, args, label, category)
     ("nft", ["-c", "-f", "__DNS_CONTROL_NFT_PROBE__"], "nft -c -f (validação sintática)", "nft_syntax"),
     ("nft", ["list", "tables"], "nft list tables (leitura ruleset)", "nft_read"),
     ("systemctl", ["daemon-reload"], "systemctl daemon-reload", "systemctl_reload"),
     ("systemctl", ["is-active", "nftables"], "systemctl is-active (probe)", "systemctl_query"),
-    ("install", ["-m", "0644", "-o", "root", "-g", "root", "__DNS_CONTROL_INSTALL_SRC__", "__DNS_CONTROL_INSTALL_DST__"], "install -m 0644 -o root -g root", "install_priv"),
+    ("install", ["-m", "0644", "-o", "root", "-g", "root", "__DNS_CONTROL_INSTALL_SRC__", "__DNS_CONTROL_INSTALL_DST__"], "install -m 0644 -o root -g root", "install_priv_0644"),
+    ("install", ["-m", "0640", "-o", "root", "-g", "root", "__DNS_CONTROL_INSTALL_SRC__", "__DNS_CONTROL_INSTALL_DST__"], "install -m 0640 -o root -g root", "install_priv_0640"),
+    ("install", ["-m", "0755", "-o", "root", "-g", "root", "__DNS_CONTROL_INSTALL_SRC__", "__DNS_CONTROL_INSTALL_DST__"], "install -m 0755 -o root -g root", "install_priv_0755"),
 ]
 
 
