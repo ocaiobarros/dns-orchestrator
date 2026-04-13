@@ -683,17 +683,90 @@ export default function Wizard() {
         <br /><span className="text-accent/70 mt-1 block">→ <strong>Listener Privado</strong>: IP interno (RFC 6598, ex: 100.127.255.101) onde o Unbound faz bind. Materializado em <code className="font-mono bg-accent/20 px-1 rounded">lo0</code> (dummy).</span>
         {isInterception && <span className="text-accent/70 block">→ No modo Interceptação, o Unbound <strong>não</strong> escuta em IP público — o IP público é tratado como VIP via nftables.</span>}
       </InfoBox>
+      {/* Performance Tuning */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <FieldGroup label="Threads por instância *" error={fieldError('threads')}>
           <Input type="number" value={config.threads} onChange={v => set('threads', parseInt(v) || 1)} />
         </FieldGroup>
-        <FieldGroup label="Msg Cache"><Input value={config.msgCacheSize} onChange={v => set('msgCacheSize', v)} /></FieldGroup>
-        <FieldGroup label="RRset Cache"><Input value={config.rrsetCacheSize} onChange={v => set('rrsetCacheSize', v)} /></FieldGroup>
-        <FieldGroup label="Max TTL"><Input type="number" value={config.maxTtl} onChange={v => set('maxTtl', parseInt(v) || 0)} /></FieldGroup>
-        <FieldGroup label="Root Hints"><Input value={config.rootHintsPath} onChange={v => set('rootHintsPath', v)} /></FieldGroup>
+        <FieldGroup label="Msg Cache" hint="Tamanho do cache de mensagens">
+          <Input value={config.msgCacheSize} onChange={v => set('msgCacheSize', v)} />
+        </FieldGroup>
+        <FieldGroup label="RRset Cache" hint="Tamanho do cache de RRsets">
+          <Input value={config.rrsetCacheSize} onChange={v => set('rrsetCacheSize', v)} />
+        </FieldGroup>
+        <FieldGroup label="Cache Min TTL" hint="TTL mínimo em cache (segundos)">
+          <Input type="number" value={config.cacheMinTtl} onChange={v => set('cacheMinTtl', parseInt(v) || 0)} />
+        </FieldGroup>
+        <FieldGroup label="Cache Max TTL" hint="TTL máximo em cache (segundos)">
+          <Input type="number" value={config.maxTtl} onChange={v => set('maxTtl', parseInt(v) || 0)} />
+        </FieldGroup>
         <FieldGroup label="DNS Identity" hint="Valor do campo identity">
           <Input value={config.dnsIdentity} onChange={v => set('dnsIdentity', v)} placeholder="67-DNS" />
         </FieldGroup>
+      </div>
+
+      {/* Serve Expired + Root Hints */}
+      <div className="flex gap-4 flex-wrap">
+        <Toggle checked={config.serveExpired !== false} onChange={v => set('serveExpired', v)} label="Serve Expired (manter cache expirado)" />
+        {config.serveExpired !== false && (
+          <FieldGroup label="Serve Expired TTL (s)" hint="Quanto tempo manter entradas expiradas">
+            <Input type="number" value={config.serveExpiredTtl ?? 86400} onChange={v => set('serveExpiredTtl', parseInt(v) || 86400)} />
+          </FieldGroup>
+        )}
+      </div>
+
+      {isInterception && (
+        <FieldGroup label="Root Hints"><Input value={config.rootHintsPath} onChange={v => set('rootHintsPath', v)} /></FieldGroup>
+      )}
+      {!isInterception && (
+        <div className="p-2 rounded bg-accent/5 border border-accent/15 text-xs text-muted-foreground">
+          ℹ️ Root hints desabilitado no modo Recursivo Simples — todas as queries passam pelo forward-zone global.
+        </div>
+      )}
+
+      {/* Forward Addrs */}
+      <div className="border-t border-border pt-4">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Forward Global (resolvers upstream)</div>
+        <ListInput items={config.forwardAddrs || []} onChange={items => set('forwardAddrs', items)} placeholder="Ex: 1.1.1.1" />
+        <p className="text-xs text-muted-foreground/70 mt-1">Todas as queries recursivas serão encaminhadas para esses resolvers em vez de usar root-hints.</p>
+      </div>
+
+      {/* AD Forward Zones */}
+      <div className="border-t border-border pt-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Forward Zones — Active Directory</span>
+          <button onClick={() => set('adForwardZones', [...(config.adForwardZones || []), { domain: '', dnsServers: [] }])}
+            className="flex items-center gap-1 px-2 py-1 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
+            <Plus size={12} /> Adicionar domínio AD
+          </button>
+        </div>
+        {(config.adForwardZones || []).length === 0 && (
+          <p className="text-xs text-muted-foreground/70">Nenhum domínio AD configurado. Adicione se houver resolução interna (ex: empresa.local).</p>
+        )}
+        {(config.adForwardZones || []).map((ad, idx) => (
+          <div key={idx} className="p-3 rounded bg-secondary border border-border space-y-2 mb-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-primary">Domínio AD #{idx + 1}</span>
+              <button onClick={() => set('adForwardZones', (config.adForwardZones || []).filter((_, j) => j !== idx))}
+                className="text-xs text-destructive hover:text-destructive/80 flex items-center gap-1"><Trash2 size={12} /> Remover</button>
+            </div>
+            <FieldGroup label="Domínio *" hint="Ex: empresa.local, corp.interno">
+              <Input value={ad.domain} onChange={v => {
+                const zones = [...(config.adForwardZones || [])];
+                zones[idx] = { ...zones[idx], domain: v };
+                set('adForwardZones', zones);
+              }} placeholder="empresa.local" />
+            </FieldGroup>
+            <FieldGroup label="DNS Servers (DCs)" hint="IPs dos Domain Controllers">
+              <ListInput items={ad.dnsServers} onChange={items => {
+                const zones = [...(config.adForwardZones || [])];
+                zones[idx] = { ...zones[idx], dnsServers: items };
+                set('adForwardZones', zones);
+              }} placeholder="Ex: 10.0.0.10" />
+            </FieldGroup>
+            <p className="text-xs text-muted-foreground/60">Gera automaticamente forward-zone para <code className="font-mono">{ad.domain || '(domínio)'}</code> e <code className="font-mono">_msdcs.{ad.domain || '(domínio)'}</code></p>
+          </div>
+        ))}
       </div>
       <div className="flex gap-4 flex-wrap">
         <Toggle checked={config.enableDetailedLogs} onChange={v => set('enableDetailedLogs', v)} label="Logs detalhados" />

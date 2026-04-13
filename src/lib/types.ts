@@ -89,6 +89,20 @@ export interface DnsInstance {
   egressIpv6: string;
 }
 
+// ---- AD Forward Zone ----
+
+export interface AdForwardZone {
+  domain: string;
+  dnsServers: string[];
+}
+
+// ---- Global Forward Addrs ----
+
+export interface ForwardConfig {
+  forwardAddrs: string[];
+  forwardFirst: boolean;
+}
+
 // ---- Access Control ----
 
 export interface AccessControlEntry {
@@ -161,6 +175,9 @@ export interface WizardConfig {
   keyCacheSize: string;
   minTtl: number;
   maxTtl: number;
+  cacheMinTtl: number;
+  serveExpired: boolean;
+  serveExpiredTtl: number;
   rootHintsPath: string;
   enableDetailedLogs: boolean;
   enableBlocklist: boolean;
@@ -173,6 +190,11 @@ export interface WizardConfig {
   blocklistAutoSync: boolean;
   blocklistValidateBeforeReload: boolean;
   blocklistAutoReload: boolean;
+
+  // Forward config
+  forwardAddrs: string[];
+  forwardFirst: boolean;
+  adForwardZones: AdForwardZone[];
 
   // IP Blocking (blackhole routes — NOT nftables)
   enableIpBlocking: boolean;
@@ -703,10 +725,13 @@ export const DEFAULT_CONFIG: WizardConfig = {
   ],
   threads: 4,
   msgCacheSize: '512m',
-  rrsetCacheSize: '32m',
+  rrsetCacheSize: '512m',
   keyCacheSize: '256m',
   minTtl: 60,
   maxTtl: 7200,
+  cacheMinTtl: 300,
+  serveExpired: true,
+  serveExpiredTtl: 86400,
   rootHintsPath: '/etc/unbound/named.cache',
   enableDetailedLogs: false,
   enableBlocklist: false,
@@ -725,6 +750,9 @@ export const DEFAULT_CONFIG: WizardConfig = {
   ipBlockingAutoSync: true,
   dnsIdentity: '',
   dnsVersion: '1.0',
+  forwardAddrs: ['1.1.1.1', '1.0.0.1', '8.8.8.8', '9.9.9.9'],
+  forwardFirst: false,
+  adForwardZones: [],
 
   // Step 5 - Egress Público
   egressFixedIdentity: true,

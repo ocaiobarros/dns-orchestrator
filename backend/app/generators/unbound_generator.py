@@ -106,25 +106,23 @@ M.ROOT-SERVERS.NET.      3600000      AAAA  2001:dc3::35
 def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     files = []
 
-    # Always generate master config and root hints
+    # Always generate master config
     files.append(generate_unbound_master_conf())
-    files.append(_generate_root_hints())
 
     instances = payload.get("instances", [])
-
-    # Global settings from payload or wizard config
     wizard_cfg = payload.get("_wizardConfig", {}) or {}
+    is_simple = payload.get("operationMode") == "simple" or wizard_cfg.get("operationMode") == "simple"
 
     enable_ipv6 = payload.get("enableIpv6") or wizard_cfg.get("enableIpv6", False)
     enable_blocklist = payload.get("enableBlocklist") or wizard_cfg.get("enableBlocklist", False)
     threads = _safe_int(payload.get("threads") or wizard_cfg.get("threads"), 4)
-    msg_cache_size = _safe_str(payload.get("msgCacheSize") or wizard_cfg.get("msgCacheSize"), "1024m")
-    rrset_cache_size = _safe_str(payload.get("rrsetCacheSize") or wizard_cfg.get("rrsetCacheSize"), "2048m")
+    msg_cache_size = _safe_str(payload.get("msgCacheSize") or wizard_cfg.get("msgCacheSize"), "512m")
+    rrset_cache_size = _safe_str(payload.get("rrsetCacheSize") or wizard_cfg.get("rrsetCacheSize"), "512m")
     max_ttl = _safe_int(payload.get("maxTtl") or wizard_cfg.get("maxTtl"), 7200)
-    root_hints_path = _safe_str(
-        payload.get("rootHintsPath") or wizard_cfg.get("rootHintsPath"),
-        "/etc/unbound/named.cache",
-    )
+    cache_min_ttl = _safe_int(payload.get("cacheMinTtl") or wizard_cfg.get("cacheMinTtl"), 300)
+    serve_expired = payload.get("serveExpired") if payload.get("serveExpired") is not None else wizard_cfg.get("serveExpired", True)
+    serve_expired_ttl = _safe_int(payload.get("serveExpiredTtl") or wizard_cfg.get("serveExpiredTtl"), 86400)
+
     dns_identity = _safe_str(
         payload.get("dnsIdentity") or wizard_cfg.get("dnsIdentity"),
         payload.get("hostname", "67-DNS"),
@@ -140,8 +138,19 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     is_border_routed = egress_delivery_mode == "border-routed"
 
     # Forward zone settings
-    forward_addrs = payload.get("forwardAddrs") or wizard_cfg.get("forwardAddrs") or ["1.1.1.1", "8.8.8.8"]
-    forward_first = payload.get("forwardFirst") if payload.get("forwardFirst") is not None else wizard_cfg.get("forwardFirst", True)
+    forward_addrs = payload.get("forwardAddrs") or wizard_cfg.get("forwardAddrs") or ["1.1.1.1", "1.0.0.1", "8.8.8.8", "9.9.9.9"]
+    forward_first = payload.get("forwardFirst") if payload.get("forwardFirst") is not None else wizard_cfg.get("forwardFirst", False)
+
+    # AD forward zones
+    ad_forward_zones = payload.get("adForwardZones") or wizard_cfg.get("adForwardZones") or []
+
+    # Root hints — only generate for interception mode
+    if not is_simple:
+        root_hints_path = _safe_str(
+            payload.get("rootHintsPath") or wizard_cfg.get("rootHintsPath"),
+            "/etc/unbound/named.cache",
+        )
+        files.append(_generate_root_hints())
 
     for inst in instances:
         name = inst.get("name", "unbound")
@@ -167,19 +176,21 @@ server:
             config += f"    interface: {bind_ipv6}\n"
 
         # Egress outgoing-interface
-        if exit_ip and not is_border_routed:
+        if is_simple or not exit_ip:
+            config += "\n    # outgoing-interface: não aplicável — modo recursivo simples\n"
+        elif exit_ip and not is_border_routed:
             config += f"\n    outgoing-interface: {exit_ip}\n"
         elif exit_ip and is_border_routed:
             config += f"\n    # outgoing-interface: {exit_ip}  # SUPPRESSED — border-routed mode\n"
 
-        if enable_ipv6 and exit_ipv6 and not is_border_routed:
+        if enable_ipv6 and exit_ipv6 and not is_border_routed and not is_simple:
             config += f"    outgoing-interface: {exit_ipv6}\n"
 
         config += f"""
     outgoing-range: 8192
     outgoing-port-avoid: 0-1024
     outgoing-port-permit: 1025-65535
-    num-queries-per-thread: 2048
+    num-queries-per-thread: 4096
 
     so-rcvbuf: 8m
     so-sndbuf: 8m
@@ -188,12 +199,17 @@ server:
     msg-cache-size: {msg_cache_size}
     rrset-cache-size: {rrset_cache_size}
 
+    msg-cache-slabs: 4
+    rrset-cache-slabs: 4
+    infra-cache-slabs: 4
+    key-cache-slabs: 4
+
     prefetch: yes
     prefetch-key: yes
+    serve-expired: {"yes" if serve_expired else "no"}
+    serve-expired-ttl: {serve_expired_ttl}
 
-    msg-cache-slabs: {threads}
-    rrset-cache-slabs: {threads}
-
+    cache-min-ttl: {cache_min_ttl}
     cache-max-ttl: {max_ttl}
     infra-host-ttl: 60
     infra-lame-ttl: 120
@@ -215,13 +231,20 @@ server:
     logfile: ""
     use-syslog: no
     pidfile: "/var/run/unbound.pid"
-    root-hints: "{root_hints_path}"
+"""
+        if is_simple:
+            config += "    # root-hints: REMOVED — forward-only mode (no iterator/root recursion)\n"
+        else:
+            config += f'    root-hints: "{root_hints_path}"\n'
 
+        config += f"""
     identity: "{dns_identity}"
     version: "{dns_version}"
     hide-identity: yes
     hide-version: yes
     harden-glue: yes
+    harden-dnssec-stripped: yes
+    use-caps-for-id: yes
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
     module-config: "iterator"
@@ -243,8 +266,21 @@ forward-zone:
 """
         for faddr in forward_addrs:
             config += f"    forward-addr: {faddr}\n"
-        if forward_first:
+        if forward_first and not is_simple:
             config += "    forward-first: yes\n"
+
+        # AD forward zones
+        for ad in ad_forward_zones:
+            domain = ad.get("domain", "")
+            servers = ad.get("dnsServers", [])
+            if not domain or not servers:
+                continue
+            config += f"\nforward-zone:\n    name: \"{domain}\"\n"
+            for srv in servers:
+                config += f"    forward-addr: {srv}\n"
+            config += f"\nforward-zone:\n    name: \"_msdcs.{domain}\"\n"
+            for srv in servers:
+                config += f"    forward-addr: {srv}\n"
 
         config += f"""
 remote-control:
