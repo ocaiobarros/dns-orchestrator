@@ -18,11 +18,11 @@ logger = logging.getLogger("dns-control.executor")
 ALLOWED_EXECUTABLES = frozenset({
     "systemctl", "ss", "ip", "nft", "vtysh", "dig",
     "unbound-control", "unbound-checkconf",
-    "journalctl", "uptime", "free", "df", "cat",
+    "journalctl", "uptime", "free", "df", "cat", "stat",
     "ping", "traceroute", "ifreload", "ifquery",
     "dpkg", "apt",
     "chmod", "sysctl", "echo",
-    "install", "mkdir", "bash", "killall", "cp",
+    "install", "mkdir", "bash", "killall",
     "/etc/network/post-up.d/dns-control",
 })
 
@@ -46,7 +46,6 @@ _SUDO_ALLOWED_COMMANDS: list[tuple[str, list[str]]] = [
     ("vtysh", ["-c"]),
     ("journalctl", ["--no-pager"]),
     # Deploy operations
-    ("cp", ["--no-preserve=ownership"]),
     ("chmod", []),
     ("install", ["-m"]),
     ("mkdir", ["-p"]),
@@ -191,11 +190,37 @@ def run_command(
     # Sanitize args — no shell metacharacters
     sanitized_args = [_sanitize_arg(a) for a in args]
 
+    privilege_required = use_privilege and _must_not_fallback_without_privilege(executable, sanitized_args)
+    sudo_allowed = _is_sudo_allowed(executable, sanitized_args) if use_privilege else False
+    sudo_available = is_sudo_available() if use_privilege else False
+
+    if privilege_required and not sudo_allowed:
+        logger.error(f"Privilege-required command is not allowed via sudo: {executable} {' '.join(sanitized_args)}")
+        return {
+            "exit_code": -1,
+            "stdout": "",
+            "stderr": f"Comando requer privilégio, mas não está autorizado no sudoers: {executable}",
+            "duration_ms": 0,
+            "executed_privileged": False,
+            "command": f"{executable} {' '.join(sanitized_args)}".strip(),
+        }
+
+    if privilege_required and not sudo_available:
+        logger.error(f"Privilege-required command blocked because sudo is unavailable: {executable} {' '.join(sanitized_args)}")
+        return {
+            "exit_code": -1,
+            "stdout": "",
+            "stderr": f"Comando requer sudo efetivo e não pode executar sem privilégio: {executable}",
+            "duration_ms": 0,
+            "executed_privileged": False,
+            "command": f"{executable} {' '.join(sanitized_args)}".strip(),
+        }
+
     # Determine if we should use sudo
     should_sudo = (
         use_privilege
-        and is_sudo_available()
-        and _is_sudo_allowed(executable, sanitized_args)
+        and sudo_available
+        and sudo_allowed
     )
 
     if should_sudo:
@@ -256,6 +281,7 @@ def run_command(
             "stderr": result.stderr,
             "duration_ms": elapsed_ms,
             "executed_privileged": should_sudo,
+            "command": " ".join(cmd),
         }
     except subprocess.TimeoutExpired:
         elapsed_ms = int((time.monotonic() - start) * 1000)
@@ -266,6 +292,7 @@ def run_command(
             "stderr": f"Comando expirou após {timeout} segundos",
             "duration_ms": elapsed_ms,
             "executed_privileged": should_sudo,
+            "command": " ".join(cmd),
         }
     except FileNotFoundError:
         return {
@@ -274,6 +301,7 @@ def run_command(
             "stderr": f"Executável não encontrado: {executable}",
             "duration_ms": 0,
             "executed_privileged": False,
+            "command": f"{executable} {' '.join(sanitized_args)}".strip(),
         }
     except Exception as e:
         logger.exception(f"Unexpected error executing command: {e}")
@@ -283,6 +311,7 @@ def run_command(
             "stderr": str(e),
             "duration_ms": 0,
             "executed_privileged": False,
+            "command": f"{executable} {' '.join(sanitized_args)}".strip(),
         }
 
 

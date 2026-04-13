@@ -12,6 +12,7 @@ from typing import Any
 from app.core.config import settings
 from app.services.config_service import validate_config, generate_preview
 from app.executors.command_runner import run_command
+from app.services.deploy_service import _install_file_to_target
 
 
 def execute_apply(payload: dict[str, Any], scope: str = "full", dry_run: bool = False) -> dict:
@@ -74,10 +75,7 @@ def execute_apply(payload: dict[str, Any], scope: str = "full", dry_run: bool = 
 
             # Use install for atomic ownership + mode
             # Arg order MUST match sudoers: -m <mode> -o <owner> -g <group>
-            result = run_command(
-                "install", ["-m", perms, "-o", "root", "-g", "root", tmp_file, f["path"]],
-                timeout=10, use_privilege=True,
-            )
+            result = _install_file_to_target(tmp_file, f["path"], perms)
             if result["exit_code"] != 0:
                 write_errors.append(f"{f['path']}: {result['stderr'][:200]}")
 
