@@ -1487,9 +1487,11 @@ export default function Wizard() {
           </div>
         </div>
 
-        {/* ═══ Acceptance Checklist (simple mode) ═══ */}
-        {config.operationMode === 'simple' && (() => {
-          const checks = validateSimpleModeConfig(config);
+        {/* ═══ Acceptance Checklist (both modes) ═══ */}
+        {(() => {
+          const checks = isInterception
+            ? validateInterceptionModeConfig(config)
+            : validateSimpleModeConfig(config);
           const passed = checks.filter(c => c.status === 'pass').length;
           const failed = checks.filter(c => c.status === 'fail').length;
           const total = checks.filter(c => c.status !== 'skip').length;
