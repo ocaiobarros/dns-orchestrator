@@ -114,6 +114,44 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
     }
   }
 
+  // ═══ Forward addrs validation (both modes) ═══
+  const instStepForForward = s('Instâncias Resolver');
+  const forwardAddrs = config.forwardAddrs || [];
+  if (isInterception === false && forwardAddrs.length === 0) {
+    e('forwardAddrs', instStepForForward, 'Lista de forward addrs não pode ser vazia no modo simples — pelo menos um resolver upstream é obrigatório');
+  }
+  const seenForward = new Set<string>();
+  forwardAddrs.forEach((addr, i) => {
+    if (!isValidIpv4(addr) && !isValidIpv6(addr)) {
+      e(`forwardAddrs[${i}]`, instStepForForward, `Forward addr "${addr}" não é um IP válido`);
+    }
+    if (seenForward.has(addr)) {
+      e(`forwardAddrs[${i}]`, instStepForForward, `Forward addr "${addr}" duplicado`);
+    }
+    seenForward.add(addr);
+  });
+
+  // ═══ AD forward zones formal validation ═══
+  if (config.adForwardZones?.length > 0) {
+    config.adForwardZones.forEach((ad, i) => {
+      if (ad.domain && ad.domain.trim()) {
+        if (ad.dnsServers.length === 0) {
+          e(`adForwardZones[${i}].dnsServers`, instStepForForward, `Domínio AD "${ad.domain}" requer pelo menos 1 servidor DNS (DC)`);
+        }
+        const seenDc = new Set<string>();
+        ad.dnsServers.forEach((srv, j) => {
+          if (!isValidIpv4(srv)) {
+            e(`adForwardZones[${i}].dnsServers[${j}]`, instStepForForward, `DC IP "${srv}" para domínio "${ad.domain}" não é um IPv4 válido`);
+          }
+          if (seenDc.has(srv)) {
+            e(`adForwardZones[${i}].dnsServers[${j}]`, instStepForForward, `DC IP "${srv}" duplicado no domínio "${ad.domain}"`);
+          }
+          seenDc.add(srv);
+        });
+      }
+    });
+  }
+
   // ═══ Instâncias Resolver ═══
   const instStep = s('Instâncias Resolver');
   if (config.instances.length === 0) e('instances', instStep, 'Pelo menos uma instância resolver é necessária');

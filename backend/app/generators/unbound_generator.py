@@ -103,6 +103,43 @@ M.ROOT-SERVERS.NET.      3600000      AAAA  2001:dc3::35
     }
 
 
+def _compute_slabs(threads: int) -> int:
+    """Compute slabs as power of 2 derived from thread count."""
+    if threads <= 2:
+        return 2
+    if threads <= 4:
+        return 4
+    if threads <= 8:
+        return 8
+    return 16
+
+
+def _compute_network_address(ip: str, mask: int) -> str:
+    """Compute network address from IP string and CIDR mask."""
+    octets = [int(o) for o in ip.split(".")]
+    ip_num = (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]
+    mask_bits = (0xFFFFFFFF << (32 - mask)) & 0xFFFFFFFF if mask > 0 else 0
+    network = ip_num & mask_bits
+    return f"{(network >> 24) & 0xFF}.{(network >> 16) & 0xFF}.{(network >> 8) & 0xFF}.{network & 0xFF}"
+
+
+def _generate_access_control(payload: dict, wizard_cfg: dict) -> str:
+    """Generate smart access-control from host CIDR."""
+    lines = ["    access-control: 127.0.0.0/8 allow"]
+    ipv4_addr = payload.get("ipv4Address") or wizard_cfg.get("ipv4Address", "")
+    import re
+    cidr_match = re.match(r"^(\d+\.\d+\.\d+\.\d+)/(\d+)$", ipv4_addr)
+    if cidr_match:
+        ip, mask = cidr_match.group(1), int(cidr_match.group(2))
+        net = _compute_network_address(ip, mask)
+        lines.append(f"    access-control: {net}/{mask} allow")
+    lines.append("    access-control: 100.64.0.0/10 allow")
+    enable_ipv6 = payload.get("enableIpv6") or wizard_cfg.get("enableIpv6", False)
+    if enable_ipv6:
+        lines.append("    access-control: ::1/128 allow")
+    return "\n".join(lines)
+
+
 def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     files = []
 
@@ -122,6 +159,12 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     cache_min_ttl = _safe_int(payload.get("cacheMinTtl") or wizard_cfg.get("cacheMinTtl"), 300)
     serve_expired = payload.get("serveExpired") if payload.get("serveExpired") is not None else wizard_cfg.get("serveExpired", True)
     serve_expired_ttl = _safe_int(payload.get("serveExpiredTtl") or wizard_cfg.get("serveExpiredTtl"), 86400)
+    num_queries_per_thread = _safe_int(
+        payload.get("numQueriesPerThread") or wizard_cfg.get("numQueriesPerThread"), 3200
+    )
+
+    # Dynamic slabs from threads
+    slabs = _compute_slabs(threads)
 
     dns_identity = _safe_str(
         payload.get("dnsIdentity") or wizard_cfg.get("dnsIdentity"),
@@ -144,6 +187,13 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     # AD forward zones
     ad_forward_zones = payload.get("adForwardZones") or wizard_cfg.get("adForwardZones") or []
 
+    # Advanced hardening options
+    harden_dnssec = payload.get("hardenDnssecStripped") if payload.get("hardenDnssecStripped") is not None else wizard_cfg.get("hardenDnssecStripped", True)
+    use_caps_for_id = payload.get("useCapsForId") if payload.get("useCapsForId") is not None else wizard_cfg.get("useCapsForId", False)
+
+    # Smart access-control
+    access_control_block = _generate_access_control(payload, wizard_cfg)
+
     # Root hints — only generate for interception mode
     if not is_simple:
         root_hints_path = _safe_str(
@@ -161,8 +211,8 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
         control_interface = inst.get("controlInterface", "127.0.0.1")
         control_port = _safe_int(inst.get("controlPort", 8953), 8953)
 
-        config = f"""
-server:
+        # ═══ BLOCK 1: server: ═══
+        config = f"""server:
     verbosity: 1
     statistics-interval: 20
     extended-statistics: yes
@@ -190,7 +240,7 @@ server:
     outgoing-range: 8192
     outgoing-port-avoid: 0-1024
     outgoing-port-permit: 1025-65535
-    num-queries-per-thread: 4096
+    num-queries-per-thread: {num_queries_per_thread}
 
     so-rcvbuf: 8m
     so-sndbuf: 8m
@@ -199,10 +249,10 @@ server:
     msg-cache-size: {msg_cache_size}
     rrset-cache-size: {rrset_cache_size}
 
-    msg-cache-slabs: 4
-    rrset-cache-slabs: 4
-    infra-cache-slabs: 4
-    key-cache-slabs: 4
+    msg-cache-slabs: {slabs}
+    rrset-cache-slabs: {slabs}
+    infra-cache-slabs: {slabs}
+    key-cache-slabs: {slabs}
 
     prefetch: yes
     prefetch-key: yes
@@ -223,8 +273,7 @@ server:
     do-tcp: yes
     do-daemonize: yes
 
-    access-control: 0.0.0.0/0 allow
-    access-control: ::/0 allow
+{access_control_block}
 
     username: "unbound"
     directory: "/etc/unbound"
@@ -237,19 +286,29 @@ server:
         else:
             config += f'    root-hints: "{root_hints_path}"\n'
 
+        # AD private-domain directives
+        private_domains = ""
+        for ad in ad_forward_zones:
+            domain = ad.get("domain", "")
+            servers = ad.get("dnsServers", [])
+            if not domain or not servers:
+                continue
+            private_domains += f'    private-domain: "{domain}"\n'
+            private_domains += f'    private-domain: "_msdcs.{domain}"\n'
+
         config += f"""
     identity: "{dns_identity}"
     version: "{dns_version}"
     hide-identity: yes
     hide-version: yes
     harden-glue: yes
-    harden-dnssec-stripped: yes
-    use-caps-for-id: yes
+    harden-dnssec-stripped: {"yes" if harden_dnssec else "no"}
+    use-caps-for-id: {"yes" if use_caps_for_id else "no"}
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
     module-config: "iterator"
 
-    local-zone: "localhost." static
+{private_domains}    local-zone: "localhost." static
     local-data: "localhost. 10800 IN NS localhost."
     local-data: "localhost. 10800 IN SOA localhost. nobody.invalid. 1 3600 1200 604800 10800"
     local-data: "localhost. 10800 IN A 127.0.0.1"
@@ -261,9 +320,19 @@ server:
 
     include: /etc/unbound/unbound-block-domains.conf
 
-forward-zone:
-    name: "."
 """
+
+        # ═══ BLOCK 2: remote-control: ═══
+        config += f"""remote-control:
+    control-enable: yes
+    control-interface: {control_interface}
+    control-port: {control_port}
+    control-use-cert: "no"
+
+"""
+
+        # ═══ BLOCK 3: forward-zone: ═══
+        config += 'forward-zone:\n    name: "."\n'
         for faddr in forward_addrs:
             config += f"    forward-addr: {faddr}\n"
         if forward_first and not is_simple:
@@ -275,20 +344,15 @@ forward-zone:
             servers = ad.get("dnsServers", [])
             if not domain or not servers:
                 continue
-            config += f"\nforward-zone:\n    name: \"{domain}\"\n"
+            config += f'\nforward-zone:\n    name: "{domain}"\n'
             for srv in servers:
                 config += f"    forward-addr: {srv}\n"
-            config += f"\nforward-zone:\n    name: \"_msdcs.{domain}\"\n"
+            config += f'\nforward-zone:\n    name: "_msdcs.{domain}"\n'
             for srv in servers:
                 config += f"    forward-addr: {srv}\n"
 
-        config += f"""
-remote-control:
-    control-enable: yes
-    control-interface: {control_interface}
-    control-port: {control_port}
-    control-use-cert: "no"
-
+        # ═══ BLOCK 4: trailing server: include for anablock ═══
+        config += """
 server:
     include: /etc/unbound/anablock.conf
 """
