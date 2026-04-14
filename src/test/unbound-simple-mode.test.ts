@@ -138,10 +138,17 @@ describe('Unbound Simple Mode — ACL from CIDR', () => {
     expect(content).toContain('access-control: 10.0.1.0/24 allow');
   });
 
-  it('does NOT hardcode 0.0.0.0/0 allow by default', () => {
-    const config = makeSimpleConfig();
+  it('isp-hardened does NOT emit 0.0.0.0/0 allow', () => {
+    const config = makeSimpleConfig({ securityProfile: 'isp-hardened' });
     const content = generateUnboundConf(config, 0);
     expect(content).not.toContain('access-control: 0.0.0.0/0 allow');
+  });
+
+  it('legacy profile DOES emit 0.0.0.0/0 allow (open resolver)', () => {
+    const config = makeSimpleConfig({ securityProfile: 'legacy' });
+    const content = generateUnboundConf(config, 0);
+    expect(content).toContain('access-control: 0.0.0.0/0 allow');
+    expect(content).not.toContain('access-control: 127.0.0.0/8 allow');
   });
 });
 
