@@ -285,7 +285,7 @@ phase_2() {
     # ── 2.4 DNS funcional ──
     info "Verificando resolução DNS..."
     # Descobre bind IPs das instâncias
-    BIND_IPS=$(grep -rh 'interface:' /etc/unbound/unbound*.conf 2>/dev/null | awk '{print $2}' | sort -u)
+    BIND_IPS=$(grep -rhE '^[[:space:]]*interface:[[:space:]]+[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+([[:space:]]|$)' /etc/unbound/unbound*.conf 2>/dev/null | awk '{print $2}' | sort -u)
     if [[ -n "$BIND_IPS" ]]; then
         for ip in $BIND_IPS; do
             if dig "@${ip}" localhost +short +time=2 +tries=1 >/dev/null 2>&1; then

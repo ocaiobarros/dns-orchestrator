@@ -79,6 +79,7 @@ _CLEANUP_GLOBS = {
 _NETWORK_MATERIALIZATION_SCRIPTS = (
     "/etc/network/post-up.d/dns-control",
 )
+_STABLE_RUNTIME_BASE_FILES = frozenset({"/etc/nftables.conf"})
 
 # Files NEVER to touch
 _NEVER_TOUCH = frozenset({
@@ -410,6 +411,30 @@ def _install_file_to_target(source_path: str, target_path: str, permissions: str
 
     try:
         if os.path.exists(target_path):
+            if _has_compatible_stable_runtime_base(source_path, target_path):
+                metadata_check = _verify_file_metadata(target_path, mode)
+                if metadata_check["exit_code"] == 0:
+                    owner_name, group_name = _get_file_owner_group(target_path)
+                    audit = {
+                        "command": f"install skipped (compatible stable base file): {target_path}",
+                        "effective_uid": os.geteuid(),
+                        "effective_gid": os.getegid(),
+                        "effective_user": _get_effective_user_group()[0],
+                        "effective_group": _get_effective_user_group()[1],
+                        "target": target_path,
+                        "owner_after": f"{owner_name}:{group_name}",
+                        "mode_expected": mode,
+                        "executed_privileged": False,
+                    }
+                    logger.info("Install skipped for compatible stable base file %s | owner=%s", target_path, audit["owner_after"])
+                    return {
+                        "exit_code": 0,
+                        "stdout": "UNCHANGED",
+                        "stderr": "",
+                        "duration_ms": 0,
+                        "audit": audit,
+                        "command": audit["command"],
+                    }
             with open(source_path, "rb") as src_fp, open(target_path, "rb") as dst_fp:
                 if src_fp.read() == dst_fp.read():
                     metadata_check = _verify_file_metadata(target_path, mode)
@@ -501,6 +526,25 @@ def _install_file_to_target(source_path: str, target_path: str, permissions: str
         "audit": audit,
         "command": audit["command"],
     }
+
+
+def _normalize_stable_runtime_base_content(target_path: str, content: str) -> str:
+    if target_path == "/etc/nftables.conf":
+        return "\n".join(line.strip() for line in content.splitlines() if line.strip())
+    return content
+
+
+def _has_compatible_stable_runtime_base(source_path: str, target_path: str) -> bool:
+    if target_path not in _STABLE_RUNTIME_BASE_FILES or not os.path.exists(source_path) or not os.path.exists(target_path):
+        return False
+
+    try:
+        with open(source_path, "r", encoding="utf-8") as src_fp, open(target_path, "r", encoding="utf-8") as dst_fp:
+            source_content = _normalize_stable_runtime_base_content(target_path, src_fp.read())
+            target_content = _normalize_stable_runtime_base_content(target_path, dst_fp.read())
+        return bool(source_content) and source_content == target_content
+    except OSError:
+        return False
 
 
 def _cleanup_partial_file(target_path: str):

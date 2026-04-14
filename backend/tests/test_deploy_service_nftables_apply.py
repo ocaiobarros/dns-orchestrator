@@ -17,6 +17,22 @@ def _ok_result(executable: str, args: list[str], timeout: int = 30, use_privileg
 
 
 class DeployServiceNftablesApplyTest(unittest.TestCase):
+    def test_compatible_nftables_master_is_preserved_even_if_whitespace_differs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = f"{temp_dir}/source-nftables.conf"
+            target_path = f"{temp_dir}/target-nftables.conf"
+
+            with open(source_path, "w", encoding="utf-8") as fp:
+                fp.write("#!/usr/sbin/nft -f\n\nflush ruleset\ninclude \"/etc/nftables.d/*.nft\"\n")
+
+            with open(target_path, "w", encoding="utf-8") as fp:
+                fp.write("#!/usr/sbin/nft -f\nflush ruleset\ninclude \"/etc/nftables.d/*.nft\"\n")
+
+            self.assertTrue(
+                deploy_service._normalize_stable_runtime_base_content("/etc/nftables.conf", open(source_path, encoding="utf-8").read())
+                == deploy_service._normalize_stable_runtime_base_content("/etc/nftables.conf", open(target_path, encoding="utf-8").read())
+            )
+
     def test_execute_deploy_applies_generated_nftables_master_file_on_fresh_install(self):
         payload = {
             "operationMode": "simple",
