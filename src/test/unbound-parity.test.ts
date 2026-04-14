@@ -184,4 +184,24 @@ describe('Frontend/Backend Parity Contract', () => {
     const content = generateUnboundConf(config, 0);
     expect(content).not.toContain('forward-first: yes');
   });
+
+  it('query logging enabled by default: use-syslog=yes, log-queries=yes, log-replies=no', () => {
+    const content = generateUnboundConf(config, 0);
+    expect(content).toContain('use-syslog: yes');
+    expect(content).toContain('log-queries: yes');
+    expect(content).toContain('log-replies: no');
+    expect(content).toContain('log-servfail: yes');
+    expect(content).not.toContain('use-syslog: no');
+  });
+
+  it('query logging disabled: use-syslog=no, log-queries=no', () => {
+    const noLogConfig = makePayload({
+      observability: { ...DEFAULT_CONFIG.observability, enableQueryLogging: false },
+    });
+    const content = generateUnboundConf(noLogConfig, 0);
+    expect(content).toContain('use-syslog: no');
+    expect(content).toContain('log-queries: no');
+    expect(content).toContain('log-replies: no');
+    expect(content).not.toContain('log-queries: yes');
+  });
 });

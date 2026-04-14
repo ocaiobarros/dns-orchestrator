@@ -300,8 +300,27 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     username: "unbound"
     directory: "/etc/unbound"
     logfile: ""
-    use-syslog: no
-    pidfile: "/var/run/{name}.pid"
+"""
+
+        # ═══ Query Logging — driven by observability.enableQueryLogging ═══
+        obs = payload.get("observability") or wizard_cfg.get("observability") or {}
+        enable_query_logging = obs.get("enableQueryLogging", True)
+
+        if enable_query_logging:
+            config += """    use-syslog: yes
+    log-queries: yes
+    log-replies: no
+    log-servfail: yes
+    log-time-ascii: yes
+"""
+        else:
+            config += """    use-syslog: no
+    log-queries: no
+    log-replies: no
+    log-servfail: no
+"""
+
+        config += f'    pidfile: "/var/run/{name}.pid"\n'
 """
         if is_simple:
             config += "    # root-hints: REMOVED — forward-only mode (no iterator/root recursion)\n"

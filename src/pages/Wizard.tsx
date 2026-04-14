@@ -1334,6 +1334,32 @@ export default function Wizard() {
   const renderObservability = () => (
     <div className="space-y-4">
       <InfoBox>Configure quais métricas e sinais operacionais o DNS Control deve coletar.</InfoBox>
+
+      {/* ═══ Query Logging Toggle ═══ */}
+      <div className="space-y-3">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Logging de Consultas DNS</div>
+        <Toggle checked={config.observability.enableQueryLogging} onChange={v => updateObs('enableQueryLogging', v)} label="Habilitar logging de consultas (Top Domains, Top Clients)" />
+        {config.observability.enableQueryLogging && (
+          <div className="flex gap-2 p-3 rounded bg-chart-4/10 border border-chart-4/30 text-xs text-chart-4">
+            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+            <div>
+              <strong>Impacto de performance:</strong> Habilitar logging de queries gera carga adicional de I/O e CPU.
+              Em ambientes de alto volume (&gt;10k QPS), monitore o uso de disco do journal e CPU do Unbound.
+              Apenas <code>log-queries</code> e <code>log-servfail</code> são habilitados — <code>log-replies</code> permanece desativado para preservar performance.
+            </div>
+          </div>
+        )}
+        {!config.observability.enableQueryLogging && (
+          <div className="flex gap-2 p-3 rounded bg-accent/10 border border-accent/20 text-xs text-muted-foreground">
+            <Info size={14} className="shrink-0 mt-0.5" />
+            <div>
+              Sem logging de queries, o dashboard exibirá métricas de QPS, cache e latência via <code>unbound-control stats</code>,
+              mas as seções <strong>Top Domains</strong> e <strong>Top Clients</strong> ficarão vazias.
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="space-y-3">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Métricas de Tráfego</div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">

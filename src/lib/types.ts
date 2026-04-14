@@ -124,6 +124,7 @@ export interface ObservabilityConfig {
   cacheHitTracking: boolean;
   recursionTimeTracking: boolean;
   operationalEvents: boolean;
+  enableQueryLogging: boolean;
 }
 
 // ---- Wizard Configuration ----
@@ -811,6 +812,7 @@ export const DEFAULT_CONFIG: WizardConfig = {
     cacheHitTracking: true,
     recursionTimeTracking: true,
     operationalEvents: true,
+    enableQueryLogging: true,
   },
 
   // Bootstrap DNS

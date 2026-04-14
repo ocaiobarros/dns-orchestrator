@@ -145,7 +145,14 @@ ${accessControlBlock}
     username: "unbound"
     directory: "/etc/unbound"
     logfile: ""
-    use-syslog: no
+${config.observability?.enableQueryLogging !== false ? `    use-syslog: yes
+    log-queries: yes
+    log-replies: no
+    log-servfail: yes
+    log-time-ascii: yes` : `    use-syslog: no
+    log-queries: no
+    log-replies: no
+    log-servfail: no`}
     pidfile: "/var/run/${inst.name}.pid"
 ${rootHintsLine}
 
