@@ -225,10 +225,22 @@ export function computeSlabs(threads: number): number {
 
 // ═══ HELPER: Generate access-control block from host CIDR ═══
 function generateAccessControlBlock(config: WizardConfig): string {
+  // Legacy / Sem Proteção: open resolver — security delegated to nftables/perimeter
+  if (config.securityProfile === 'legacy') {
+    const lines = [
+      '    # ═══ OPEN RESOLVER — Sem Proteção (Legacy) ═══',
+      '    # Segurança delegada ao firewall/perímetro de rede',
+      '    access-control: 0.0.0.0/0 allow',
+    ];
+    if (config.enableIpv6) {
+      lines.push('    access-control: ::/0 allow');
+    }
+    return lines.join('\n');
+  }
+
+  // ISP Hardened: restrictive ACLs
   const lines: string[] = [];
-  // Always allow loopback
   lines.push('    access-control: 127.0.0.0/8 allow');
-  // Derive from host CIDR
   if (config.ipv4Address) {
     const cidrMatch = config.ipv4Address.match(/^(\d+\.\d+\.\d+\.\d+)\/(\d+)$/);
     if (cidrMatch) {
@@ -238,7 +250,6 @@ function generateAccessControlBlock(config: WizardConfig): string {
       lines.push(`    access-control: ${networkAddr}/${mask} allow`);
     }
   }
-  // RFC1918 ranges for internal resolvers
   lines.push('    access-control: 100.64.0.0/10 allow');
   if (config.enableIpv6) {
     lines.push('    access-control: ::1/128 allow');

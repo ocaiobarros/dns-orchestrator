@@ -1193,13 +1193,31 @@ export default function Wizard() {
           />
         </div>
         {config.securityProfile === 'legacy' && (
-          <div className="p-3 rounded border border-yellow-500/30 bg-yellow-500/10 text-sm text-yellow-700 dark:text-yellow-400 flex items-start gap-2">
-            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-            <div>
-              <strong>Atenção:</strong> Este modo não aplica controle de acesso no firewall.
-              O servidor pode operar como open resolver.
-              Use apenas em ambientes controlados ou para compatibilidade com Part1/Part2.
+          <div className="space-y-3">
+            <div className="p-3 rounded border border-destructive/50 bg-destructive/10 text-sm text-destructive flex items-start gap-2">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <div>
+                <strong>⚠️ OPEN RESOLVER:</strong> Este modo configura o Unbound com{' '}
+                <code className="px-1 py-0.5 bg-destructive/20 rounded text-xs font-mono">access-control: 0.0.0.0/0 allow</code>.
+                <br />
+                Qualquer IP na internet poderá consultar este servidor DNS.
+                <br />
+                <strong>Risco:</strong> DDoS amplification, abuso por terceiros, consumo excessivo de banda.
+                <br />
+                Use apenas em ambientes controlados com firewall de perímetro ou para compatibilidade com Part1/Part2.
+              </div>
             </div>
+            <label className="flex items-center gap-2 cursor-pointer p-3 rounded border border-destructive/30 bg-destructive/5">
+              <input
+                type="checkbox"
+                checked={config.openResolverConfirmed}
+                onChange={e => set('openResolverConfirmed', e.target.checked)}
+                className="w-4 h-4 accent-destructive"
+              />
+              <span className="text-sm font-medium text-destructive">
+                Confirmo que entendo os riscos de operar como open resolver
+              </span>
+            </label>
           </div>
         )}
         {config.securityProfile === 'isp-hardened' && (
