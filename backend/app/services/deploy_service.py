@@ -76,7 +76,6 @@ _CLEANUP_GLOBS = {
     "network_postup_d": "/etc/network/post-up.d/dns-control",
 }
 
-_RUNTIME_BASE_FILES = frozenset({"/etc/nftables.conf"})
 _NETWORK_MATERIALIZATION_SCRIPTS = (
     "/etc/network/post-up.d/dns-control",
 )
@@ -594,7 +593,7 @@ def _execute_deploy_locked(
 
     def generate_and_stage():
         nonlocal files, staging_dir, nft_validation_staged_path
-        files = generate_preview(payload)
+        files = generate_preview(runtime_payload)
 
         staging_dir = os.path.join(STAGING_ROOT, f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{deploy_id}")
         os.makedirs(staging_dir, exist_ok=True)
@@ -621,7 +620,7 @@ def _execute_deploy_locked(
                              "A.ROOT-SERVERS.NET.\t3600000\tA\t198.41.0.4\n")
 
         # Generate nftables validation artifact
-        normalized_payload = normalize_payload(payload)
+        normalized_payload = runtime_payload
         is_simple_mode = normalized_payload.get("operationMode") == "simple"
         try:
             if is_simple_mode:
@@ -1122,9 +1121,6 @@ def _execute_deploy_locked(
             target_path = f["path"]
             if not _scope_matches(target_path, scope):
                 continue
-            if target_path in _RUNTIME_BASE_FILES:
-                continue
-
             result = _install_file_from_staging(
                 staging_dir=staging_dir,
                 target_path=target_path,
