@@ -84,6 +84,21 @@ describe('Frontend/Backend Parity Contract', () => {
     expect(content).toContain('access-control: 100.64.0.0/10 allow');
   });
 
+  it('legacy profile emits open resolver ACL (0.0.0.0/0 allow)', () => {
+    const legacyConfig = makePayload({ securityProfile: 'legacy' });
+    const content = generateUnboundConf(legacyConfig, 0);
+    expect(content).toContain('access-control: 0.0.0.0/0 allow');
+    expect(content).not.toContain('access-control: 127.0.0.0/8 allow');
+    expect(content).not.toContain('access-control: 100.64.0.0/10 allow');
+  });
+
+  it('legacy profile with IPv6 emits ::/0 allow', () => {
+    const legacyV6 = makePayload({ securityProfile: 'legacy', enableIpv6: true });
+    const content = generateUnboundConf(legacyV6, 0);
+    expect(content).toContain('access-control: 0.0.0.0/0 allow');
+    expect(content).toContain('access-control: ::/0 allow');
+  });
+
   it('simple mode: root-hints suppressed, forward-zone "." present', () => {
     const content = generateUnboundConf(config, 0);
     expect(content).toContain('# root-hints: REMOVED');
