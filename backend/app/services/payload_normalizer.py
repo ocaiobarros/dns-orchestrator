@@ -147,6 +147,8 @@ def normalize_payload(raw: dict[str, Any]) -> dict[str, Any]:
         "stickyTimeout": raw.get("stickyTimeout", 0),
         "simpleDistributionStrategy": raw.get("simpleDistributionStrategy", "round-robin"),
         "simpleStickyTimeout": raw.get("simpleStickyTimeout", 0),
+        "securityProfile": raw.get("securityProfile", "isp-hardened"),
+        "openResolverConfirmed": raw.get("openResolverConfirmed", False),
         # Preserve raw config for reference
         "_wizardConfig": raw,
     }

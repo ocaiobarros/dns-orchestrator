@@ -79,5 +79,54 @@ class UnboundGeneratorStructuralTest(unittest.TestCase):
         self.assertIn('access-control: 172.250.40.0/23 allow', content)
 
 
+class UnboundSecurityProfileTest(unittest.TestCase):
+    def _make_payload(self, security_profile="isp-hardened"):
+        return {
+            "operationMode": "simple",
+            "ipv4Address": "172.250.40.11/23",
+            "enableIpv6": False,
+            "threads": 4,
+            "securityProfile": security_profile,
+            "instances": [
+                {
+                    "name": "unbound01",
+                    "bindIp": "100.127.255.120",
+                    "controlInterface": "127.0.0.11",
+                    "controlPort": 8953,
+                },
+            ],
+            "_wizardConfig": {
+                "operationMode": "simple",
+                "ipv4Address": "172.250.40.11/23",
+                "securityProfile": security_profile,
+                "threads": 4,
+            },
+        }
+
+    def test_legacy_profile_emits_open_resolver(self):
+        files = generate_unbound_configs(self._make_payload("legacy"))
+        content = next(f["content"] for f in files if f["path"] == "/etc/unbound/unbound01.conf")
+        self.assertIn("access-control: 0.0.0.0/0 allow", content)
+        self.assertNotIn("access-control: 127.0.0.0/8 allow", content)
+        self.assertNotIn("access-control: 100.64.0.0/10 allow", content)
+
+    def test_isp_hardened_profile_emits_restrictive_acl(self):
+        files = generate_unbound_configs(self._make_payload("isp-hardened"))
+        content = next(f["content"] for f in files if f["path"] == "/etc/unbound/unbound01.conf")
+        self.assertIn("access-control: 127.0.0.0/8 allow", content)
+        self.assertIn("access-control: 172.250.40.0/23 allow", content)
+        self.assertIn("access-control: 100.64.0.0/10 allow", content)
+        self.assertNotIn("access-control: 0.0.0.0/0 allow", content)
+
+    def test_legacy_profile_with_ipv6_emits_open_v6(self):
+        payload = self._make_payload("legacy")
+        payload["enableIpv6"] = True
+        payload["_wizardConfig"]["enableIpv6"] = True
+        files = generate_unbound_configs(payload)
+        content = next(f["content"] for f in files if f["path"] == "/etc/unbound/unbound01.conf")
+        self.assertIn("access-control: 0.0.0.0/0 allow", content)
+        self.assertIn("access-control: ::/0 allow", content)
+
+
 if __name__ == "__main__":
     unittest.main()
