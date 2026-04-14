@@ -441,40 +441,28 @@ def _install_file_to_target(source_path: str, target_path: str, permissions: str
 
     mode = _infer_permissions(target_path, permissions)
 
+    # ── Unconditional skip for stable runtime base files with valid content ──
+    # These files (e.g. /etc/nftables.conf) are provisioned by deploy.sh and
+    # must NOT be overwritten by the wizard pipeline.  If content is valid,
+    # skip regardless of metadata — avoids failures on read-only FS, transient
+    # permission issues, or install-command quirks.
+    if target_path in _STABLE_RUNTIME_BASE_FILES and os.path.exists(target_path):
+        if _has_valid_stable_runtime_base(target_path):
+            logger.info("Stable base file %s has valid content — skipping install unconditionally", target_path)
+            return _build_skipped_install_result(target_path, mode, "stable base file valid — skipped")
+
     try:
         if os.path.exists(target_path):
-            if _has_compatible_stable_runtime_base(source_path, target_path):
-                metadata_check = _verify_file_metadata(target_path, mode)
-                if metadata_check["exit_code"] == 0:
-                    return _build_skipped_install_result(target_path, mode, "compatible stable base file")
-            if _has_valid_stable_runtime_base(target_path):
-                metadata_check = _verify_file_metadata(target_path, mode)
-                if metadata_check["exit_code"] == 0:
-                    return _build_skipped_install_result(target_path, mode, "existing stable base file preserved")
             with open(source_path, "rb") as src_fp, open(target_path, "rb") as dst_fp:
                 if src_fp.read() == dst_fp.read():
                     metadata_check = _verify_file_metadata(target_path, mode)
                     if metadata_check["exit_code"] == 0:
                         return _build_skipped_install_result(target_path, mode, "identical file")
-        
     except OSError:
         pass
 
     install_args = ["-m", mode, "-o", "root", "-g", "root", source_path, target_path]
     result = run_command("install", install_args, timeout=15, use_privilege=True)
-
-    # ── Fallback: if install fails (read-only FS, etc.), try cp + chmod ──
-    if result["exit_code"] != 0 and target_path in _STABLE_RUNTIME_BASE_FILES:
-        logger.warning("install failed for stable base %s, trying cp fallback: %s", target_path, (result.get("stderr") or "")[:200])
-        cp_result = run_command("cp", ["--no-preserve=ownership", source_path, target_path], timeout=15, use_privilege=True)
-        if cp_result["exit_code"] == 0:
-            run_command("chmod", [mode, target_path], timeout=5, use_privilege=True)
-            result = cp_result
-            result["command"] = f"cp fallback for {target_path}"
-        elif _has_valid_stable_runtime_base(target_path):
-            metadata_check = _verify_file_metadata(target_path, mode)
-            if metadata_check["exit_code"] == 0:
-                return _build_skipped_install_result(target_path, mode, "read-only stable base file preserved")
 
     final_check = _verify_file_metadata(target_path, mode)
     effective_user, effective_group = _get_effective_user_group()
