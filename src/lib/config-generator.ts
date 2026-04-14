@@ -90,7 +90,6 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
     for (const ad of config.adForwardZones) {
       if (!ad.domain || ad.dnsServers.length === 0) continue;
       privateDomainBlock += `    private-domain: "${ad.domain}"\n`;
-      privateDomainBlock += `    private-domain: "_msdcs.${ad.domain}"\n`;
     }
   }
 
@@ -147,7 +146,7 @@ ${accessControlBlock}
     directory: "/etc/unbound"
     logfile: ""
     use-syslog: no
-    pidfile: "/var/run/unbound.pid"
+    pidfile: "/var/run/${inst.name}.pid"
 ${rootHintsLine}
 
     identity: "${config.dnsIdentity || config.hostname}"
@@ -172,6 +171,7 @@ ${privateDomainBlock}    local-zone: "localhost." static
     local-data: "1.0.0.127.in-addr.arpa. 10800 IN PTR localhost."
 
     include: /etc/unbound/unbound-block-domains.conf
+    include: /etc/unbound/anablock.conf
 `;
 
   // ═══ BLOCK 2: remote-control: ═══
@@ -211,15 +211,8 @@ forward-zone:
       }
     }
   }
-
-  // ═══ BLOCK 4: server: include anablock ═══
-  const anablockBlock = `
-server:
-    include: /etc/unbound/anablock.conf
-`;
-
-  // Final assembly: server → remote-control → forward-zone → anablock include
-  return serverBlock + remoteControlBlock + forwardZonesBlock + anablockBlock;
+  // Final assembly: server → remote-control → forward-zone (no trailing server: block)
+  return serverBlock + remoteControlBlock + forwardZonesBlock;
 }
 
 // ═══ HELPER: Compute slabs as power of 2 derived from threads ═══
