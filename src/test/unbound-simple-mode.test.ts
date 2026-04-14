@@ -11,6 +11,7 @@ function makeSimpleConfig(overrides?: Partial<WizardConfig>): WizardConfig {
   return {
     ...DEFAULT_CONFIG,
     operationMode: 'simple',
+    securityProfile: 'isp-hardened',
     hostname: 'dns-test-01.example.com',
     organization: 'TestOrg',
     mainInterface: 'ens192',
