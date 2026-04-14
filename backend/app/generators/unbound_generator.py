@@ -124,7 +124,29 @@ def _compute_network_address(ip: str, mask: int) -> str:
 
 
 def _generate_access_control(payload: dict, wizard_cfg: dict) -> str:
-    """Generate smart access-control from host CIDR."""
+    """Generate smart access-control from host CIDR.
+
+    When securityProfile == 'legacy', Unbound becomes an open resolver
+    (access-control: 0.0.0.0/0 allow) — security is delegated to nftables
+    or the network perimeter.
+    """
+    security_profile = (
+        payload.get("securityProfile")
+        or wizard_cfg.get("securityProfile", "isp-hardened")
+    )
+
+    if security_profile == "legacy":
+        lines = [
+            "    # ═══ OPEN RESOLVER — Sem Proteção (Legacy) ═══",
+            "    # Segurança delegada ao firewall/perímetro de rede",
+            "    access-control: 0.0.0.0/0 allow",
+        ]
+        enable_ipv6 = payload.get("enableIpv6") or wizard_cfg.get("enableIpv6", False)
+        if enable_ipv6:
+            lines.append("    access-control: ::/0 allow")
+        return "\n".join(lines)
+
+    # ── ISP Hardened: restrictive ACLs ──
     lines = ["    access-control: 127.0.0.0/8 allow"]
     ipv4_addr = payload.get("ipv4Address") or wizard_cfg.get("ipv4Address", "")
     import re
