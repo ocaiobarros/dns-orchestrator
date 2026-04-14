@@ -1103,20 +1103,35 @@ def _execute_deploy_locked(
             return {"status": "success", "output": "Nenhum arquivo sysctl no escopo"}
 
         errors: list[str] = []
+        warnings: list[str] = []
+        _SYSCTL_BENIGN = ("No such file or directory", "cannot stat")
         for sysctl_path in sysctl_files:
             r = run_command("sysctl", ["--load", sysctl_path], timeout=15, use_privilege=True)
             if r["exit_code"] != 0:
-                errors.append(f"{sysctl_path}: {(r['stderr'] or r['stdout'])[:200]}")
+                msg = (r['stderr'] or r['stdout'])[:200]
+                if any(tok in msg for tok in _SYSCTL_BENIGN):
+                    warnings.append(f"{sysctl_path}: {msg}")
+                else:
+                    errors.append(f"{sysctl_path}: {msg}")
 
         r_sys = run_command("sysctl", ["--system"], timeout=15, use_privilege=True)
 
+        parts: list[str] = []
+        if errors:
+            parts.append(f"{len(errors)} falha(s)")
+        if warnings:
+            parts.append(f"{len(warnings)} aviso(s) de parâmetros ausentes no kernel")
         if errors:
             return {
                 "status": "failed",
-                "output": f"Falha ao aplicar {len(errors)} arquivo(s) sysctl",
+                "output": f"Falha ao aplicar sysctl: {'; '.join(parts)}",
                 "stderr": "; ".join(errors),
             }
-        return {"status": "success", "output": f"{len(sysctl_files)} arquivo(s) sysctl aplicados + sysctl --system"}
+        ok_count = len(sysctl_files) - len(warnings)
+        summary = f"{ok_count} arquivo(s) sysctl aplicados + sysctl --system"
+        if warnings:
+            summary += f" ({len(warnings)} parâmetro(s) deprecado(s) ignorado(s))"
+        return {"status": "success", "output": summary, "stderr": "; ".join(warnings)}
 
     _run_step(s9, apply_sysctl)
     steps.append(s9)
@@ -1128,7 +1143,13 @@ def _execute_deploy_locked(
     # ════════════════════════════════════════════════════════════════
     s10 = _step(10, "Materializar IPs de rede (post-up)", "/etc/network/post-up.d/dns-control")
     def run_postup():
-        r = run_command("/etc/network/post-up.d/dns-control", [], timeout=30, use_privilege=True)
+        postup_path = "/etc/network/post-up.d/dns-control"
+        if not os.path.isfile(postup_path):
+            return {
+                "status": "success",
+                "output": "post-up script não existe — ignorado (modo simples sem VIPs)",
+            }
+        r = run_command(postup_path, [], timeout=30, use_privilege=True)
         return {
             "status": "success" if r["exit_code"] == 0 else "failed",
             "output": r["stdout"][:500] or "post-up executado",
