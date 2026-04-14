@@ -279,7 +279,7 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     directory: "/etc/unbound"
     logfile: ""
     use-syslog: no
-    pidfile: "/var/run/unbound.pid"
+    pidfile: "/var/run/{name}.pid"
 """
         if is_simple:
             config += "    # root-hints: REMOVED — forward-only mode (no iterator/root recursion)\n"
@@ -294,7 +294,6 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
             if not domain or not servers:
                 continue
             private_domains += f'    private-domain: "{domain}"\n'
-            private_domains += f'    private-domain: "_msdcs.{domain}"\n'
 
         config += f"""
     identity: "{dns_identity}"
@@ -319,6 +318,7 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     local-data: "1.0.0.127.in-addr.arpa. 10800 IN PTR localhost."
 
     include: /etc/unbound/unbound-block-domains.conf
+    include: /etc/unbound/anablock.conf
 
 """
 
@@ -350,12 +350,6 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
             config += f'\nforward-zone:\n    name: "_msdcs.{domain}"\n'
             for srv in servers:
                 config += f"    forward-addr: {srv}\n"
-
-        # ═══ BLOCK 4: trailing server: include for anablock ═══
-        config += """
-server:
-    include: /etc/unbound/anablock.conf
-"""
 
         files.append({
             "path": f"/etc/unbound/{name}.conf",
