@@ -11,7 +11,7 @@ from app.models.user import User
 from app.services.command_service import run_whitelisted_command, get_available_commands
 from app.services.diagnostics_service import run_health_check, _classify_result
 from app.executors.command_runner import get_privilege_status
-from app.executors.command_catalog import COMMAND_CATALOG
+from app.executors.command_catalog import get_runtime_command_catalog
 from app.core.logging import log_command_event
 from app.schemas.diagnostics import RunCommandRequest
 
@@ -28,7 +28,7 @@ def run_command_route(body: RunCommandRequest, db: Session = Depends(get_db), us
     result = run_whitelisted_command(body.command_id, body.args)
 
     # Classify the result to determine semantic severity for logging
-    cmd_def = COMMAND_CATALOG.get(body.command_id)
+    cmd_def = get_runtime_command_catalog().get(body.command_id)
     diagnostic_status = None
     requires_privilege = False
     executed_privileged = result.get("executed_privileged", False)

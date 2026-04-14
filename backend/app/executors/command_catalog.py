@@ -8,6 +8,9 @@ via -s <control_ip>@<control_port> and -c <config_path>.
 """
 
 from dataclasses import dataclass, field
+import glob
+import json
+import os
 
 
 @dataclass
@@ -35,16 +38,68 @@ class CommandDefinition:
 
 # ── Static catalog (non-instance-specific commands) ──
 
+_DEPLOY_STATE_PATH = "/var/lib/dns-control/deploy-state.json"
+
+
+def _read_deploy_state() -> dict:
+    try:
+        with open(_DEPLOY_STATE_PATH, "r", encoding="utf-8") as fp:
+            return json.load(fp)
+    except (OSError, IOError, json.JSONDecodeError):
+        return {}
+
+
+def _read_current_operation_mode() -> str:
+    return str(_read_deploy_state().get("operationMode") or "").strip().lower()
+
+
+def _parse_instance_config(config_path: str) -> dict:
+    parsed = {
+        "bind_ips": [],
+        "control_interface": "127.0.0.1",
+        "control_port": 8953,
+    }
+    try:
+        with open(config_path, "r", encoding="utf-8") as fp:
+            for line in fp:
+                stripped = line.strip()
+                if stripped.startswith("interface:") and not stripped.startswith("interface-automatic"):
+                    bind_ip = stripped.split(":", 1)[1].strip()
+                    if bind_ip and not bind_ip.startswith("#"):
+                        parsed["bind_ips"].append(bind_ip)
+                elif stripped.startswith("control-interface:"):
+                    parsed["control_interface"] = stripped.split(":", 1)[1].strip()
+                elif stripped.startswith("control-port:"):
+                    try:
+                        parsed["control_port"] = int(stripped.split(":", 1)[1].strip())
+                    except ValueError:
+                        pass
+    except (OSError, IOError):
+        pass
+    return parsed
+
+
+def _discover_runtime_instances() -> list[dict]:
+    instances = []
+    for config_path in sorted(glob.glob("/etc/unbound/unbound*.conf")):
+        name = os.path.splitext(os.path.basename(config_path))[0]
+        if name == "unbound":
+            continue
+        parsed = _parse_instance_config(config_path)
+        instances.append({
+            "name": name,
+            "bind_ips": parsed["bind_ips"],
+            "control_interface": parsed["control_interface"],
+            "control_port": parsed["control_port"],
+        })
+    return instances
+
+
+def _listener_command_id(ip: str) -> str:
+    return ip.replace(":", "-").replace(".", "-")
+
+
 COMMAND_CATALOG: dict[str, CommandDefinition] = {
-    # Systemctl — per instance
-    "svc-status-unbound01": CommandDefinition(
-        id="svc-status-unbound01", name="Status unbound01", description="Status do serviço unbound01",
-        category="services", executable="systemctl", base_args=["status", "unbound01"],
-    ),
-    "svc-status-unbound02": CommandDefinition(
-        id="svc-status-unbound02", name="Status unbound02", description="Status do serviço unbound02",
-        category="services", executable="systemctl", base_args=["status", "unbound02"],
-    ),
     "svc-status-frr": CommandDefinition(
         id="svc-status-frr", name="Status FRR", description="Status do serviço FRR (opcional conforme topologia)",
         category="services", executable="systemctl", base_args=["status", "frr"],
@@ -70,85 +125,6 @@ COMMAND_CATALOG: dict[str, CommandDefinition] = {
     "net-connections": CommandDefinition(
         id="net-connections", name="Conexões ativas", description="Mostra conexões ativas",
         category="network", executable="ss", base_args=["-tnp"],
-    ),
-
-    # DNS — per-instance unbound-control
-    "dns-unbound01-stats": CommandDefinition(
-        id="dns-unbound01-stats", name="unbound01 stats", description="Estatísticas do unbound01",
-        category="dns", executable="unbound-control",
-        base_args=["-s", "127.0.0.11@8953", "-c", "/etc/unbound/unbound01.conf", "stats_noreset"],
-        requires_privilege=True,
-        expected_failure_unprivileged="Permission denied for unbound-control",
-        remediation_hint="Ajustar permissão do socket ou usar execução via sudo controlado",
-    ),
-    "dns-unbound01-status": CommandDefinition(
-        id="dns-unbound01-status", name="unbound01 status", description="Status detalhado do unbound01",
-        category="dns", executable="unbound-control",
-        base_args=["-s", "127.0.0.11@8953", "-c", "/etc/unbound/unbound01.conf", "status"],
-        requires_privilege=True,
-        expected_failure_unprivileged="Permission denied for unbound-control",
-        remediation_hint="Ajustar permissão do socket ou usar execução via sudo controlado",
-    ),
-    "dns-unbound02-stats": CommandDefinition(
-        id="dns-unbound02-stats", name="unbound02 stats", description="Estatísticas do unbound02",
-        category="dns", executable="unbound-control",
-        base_args=["-s", "127.0.0.12@8953", "-c", "/etc/unbound/unbound02.conf", "stats_noreset"],
-        requires_privilege=True,
-        expected_failure_unprivileged="Permission denied for unbound-control",
-        remediation_hint="Ajustar permissão do socket ou usar execução via sudo controlado",
-    ),
-    "dns-unbound02-status": CommandDefinition(
-        id="dns-unbound02-status", name="unbound02 status", description="Status detalhado do unbound02",
-        category="dns", executable="unbound-control",
-        base_args=["-s", "127.0.0.12@8953", "-c", "/etc/unbound/unbound02.conf", "status"],
-        requires_privilege=True,
-        expected_failure_unprivileged="Permission denied for unbound-control",
-        remediation_hint="Ajustar permissão do socket ou usar execução via sudo controlado",
-    ),
-    # DNS resolution tests per listener
-    "dns-dig-listener-101": CommandDefinition(
-        id="dns-dig-listener-101", name="Dig @100.127.255.101", description="Testa resolução no listener 101",
-        category="dns", executable="dig", base_args=["@100.127.255.101", "google.com", "+short", "+time=3", "+tries=1"],
-    ),
-    "dns-dig-listener-102": CommandDefinition(
-        id="dns-dig-listener-102", name="Dig @100.127.255.102", description="Testa resolução no listener 102",
-        category="dns", executable="dig", base_args=["@100.127.255.102", "google.com", "+short", "+time=3", "+tries=1"],
-    ),
-
-    # VIP Diagnostics — Service VIPs (owned + intercepted)
-    # 4.2.2.5/4.2.2.6 are intercepted VIPs captured locally via DNAT,
-    # NOT external probes. They are part of the local DNS service.
-    "dns-vip-probe-4225": CommandDefinition(
-        id="dns-vip-probe-4225", name="Service VIP @4.2.2.5",
-        description="Probe de resolução no VIP interceptado 4.2.2.5",
-        category="dns-vip", executable="dig",
-        base_args=["@4.2.2.5", "google.com", "+short", "+time=3", "+tries=1"],
-    ),
-    "dns-vip-probe-4226": CommandDefinition(
-        id="dns-vip-probe-4226", name="Service VIP @4.2.2.6",
-        description="Probe de resolução no VIP interceptado 4.2.2.6",
-        category="dns-vip", executable="dig",
-        base_args=["@4.2.2.6", "google.com", "+short", "+time=3", "+tries=1"],
-    ),
-    "dns-vip-bind-check": CommandDefinition(
-        id="dns-vip-bind-check", name="VIP Bind Check (lo)",
-        description="Verifica se os VIPs estão configurados na interface loopback",
-        category="dns-vip", executable="ip",
-        base_args=["addr", "show", "lo"],
-    ),
-    "dns-root-trace": CommandDefinition(
-        id="dns-root-trace", name="Root Trace (dig +trace)",
-        description="Resolução iterativa completa desde root servers — valida recursão real",
-        category="dns-vip", executable="dig",
-        base_args=["+trace", "google.com"],
-        timeout=15,
-    ),
-    "dns-root-query": CommandDefinition(
-        id="dns-root-query", name="Root NS Query",
-        description="Consulta direta a a.root-servers.net — valida alcançabilidade dos root servers",
-        category="dns-vip", executable="dig",
-        base_args=["@a.root-servers.net", ".", "NS", "+short", "+time=5", "+tries=1"],
-        timeout=10,
     ),
 
     # NFTables — via ruleset, not service
@@ -230,3 +206,92 @@ COMMAND_CATALOG: dict[str, CommandDefinition] = {
         remediation_hint="Adicionar usuário ao grupo systemd-journal ou usar wrapper controlado",
     ),
 }
+
+
+def get_runtime_command_catalog() -> dict[str, CommandDefinition]:
+    catalog = dict(COMMAND_CATALOG)
+    instances = _discover_runtime_instances()
+
+    for inst in instances:
+        name = inst["name"]
+        control_ip = inst.get("control_interface", "127.0.0.1")
+        control_port = inst.get("control_port", 8953)
+        config_path = f"/etc/unbound/{name}.conf"
+
+        catalog[f"svc-status-{name}"] = CommandDefinition(
+            id=f"svc-status-{name}",
+            name=f"Status {name}",
+            description=f"Status do serviço {name}",
+            category="services",
+            executable="systemctl",
+            base_args=["status", name],
+        )
+        catalog[f"dns-{name}-stats"] = CommandDefinition(
+            id=f"dns-{name}-stats",
+            name=f"{name} stats",
+            description=f"Estatísticas do {name}",
+            category="dns",
+            executable="unbound-control",
+            base_args=["-s", f"{control_ip}@{control_port}", "-c", config_path, "stats_noreset"],
+            requires_privilege=True,
+            expected_failure_unprivileged="Permission denied for unbound-control",
+            remediation_hint="Ajustar permissão do socket ou usar execução via sudo controlado",
+        )
+        catalog[f"dns-{name}-status"] = CommandDefinition(
+            id=f"dns-{name}-status",
+            name=f"{name} status",
+            description=f"Status detalhado do {name}",
+            category="dns",
+            executable="unbound-control",
+            base_args=["-s", f"{control_ip}@{control_port}", "-c", config_path, "status"],
+            requires_privilege=True,
+            expected_failure_unprivileged="Permission denied for unbound-control",
+            remediation_hint="Ajustar permissão do socket ou usar execução via sudo controlado",
+        )
+
+        for bind_ip in inst.get("bind_ips", []):
+            listener_id = _listener_command_id(bind_ip)
+            catalog[f"dns-dig-listener-{listener_id}"] = CommandDefinition(
+                id=f"dns-dig-listener-{listener_id}",
+                name=f"Dig @{bind_ip}",
+                description=f"Testa resolução no listener {bind_ip}",
+                category="dns",
+                executable="dig",
+                base_args=[f"@{bind_ip}", "google.com", "+short", "+time=3", "+tries=1"],
+            )
+
+    if _read_current_operation_mode() != "simple":
+        catalog["dns-vip-probe-4225"] = CommandDefinition(
+            id="dns-vip-probe-4225", name="Service VIP @4.2.2.5",
+            description="Probe de resolução no VIP interceptado 4.2.2.5",
+            category="dns-vip", executable="dig",
+            base_args=["@4.2.2.5", "google.com", "+short", "+time=3", "+tries=1"],
+        )
+        catalog["dns-vip-probe-4226"] = CommandDefinition(
+            id="dns-vip-probe-4226", name="Service VIP @4.2.2.6",
+            description="Probe de resolução no VIP interceptado 4.2.2.6",
+            category="dns-vip", executable="dig",
+            base_args=["@4.2.2.6", "google.com", "+short", "+time=3", "+tries=1"],
+        )
+        catalog["dns-vip-bind-check"] = CommandDefinition(
+            id="dns-vip-bind-check", name="VIP Bind Check (lo)",
+            description="Verifica se os VIPs estão configurados na interface loopback",
+            category="dns-vip", executable="ip",
+            base_args=["addr", "show", "lo"],
+        )
+        catalog["dns-root-trace"] = CommandDefinition(
+            id="dns-root-trace", name="Root Trace (dig +trace)",
+            description="Resolução iterativa completa desde root servers — valida recursão real",
+            category="dns-vip", executable="dig",
+            base_args=["+trace", "google.com"],
+            timeout=15,
+        )
+        catalog["dns-root-query"] = CommandDefinition(
+            id="dns-root-query", name="Root NS Query",
+            description="Consulta direta a a.root-servers.net — valida alcançabilidade dos root servers",
+            category="dns-vip", executable="dig",
+            base_args=["@a.root-servers.net", ".", "NS", "+short", "+time=5", "+tries=1"],
+            timeout=10,
+        )
+
+    return catalog

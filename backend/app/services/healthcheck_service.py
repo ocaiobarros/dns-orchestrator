@@ -6,6 +6,8 @@ at all their bind IPs.
 
 import time
 import logging
+import glob
+import os
 from typing import Any
 
 from app.executors.command_runner import run_command
@@ -105,10 +107,11 @@ def _discover_instances() -> list[dict]:
                 instances.append({"name": name, "bind_ips": bind_ips, "port": 53})
 
     if not instances:
-        instances = [
-            {"name": "unbound01", "bind_ips": ["100.127.255.101", "191.243.128.205"], "port": 53},
-            {"name": "unbound02", "bind_ips": ["100.127.255.102", "191.243.128.206"], "port": 53},
-        ]
+        for config_path in sorted(glob.glob("/etc/unbound/unbound*.conf")):
+            name = os.path.splitext(os.path.basename(config_path))[0]
+            if name == "unbound":
+                continue
+            instances.append({"name": name, "bind_ips": _get_bind_ips_from_config(name), "port": 53})
 
     return instances
 
