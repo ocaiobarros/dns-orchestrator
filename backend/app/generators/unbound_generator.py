@@ -321,7 +321,6 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
 """
 
         config += f'    pidfile: "/var/run/{name}.pid"\n'
-"""
         if is_simple:
             config += "    # root-hints: REMOVED — forward-only mode (no iterator/root recursion)\n"
         else:
