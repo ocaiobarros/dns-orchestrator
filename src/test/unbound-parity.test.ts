@@ -18,6 +18,7 @@ function makePayload(overrides?: Partial<WizardConfig>): WizardConfig {
   return {
     ...DEFAULT_CONFIG,
     operationMode: 'simple',
+    securityProfile: 'isp-hardened',
     hostname: 'parity-test-01.isp.net',
     organization: 'Parity Corp',
     mainInterface: 'ens192',
