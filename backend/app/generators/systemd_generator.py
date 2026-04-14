@@ -15,9 +15,8 @@ def generate_systemd_units(payload: dict[str, Any]) -> list[dict]:
 
     for inst in instances:
         name = inst.get("name", "unbound")
-        unit = f"""
-[Unit]
-Description=Unbound DNS server
+        unit = f"""[Unit]
+Description=Unbound DNS server - {name}
 Documentation=man:unbound(8)
 After=network-online.target
 Wants=network-online.target
@@ -27,11 +26,7 @@ Wants=nss-lookup.target
 [Service]
 Type=notify
 Restart=always
-EnvironmentFile=-/etc/default/unbound
-ExecStartPre=-/usr/lib/unbound/package-helper chroot_setup
-ExecStartPre=-/usr/lib/unbound/package-helper root_trust_anchor_update
-ExecStart=/usr/sbin/unbound -c /etc/unbound/{name}.conf -d -p $DAEMON_OPTS
-ExecStopPost=-/usr/lib/unbound/package-helper chroot_teardown
+ExecStart=/usr/sbin/unbound -c /etc/unbound/{name}.conf -d -p
 ExecReload=+/bin/kill -HUP $MAINPID
 
 [Install]

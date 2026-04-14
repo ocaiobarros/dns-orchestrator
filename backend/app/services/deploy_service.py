@@ -1144,17 +1144,52 @@ def _execute_deploy_locked(
     s10 = _step(10, "Materializar IPs de rede (post-up)", "/etc/network/post-up.d/dns-control")
     def run_postup():
         postup_path = "/etc/network/post-up.d/dns-control"
-        if not os.path.isfile(postup_path):
+        if os.path.isfile(postup_path):
+            r = run_command(postup_path, [], timeout=30, use_privilege=True)
+            return {
+                "status": "success" if r["exit_code"] == 0 else "failed",
+                "output": r["stdout"][:500] or "post-up executado",
+                "stderr": r["stderr"][:500],
+            }
+
+        # No post-up script — materialize listener IPs directly from payload
+        inst_list = payload.get("instances", [])
+        listener_ips = []
+        for inst in inst_list:
+            ip = inst.get("listenAddress") or inst.get("listen_address") or inst.get("ip")
+            if ip and not ip.startswith("127."):
+                listener_ips.append(ip)
+
+        if not listener_ips:
             return {
                 "status": "success",
-                "output": "post-up script não existe — ignorado (modo simples sem VIPs)",
+                "output": "Nenhum listener IP externo para materializar",
             }
-        r = run_command(postup_path, [], timeout=30, use_privilege=True)
+
+        # Ensure lo0 dummy interface exists
+        run_command("ip", ["link", "add", "lo0", "type", "dummy"], timeout=5, use_privilege=True)
+        run_command("ip", ["link", "set", "lo0", "up"], timeout=5, use_privilege=True)
+
+        msgs = []
+        for ip in listener_ips:
+            r = run_command("ip", ["addr", "add", f"{ip}/32", "dev", "lo0"], timeout=5, use_privilege=True)
+            stderr = (r.get("stderr") or "").lower()
+            if r["exit_code"] == 0:
+                msgs.append(f"{ip}/32 adicionado em lo0")
+            elif "file exists" in stderr:
+                msgs.append(f"{ip}/32 já existe em lo0")
+            else:
+                return {
+                    "status": "failed",
+                    "output": f"Falha ao materializar {ip}/32 em lo0",
+                    "stderr": r.get("stderr", "")[:300],
+                }
+
         return {
-            "status": "success" if r["exit_code"] == 0 else "failed",
-            "output": r["stdout"][:500] or "post-up executado",
-            "stderr": r["stderr"][:500],
+            "status": "success",
+            "output": f"{len(listener_ips)} IP(s) materializados em lo0: {', '.join(msgs)}",
         }
+
     _run_step(s10, run_postup)
     steps.append(s10)
     _update_live_state(completedSteps=10)
