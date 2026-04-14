@@ -4,11 +4,12 @@ Public interface for the safe command execution layer.
 Supports privilege-aware execution for diagnostic commands.
 """
 
-from app.executors.command_catalog import COMMAND_CATALOG, CommandDefinition
+from app.executors.command_catalog import get_runtime_command_catalog
 from app.executors.command_runner import run_command
 
 
 def get_available_commands() -> list[dict]:
+    runtime_catalog = get_runtime_command_catalog()
     return [
         {
             "id": cmd.id, "name": cmd.name,
@@ -17,12 +18,13 @@ def get_available_commands() -> list[dict]:
             "dangerous": cmd.dangerous,
             "requires_privilege": cmd.requires_privilege,
         }
-        for cmd in COMMAND_CATALOG.values()
+        for cmd in runtime_catalog.values()
     ]
 
 
 def run_whitelisted_command(command_id: str, args: dict[str, str] | None = None) -> dict:
-    if command_id not in COMMAND_CATALOG:
+    runtime_catalog = get_runtime_command_catalog()
+    if command_id not in runtime_catalog:
         return {
             "command_id": command_id,
             "exit_code": -1,
@@ -31,7 +33,7 @@ def run_whitelisted_command(command_id: str, args: dict[str, str] | None = None)
             "duration_ms": 0,
         }
 
-    cmd_def = COMMAND_CATALOG[command_id]
+    cmd_def = runtime_catalog[command_id]
     cmd_args = cmd_def.build_args(args or {})
 
     # Use privilege escalation when the command requires it

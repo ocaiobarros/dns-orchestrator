@@ -187,6 +187,13 @@ export function useApplyConfig() {
     mutationFn: async (request: ApplyRequest) => { const r = await api.applyConfig(request); if (!r.success) throw new Error(r.error!); return r.data; },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.services });
+      qc.invalidateQueries({ queryKey: queryKeys.systemInfo });
+      qc.invalidateQueries({ queryKey: queryKeys.instanceHealth });
+      qc.invalidateQueries({ queryKey: queryKeys.diagCommands });
+      qc.invalidateQueries({ queryKey: ['telemetry', 'latest'] });
+      qc.invalidateQueries({ queryKey: ['telemetry', 'status'] });
+      qc.invalidateQueries({ queryKey: ['network', 'listeners'] });
+      qc.invalidateQueries({ queryKey: ['network', 'reachability'] });
       qc.invalidateQueries({ queryKey: ['history'] });
       qc.invalidateQueries({ queryKey: ['deploy-state'] });
     },
@@ -228,6 +235,13 @@ export function useRollback() {
       qc.invalidateQueries({ queryKey: ['deploy-state'] });
       qc.invalidateQueries({ queryKey: ['deploy-backups'] });
       qc.invalidateQueries({ queryKey: queryKeys.services });
+      qc.invalidateQueries({ queryKey: queryKeys.systemInfo });
+      qc.invalidateQueries({ queryKey: queryKeys.instanceHealth });
+      qc.invalidateQueries({ queryKey: queryKeys.diagCommands });
+      qc.invalidateQueries({ queryKey: ['telemetry', 'latest'] });
+      qc.invalidateQueries({ queryKey: ['telemetry', 'status'] });
+      qc.invalidateQueries({ queryKey: ['network', 'listeners'] });
+      qc.invalidateQueries({ queryKey: ['network', 'reachability'] });
     },
   });
 }

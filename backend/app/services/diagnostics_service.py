@@ -736,15 +736,43 @@ def get_dns_listeners() -> list[dict]:
 
 def check_reachability() -> list[dict]:
     """Check reachability of key targets including DNS listeners."""
-    targets = [
-        {"target": "8.8.8.8", "label": "Google DNS"},
-        {"target": "1.1.1.1", "label": "Cloudflare DNS"},
-        {"target": "127.0.0.1", "label": "Localhost"},
-        {"target": "100.127.255.101", "label": "Listener unbound01"},
-        {"target": "100.127.255.102", "label": "Listener unbound02"},
-        {"target": "191.243.128.205", "label": "Egress IP 205"},
-        {"target": "191.243.128.206", "label": "Egress IP 206"},
-    ]
+    targets = [{"target": "127.0.0.1", "label": "Localhost"}]
+
+    operation_mode = ""
+    frontend_dns_ip = ""
+    try:
+        from app.services.deploy_service import get_deploy_state
+        deploy_state = get_deploy_state()
+        operation_mode = str(deploy_state.get("operationMode") or "").lower()
+        frontend_dns_ip = str(deploy_state.get("frontendDnsIp") or "").strip()
+    except Exception:
+        pass
+
+    if frontend_dns_ip:
+        targets.append({"target": frontend_dns_ip, "label": "Frontend DNS local"})
+
+    try:
+        from app.services.healthcheck_service import _discover_instances
+        listener_ips = []
+        for inst in _discover_instances():
+            name = inst.get("name") or "resolver"
+            for bind_ip in inst.get("bind_ips", []) or [inst.get("bind_ip", "")]:
+                if bind_ip:
+                    listener_ips.append((bind_ip, f"Listener {name}"))
+        seen = {t["target"] for t in targets}
+        for bind_ip, label in listener_ips:
+            if bind_ip not in seen:
+                targets.append({"target": bind_ip, "label": label})
+                seen.add(bind_ip)
+    except Exception:
+        pass
+
+    if operation_mode != "simple":
+        targets.extend([
+            {"target": "8.8.8.8", "label": "Google DNS"},
+            {"target": "1.1.1.1", "label": "Cloudflare DNS"},
+        ])
+
     results = []
     for t in targets:
         r = _safe_run("ping", ["-c", "1", "-W", "2", t["target"]], timeout=5)
@@ -768,13 +796,14 @@ def check_reachability() -> list[dict]:
 
 def run_health_check() -> dict:
     from datetime import datetime, timezone
-    from app.executors.command_catalog import COMMAND_CATALOG
+    from app.executors.command_catalog import get_runtime_command_catalog
 
     started_at = datetime.now(timezone.utc).isoformat()
     results = []
     priv_status = get_privilege_status()
+    runtime_catalog = get_runtime_command_catalog()
 
-    for cmd_def in COMMAND_CATALOG.values():
+    for cmd_def in runtime_catalog.values():
         try:
             use_priv = cmd_def.requires_privilege
             r = _safe_run(

@@ -12,6 +12,7 @@ export default function NocSystemInfoGrid({ sysInfo }: NocSystemInfoGridProps) {
   if (!sysInfo) return null;
 
   const na = (text: string) => <span className="text-muted-foreground/18 italic text-[9px]">{text}</span>;
+  const isSimpleMode = sysInfo.operation_mode === 'simple';
 
   const items: { label: string; value: ReactNode; icon: ReactNode }[] = [
     { label: 'HOSTNAME', value: sysInfo.hostname ?? '—', icon: <Server size={10} /> },
@@ -21,7 +22,11 @@ export default function NocSystemInfoGrid({ sysInfo }: NocSystemInfoGridProps) {
     { label: 'FRR', value: sysInfo.frr_version ?? sysInfo.frrVersion ?? '—', icon: <GitBranch size={10} /> },
     { label: 'NFTABLES', value: sysInfo.nftables_version ?? sysInfo.nftablesVersion ?? '—', icon: <Shield size={10} /> },
     { label: 'INTERFACE', value: sysInfo.primary_interface ?? sysInfo.mainInterface ?? '—', icon: <Network size={10} /> },
-    { label: 'VIP ANYCAST', value: sysInfo.vip_anycast_available ? (sysInfo.vip_anycast || '—') : na('Not configured'), icon: <Globe size={10} /> },
+    {
+      label: isSimpleMode ? 'LISTENERS DNS' : 'VIP ANYCAST',
+      value: sysInfo.vip_anycast_available ? (sysInfo.vip_anycast || '—') : na(isSimpleMode ? 'Not detected' : 'Not configured'),
+      icon: <Globe size={10} />,
+    },
     { label: 'CONFIG VER', value: sysInfo.config_version_available ? (sysInfo.config_version || '—') : na('No version applied'), icon: <Hash size={10} /> },
     { label: 'LAST APPLY', value: sysInfo.last_apply_available ? safeDate(sysInfo.last_apply_at ?? sysInfo.lastApply) : na('No apply recorded'), icon: <Calendar size={10} /> },
   ];
