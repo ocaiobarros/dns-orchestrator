@@ -16,26 +16,36 @@ def _ok_result(executable: str, args: list[str], timeout: int = 30, use_privileg
 
 
 class DeployServiceNetworkMaterializationTest(unittest.TestCase):
-    def test_materialize_network_prefers_post_up_sh_on_fresh_install(self):
+    def test_materialize_network_falls_back_when_script_is_blocked_by_policy(self):
         calls: list[tuple[str, list[str], bool]] = []
 
-        def fake_isfile(path: str) -> bool:
-            return path == "/etc/network/post-up.sh"
+        payload = {
+            "operationMode": "simple",
+            "instances": [
+                {"name": "unbound01", "bindIp": "100.127.255.105"},
+            ],
+        }
 
         def fake_run_command(executable: str, args: list[str], timeout: int = 30, use_privilege: bool = False, **kwargs):
             calls.append((executable, args, use_privilege))
+            if executable == "/etc/network/post-up.d/dns-control":
+                result = _ok_result(executable, args, timeout=timeout, use_privilege=use_privilege, **kwargs)
+                result["exit_code"] = -1
+                result["stderr"] = "Comando não permitido: /etc/network/post-up.d/dns-control"
+                return result
             result = _ok_result(executable, args, timeout=timeout, use_privilege=use_privilege, **kwargs)
-            result["stdout"] = "post-up executado"
             return result
 
-        with patch.object(deploy_service.os.path, "isfile", side_effect=fake_isfile), patch.object(
+        with patch.object(deploy_service.os.path, "isfile", return_value=True), patch.object(
             deploy_service, "run_command", side_effect=fake_run_command
         ):
-            result = deploy_service._materialize_network({"instances": []})
+            result = deploy_service._materialize_network(payload)
 
         self.assertEqual(result["status"], "success")
-        self.assertIn("post-up executado", result["output"])
-        self.assertEqual(calls, [("/etc/network/post-up.sh", [], True)])
+        self.assertIn("1 IP(s) materializados em lo0", result["output"])
+        self.assertEqual(calls[0], ("/etc/network/post-up.d/dns-control", [], True))
+        self.assertIn(("ip", ["link", "add", "lo0", "type", "dummy"], True), calls)
+        self.assertIn(("ip", ["addr", "add", "100.127.255.105/32", "dev", "lo0"], True), calls)
 
     def test_materialize_network_uses_normalized_bind_ip_when_scripts_are_missing(self):
         calls: list[tuple[str, list[str], bool]] = []
