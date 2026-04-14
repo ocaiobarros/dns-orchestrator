@@ -80,6 +80,13 @@ _NETWORK_MATERIALIZATION_SCRIPTS = (
     "/etc/network/post-up.d/dns-control",
 )
 _STABLE_RUNTIME_BASE_FILES = frozenset({"/etc/nftables.conf"})
+_STABLE_RUNTIME_BASE_SIGNATURES: dict[str, tuple[str, ...]] = {
+    "/etc/nftables.conf": (
+        "#!/usr/sbin/nft -f",
+        "flush ruleset",
+        'include "/etc/nftables.d/*.nft"',
+    ),
+}
 
 # Files NEVER to touch
 _NEVER_TOUCH = frozenset({
@@ -400,6 +407,31 @@ def _collect_nftables_owner_report(paths: list[str] | None = None) -> dict[str, 
     }
 
 
+def _build_skipped_install_result(target_path: str, mode: str, reason: str) -> dict[str, Any]:
+    owner_name, group_name = _get_file_owner_group(target_path)
+    effective_user, effective_group = _get_effective_user_group()
+    audit = {
+        "command": f"install skipped ({reason}): {target_path}",
+        "effective_uid": os.geteuid(),
+        "effective_gid": os.getegid(),
+        "effective_user": effective_user,
+        "effective_group": effective_group,
+        "target": target_path,
+        "owner_after": f"{owner_name}:{group_name}",
+        "mode_expected": mode,
+        "executed_privileged": False,
+    }
+    logger.info("Install skipped for %s | reason=%s | owner=%s", target_path, reason, audit["owner_after"])
+    return {
+        "exit_code": 0,
+        "stdout": "UNCHANGED",
+        "stderr": "",
+        "duration_ms": 0,
+        "audit": audit,
+        "command": audit["command"],
+    }
+
+
 def _install_file_to_target(source_path: str, target_path: str, permissions: str = "0644") -> dict[str, Any]:
     """Install file to target with root ownership using install only."""
     target_dir = os.path.dirname(target_path)
@@ -414,52 +446,16 @@ def _install_file_to_target(source_path: str, target_path: str, permissions: str
             if _has_compatible_stable_runtime_base(source_path, target_path):
                 metadata_check = _verify_file_metadata(target_path, mode)
                 if metadata_check["exit_code"] == 0:
-                    owner_name, group_name = _get_file_owner_group(target_path)
-                    audit = {
-                        "command": f"install skipped (compatible stable base file): {target_path}",
-                        "effective_uid": os.geteuid(),
-                        "effective_gid": os.getegid(),
-                        "effective_user": _get_effective_user_group()[0],
-                        "effective_group": _get_effective_user_group()[1],
-                        "target": target_path,
-                        "owner_after": f"{owner_name}:{group_name}",
-                        "mode_expected": mode,
-                        "executed_privileged": False,
-                    }
-                    logger.info("Install skipped for compatible stable base file %s | owner=%s", target_path, audit["owner_after"])
-                    return {
-                        "exit_code": 0,
-                        "stdout": "UNCHANGED",
-                        "stderr": "",
-                        "duration_ms": 0,
-                        "audit": audit,
-                        "command": audit["command"],
-                    }
+                    return _build_skipped_install_result(target_path, mode, "compatible stable base file")
+            if _has_valid_stable_runtime_base(target_path):
+                metadata_check = _verify_file_metadata(target_path, mode)
+                if metadata_check["exit_code"] == 0:
+                    return _build_skipped_install_result(target_path, mode, "existing stable base file preserved")
             with open(source_path, "rb") as src_fp, open(target_path, "rb") as dst_fp:
                 if src_fp.read() == dst_fp.read():
                     metadata_check = _verify_file_metadata(target_path, mode)
                     if metadata_check["exit_code"] == 0:
-                        owner_name, group_name = _get_file_owner_group(target_path)
-                        audit = {
-                            "command": f"install skipped (identical file): {target_path}",
-                            "effective_uid": os.geteuid(),
-                            "effective_gid": os.getegid(),
-                            "effective_user": _get_effective_user_group()[0],
-                            "effective_group": _get_effective_user_group()[1],
-                            "target": target_path,
-                            "owner_after": f"{owner_name}:{group_name}",
-                            "mode_expected": mode,
-                            "executed_privileged": False,
-                        }
-                        logger.info("Install skipped for identical file %s | owner=%s", target_path, audit["owner_after"])
-                        return {
-                            "exit_code": 0,
-                            "stdout": "UNCHANGED",
-                            "stderr": "",
-                            "duration_ms": 0,
-                            "audit": audit,
-                            "command": audit["command"],
-                        }
+                        return _build_skipped_install_result(target_path, mode, "identical file")
         
     except OSError:
         pass
@@ -485,6 +481,11 @@ def _install_file_to_target(source_path: str, target_path: str, permissions: str
         "mode_expected": mode,
         "executed_privileged": result.get("executed_privileged", False),
     }
+
+    if result["exit_code"] != 0 and "Read-only file system" in (result.get("stderr") or "") and _has_valid_stable_runtime_base(target_path):
+        metadata_check = _verify_file_metadata(target_path, mode)
+        if metadata_check["exit_code"] == 0:
+            return _build_skipped_install_result(target_path, mode, "read-only stable base file preserved")
 
     if result["exit_code"] != 0 or final_check["exit_code"] != 0:
         logger.error(
@@ -529,7 +530,7 @@ def _install_file_to_target(source_path: str, target_path: str, permissions: str
 
 
 def _normalize_stable_runtime_base_content(target_path: str, content: str) -> str:
-    if target_path == "/etc/nftables.conf":
+    if target_path in _STABLE_RUNTIME_BASE_SIGNATURES:
         return "\n".join(line.strip() for line in content.splitlines() if line.strip())
     return content
 
@@ -545,6 +546,21 @@ def _has_compatible_stable_runtime_base(source_path: str, target_path: str) -> b
         return bool(source_content) and source_content == target_content
     except OSError:
         return False
+
+
+def _has_valid_stable_runtime_base(target_path: str) -> bool:
+    required_lines = _STABLE_RUNTIME_BASE_SIGNATURES.get(target_path)
+    if not required_lines or not os.path.exists(target_path):
+        return False
+
+    try:
+        with open(target_path, "r", encoding="utf-8") as fp:
+            normalized_target = _normalize_stable_runtime_base_content(target_path, fp.read())
+    except OSError:
+        return False
+
+    target_lines = set(normalized_target.splitlines())
+    return all(line in target_lines for line in required_lines)
 
 
 def _cleanup_partial_file(target_path: str):
