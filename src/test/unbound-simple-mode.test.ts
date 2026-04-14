@@ -106,13 +106,13 @@ describe('Unbound Simple Mode — AD Forward Zones', () => {
     expect(content).toContain('forward-addr: 10.0.0.11');
   });
 
-  it('generates private-domain for AD domains', () => {
+  it('generates only the main private-domain for AD domains', () => {
     const config = makeSimpleConfig({
       adForwardZones: [{ domain: 'corp.interno', dnsServers: ['10.1.1.1'] }],
     });
     const content = generateUnboundConf(config, 0);
     expect(content).toContain('private-domain: "corp.interno"');
-    expect(content).toContain('private-domain: "_msdcs.corp.interno"');
+    expect(content).not.toContain('private-domain: "_msdcs.corp.interno"');
   });
 
   it('does NOT generate AD forward-zone when domain has no DCs', () => {
@@ -214,10 +214,9 @@ describe('Unbound Simple Mode — Config Equivalence Between Instances', () => {
     const content0 = generateUnboundConf(config, 0);
     const content1 = generateUnboundConf(config, 1);
 
-    // Remove instance-specific lines for comparison
     const normalize = (c: string) =>
       c.split('\n')
-        .filter(l => !l.includes('interface:') && !l.includes('control-interface:') && !l.includes('control-port:'))
+        .filter(l => !l.includes('interface:') && !l.includes('control-interface:') && !l.includes('control-port:') && !l.includes('pidfile:'))
         .join('\n');
 
     expect(normalize(content0)).toBe(normalize(content1));
