@@ -8,7 +8,7 @@ Matches vdns-02 runtime exactly:
 - prefetch: yes, prefetch-key: yes
 - msg-cache-slabs: 4, rrset-cache-slabs: 4
 - use-syslog: no, module-config: "iterator"
-- pidfile: /var/run/unbound.pid
+- pidfile: /var/run/{name}.pid (per-instance)
 - include: unbound-block-domains.conf
 - forward-zone with forward-first: yes
 - server: include: anablock.conf at end
