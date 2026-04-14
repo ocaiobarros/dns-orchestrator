@@ -42,17 +42,17 @@ function makePayload(overrides?: Partial<WizardConfig>): WizardConfig {
 describe('Frontend/Backend Parity Contract', () => {
   const config = makePayload();
 
-  it('block order: server → remote-control → forward-zone → server(anablock)', () => {
+  it('block order: single server → remote-control → forward-zone', () => {
     const content = generateUnboundConf(config, 0);
     const serverIdx = content.indexOf('server:');
     const remoteIdx = content.indexOf('remote-control:');
     const forwardIdx = content.indexOf('forward-zone:');
-    const anablockIdx = content.lastIndexOf('server:');
+    const serverCount = (content.match(/^server:$/gm) || []).length;
 
     expect(serverIdx).toBeGreaterThanOrEqual(0);
     expect(remoteIdx).toBeGreaterThan(serverIdx);
     expect(forwardIdx).toBeGreaterThan(remoteIdx);
-    expect(anablockIdx).toBeGreaterThan(forwardIdx);
+    expect(serverCount).toBe(1);
   });
 
   it('tuning parameters match parity contract', () => {
@@ -109,14 +109,15 @@ describe('Frontend/Backend Parity Contract', () => {
     });
     const content = generateUnboundConf(cfg, 0);
     expect(content).toContain('private-domain: "corp.local"');
-    expect(content).toContain('private-domain: "_msdcs.corp.local"');
+    expect(content).not.toContain('private-domain: "_msdcs.corp.local"');
     expect(content).toContain('name: "corp.local"');
     expect(content).toContain('name: "_msdcs.corp.local"');
-    // DC addrs appear in both zones
     const corpZoneIdx = content.indexOf('name: "corp.local"');
     const msdcsZoneIdx = content.indexOf('name: "_msdcs.corp.local"');
     expect(content.indexOf('forward-addr: 10.0.1.1', corpZoneIdx)).toBeGreaterThan(corpZoneIdx);
+    expect(content.indexOf('forward-addr: 10.0.1.2', corpZoneIdx)).toBeGreaterThan(corpZoneIdx);
     expect(content.indexOf('forward-addr: 10.0.1.1', msdcsZoneIdx)).toBeGreaterThan(msdcsZoneIdx);
+    expect(content.indexOf('forward-addr: 10.0.1.2', msdcsZoneIdx)).toBeGreaterThan(msdcsZoneIdx);
   });
 
   it('computeSlabs matches Python _compute_slabs for all cases', () => {
@@ -146,12 +147,15 @@ describe('Frontend/Backend Parity Contract', () => {
     expect(content).toContain('module-config: "iterator"');
   });
 
-  it('anablock include is at the end', () => {
+  it('anablock include stays inside the main server block', () => {
     const content = generateUnboundConf(config, 0);
-    const lines = content.trimEnd().split('\n');
-    const lastServerIdx = content.lastIndexOf('server:');
+    const serverCount = (content.match(/^server:$/gm) || []).length;
+    const serverIdx = content.indexOf('server:');
+    const remoteIdx = content.indexOf('remote-control:');
     const anablockIdx = content.indexOf('include: /etc/unbound/anablock.conf');
-    expect(anablockIdx).toBeGreaterThan(lastServerIdx);
+    expect(serverCount).toBe(1);
+    expect(anablockIdx).toBeGreaterThan(serverIdx);
+    expect(anablockIdx).toBeLessThan(remoteIdx);
   });
 
   it('egress is suppressed in simple mode', () => {

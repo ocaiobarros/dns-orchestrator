@@ -63,11 +63,11 @@ describe('Golden File — Simple with AD (2 DCs)', () => {
   });
   const content = generateUnboundConf(config, 0);
 
-  it('contains AD forward-zones and private-domain', () => {
+  it('contains AD forward-zones, dual DCs and only the main private-domain', () => {
     expect(content).toContain('name: "empresa.local"');
     expect(content).toContain('name: "_msdcs.empresa.local"');
     expect(content).toContain('private-domain: "empresa.local"');
-    expect(content).toContain('private-domain: "_msdcs.empresa.local"');
+    expect(content).not.toContain('private-domain: "_msdcs.empresa.local"');
     expect(content).toContain('forward-addr: 10.0.0.10');
     expect(content).toContain('forward-addr: 10.0.0.11');
   });
@@ -104,12 +104,12 @@ describe('Golden File — Simple with /23 CIDR', () => {
 describe('Golden File — 2 instances parity', () => {
   const config = makeSimpleConfig();
 
-  it('generates equivalent configs except listener/control', () => {
+  it('generates equivalent configs except listener/control/pid differences', () => {
     const c0 = generateUnboundConf(config, 0);
     const c1 = generateUnboundConf(config, 1);
     const normalize = (c: string) =>
       c.split('\n')
-        .filter(l => !l.includes('interface:') && !l.includes('control-interface:') && !l.includes('control-port:'))
+        .filter(l => !l.includes('interface:') && !l.includes('control-interface:') && !l.includes('control-port:') && !l.includes('pidfile:'))
         .join('\n');
     expect(normalize(c0)).toBe(normalize(c1));
   });
