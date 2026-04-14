@@ -209,6 +209,7 @@ forward-zone:
         forwardZonesBlock += `    forward-addr: ${srv}\n`;
       }
     }
+  }
   // Final assembly: server → remote-control → forward-zone (no trailing server: block)
   return serverBlock + remoteControlBlock + forwardZonesBlock;
 }
