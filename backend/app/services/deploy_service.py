@@ -79,7 +79,6 @@ _CLEANUP_GLOBS = {
 _RUNTIME_BASE_FILES = frozenset({"/etc/nftables.conf"})
 _NETWORK_MATERIALIZATION_SCRIPTS = (
     "/etc/network/post-up.d/dns-control",
-    "/etc/network/post-up.sh",
 )
 
 # Files NEVER to touch
@@ -199,6 +198,11 @@ def _materialize_network(payload: dict[str, Any] | None = None) -> dict[str, Any
     for script_path in _NETWORK_MATERIALIZATION_SCRIPTS:
         if os.path.isfile(script_path):
             result = run_command(script_path, [], timeout=30, use_privilege=True)
+            if result["exit_code"] != 0:
+                stderr = (result.get("stderr") or "").lower()
+                if "comando não permitido" in stderr or "not allowed to execute" in stderr:
+                    logger.warning("Network materialization script blocked by sudo policy: %s", script_path)
+                    break
             return {
                 "status": "success" if result["exit_code"] == 0 else "failed",
                 "output": result["stdout"][:500] or f"{script_path} executado",
