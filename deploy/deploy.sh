@@ -284,16 +284,21 @@ fi
 step "Configurando nftables"
 # ═══════════════════════════════════════════════════════════════
 
-# Garantir que o arquivo de configuração base existe
-if [[ ! -f "/etc/nftables.conf" ]]; then
-    cat > /etc/nftables.conf <<'NFTEOF'
-#!/usr/sbin/nft -f
+# Garantir que o arquivo de configuração base existe E contém include
+NFTABLES_EXPECTED='#!/usr/sbin/nft -f
 flush ruleset
-include "/etc/nftables.d/*.nft"
-NFTEOF
+include "/etc/nftables.d/*.nft"'
+
+if [[ ! -f "/etc/nftables.conf" ]]; then
+    printf '%s\n' "$NFTABLES_EXPECTED" > /etc/nftables.conf
     ok "nftables.conf base criado"
+elif ! grep -q 'include "/etc/nftables.d/\*.nft"' /etc/nftables.conf; then
+    # Debian default não tem include — sobrescrever com versão correta
+    cp /etc/nftables.conf /etc/nftables.conf.bak.$(date +%Y%m%d%H%M%S) 2>/dev/null || true
+    printf '%s\n' "$NFTABLES_EXPECTED" > /etc/nftables.conf
+    ok "nftables.conf atualizado (include adicionado)"
 else
-    ok "nftables.conf já existe"
+    ok "nftables.conf já existe e contém include"
 fi
 # Garantir modo 0644 e ownership root:root (Debian default pode ser 755)
 chmod 0644 /etc/nftables.conf
