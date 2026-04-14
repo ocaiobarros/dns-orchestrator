@@ -77,6 +77,10 @@ _CLEANUP_GLOBS = {
 }
 
 _RUNTIME_BASE_FILES = frozenset({"/etc/nftables.conf"})
+_NETWORK_MATERIALIZATION_SCRIPTS = (
+    "/etc/network/post-up.d/dns-control",
+    "/etc/network/post-up.sh",
+)
 
 # Files NEVER to touch
 _NEVER_TOUCH = frozenset({
@@ -176,6 +180,88 @@ def _retry_command(
         "stdout": "",
         "stderr": f"Falha ao executar {' '.join([executable] + args)}",
         "duration_ms": 0,
+    }
+
+
+def _dedupe_preserve_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in items:
+        cleaned = str(item).strip()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        ordered.append(cleaned)
+    return ordered
+
+
+def _materialize_network(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    for script_path in _NETWORK_MATERIALIZATION_SCRIPTS:
+        if os.path.isfile(script_path):
+            result = run_command(script_path, [], timeout=30, use_privilege=True)
+            return {
+                "status": "success" if result["exit_code"] == 0 else "failed",
+                "output": result["stdout"][:500] or f"{script_path} executado",
+                "stderr": result["stderr"][:500],
+            }
+
+    if not payload:
+        return {
+            "status": "success",
+            "output": "Nenhum script de rede disponível — nada para materializar",
+        }
+
+    normalized = normalize_payload(payload)
+    instances = normalized.get("instances", []) or []
+
+    listener_ips = _dedupe_preserve_order([
+        str(inst.get("bindIp") or inst.get("listenAddress") or inst.get("listen_address") or inst.get("ip") or "").strip()
+        for inst in instances
+        if str(inst.get("bindIp") or inst.get("listenAddress") or inst.get("listen_address") or inst.get("ip") or "").strip()
+        not in ("", "127.0.0.1", "0.0.0.0")
+    ])
+
+    if not listener_ips:
+        return {
+            "status": "success",
+            "output": "Nenhum listener IP externo para materializar",
+        }
+
+    create_lo0 = run_command("ip", ["link", "add", "lo0", "type", "dummy"], timeout=5, use_privilege=True)
+    create_lo0_stderr = (create_lo0.get("stderr") or "").lower()
+    if create_lo0["exit_code"] != 0 and "file exists" not in create_lo0_stderr:
+        return {
+            "status": "failed",
+            "output": "Falha ao criar interface dummy lo0",
+            "stderr": create_lo0.get("stderr", "")[:300],
+        }
+
+    up_lo0 = run_command("ip", ["link", "set", "lo0", "up"], timeout=5, use_privilege=True)
+    if up_lo0["exit_code"] != 0:
+        return {
+            "status": "failed",
+            "output": "Falha ao ativar interface dummy lo0",
+            "stderr": up_lo0.get("stderr", "")[:300],
+        }
+
+    msgs: list[str] = []
+    for ip in listener_ips:
+        result = run_command("ip", ["addr", "add", f"{ip}/32", "dev", "lo0"], timeout=5, use_privilege=True)
+        stderr = (result.get("stderr") or "").lower()
+        if result["exit_code"] == 0:
+            msgs.append(f"{ip}/32 adicionado em lo0")
+        elif "file exists" in stderr:
+            msgs.append(f"{ip}/32 já existe em lo0")
+        else:
+            return {
+                "status": "failed",
+                "output": f"Falha ao materializar {ip}/32 em lo0",
+                "stderr": result.get("stderr", "")[:300],
+            }
+
+    return {
+        "status": "success",
+        "output": f"{len(listener_ips)} IP(s) materializados em lo0: {', '.join(msgs)}",
     }
 
 
@@ -451,6 +537,7 @@ def _execute_deploy_locked(
     operator: str = "system",
 ) -> dict:
     deploy_id = str(uuid.uuid4())[:12]
+    normalized_payload: dict[str, Any] | None = None
     steps: list[dict] = []
     all_ok = True
     backup_id = None
@@ -476,9 +563,11 @@ def _execute_deploy_locked(
     # ════════════════════════════════════════════════════════════════
     s1 = _step(1, "Validar modelo de configuração")
     def validate():
+        nonlocal normalized_payload
         v = validate_config(payload)
         if not v["valid"]:
             return {"status": "failed", "output": f"Erros: {v['errors']}", "stderr": json.dumps(v["errors"])}
+        normalized_payload = v.get("normalized") or normalize_payload(payload)
         warnings = v.get("warnings", [])
         if warnings:
             _update_live_state(warnings=warnings)
@@ -489,6 +578,8 @@ def _execute_deploy_locked(
     if s1["status"] == "failed":
         _update_live_state(phase="failed", lastMessage="Validação falhou")
         return _build_result(deploy_id, steps, False, dry_run, scope, operator, [], [], backup_id)
+
+    runtime_payload = normalized_payload or normalize_payload(payload)
 
     # ════════════════════════════════════════════════════════════════
     # STEP 2: Generate files (into staging)
@@ -753,7 +844,7 @@ def _execute_deploy_locked(
         s_dry["startedAt"] = _now_iso()
         s_dry["finishedAt"] = _now_iso()
         steps.append(s_dry)
-        health_checks = _generate_health_checks(payload, dry_run=True)
+        health_checks = _generate_health_checks(runtime_payload, dry_run=True)
 
         if staging_dir and os.path.isdir(staging_dir):
             try:
@@ -997,7 +1088,7 @@ def _execute_deploy_locked(
             # Reload sysctl
             run_command("sysctl", ["--system"], timeout=15, use_privilege=True)
             # Re-materialize network
-            run_command("/etc/network/post-up.d/dns-control", [], timeout=30, use_privilege=True)
+            _materialize_network()
             # Reload nftables
             run_command("nft", ["-f", "/etc/nftables.conf"], timeout=15, use_privilege=True)
             # Start unbound instances from backup
@@ -1143,52 +1234,7 @@ def _execute_deploy_locked(
     # ════════════════════════════════════════════════════════════════
     s10 = _step(10, "Materializar IPs de rede (post-up)", "/etc/network/post-up.d/dns-control")
     def run_postup():
-        postup_path = "/etc/network/post-up.d/dns-control"
-        if os.path.isfile(postup_path):
-            r = run_command(postup_path, [], timeout=30, use_privilege=True)
-            return {
-                "status": "success" if r["exit_code"] == 0 else "failed",
-                "output": r["stdout"][:500] or "post-up executado",
-                "stderr": r["stderr"][:500],
-            }
-
-        # No post-up script — materialize listener IPs directly from payload
-        inst_list = payload.get("instances", [])
-        listener_ips = []
-        for inst in inst_list:
-            ip = inst.get("listenAddress") or inst.get("listen_address") or inst.get("ip")
-            if ip and not ip.startswith("127."):
-                listener_ips.append(ip)
-
-        if not listener_ips:
-            return {
-                "status": "success",
-                "output": "Nenhum listener IP externo para materializar",
-            }
-
-        # Ensure lo0 dummy interface exists
-        run_command("ip", ["link", "add", "lo0", "type", "dummy"], timeout=5, use_privilege=True)
-        run_command("ip", ["link", "set", "lo0", "up"], timeout=5, use_privilege=True)
-
-        msgs = []
-        for ip in listener_ips:
-            r = run_command("ip", ["addr", "add", f"{ip}/32", "dev", "lo0"], timeout=5, use_privilege=True)
-            stderr = (r.get("stderr") or "").lower()
-            if r["exit_code"] == 0:
-                msgs.append(f"{ip}/32 adicionado em lo0")
-            elif "file exists" in stderr:
-                msgs.append(f"{ip}/32 já existe em lo0")
-            else:
-                return {
-                    "status": "failed",
-                    "output": f"Falha ao materializar {ip}/32 em lo0",
-                    "stderr": r.get("stderr", "")[:300],
-                }
-
-        return {
-            "status": "success",
-            "output": f"{len(listener_ips)} IP(s) materializados em lo0: {', '.join(msgs)}",
-        }
+        return _materialize_network(runtime_payload)
 
     _run_step(s10, run_postup)
     steps.append(s10)
@@ -1201,7 +1247,7 @@ def _execute_deploy_locked(
     # STEPS 11-14: Enable + Start unbound instances
     # ════════════════════════════════════════════════════════════════
     order = 11
-    instances = payload.get("instances", [])
+    instances = runtime_payload.get("instances", [])
     for inst in instances:
         name = inst.get("name", "unbound")
 
@@ -1269,7 +1315,7 @@ def _execute_deploy_locked(
     # ════════════════════════════════════════════════════════════════
     # STEP N: Load nftables — ONLY for interception mode
     # ════════════════════════════════════════════════════════════════
-    _normalized_for_mode = normalize_payload(payload)
+    _normalized_for_mode = runtime_payload
     _is_simple_mode = _normalized_for_mode.get("operationMode") == "simple"
 
     if _is_simple_mode:
@@ -1325,7 +1371,7 @@ def _execute_deploy_locked(
     s_health = _step(order, "Verificação pós-deploy")
     def verify():
         nonlocal health_checks
-        health_checks = _run_health_checks(payload)
+        health_checks = _run_health_checks(runtime_payload)
         passed = sum(1 for h in health_checks if h["status"] == "pass")
         skipped = sum(1 for h in health_checks if h["status"] in ("skip", "warn"))
         applicable = len(health_checks) - skipped
@@ -1490,8 +1536,7 @@ def _execute_rollback_locked(backup_id: str, operator: str = "system") -> dict:
     if has_network:
         s = _step(order, "Materializar IPs de rede (post-up)")
         def run_postup():
-            r = run_command("/etc/network/post-up.d/dns-control", [], timeout=30, use_privilege=True)
-            return {"status": "success" if r["exit_code"] == 0 else "failed", "output": r["stdout"][:500]}
+            return _materialize_network()
         _run_step(s, run_postup)
         steps.append(s)
         order += 1
@@ -1688,9 +1733,10 @@ def _detect_ip_collisions(payload: dict[str, Any]) -> list[str]:
 
 def _run_health_checks(payload: dict) -> list[dict]:
     """Post-deploy health checks — validates full topology."""
+    normalized = normalize_payload(payload)
     checks = []
-    instances = payload.get("instances", [])
-    vips = payload.get("serviceVips", [])
+    instances = normalized.get("instances", [])
+    vips = normalized.get("nat", {}).get("serviceVips", []) or normalized.get("serviceVips", []) or []
 
     for inst in instances:
         name = inst.get("name", "unbound")
@@ -1777,8 +1823,8 @@ def _run_health_checks(payload: dict) -> list[dict]:
 
     # ── nftables checks: mode-dependent ──
     operation_mode = str(
-        payload.get("operationMode")
-        or payload.get("_wizardConfig", {}).get("operationMode", "")
+        normalized.get("operationMode")
+        or normalized.get("_wizardConfig", {}).get("operationMode", "")
         or ""
     ).lower()
     is_simple_mode = operation_mode in ("simple", "recursivo_simples", "recursivo simples")
@@ -1789,8 +1835,8 @@ def _run_health_checks(payload: dict) -> list[dict]:
     if is_simple_mode:
         # ── Simple mode: check local balancing ──
         frontend_ip = str(
-            payload.get("frontendDnsIp")
-            or payload.get("_wizardConfig", {}).get("frontendDnsIp", "")
+            normalized.get("frontendDnsIp")
+            or normalized.get("_wizardConfig", {}).get("frontendDnsIp", "")
             or ""
         ).strip()
 
@@ -1903,8 +1949,8 @@ def _run_health_checks(payload: dict) -> list[dict]:
 
     # Border-routed masquerade check
     egress_delivery = str(
-        payload.get("egressDeliveryMode")
-        or payload.get("_wizardConfig", {}).get("egressDeliveryMode", "")
+        normalized.get("egressDeliveryMode")
+        or normalized.get("_wizardConfig", {}).get("egressDeliveryMode", "")
         or "host-owned"
     )
     if egress_delivery == "border-routed":
@@ -1971,8 +2017,9 @@ def _run_health_checks(payload: dict) -> list[dict]:
 
 
 def _generate_health_checks(payload: dict, dry_run: bool = False) -> list[dict]:
+    normalized = normalize_payload(payload)
     checks = []
-    instances = payload.get("instances", [])
+    instances = normalized.get("instances", [])
     for inst in instances:
         name = inst.get("name", "unbound")
         checks.append({"name": f"{name} systemd status", "target": name, "status": "skip", "detail": "Dry-run", "durationMs": 0})
