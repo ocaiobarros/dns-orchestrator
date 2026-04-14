@@ -91,7 +91,8 @@ class DeployServiceNftablesApplyTest(unittest.TestCase):
         self.assertIn("/etc/nftables.conf", installed_paths)
         self.assertIn("/etc/nftables.d/5000-local-table.nft", installed_paths)
 
-    def test_valid_existing_nftables_master_is_preserved_on_read_only_failure(self):
+    def test_valid_existing_nftables_master_is_skipped_unconditionally(self):
+        """Stable base file with valid content is skipped without even trying install."""
         with tempfile.TemporaryDirectory() as temp_dir:
             source_path = f"{temp_dir}/source-nftables.conf"
             target_path = f"{temp_dir}/target-nftables.conf"
@@ -102,19 +103,28 @@ class DeployServiceNftablesApplyTest(unittest.TestCase):
             with open(target_path, "w", encoding="utf-8") as fp:
                 fp.write("#!/usr/sbin/nft -f\nflush ruleset\ninclude \"/etc/nftables.d/*.nft\"\n")
 
-            with patch.object(deploy_service, "run_command", return_value={
-                "exit_code": 1,
-                "stdout": "",
-                "stderr": "install: cannot remove '/etc/nftables.conf': Read-only file system",
-                "duration_ms": 0,
-                "executed_privileged": True,
-                "command": "install ...",
-            }):
+            # Patch the set so our temp path is treated as a stable base file
+            patched_base_files = frozenset({target_path})
+            patched_signatures = {
+                target_path: (
+                    "#!/usr/sbin/nft -f",
+                    "flush ruleset",
+                    'include "/etc/nftables.d/*.nft"',
+                ),
+            }
+
+            def mkdir_ok(executable, args, **kwargs):
+                return {"exit_code": 0, "stdout": "", "stderr": "", "duration_ms": 0,
+                        "executed_privileged": True, "command": f"{executable} {' '.join(args)}"}
+
+            with patch.object(deploy_service, "_STABLE_RUNTIME_BASE_FILES", patched_base_files), \
+                 patch.object(deploy_service, "_STABLE_RUNTIME_BASE_SIGNATURES", patched_signatures), \
+                 patch.object(deploy_service, "run_command", side_effect=mkdir_ok):
                 result = deploy_service._install_file_to_target(source_path, target_path, "0644")
 
             self.assertEqual(result["exit_code"], 0)
             self.assertEqual(result["stdout"], "UNCHANGED")
-            self.assertIn("read-only stable base file preserved", result["command"])
+            self.assertIn("stable base file valid", result["command"])
 
 
 if __name__ == "__main__":
