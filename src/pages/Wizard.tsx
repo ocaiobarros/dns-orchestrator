@@ -506,11 +506,14 @@ export default function Wizard() {
         }
 
         // Merge imported config over defaults
+        const mergedOpMode = importedConfig.operationMode ?? prev.operationMode;
         setConfig(prev => ({
           ...prev,
           ...importedConfig,
           // Ensure instanceCount stays in sync
           instanceCount: importedConfig.instances?.length ?? prev.instanceCount,
+          // Force layoutMode to follow operationMode (interception=organic, simple=isolated)
+          layoutMode: mergedOpMode === 'interception' ? 'organic' : 'isolated',
         }));
         setConfigSource('wizard_form');
         setStep(0);
