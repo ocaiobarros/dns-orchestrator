@@ -145,8 +145,9 @@ def _generate_nftables_entrypoint() -> dict:
 def _generate_network_dropin_interfaces(payload: dict, addrs: dict) -> dict:
     """ifupdown2-style interfaces fragment that materializes lo and lo0.
 
-    /etc/network/interfaces remains untouched; this fragment is sourced via
-    `source /etc/network/nftables.d/interfaces` (operator-added once, manual).
+    /etc/network/interfaces is automatically spliced by the deploy pipeline to
+    `source /etc/network/nftables.d/interfaces` inside a BEGIN/END DNS-CONTROL
+    managed block — no manual operator action required.
     """
     wizard_cfg = payload.get("_wizardConfig", {}) or {}
     main_iface = str(payload.get("mainInterface") or wizard_cfg.get("mainInterface") or "")
