@@ -483,7 +483,7 @@ done
 # Auto-reload: {"ativo" if auto_reload else "desativado"}
 # Gerado automaticamente — não editar manualmente
 
-set -euo pipefail
+set -uo pipefail
 
 APIURL="{domain_url}"
 CONF="/etc/unbound/anablock.conf"
@@ -491,22 +491,55 @@ CONF_BAK="/etc/unbound/anablock.conf.bak"
 CONF_TMP="/tmp/anablock-sync-$$.conf"
 VERSION_URL="{api_url}/api/version"
 VERSION_FILE="/var/lib/dns-control/anablock-version"
+STATUS_FILE="/var/lib/dns-control/anablock-status.json"
+
+mkdir -p /var/lib/dns-control 2>/dev/null || true
+
+write_status() {{
+    # write_status <status> <message> [domains_count]
+    local status="$1"
+    local message="$2"
+    local domains="${{3:-0}}"
+    local ts
+    ts=$(date -u +%s)
+    cat > "$STATUS_FILE.tmp" <<EOF
+{{
+  "last_update_timestamp": $ts,
+  "last_update_iso": "$(date -u -d @$ts +%Y-%m-%dT%H:%M:%SZ)",
+  "domains_loaded_count": $domains,
+  "last_status": "$status",
+  "message": "$message",
+  "mode": "{blocklist_mode}",
+  "api_url": "{api_url}"
+}}
+EOF
+    mv "$STATUS_FILE.tmp" "$STATUS_FILE" 2>/dev/null || true
+    chmod 0644 "$STATUS_FILE" 2>/dev/null || true
+}}
+
+cleanup_fail() {{
+    rm -f "$CONF_TMP" 2>/dev/null || true
+}}
+trap cleanup_fail EXIT
 
 # Verificar se houve atualização na base
 REMOTE_VERSION=$(curl -sf --max-time 10 "$VERSION_URL" 2>/dev/null || echo "0")
 LOCAL_VERSION=$(cat "$VERSION_FILE" 2>/dev/null || echo "0")
 
 if [ "$REMOTE_VERSION" = "$LOCAL_VERSION" ] && [ -f "$CONF" ]; then
+    DOMAINS=$(grep -c "^local-zone" "$CONF" 2>/dev/null || echo 0)
+    write_status "OK" "sem alterações (versão $LOCAL_VERSION)" "$DOMAINS"
     logger -t anablock-sync "AnaBlock: sem alterações (versão $LOCAL_VERSION)"
     exit 0
 fi
 
 logger -t anablock-sync "AnaBlock: atualizando $LOCAL_VERSION → $REMOTE_VERSION"
 
-# Baixar nova configuração
+# Baixar nova configuração — fallback: manter arquivo válido anterior
 if ! curl -sf --max-time 30 "$APIURL" -o "$CONF_TMP"; then
-    logger -t anablock-sync "ERRO: falha ao baixar configuração AnaBlock"
-    rm -f "$CONF_TMP"
+    DOMAINS=$(grep -c "^local-zone" "$CONF" 2>/dev/null || echo 0)
+    write_status "FAIL" "falha ao baixar configuração AnaBlock — mantendo versão anterior" "$DOMAINS"
+    logger -t anablock-sync "ERRO: falha ao baixar configuração AnaBlock — mantendo versão anterior"
     exit 1
 fi
 {validate_block}
@@ -517,13 +550,23 @@ fi
 
 # Aplicar: mover atomicamente
 mv "$CONF_TMP" "$CONF"
-chown root:unbound "$CONF"
-chmod 0644 "$CONF"
+chown root:unbound "$CONF" 2>/dev/null || true
+chmod 0644 "$CONF" 2>/dev/null || true
+DOMAINS=$(grep -c "^local-zone" "$CONF" 2>/dev/null || echo 0)
 {reload_block}
-# Salvar versão
+# Salvar versão e status
 echo "$REMOTE_VERSION" > "$VERSION_FILE"
-logger -t anablock-sync "AnaBlock: atualização concluída (versão $REMOTE_VERSION)"
+write_status "OK" "atualização concluída (versão $REMOTE_VERSION)" "$DOMAINS"
+logger -t anablock-sync "AnaBlock: atualização concluída (versão $REMOTE_VERSION, $DOMAINS domínios)"
 """
+        # Emit BOTH the operator-friendly path under /etc/unbound/ AND
+        # the legacy /opt/dns-control/ path for backward compatibility.
+        files.append({
+            "path": "/etc/unbound/gen-anablock.sh",
+            "content": sync_script,
+            "permissions": "0755",
+            "owner": "root:root",
+        })
         files.append({
             "path": "/opt/dns-control/scripts/anablock-sync.sh",
             "content": sync_script,
@@ -532,15 +575,16 @@ logger -t anablock-sync "AnaBlock: atualização concluída (versão $REMOTE_VER
         })
 
         files.append({
-            "path": "/etc/systemd/system/anablock-sync.service",
+            "path": "/usr/lib/systemd/system/anablock-update.service",
             "content": """[Unit]
 Description=AnaBlock judicial blocklist sync
+Documentation=https://api.anablock.net.br
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/opt/dns-control/scripts/anablock-sync.sh
+ExecStart=/etc/unbound/gen-anablock.sh
 TimeoutSec=120
 User=root
 
@@ -553,7 +597,7 @@ WantedBy=multi-user.target
 
         if auto_sync:
             files.append({
-                "path": "/etc/systemd/system/anablock-sync.timer",
+                "path": "/usr/lib/systemd/system/anablock-update.timer",
                 "content": f"""[Unit]
 Description=AnaBlock judicial blocklist sync timer
 
@@ -562,6 +606,7 @@ OnBootSec=2min
 OnUnitActiveSec={sync_hours}h
 RandomizedDelaySec=300
 Persistent=true
+Unit=anablock-update.service
 
 [Install]
 WantedBy=timers.target
