@@ -94,3 +94,65 @@ def telemetry_status(_: User = Depends(get_current_user)):
         "mode": data.get("mode", "unknown"),
         "error": data.get("error"),
     }
+
+
+# ──────────────────────────────────────────────────────────────────────
+# AnaBlock observability — surfaces the 3 required metrics:
+#   anablock_last_update_timestamp
+#   anablock_domains_loaded_count
+#   anablock_last_status (OK/FAIL)
+# Source: /var/lib/dns-control/anablock-status.json (written by gen-anablock.sh)
+# ──────────────────────────────────────────────────────────────────────
+
+ANABLOCK_STATUS_FILE = Path("/var/lib/dns-control/anablock-status.json")
+ANABLOCK_CONF_FILE = Path("/etc/unbound/anablock.conf")
+
+
+@router.get("/anablock")
+def telemetry_anablock(_: User = Depends(get_current_user)):
+    """Return AnaBlock sync metrics for the dashboard."""
+    import time
+
+    response = {
+        "enabled": Path("/etc/unbound/gen-anablock.sh").exists(),
+        "anablock_last_update_timestamp": None,
+        "anablock_last_update_iso": None,
+        "anablock_domains_loaded_count": 0,
+        "anablock_last_status": "UNKNOWN",
+        "message": "",
+        "mode": None,
+        "api_url": None,
+        "stale": False,
+        "age_seconds": None,
+        "conf_present": ANABLOCK_CONF_FILE.exists(),
+    }
+
+    if not ANABLOCK_STATUS_FILE.exists():
+        response["message"] = (
+            "Sem dados de execução. Aguardando primeira execução do timer "
+            "anablock-update.timer ou execução manual de /etc/unbound/gen-anablock.sh."
+        )
+        return response
+
+    try:
+        with open(ANABLOCK_STATUS_FILE) as f:
+            status = json.load(f)
+        ts = status.get("last_update_timestamp")
+        response.update({
+            "anablock_last_update_timestamp": ts,
+            "anablock_last_update_iso": status.get("last_update_iso"),
+            "anablock_domains_loaded_count": int(status.get("domains_loaded_count") or 0),
+            "anablock_last_status": str(status.get("last_status") or "UNKNOWN").upper(),
+            "message": status.get("message", ""),
+            "mode": status.get("mode"),
+            "api_url": status.get("api_url"),
+        })
+        if ts:
+            age = int(time.time() - int(ts))
+            response["age_seconds"] = age
+            response["stale"] = age > 12 * 3600
+    except (json.JSONDecodeError, OSError, ValueError) as e:
+        response["anablock_last_status"] = "FAIL"
+        response["message"] = f"Status corrompido: {e}"
+
+    return response
