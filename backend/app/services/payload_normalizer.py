@@ -149,9 +149,10 @@ def normalize_payload(raw: dict[str, Any]) -> dict[str, Any]:
         "simpleStickyTimeout": raw.get("simpleStickyTimeout", 0),
         "securityProfile": raw.get("securityProfile", "isp-hardened"),
         "openResolverConfirmed": raw.get("openResolverConfirmed", False),
-        # Layout strategy: 'isolated' (default, legacy) or 'organic' (native /etc/* paths).
-        # Only meaningful for operationMode == 'interception'.
-        "layoutMode": raw.get("layoutMode", "isolated"),
+        # Layout strategy: 'organic' is mandatory for operationMode == 'interception'
+        # (OS-native paths: /etc/unbound, /etc/network/nftables.d, /usr/lib/systemd/system).
+        # 'isolated' is used only for simple mode.
+        "layoutMode": "organic" if operation_mode == "interception" else raw.get("layoutMode", "isolated"),
         # Preserve raw config for reference
         "_wizardConfig": raw,
     }
