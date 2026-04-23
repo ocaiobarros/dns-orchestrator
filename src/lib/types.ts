@@ -230,7 +230,12 @@ export interface WizardConfig {
   stickyTimeout: number;
   vipMappings: { vipIndex: number; instanceIndex: number }[];
 
-  // Step 7 - Roteamento
+  // Step 7 - Roteamento (FRR/OSPF)
+  // FRR faz parte do layout homologado do modo Interceptação. Os arquivos
+  // /etc/frr/frr.conf e /etc/frr/daemons SEMPRE são gerados nesse modo.
+  // Quando enableOspf=false, o conteúdo é um placeholder seguro (router OSPF
+  // desativado em daemons) — preserva o layout sem ativar adjacências.
+  enableOspf: boolean;
   routingMode: RoutingMode;
   routerId: string;
   ospfArea: string;
@@ -238,6 +243,8 @@ export interface WizardConfig {
   redistributeConnected: boolean;
   ospfCost: number;
   networkType: 'point-to-point' | 'broadcast';
+  ospfHelloInterval: number;
+  ospfDeadInterval: number;
 
   // Step 8 - Segurança
   securityProfile: 'legacy' | 'isp-hardened';
@@ -786,7 +793,8 @@ export const DEFAULT_CONFIG: WizardConfig = {
   stickyTimeout: 1200,
   vipMappings: [],
 
-  // Step 7 - Roteamento
+  // Step 7 - Roteamento (FRR/OSPF) — parte do layout homologado
+  enableOspf: false,
   routingMode: 'static',
   routerId: '',
   ospfArea: '0.0.0.0',
@@ -794,6 +802,8 @@ export const DEFAULT_CONFIG: WizardConfig = {
   redistributeConnected: true,
   ospfCost: 10,
   networkType: 'point-to-point',
+  ospfHelloInterval: 10,
+  ospfDeadInterval: 40,
 
   // Step 8 - Segurança
   securityProfile: 'legacy',
