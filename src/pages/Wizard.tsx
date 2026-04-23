@@ -713,6 +713,39 @@ export default function Wizard() {
           <div>• Nunca use IPs de resolvedores públicos como VIP de serviço próprio</div>
         </div>
       )}
+
+      {/* ═══ Layout Estrutural (Organic vs Isolated) ═══ */}
+      <div className="pt-4 border-t border-border/50 space-y-3">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          Layout Estrutural dos Arquivos
+        </div>
+        <div className="grid grid-cols-1 gap-3">
+          <ModeCard
+            selected={config.layoutMode === 'isolated'}
+            onClick={() => set('layoutMode', 'isolated' as const)}
+            label="Isolated (compatível)"
+            badge="Padrão"
+            desc="Mantém os arquivos do DNS Control em paths internos. Não interage com /etc/network/interfaces nem com configs do Debian. Recomendado para deploys existentes."
+          />
+          <ModeCard
+            selected={config.layoutMode === 'organic'}
+            onClick={() => set('layoutMode', 'organic' as const)}
+            label="Organic (OS-native)"
+            desc="Usa o layout operacional do Debian: /etc/network/nftables.d/, /etc/unbound/unbound.conf.d/, /usr/lib/systemd/system/unboundNN.service. Bloco BEGIN/END DNS-CONTROL em arquivos compartilhados (/etc/nftables.conf). NÃO toca /etc/network/interfaces, if-up.d, ifupdown2."
+          />
+        </div>
+        {config.layoutMode === 'organic' && (
+          <div className="p-3 rounded bg-amber-500/5 border border-amber-500/20 text-xs space-y-1">
+            <div className="font-medium text-amber-500 flex items-center gap-1">
+              <AlertTriangle size={12} /> Modo Organic ativo
+            </div>
+            <div className="text-muted-foreground">• Arquivos próprios são <strong>sobrescritos</strong> em cada deploy (header de aviso).</div>
+            <div className="text-muted-foreground">• <code className="font-mono bg-amber-500/10 px-1 rounded">/etc/nftables.conf</code> recebe apenas um bloco delimitado por <code className="font-mono">BEGIN/END DNS-CONTROL</code>.</div>
+            <div className="text-muted-foreground">• <code className="font-mono bg-amber-500/10 px-1 rounded">/etc/network/interfaces</code> permanece <strong>intocado</strong> — adicione manualmente uma vez: <code className="font-mono">source /etc/network/nftables.d/interfaces</code>.</div>
+            <div className="text-muted-foreground">• Garante paridade com o servidor de produção (lo = egress, lo0 = listeners + VIPs).</div>
+          </div>
+        )}
+      </div>
     </div>
   );
 
