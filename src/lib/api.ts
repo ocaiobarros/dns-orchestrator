@@ -264,6 +264,19 @@ export const api = {
   getTelemetryLatest: () => apiCall<any>('GET', '/telemetry/latest'),
   getTelemetryStatus: () => apiCall<any>('GET', '/telemetry/status'),
   getTelemetryHistory: () => apiCall<any[]>('GET', '/telemetry/history'),
+  getTelemetryAnablock: () => apiCall<{
+    enabled: boolean;
+    anablock_last_update_timestamp: number | null;
+    anablock_last_update_iso: string | null;
+    anablock_domains_loaded_count: number;
+    anablock_last_status: 'OK' | 'FAIL' | 'UNKNOWN';
+    message: string;
+    mode: string | null;
+    api_url: string | null;
+    stale: boolean;
+    age_seconds: number | null;
+    conf_present: boolean;
+  }>('GET', '/telemetry/anablock'),
 
   // Kiosk (NOC TV)
   getKioskSummary: () => apiCall<any>('GET', '/kiosk/summary'),
@@ -468,6 +481,19 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path === '/api/telemetry/latest') return mockTelemetryLatest();
   if (path === '/api/telemetry/status') return { collector_status: 'ok', last_update: new Date().toISOString(), file_age_seconds: 5, stale: false, mode: 'recursive_simple' };
   if (path === '/api/telemetry/history') return mockTelemetryHistoryData();
+  if (path === '/api/telemetry/anablock') return {
+    enabled: false,
+    anablock_last_update_timestamp: null,
+    anablock_last_update_iso: null,
+    anablock_domains_loaded_count: 0,
+    anablock_last_status: 'UNKNOWN',
+    message: 'AnaBlock desabilitado no Wizard.',
+    mode: null,
+    api_url: null,
+    stale: false,
+    age_seconds: null,
+    conf_present: true,
+  };
 
   // Import
   if (path === '/api/config/import' && method === 'POST') return { success: true, mode: 'imported', discovery: { instances: [], vip_mappings: [], dns_listeners: [] }, audit: [], errors: [] };
