@@ -248,6 +248,30 @@ def _generate_network_dropin_post_up(payload: dict, addrs: dict) -> dict:
     )
 
 
+def _generate_post_up_wrapper() -> dict:
+    """Wrapper hook in /etc/network/post-up.d/ that invokes the managed post-up.sh.
+
+    ifupdown(2) iterates /etc/network/post-up.d/ after bringing each interface
+    up. This wrapper is the single integration point with the OS — it lets the
+    operator avoid editing /etc/network/interfaces while still guaranteeing the
+    DNS Control materialization (lo0, addresses, nft reload) runs at boot.
+    Idempotent: re-running is safe because post-up.sh is itself idempotent.
+    """
+    body = (
+        "#!/bin/sh\n"
+        + OWNED_HEADER
+        + "# Hook invoked by ifupdown(2) after each interface comes up.\n"
+        "# Delegates to the managed materialization script.\n"
+        "set -e\n"
+        "TARGET=/etc/network/nftables.d/post-up.sh\n"
+        "if [ -x \"$TARGET\" ]; then\n"
+        "    \"$TARGET\" \"$@\" || true\n"
+        "fi\n"
+        "exit 0\n"
+    )
+    return _file("/etc/network/post-up.d/dns-control", body, perms="0755")
+
+
 # ── Unbound drop-ins under /etc/unbound/unbound.conf.d/ ────────────────
 
 
@@ -395,6 +419,7 @@ def generate_organic_files(payload: dict[str, Any]) -> list[dict]:
     files.append(_generate_nftables_entrypoint())
     files.append(_generate_network_dropin_interfaces(payload, addrs))
     files.append(_generate_network_dropin_post_up(payload, addrs))
+    files.append(_generate_post_up_wrapper())
     files.extend(_generate_nftables_modular_snippets(payload))
     files.extend(_generate_unbound_dropins(payload, instances))
     files.extend(_generate_block_domains_assets(payload))
