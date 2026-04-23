@@ -223,6 +223,8 @@ export default function Wizard() {
     const newConfig: Partial<WizardConfig> = {
       operationMode: mode,
       deploymentMode: mode === 'interception' ? 'vip-routed-border' : 'internal-recursive',
+      // Interception is always organic (OS-native layout). Simple mode keeps isolated.
+      layoutMode: mode === 'interception' ? 'organic' : 'isolated',
     };
 
     if (mode === 'simple') {
