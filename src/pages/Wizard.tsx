@@ -735,13 +735,13 @@ export default function Wizard() {
           />
         </div>
         {config.layoutMode === 'organic' && (
-          <div className="p-3 rounded bg-amber-500/5 border border-amber-500/20 text-xs space-y-1">
-            <div className="font-medium text-amber-500 flex items-center gap-1">
+          <div className="p-3 rounded bg-destructive/5 border border-destructive/20 text-xs space-y-1">
+            <div className="font-medium text-destructive flex items-center gap-1">
               <AlertTriangle size={12} /> Modo Organic ativo
             </div>
             <div className="text-muted-foreground">• Arquivos próprios são <strong>sobrescritos</strong> em cada deploy (header de aviso).</div>
-            <div className="text-muted-foreground">• <code className="font-mono bg-amber-500/10 px-1 rounded">/etc/nftables.conf</code> recebe apenas um bloco delimitado por <code className="font-mono">BEGIN/END DNS-CONTROL</code>.</div>
-            <div className="text-muted-foreground">• <code className="font-mono bg-amber-500/10 px-1 rounded">/etc/network/interfaces</code> permanece <strong>intocado</strong> — adicione manualmente uma vez: <code className="font-mono">source /etc/network/nftables.d/interfaces</code>.</div>
+            <div className="text-muted-foreground">• <code className="font-mono bg-destructive/10 px-1 rounded">/etc/nftables.conf</code> recebe apenas um bloco delimitado por <code className="font-mono">BEGIN/END DNS-CONTROL</code>.</div>
+            <div className="text-muted-foreground">• <code className="font-mono bg-destructive/10 px-1 rounded">/etc/network/interfaces</code> permanece <strong>intocado</strong> — adicione manualmente uma vez: <code className="font-mono">source /etc/network/nftables.d/interfaces</code>.</div>
             <div className="text-muted-foreground">• Garante paridade com o servidor de produção (lo = egress, lo0 = listeners + VIPs).</div>
           </div>
         )}
