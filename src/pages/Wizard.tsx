@@ -40,14 +40,14 @@ function getSteps(mode: OperationMode, submode: VipDeliverySubmode) {
   }
   if (submode === 'interception-plus-own-vip') {
     return {
-      names: ['Topologia do Host', 'Modo de Operação DNS', 'Modelo de Entrega do VIP', 'Instâncias Resolver', 'VIPs de Serviço', 'VIP Interception', 'Egress Público', 'Mapeamento VIP→Instância', 'Segurança', 'Observabilidade', 'Revisão & Deploy'],
-      icons: [Server, Network, Globe, Layers, Globe, Crosshair, ExternalLink, Route, Shield, BarChart3, FileText],
+      names: ['Topologia do Host', 'Modo de Operação DNS', 'Modelo de Entrega do VIP', 'Instâncias Resolver', 'VIPs de Serviço', 'VIP Interception', 'Egress Público', 'Mapeamento VIP→Instância', 'Segurança', 'Roteamento (FRR/OSPF)', 'Observabilidade', 'Revisão & Deploy'],
+      icons: [Server, Network, Globe, Layers, Globe, Crosshair, ExternalLink, Route, Shield, Route, BarChart3, FileText],
     };
   }
   // pure-interception (default)
   return {
-    names: ['Topologia do Host', 'Modo de Operação DNS', 'Modelo de Entrega do VIP', 'Instâncias Resolver', 'VIP Interception', 'Egress Público', 'Mapeamento VIP→Instância', 'Segurança', 'Observabilidade', 'Revisão & Deploy'],
-    icons: [Server, Network, Globe, Layers, Crosshair, ExternalLink, Route, Shield, BarChart3, FileText],
+    names: ['Topologia do Host', 'Modo de Operação DNS', 'Modelo de Entrega do VIP', 'Instâncias Resolver', 'VIP Interception', 'Egress Público', 'Mapeamento VIP→Instância', 'Segurança', 'Roteamento (FRR/OSPF)', 'Observabilidade', 'Revisão & Deploy'],
+    icons: [Server, Network, Globe, Layers, Crosshair, ExternalLink, Route, Shield, Route, BarChart3, FileText],
   };
 }
 
@@ -1354,6 +1354,150 @@ export default function Wizard() {
     </div>
   );
 
+  const renderRouting = () => {
+    const ospfActive = config.enableOspf || config.routingMode === 'frr-ospf';
+    const setOspfEnabled = (enabled: boolean) => {
+      setConfig(prev => ({
+        ...prev,
+        enableOspf: enabled,
+        routingMode: enabled ? 'frr-ospf' : 'static',
+        // Pré-preencher routerId com o IP do host se vazio
+        routerId: enabled && !prev.routerId && prev.ipv4Address
+          ? prev.ipv4Address.split('/')[0]
+          : prev.routerId,
+      }));
+    };
+
+    return (
+      <div className="space-y-4">
+        <InfoBox>
+          <strong>FRR é parte do layout homologado do modo Interceptação.</strong>{' '}
+          Os arquivos <code>/etc/frr/frr.conf</code> e <code>/etc/frr/daemons</code> são SEMPRE
+          gerados nesse modo, mesmo com OSPF desativado (placeholder seguro). Isso garante
+          paridade estrutural com o servidor de produção homologado.
+        </InfoBox>
+
+        {/* ── Toggle principal ── */}
+        <div className="space-y-3">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Estado do OSPF</div>
+          <Toggle
+            checked={ospfActive}
+            onChange={setOspfEnabled}
+            label="Habilitar OSPF (anúncio dinâmico de rotas via FRR)"
+          />
+          {!ospfActive && (
+            <div className="flex gap-2 p-3 rounded bg-accent/10 border border-accent/20 text-xs text-muted-foreground">
+              <Info size={14} className="shrink-0 mt-0.5" />
+              <div>
+                OSPF desativado. <code>/etc/frr/daemons</code> será gerado com{' '}
+                <code>ospfd=no</code> e <code>/etc/frr/frr.conf</code> conterá apenas o
+                esqueleto comentado — sem adjacências, sem anúncios.{' '}
+                <strong>O layout permanece intacto</strong> e o serviço FRR pode ser
+                ativado posteriormente sem regenerar o restante da configuração.
+              </div>
+            </div>
+          )}
+          {ospfActive && (
+            <div className="flex gap-2 p-3 rounded bg-primary/10 border border-primary/20 text-xs text-foreground">
+              <Activity size={14} className="shrink-0 mt-0.5 text-primary" />
+              <div>
+                OSPF ativo. <code>ospfd=yes</code> em daemons; <code>frr.conf</code> com
+                router OSPF, redistribuição e VIPs anunciados como rotas /32.
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Parâmetros OSPF (somente quando ativo) ── */}
+        {ospfActive && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FieldGroup
+                label="Router ID *"
+                hint="Identificador único do roteador OSPF (geralmente o IP principal do host)"
+              >
+                <Input
+                  value={config.routerId}
+                  onChange={v => set('routerId', v)}
+                  placeholder={config.ipv4Address ? config.ipv4Address.split('/')[0] : '10.0.0.1'}
+                />
+              </FieldGroup>
+              <FieldGroup label="Área OSPF" hint="0.0.0.0 = backbone">
+                <Input value={config.ospfArea} onChange={v => set('ospfArea', v)} placeholder="0.0.0.0" />
+              </FieldGroup>
+              <FieldGroup label="Custo OSPF" hint="Métrica do enlace (1–65535)">
+                <Input
+                  type="number"
+                  value={config.ospfCost}
+                  onChange={v => set('ospfCost', Math.max(1, Math.min(65535, parseInt(v) || 10)))}
+                />
+              </FieldGroup>
+              <FieldGroup label="Tipo de rede" hint="point-to-point para enlaces dedicados; broadcast para LAN">
+                <Select
+                  value={config.networkType}
+                  onChange={v => set('networkType', v as 'point-to-point' | 'broadcast')}
+                  options={[
+                    { value: 'point-to-point', label: 'point-to-point' },
+                    { value: 'broadcast', label: 'broadcast' },
+                  ]}
+                />
+              </FieldGroup>
+              <FieldGroup label="Hello interval (s)" hint="Intervalo entre pacotes Hello (padrão: 10)">
+                <Input
+                  type="number"
+                  value={config.ospfHelloInterval ?? 10}
+                  onChange={v => set('ospfHelloInterval', Math.max(1, parseInt(v) || 10))}
+                />
+              </FieldGroup>
+              <FieldGroup label="Dead interval (s)" hint="Tempo até considerar vizinho morto (padrão: 40)">
+                <Input
+                  type="number"
+                  value={config.ospfDeadInterval ?? 40}
+                  onChange={v => set('ospfDeadInterval', Math.max(1, parseInt(v) || 40))}
+                />
+              </FieldGroup>
+            </div>
+
+            <div className="space-y-3">
+              <FieldGroup
+                label="Interfaces OSPF"
+                hint="Interfaces que participarão do OSPF (separadas por vírgula). Ex: ens192, bond0"
+              >
+                <Input
+                  value={(config.ospfInterfaces || []).join(', ')}
+                  onChange={v =>
+                    set(
+                      'ospfInterfaces',
+                      v.split(',').map(s => s.trim()).filter(Boolean),
+                    )
+                  }
+                  placeholder={config.mainInterface || 'ens192'}
+                />
+              </FieldGroup>
+              <Toggle
+                checked={config.redistributeConnected}
+                onChange={v => set('redistributeConnected', v)}
+                label="Redistribuir rotas connected (anuncia VIPs e loopbacks automaticamente)"
+              />
+            </div>
+          </>
+        )}
+
+        {/* ── Layout fixo informativo ── */}
+        <div className="rounded border border-border bg-secondary/30 p-3 space-y-2">
+          <div className="text-xs font-semibold text-foreground uppercase tracking-wider">
+            Arquivos do layout homologado
+          </div>
+          <div className="text-[11px] font-mono text-muted-foreground space-y-1">
+            <div>/etc/frr/frr.conf      <span className="text-foreground">— sempre gerado</span></div>
+            <div>/etc/frr/daemons       <span className="text-foreground">— sempre gerado</span></div>
+            <div>/etc/frr/vtysh.conf    <span className="text-muted-foreground/60">— preservado do pacote (não tocado)</span></div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderObservability = () => (
     <div className="space-y-4">
       <InfoBox>Configure quais métricas e sinais operacionais o DNS Control deve coletar.</InfoBox>
@@ -1945,6 +2089,7 @@ export default function Wizard() {
     'Egress Público': renderEgress,
     'Mapeamento VIP→Instância': renderMapping,
     'Segurança': renderSecurity,
+    'Roteamento (FRR/OSPF)': renderRouting,
     'Observabilidade': renderObservability,
     'Revisão & Deploy': renderReview,
   };

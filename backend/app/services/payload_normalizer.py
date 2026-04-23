@@ -90,14 +90,19 @@ def normalize_payload(raw: dict[str, Any]) -> dict[str, Any]:
         "rateLimitQps": 0,  # TODO: expose in wizard
     }
 
-    # Build OSPF block
+    # Build OSPF block — FRR é parte do layout homologado do modo Interceptação.
+    # 'enabled' propaga o toggle do Wizard (enableOspf) para o gerador.
+    ospf_enabled = bool(raw.get("enableOspf")) or raw.get("routingMode") == "frr-ospf"
     ospf = {
+        "enabled": ospf_enabled,
         "routerId": raw.get("routerId", ""),
         "area": raw.get("ospfArea", "0.0.0.0"),
         "interfaces": raw.get("ospfInterfaces", []),
         "redistribute": ["connected"] if raw.get("redistributeConnected", False) else [],
         "cost": raw.get("ospfCost", 10),
         "networkType": raw.get("networkType", "point-to-point"),
+        "helloInterval": raw.get("ospfHelloInterval", 10),
+        "deadInterval": raw.get("ospfDeadInterval", 40),
     }
 
     # Build DNS tuning block
