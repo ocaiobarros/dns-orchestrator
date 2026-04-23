@@ -11,11 +11,14 @@ Emits config files in the native OS layout used by the production server:
   /etc/unbound/unbound.conf.d/root-auto-trust-anchor-file.conf [owned]
   /etc/unbound/gen-block-domains.sh               [owned]
 
-It deliberately does NOT touch:
-  - /etc/network/interfaces (operator-managed)
+It deliberately does NOT touch the following operator-managed assets:
   - /etc/network/if-{up,down,pre-up}.d/* (Debian defaults)
   - /usr/lib/systemd/system/unbound.service (package default)
   - /etc/network/ifupdown2/* (operator-managed)
+
+For /etc/network/interfaces the deploy pipeline performs an idempotent
+BEGIN/END DNS-CONTROL splice so the organic fragment is auto-sourced — no
+manual edit required after deploy.
 
 The unboundXX.conf and unboundXX.service files continue to be emitted by
 unbound_generator.py and systemd_generator.py — they already write to the
@@ -145,8 +148,9 @@ def _generate_nftables_entrypoint() -> dict:
 def _generate_network_dropin_interfaces(payload: dict, addrs: dict) -> dict:
     """ifupdown2-style interfaces fragment that materializes lo and lo0.
 
-    /etc/network/interfaces remains untouched; this fragment is sourced via
-    `source /etc/network/nftables.d/interfaces` (operator-added once, manual).
+    /etc/network/interfaces is automatically spliced by the deploy pipeline to
+    `source /etc/network/nftables.d/interfaces` inside a BEGIN/END DNS-CONTROL
+    managed block — no manual operator action required.
     """
     wizard_cfg = payload.get("_wizardConfig", {}) or {}
     main_iface = str(payload.get("mainInterface") or wizard_cfg.get("mainInterface") or "")
