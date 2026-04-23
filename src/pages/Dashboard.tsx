@@ -488,8 +488,11 @@ function InterceptionDashboard() {
         <NocResolverPanel services={safeServices} />
       </div>
 
-      {/* ═══ TIER 5B: INSTANCE TABLE ═══ */}
-      <NocInstanceTable instances={safeV2} />
+      {/* ═══ TIER 5B: INSTANCE TABLE + ANABLOCK STATUS ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4">
+        <NocInstanceTable instances={safeV2} />
+        <NocAnablockStatus />
+      </div>
 
       {/* ═══ TIER 6: PLATFORM METADATA ═══ */}
       <NocSystemInfoGrid sysInfo={sysInfo} />
