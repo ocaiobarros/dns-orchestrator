@@ -12,6 +12,7 @@ import NocHeroBar from '@/components/noc/NocHeroBar';
 import NocHealthSummary from '@/components/noc/NocHealthSummary';
 import NocMetricStrip from '@/components/noc/NocMetricStrip';
 import NocInstanceTable from '@/components/noc/NocInstanceTable';
+import NocAnablockStatus from '@/components/noc/NocAnablockStatus';
 import NocTopologyPanel from '@/components/noc/NocTopologyPanel';
 import NocGeoMap from '@/components/noc/NocGeoMap';
 import NocNetworkMap, { type MapNode, type MapEdge } from '@/components/noc/NocNetworkMap';
