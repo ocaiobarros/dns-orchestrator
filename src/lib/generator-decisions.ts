@@ -112,6 +112,17 @@ export function buildDecisionLog(config: WizardConfig): GeneratorDecision[] {
         ? 'Dual-stack ativo — tabelas ip6 nat geradas com dispatch, sets e DNAT IPv6 paralelos'
         : 'IPv4-only — tabelas IPv6 suprimidas, sem overhead de regras dual-stack',
     });
+
+    // FRR / OSPF — parte do layout homologado
+    const ospfActive = config.enableOspf || config.routingMode === 'frr-ospf';
+    decisions.push({
+      category: 'Roteamento',
+      parameter: 'FRR (layout homologado)',
+      value: ospfActive ? `OSPF ativo (router-id ${config.routerId || '—'}, área ${config.ospfArea})` : 'placeholder seguro (ospfd=no)',
+      reasoning: ospfActive
+        ? `/etc/frr/frr.conf e /etc/frr/daemons gerados com router OSPF ativo. ${config.redistributeConnected ? 'Redistribuição connected ligada (anuncia VIPs e loopbacks).' : 'Redistribuição connected desligada — apenas redes declaradas serão anunciadas.'}`
+        : '/etc/frr/frr.conf e /etc/frr/daemons SEMPRE são gerados no modo Interceptação (paridade com host homologado), mesmo sem OSPF ativo. ospfd=no, frr.conf como esqueleto comentado — pode ser ativado depois sem regenerar o restante.',
+    });
   }
 
   // ═══ COMMON DECISIONS (both modes) ═══
