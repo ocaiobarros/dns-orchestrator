@@ -78,11 +78,8 @@ def validate_config(payload: dict[str, Any]) -> dict:
 
 
 def _is_organic(normalized: dict) -> bool:
-    """Organic layout only applies to interception mode."""
-    return (
-        normalized.get("layoutMode") == "organic"
-        and normalized.get("operationMode") != "simple"
-    )
+    """Interception mode is always organic (OS-native layout)."""
+    return normalized.get("operationMode") == "interception"
 
 
 def generate_preview(payload: dict[str, Any]) -> list[dict]:

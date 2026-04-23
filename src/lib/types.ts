@@ -830,9 +830,11 @@ export const DEFAULT_CONFIG: WizardConfig = {
   // Bootstrap DNS
   bootstrapDns: '8.8.8.8',
 
-  // Layout strategy — default 'isolated' to preserve current behavior on existing deploys.
-  // Operator opts in to 'organic' via the Wizard for native /etc/* layout.
-  layoutMode: 'isolated',
+  // Layout strategy — fixed by operationMode:
+  //   interception → 'organic' (OS-native /etc/* layout, mandatory)
+  //   simple       → 'isolated' (legacy DNS Control runtime layout)
+  // Default config.operationMode is 'interception', so default here is 'organic'.
+  layoutMode: 'organic',
 };
 
 // ---- v2: Operational Types ----
