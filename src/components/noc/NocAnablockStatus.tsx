@@ -2,7 +2,19 @@ import { useEffect, useState } from 'react';
 import { ShieldCheck, ShieldAlert, ShieldQuestion } from 'lucide-react';
 import { api } from '@/lib/api';
 
-type AnablockTelemetry = Awaited<ReturnType<typeof api.getTelemetryAnablock>>;
+type AnablockData = {
+  enabled: boolean;
+  anablock_last_update_timestamp: number | null;
+  anablock_last_update_iso: string | null;
+  anablock_domains_loaded_count: number;
+  anablock_last_status: 'OK' | 'FAIL' | 'UNKNOWN';
+  message: string;
+  mode: string | null;
+  api_url: string | null;
+  stale: boolean;
+  age_seconds: number | null;
+  conf_present: boolean;
+};
 
 function formatAge(seconds: number | null): string {
   if (seconds == null) return '—';
@@ -14,20 +26,20 @@ function formatAge(seconds: number | null): string {
 
 const STATUS_THEME: Record<string, { icon: typeof ShieldCheck; color: string; bg: string; label: string }> = {
   OK: { icon: ShieldCheck, color: 'text-emerald-400', bg: 'bg-emerald-500/10', label: 'OK' },
-  FAIL: { icon: ShieldAlert, color: 'text-red-400', bg: 'bg-red-500/10', label: 'FAIL' },
+  FAIL: { icon: ShieldAlert, color: 'text-destructive', bg: 'bg-destructive/10', label: 'FAIL' },
   UNKNOWN: { icon: ShieldQuestion, color: 'text-muted-foreground', bg: 'bg-muted/10', label: 'Sem dados' },
 };
 
 export default function NocAnablockStatus() {
-  const [data, setData] = useState<AnablockTelemetry | null>(null);
+  const [data, setData] = useState<AnablockData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     const fetchData = async () => {
       try {
-        const result = await api.getTelemetryAnablock();
-        if (!cancelled) setData(result);
+        const res = await api.getTelemetryAnablock();
+        if (!cancelled && res?.data) setData(res.data as AnablockData);
       } catch {
         // silent — keeps "Sem dados" state
       } finally {
@@ -105,3 +117,4 @@ export default function NocAnablockStatus() {
     </div>
   );
 }
+
