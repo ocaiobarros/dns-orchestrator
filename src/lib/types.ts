@@ -51,6 +51,13 @@ export type EgressMode = 'fixed-per-instance' | 'shared-pool' | 'randomized';
 
 export type EgressDeliveryMode = 'host-owned' | 'border-routed';
 
+// ---- Layout Mode (file system layout strategy) ----
+// 'isolated' (default): writes to /etc/dns-control/runtime — no host file conflicts (legacy)
+// 'organic': writes to native OS paths (/etc/unbound, /etc/network/nftables.d, /usr/lib/systemd/system)
+//   with idempotent BEGIN/END markers on shared files (/etc/nftables.conf).
+//   Files 100% owned by DNS Control are overwritten with a header comment.
+export type LayoutMode = 'isolated' | 'organic';
+
 // ---- VIP Interception / DNS Seizure ----
 
 export type CaptureMode = 'dnat' | 'route' | 'bind';
@@ -252,6 +259,11 @@ export interface WizardConfig {
 
   // Bootstrap DNS
   bootstrapDns: string;
+
+  // Layout strategy (only meaningful for interception mode)
+  // 'isolated' = legacy DNS Control runtime layout
+  // 'organic'  = native OS paths (/etc/unbound, /etc/network/nftables.d, /usr/lib/systemd/system)
+  layoutMode: LayoutMode;
 }
 
 // ---- Service Status ----
@@ -817,6 +829,10 @@ export const DEFAULT_CONFIG: WizardConfig = {
 
   // Bootstrap DNS
   bootstrapDns: '8.8.8.8',
+
+  // Layout strategy — default 'isolated' to preserve current behavior on existing deploys.
+  // Operator opts in to 'organic' via the Wizard for native /etc/* layout.
+  layoutMode: 'isolated',
 };
 
 // ---- v2: Operational Types ----
