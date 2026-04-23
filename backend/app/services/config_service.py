@@ -12,6 +12,7 @@ from app.generators.network_generator import generate_network_config
 from app.generators.systemd_generator import generate_systemd_units
 from app.generators.ip_blocking_generator import generate_ip_blocking_configs
 from app.generators.sysctl_generator import generate_sysctl_configs
+from app.generators.organic_generator import generate_organic_files
 from app.services.payload_normalizer import normalize_payload
 
 
@@ -76,19 +77,44 @@ def validate_config(payload: dict[str, Any]) -> dict:
     return {"valid": len(errors) == 0, "errors": errors, "normalized": normalized}
 
 
+def _is_organic(normalized: dict) -> bool:
+    """Organic layout only applies to interception mode."""
+    return (
+        normalized.get("layoutMode") == "organic"
+        and normalized.get("operationMode") != "simple"
+    )
+
+
 def generate_preview(payload: dict[str, Any]) -> list[dict]:
-    """Generate file previews. Accepts both WizardConfig and internal formats."""
+    """Generate file previews. Accepts both WizardConfig and internal formats.
+
+    Layout strategy:
+      - layoutMode == 'organic' AND operationMode == 'interception':
+          Use organic_generator for nftables + network materialization.
+          unbound + systemd generators continue to emit native /etc/* paths.
+      - Otherwise (simple mode OR layoutMode == 'isolated'):
+          Use the legacy network_generator + nftables_generator stack.
+    """
     normalized = normalize_payload(payload)
     is_simple = normalized.get("operationMode") == "simple"
+    organic = _is_organic(normalized)
     files = []
     try:
         files.extend(generate_unbound_configs(normalized))
     except Exception:
         pass
-    # nftables: interception mode uses full VIP rules, simple mode uses local balancing
+    # nftables: simple mode always uses local balancing generator.
+    # Interception mode uses organic generator OR legacy nftables_generator.
     if is_simple:
         try:
             files.extend(generate_simple_nftables_config(normalized))
+        except Exception:
+            pass
+    elif organic:
+        # organic generator emits BOTH the nftables snippets (relocated to
+        # /etc/network/nftables.d/) AND the post-up.sh / interfaces fragments.
+        try:
+            files.extend(generate_organic_files(normalized))
         except Exception:
             pass
     else:
@@ -100,10 +126,13 @@ def generate_preview(payload: dict[str, Any]) -> list[dict]:
         files.extend(generate_frr_config(normalized))
     except Exception:
         pass
-    try:
-        files.extend(generate_network_config(normalized))
-    except Exception:
-        pass
+    # network_generator emits /etc/network/interfaces and /etc/network/post-up.sh.
+    # In organic mode, those are operator-owned — skip to avoid clobbering.
+    if not organic:
+        try:
+            files.extend(generate_network_config(normalized))
+        except Exception:
+            pass
     try:
         files.extend(generate_systemd_units(normalized))
     except Exception:
@@ -131,3 +160,4 @@ def diff_configs(old_payload: dict, new_payload: dict) -> list[dict]:
         if old_content != new_content:
             diffs.append({"path": path, "old_content": old_content, "new_content": new_content})
     return diffs
+
