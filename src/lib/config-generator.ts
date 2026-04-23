@@ -1674,7 +1674,7 @@ ${files.map(f => `#   ${f.path}`).join('\n')}
 # Services to restart:
 ${config.instances.map(i => `#   systemctl restart ${i.name}`).join('\n')}
 #   systemctl restart nftables
-${config.routingMode === 'frr-ospf' ? '#   systemctl restart frr' : ''}
+${config.operationMode === 'interception' ? ((config.enableOspf || config.routingMode === 'frr-ospf') ? '#   systemctl restart frr' : '#   # FRR presente no layout (placeholder) — restart não obrigatório') : ''}
 #   systemctl daemon-reload
 #
 # Post-deploy checks:
