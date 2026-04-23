@@ -419,6 +419,7 @@ def generate_organic_files(payload: dict[str, Any]) -> list[dict]:
     files.append(_generate_nftables_entrypoint())
     files.append(_generate_network_dropin_interfaces(payload, addrs))
     files.append(_generate_network_dropin_post_up(payload, addrs))
+    files.append(_generate_post_up_wrapper())
     files.extend(_generate_nftables_modular_snippets(payload))
     files.extend(_generate_unbound_dropins(payload, instances))
     files.extend(_generate_block_domains_assets(payload))
