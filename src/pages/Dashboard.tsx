@@ -12,6 +12,7 @@ import NocHeroBar from '@/components/noc/NocHeroBar';
 import NocHealthSummary from '@/components/noc/NocHealthSummary';
 import NocMetricStrip from '@/components/noc/NocMetricStrip';
 import NocInstanceTable from '@/components/noc/NocInstanceTable';
+import NocAnablockStatus from '@/components/noc/NocAnablockStatus';
 import NocTopologyPanel from '@/components/noc/NocTopologyPanel';
 import NocGeoMap from '@/components/noc/NocGeoMap';
 import NocNetworkMap, { type MapNode, type MapEdge } from '@/components/noc/NocNetworkMap';
@@ -488,8 +489,11 @@ function InterceptionDashboard() {
         <NocResolverPanel services={safeServices} />
       </div>
 
-      {/* ═══ TIER 5B: INSTANCE TABLE ═══ */}
-      <NocInstanceTable instances={safeV2} />
+      {/* ═══ TIER 5B: INSTANCE TABLE + ANABLOCK STATUS ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4">
+        <NocInstanceTable instances={safeV2} />
+        <NocAnablockStatus />
+      </div>
 
       {/* ═══ TIER 6: PLATFORM METADATA ═══ */}
       <NocSystemInfoGrid sysInfo={sysInfo} />
