@@ -2089,6 +2089,7 @@ export default function Wizard() {
     'Egress Público': renderEgress,
     'Mapeamento VIP→Instância': renderMapping,
     'Segurança': renderSecurity,
+    'Roteamento (FRR/OSPF)': renderRouting,
     'Observabilidade': renderObservability,
     'Revisão & Deploy': renderReview,
   };
