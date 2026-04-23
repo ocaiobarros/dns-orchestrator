@@ -1487,14 +1487,42 @@ export function generateSysctlFiles(config: WizardConfig): { path: string; conte
 }
 
 // ═══ FRR / OSPF ═══
+// FRR faz parte do layout homologado do modo Interceptação.
+// /etc/frr/frr.conf e /etc/frr/daemons são SEMPRE materializados quando
+// operationMode === 'interception'. Quando enableOspf=false, o conteúdo é
+// um placeholder seguro: daemons desativa ospfd e frr.conf contém apenas
+// um esqueleto comentado — não há adjacências, não há anúncios.
+
+function isOspfEnabled(config: WizardConfig): boolean {
+  return config.enableOspf === true || config.routingMode === 'frr-ospf';
+}
 
 export function generateFrrConf(config: WizardConfig): string {
-  if (config.routingMode !== 'frr-ospf') return '# FRR disabled in configuration\n';
+  if (!isOspfEnabled(config)) {
+    return `! DNS Control — FRR placeholder (OSPF desativado)
+! Layout homologado: este arquivo SEMPRE existe no modo Interceptação.
+! Para ativar OSPF, habilite no Wizard → Roteamento (FRR/OSPF).
+!
+frr version 10.2
+frr defaults traditional
+hostname ${config.hostname || 'dns-control'}
+log syslog informational
+service integrated-vtysh-config
+!
+! router ospf
+!  ospf router-id <preencher no Wizard>
+!
+line vty
+!
+`;
+  }
 
   const interfaceBlocks = config.ospfInterfaces.map(iface => `!
 interface ${iface}
  ip ospf area ${config.ospfArea}
  ip ospf network ${config.networkType}
+ ip ospf hello-interval ${config.ospfHelloInterval ?? 10}
+ ip ospf dead-interval ${config.ospfDeadInterval ?? 40}
 ${iface === config.mainInterface ? ` ip ospf cost ${config.ospfCost}` : ''}`).join('\n');
 
   // Announce VIPs via connected redistribution
@@ -1518,6 +1546,36 @@ ${interfaceBlocks}
 !
 line vty
 !
+`;
+}
+
+export function generateFrrDaemons(config: WizardConfig): string {
+  const ospfActive = isOspfEnabled(config);
+  return `# DNS Control — FRR daemons
+# Layout homologado: este arquivo SEMPRE existe no modo Interceptação.
+# OSPF ativo: ${ospfActive ? 'SIM' : 'NÃO (placeholder seguro)'}
+ospfd=${ospfActive ? 'yes' : 'no'}
+bgpd=no
+ripd=no
+ripngd=no
+isisd=no
+pimd=no
+ldpd=no
+nhrpd=no
+eigrpd=no
+babeld=no
+sharpd=no
+staticd=yes
+pbrd=no
+bfdd=no
+fabricd=no
+vrrpd=no
+pathd=no
+
+vtysh_enable=yes
+zebra_options="  -A 127.0.0.1 -s 90000000"
+ospfd_options="  -A 127.0.0.1"
+staticd_options="-A 127.0.0.1"
 `;
 }
 
