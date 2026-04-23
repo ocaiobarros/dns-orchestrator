@@ -201,7 +201,110 @@ def _dedupe_preserve_order(items: list[str]) -> list[str]:
     return ordered
 
 
+# ── Idempotent splice into /etc/network/interfaces (organic layout) ──
+
+_INTERFACES_PATH = "/etc/network/interfaces"
+_INTERFACES_BEGIN = "# >>> BEGIN DNS-CONTROL — managed block — do not edit"
+_INTERFACES_END = "# <<< END DNS-CONTROL — managed block"
+_INTERFACES_BLOCK_BODY = (
+    "# DNS Control — organic layout integration.\n"
+    "# Sources the dual-plane (lo/lo0) materialization fragment.\n"
+    "# Re-deploy is idempotent: this block is replaced in place.\n"
+    "source /etc/network/nftables.d/interfaces\n"
+)
+
+
+def _build_interfaces_managed_block() -> str:
+    return f"{_INTERFACES_BEGIN}\n{_INTERFACES_BLOCK_BODY}{_INTERFACES_END}\n"
+
+
+def _ensure_interfaces_organic_block() -> dict[str, Any]:
+    """Idempotently splice the DNS-CONTROL managed block into /etc/network/interfaces.
+
+    Behavior:
+      - If the file does not exist: create a minimal one with `auto lo` + `iface lo inet loopback`
+        followed by the managed block.
+      - If the markers already exist: replace ONLY the bounded region.
+      - If the markers do not exist: append the managed block at the end of the file.
+    Content outside the markers is never touched. Safe to run on every deploy.
+    """
+    target = _INTERFACES_PATH
+    block = _build_interfaces_managed_block()
+
+    try:
+        if not os.path.exists(target):
+            # Create a minimal Debian-default interfaces file + managed block.
+            base = (
+                "# /etc/network/interfaces — provisioned by DNS Control.\n"
+                "# The DNS-CONTROL managed block below is the only region we own.\n"
+                "# All other content is operator-managed.\n\n"
+                "auto lo\n"
+                "iface lo inet loopback\n\n"
+            )
+            new_content = base + block
+            r = run_command(
+                "bash",
+                ["-c", f"install -m 0644 -o root -g root /dev/stdin {target} <<'__DNSCTL_EOF__'\n{new_content}__DNSCTL_EOF__\n"],
+                timeout=10,
+                use_privilege=True,
+            )
+            if r["exit_code"] != 0:
+                return {"status": "failed", "output": "Falha ao criar /etc/network/interfaces", "stderr": r.get("stderr", "")[:300]}
+            return {"status": "success", "output": "Criado /etc/network/interfaces com bloco DNS-CONTROL"}
+
+        with open(target, "r", encoding="utf-8") as fp:
+            current = fp.read()
+
+        if _INTERFACES_BEGIN in current and _INTERFACES_END in current:
+            # Replace bounded region in place
+            pre, _, rest = current.partition(_INTERFACES_BEGIN)
+            _, _, post = rest.partition(_INTERFACES_END)
+            # Remove trailing newline of the END marker line if any
+            post = post.lstrip("\n")
+            new_content = pre.rstrip() + "\n\n" + block
+            if post.strip():
+                new_content += "\n" + post if not post.startswith("\n") else post
+            else:
+                new_content += post
+            action = "atualizado bloco DNS-CONTROL"
+        else:
+            # Append managed block
+            sep = "" if current.endswith("\n\n") else ("\n" if current.endswith("\n") else "\n\n")
+            new_content = current + sep + block
+            action = "anexado bloco DNS-CONTROL"
+
+        # Idempotency: if no change, skip write
+        if new_content == current:
+            return {"status": "success", "output": "/etc/network/interfaces já contém bloco DNS-CONTROL — sem alterações"}
+
+        # Write atomically via privileged install
+        r = run_command(
+            "bash",
+            ["-c", f"install -m 0644 -o root -g root /dev/stdin {target} <<'__DNSCTL_EOF__'\n{new_content}__DNSCTL_EOF__\n"],
+            timeout=10,
+            use_privilege=True,
+        )
+        if r["exit_code"] != 0:
+            return {"status": "failed", "output": f"Falha ao {action}", "stderr": r.get("stderr", "")[:300]}
+        return {"status": "success", "output": f"/etc/network/interfaces — {action}"}
+    except Exception as e:
+        return {"status": "failed", "output": "Erro ao processar /etc/network/interfaces", "stderr": str(e)[:300]}
+
+
 def _materialize_network(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    # Ensure /etc/network/interfaces sources the organic fragment (idempotent).
+    # Only relevant for interception mode; in simple mode this is a no-op
+    # because the fragment is not generated.
+    if payload:
+        try:
+            normalized = normalize_payload(payload) if "operationMode" not in payload else payload
+            if normalized.get("operationMode") == "interception":
+                splice = _ensure_interfaces_organic_block()
+                if splice.get("status") == "failed":
+                    logger.warning("Interfaces splice failed: %s", splice.get("stderr"))
+        except Exception as e:
+            logger.warning("Interfaces splice skipped due to error: %s", e)
+
     for script_path in _NETWORK_MATERIALIZATION_SCRIPTS:
         if os.path.isfile(script_path):
             result = run_command(script_path, [], timeout=30, use_privilege=True)
