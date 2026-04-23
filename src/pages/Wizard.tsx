@@ -714,37 +714,20 @@ export default function Wizard() {
         </div>
       )}
 
-      {/* ═══ Layout Estrutural (Organic vs Isolated) ═══ */}
-      <div className="pt-4 border-t border-border/50 space-y-3">
+      {/* ═══ Layout Estrutural — fixo no modo Interceptação ═══ */}
+      <div className="pt-4 border-t border-border/50 space-y-2">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
           Layout Estrutural dos Arquivos
         </div>
-        <div className="grid grid-cols-1 gap-3">
-          <ModeCard
-            selected={config.layoutMode === 'isolated'}
-            onClick={() => set('layoutMode', 'isolated' as const)}
-            label="Isolated (compatível)"
-            badge="Padrão"
-            desc="Mantém os arquivos do DNS Control em paths internos. Não interage com /etc/network/interfaces nem com configs do Debian. Recomendado para deploys existentes."
-          />
-          <ModeCard
-            selected={config.layoutMode === 'organic'}
-            onClick={() => set('layoutMode', 'organic' as const)}
-            label="Organic (OS-native)"
-            desc="Usa o layout operacional do Debian: /etc/network/nftables.d/, /etc/unbound/unbound.conf.d/, /usr/lib/systemd/system/unboundNN.service. Bloco BEGIN/END DNS-CONTROL em arquivos compartilhados (/etc/nftables.conf). NÃO toca /etc/network/interfaces, if-up.d, ifupdown2."
-          />
+        <div className="p-3 rounded bg-accent/5 border border-accent/15 text-xs space-y-1">
+          <div className="font-medium text-accent">Layout OS-native (fixo para Interceptação)</div>
+          <div className="text-muted-foreground">• <code className="font-mono bg-accent/10 px-1 rounded">/etc/unbound/unboundNN.conf</code> + <code className="font-mono bg-accent/10 px-1 rounded">/etc/unbound/unbound.conf.d/</code></div>
+          <div className="text-muted-foreground">• <code className="font-mono bg-accent/10 px-1 rounded">/etc/network/nftables.d/</code> (interfaces + post-up.sh + regras)</div>
+          <div className="text-muted-foreground">• <code className="font-mono bg-accent/10 px-1 rounded">/usr/lib/systemd/system/unboundNN.service</code></div>
+          <div className="text-muted-foreground">• <code className="font-mono bg-accent/10 px-1 rounded">/etc/nftables.conf</code> recebe apenas bloco <code className="font-mono">BEGIN/END DNS-CONTROL</code> (idempotente).</div>
+          <div className="text-muted-foreground">• <code className="font-mono bg-accent/10 px-1 rounded">/etc/network/interfaces</code> permanece intocado — adicione uma vez: <code className="font-mono">source /etc/network/nftables.d/interfaces</code>.</div>
+          <div className="text-muted-foreground">• Topologia dual-plane: <strong>lo</strong> = egress IPv4 · <strong>lo0</strong> = listeners internos + VIPs + IPv6/128.</div>
         </div>
-        {config.layoutMode === 'organic' && (
-          <div className="p-3 rounded bg-destructive/5 border border-destructive/20 text-xs space-y-1">
-            <div className="font-medium text-destructive flex items-center gap-1">
-              <AlertTriangle size={12} /> Modo Organic ativo
-            </div>
-            <div className="text-muted-foreground">• Arquivos próprios são <strong>sobrescritos</strong> em cada deploy (header de aviso).</div>
-            <div className="text-muted-foreground">• <code className="font-mono bg-destructive/10 px-1 rounded">/etc/nftables.conf</code> recebe apenas um bloco delimitado por <code className="font-mono">BEGIN/END DNS-CONTROL</code>.</div>
-            <div className="text-muted-foreground">• <code className="font-mono bg-destructive/10 px-1 rounded">/etc/network/interfaces</code> permanece <strong>intocado</strong> — adicione manualmente uma vez: <code className="font-mono">source /etc/network/nftables.d/interfaces</code>.</div>
-            <div className="text-muted-foreground">• Garante paridade com o servidor de produção (lo = egress, lo0 = listeners + VIPs).</div>
-          </div>
-        )}
       </div>
     </div>
   );
