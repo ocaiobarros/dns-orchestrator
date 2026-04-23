@@ -40,14 +40,14 @@ function getSteps(mode: OperationMode, submode: VipDeliverySubmode) {
   }
   if (submode === 'interception-plus-own-vip') {
     return {
-      names: ['Topologia do Host', 'Modo de Operação DNS', 'Modelo de Entrega do VIP', 'Instâncias Resolver', 'VIPs de Serviço', 'VIP Interception', 'Egress Público', 'Mapeamento VIP→Instância', 'Segurança', 'Observabilidade', 'Revisão & Deploy'],
-      icons: [Server, Network, Globe, Layers, Globe, Crosshair, ExternalLink, Route, Shield, BarChart3, FileText],
+      names: ['Topologia do Host', 'Modo de Operação DNS', 'Modelo de Entrega do VIP', 'Instâncias Resolver', 'VIPs de Serviço', 'VIP Interception', 'Egress Público', 'Mapeamento VIP→Instância', 'Segurança', 'Roteamento (FRR/OSPF)', 'Observabilidade', 'Revisão & Deploy'],
+      icons: [Server, Network, Globe, Layers, Globe, Crosshair, ExternalLink, Route, Shield, Route, BarChart3, FileText],
     };
   }
   // pure-interception (default)
   return {
-    names: ['Topologia do Host', 'Modo de Operação DNS', 'Modelo de Entrega do VIP', 'Instâncias Resolver', 'VIP Interception', 'Egress Público', 'Mapeamento VIP→Instância', 'Segurança', 'Observabilidade', 'Revisão & Deploy'],
-    icons: [Server, Network, Globe, Layers, Crosshair, ExternalLink, Route, Shield, BarChart3, FileText],
+    names: ['Topologia do Host', 'Modo de Operação DNS', 'Modelo de Entrega do VIP', 'Instâncias Resolver', 'VIP Interception', 'Egress Público', 'Mapeamento VIP→Instância', 'Segurança', 'Roteamento (FRR/OSPF)', 'Observabilidade', 'Revisão & Deploy'],
+    icons: [Server, Network, Globe, Layers, Crosshair, ExternalLink, Route, Shield, Route, BarChart3, FileText],
   };
 }
 
