@@ -532,7 +532,7 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
     query_patterns = [
         # Primary: info: <client> <domain> <qtype> <qclass>
         re.compile(
-            r'info:\s+(\S+)\s+(\S+)\s+([A-Z0-9]+)\s+([A-Z0-9]+)'
+            r'info:\s+(\S+?)(?:#\d+)?\s+(\S+)\s+([A-Z0-9]+)\s+([A-Z0-9]+)'
         ),
         # Fallback: query: <domain> <class> <type> from <client>
         re.compile(
@@ -559,7 +559,6 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
             if i == 0:
                 # info: <client> <domain> <qtype> <qclass>
                 raw_client, domain, qtype, _qclass = m.groups()
-                # Strip optional #port from client (e.g. 172.250.40.100#12345)
                 client = raw_client.split("#")[0]
             else:
                 # query: <domain> <class> <type> from <client>
