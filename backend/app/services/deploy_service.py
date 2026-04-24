@@ -60,13 +60,15 @@ _BACKUP_TARGETS = [
     "/usr/lib/systemd/system/unbound*.service",
     "/etc/nftables.conf",
     "/etc/nftables.d/*",
+    "/etc/network/nftables.d/*",
 ]
 
 # Files that the wizard GENERATES — safe to remove during cleanup
 _CLEANUP_GLOBS = {
     "unbound_configs": "/etc/unbound/unbound*.conf",
     "unbound_units": "/usr/lib/systemd/system/unbound*.service",
-    "nftables_snippets": "/etc/nftables.d/*.nft",
+    "nftables_snippets_simple": "/etc/nftables.d/*.nft",
+    "nftables_snippets_organic": "/etc/network/nftables.d/*.nft",
     "sysctl_dns": "/etc/sysctl.d/05[0-9]-*.conf",
     "sysctl_net": "/etc/sysctl.d/06[0-9]-*.conf",
     "sysctl_fs": "/etc/sysctl.d/07[0-9]-*.conf",
@@ -1242,8 +1244,12 @@ def _execute_deploy_locked(
                     cleaned += 1
                     logger.info(f"Rollback: removed new file {target_path}")
 
-            # Also clean up any .nft files not in backup (catch-all for partial installs)
-            for nft_file in glob.glob("/etc/nftables.d/*.nft"):
+            # Also clean up any .nft files not in backup (catch-all for partial installs).
+            # Cobre AMBOS os layouts: simple (/etc/nftables.d/) e interception (/etc/network/nftables.d/).
+            for nft_file in (
+                glob.glob("/etc/nftables.d/*.nft")
+                + glob.glob("/etc/network/nftables.d/*.nft")
+            ):
                 if nft_file not in backup_files:
                     _cleanup_partial_file(nft_file)
                     cleaned += 1
