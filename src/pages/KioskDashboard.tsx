@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import IpAddressStack from '@/components/IpAddressStack';
 import {
   Monitor, Cpu, HardDrive, MemoryStick, Clock, Activity,
   Database, Timer, Server, Globe, Shield, Wifi, AlertTriangle,
@@ -332,31 +333,22 @@ export default function KioskDashboard() {
             {backends.length > 0 ? backends.map((b: any) => {
               const r = b.resolver ?? {};
               const ipStr = String(b.ip ?? '');
-              const ipv4Match = ipStr.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
-              const ipv6Match = ipStr.match(/([0-9a-fA-F:]+:[0-9a-fA-F:]+)/);
-              const ipv4 = b.ipv4 ?? (ipv4Match ? ipv4Match[1] : '');
-              const ipv6 = b.ipv6 ?? (ipv6Match ? ipv6Match[1] : '');
-              const hasBoth = ipv4 && ipv6;
+              const ipv4 = String(b.ipv4 ?? '');
+              const ipv6 = String(b.ipv6 ?? '');
               return (
                 <div key={b.name} className="flex flex-col gap-1 py-2 border-b border-border/30 last:border-0">
                   <div className="flex items-center gap-2">
                     <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${b.healthy ? 'bg-success' : 'bg-destructive'}`} />
                     <span className="font-mono text-sm font-semibold text-foreground">{b.name}</span>
                   </div>
-                  {hasBoth ? (
-                    <div className="ml-[18px] flex flex-col gap-0.5">
-                      <div className="flex items-center gap-1.5 text-[10px] font-mono">
-                        <span className="uppercase tracking-wider text-muted-foreground/60 w-9 shrink-0">IPv4</span>
-                        <span className="text-muted-foreground truncate">{ipv4}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-[10px] font-mono">
-                        <span className="uppercase tracking-wider text-muted-foreground/60 w-9 shrink-0">IPv6</span>
-                        <span className="text-muted-foreground truncate">{ipv6}</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="ml-[18px] font-mono text-xs text-muted-foreground truncate">{ipStr}</div>
-                  )}
+                  <div className="ml-[18px] max-w-full">
+                    <IpAddressStack
+                      ipv4={ipv4}
+                      ipv6={ipv6}
+                      fallback={ipStr}
+                      valueClassName="text-[11px] text-muted-foreground"
+                    />
+                  </div>
                   <div className="flex items-center gap-3 ml-[18px] text-xs font-mono text-muted-foreground">
                     <span>{r.total_queries?.toLocaleString() ?? '—'} <span className="text-muted-foreground/50">queries</span></span>
                     <span>{r.cache_hit_ratio ?? '—'}% <span className="text-muted-foreground/50">cache</span></span>
