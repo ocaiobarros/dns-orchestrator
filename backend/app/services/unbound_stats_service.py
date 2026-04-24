@@ -157,6 +157,8 @@ def _discover_instances() -> list[dict]:
                     "name": name,
                     "control_interface": ctrl.get("control_interface", "127.0.0.1"),
                     "control_port": ctrl.get("control_port", 8953),
+                    "bind_ipv4": ctrl.get("bind_ipv4", ""),
+                    "bind_ipv6": ctrl.get("bind_ipv6", ""),
                 })
 
     return instances if instances else _DEFAULT_INSTANCES
