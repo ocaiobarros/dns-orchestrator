@@ -361,6 +361,7 @@ def detect_log_availability(instances: list[dict]) -> dict:
     has_log_config = False
     has_syslog = False
     has_journal_entries = False
+    log_files: list[str] = []
     details = []
 
     for inst in instances:
@@ -368,6 +369,7 @@ def detect_log_availability(instances: list[dict]) -> dict:
         conf_path = f"/etc/unbound/{name}.conf"
         inst_has_log = False
         inst_has_syslog = False
+        inst_logfile = ""
 
         try:
             with open(conf_path) as f:
@@ -383,17 +385,21 @@ def detect_log_availability(instances: list[dict]) -> dict:
                         val = s.split(":", 1)[1].strip().strip('"').strip("'")
                         if val and val != '""' and val != "''":
                             inst_has_log = True
+                            inst_logfile = val
         except FileNotFoundError:
             pass
 
         if inst_has_log:
             has_log_config = True
+        if inst_logfile:
+            log_files.append(inst_logfile)
         if inst_has_syslog:
             has_syslog = True
         details.append({
             "instance": name,
             "log_queries": inst_has_log,
             "use_syslog": inst_has_syslog,
+            "logfile": inst_logfile,
         })
 
     # Quick journal check — look for any unbound query entries in last 60s
@@ -416,10 +422,25 @@ def detect_log_availability(instances: list[dict]) -> dict:
         "log_queries_configured": has_log_config,
         "use_syslog": has_syslog,
         "journal_entries_found": has_journal_entries,
+        "log_files": sorted(set(log_files)),
         "domains_available": log_available,
         "clients_available": log_available,
         "details": details,
     }
+
+
+def _read_logfile_tail(log_paths: list[str], max_lines: int = 5000) -> tuple[str, str]:
+    """Read recent lines from configured Unbound log files."""
+    for path in log_paths:
+        if not path:
+            continue
+        code, stdout, _ = run_cmd(["sudo", "tail", "-n", str(max_lines), path], timeout=15)
+        if code == 0 and stdout.strip():
+            return stdout, path
+        code, stdout, _ = run_cmd(["tail", "-n", str(max_lines), path], timeout=15)
+        if code == 0 and stdout.strip():
+            return stdout, path
+    return "", ""
 
 
 # ── Query Log Parsing ──
