@@ -119,7 +119,10 @@ export default function KioskDashboard() {
   const topClients = dns.top_clients ?? [];
   const recentQueries = dns.recent_queries ?? [];
   const collectorOk = dns.health?.collector === 'ok';
-  const isLogless = (dns.telemetry_mode ?? 'log') === 'logless';
+  // Logless = backend explicitly says so OR collector is healthy yet no domains/clients arrive.
+  const explicitLogless = (dns.telemetry_mode ?? 'log') === 'logless';
+  const inferredLogless = collectorOk && (dns.top_domains?.length ?? 0) === 0 && (dns.top_clients?.length ?? 0) === 0;
+  const isLogless = explicitLogless || inferredLogless;
 
   const services = host.services ?? {};
   const allServicesOk = Object.values(services).every((s: any) => s === 'active' || s === 'running');

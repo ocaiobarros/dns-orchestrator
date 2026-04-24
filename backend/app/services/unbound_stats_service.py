@@ -29,6 +29,8 @@ def get_instance_real_stats(instances: list[dict] | None = None) -> list[dict]:
         name = inst.get("name", "unbound")
         control_ip = inst.get("control_interface", "127.0.0.1")
         control_port = inst.get("control_port", 8953)
+        bind_ipv4 = inst.get("bind_ipv4", "")
+        bind_ipv6 = inst.get("bind_ipv6", "")
         config_path = f"/etc/unbound/{name}.conf"
 
         result = run_command(
@@ -72,6 +74,8 @@ def get_instance_real_stats(instances: list[dict] | None = None) -> list[dict]:
                 "source": "live",
                 "control_interface": control_ip,
                 "control_port": control_port,
+                "bindIpv4": bind_ipv4,
+                "bindIpv6": bind_ipv6,
             })
         else:
             results.append({
@@ -96,6 +100,8 @@ def get_instance_real_stats(instances: list[dict] | None = None) -> list[dict]:
                 "error": result.get("stderr", "")[:200],
                 "control_interface": control_ip,
                 "control_port": control_port,
+                "bindIpv4": bind_ipv4,
+                "bindIpv6": bind_ipv6,
             })
 
     return results
@@ -157,18 +163,25 @@ def _discover_instances() -> list[dict]:
                     "name": name,
                     "control_interface": ctrl.get("control_interface", "127.0.0.1"),
                     "control_port": ctrl.get("control_port", 8953),
+                    "bind_ipv4": ctrl.get("bind_ipv4", ""),
+                    "bind_ipv6": ctrl.get("bind_ipv6", ""),
                 })
 
     return instances if instances else _DEFAULT_INSTANCES
 
 
 def _get_control_from_config(instance_name: str) -> dict:
-    """Extract control-interface and control-port from unbound config file."""
+    """Extract control-interface, control-port and bind interfaces (v4/v6) from unbound config."""
     result = run_command(
         "cat", [f"/etc/unbound/{instance_name}.conf"],
         timeout=5,
     )
-    ctrl = {"control_interface": "127.0.0.1", "control_port": 8953}
+    ctrl = {
+        "control_interface": "127.0.0.1",
+        "control_port": 8953,
+        "bind_ipv4": "",
+        "bind_ipv6": "",
+    }
     if result["exit_code"] == 0:
         for line in result["stdout"].split("\n"):
             stripped = line.strip()
@@ -179,4 +192,14 @@ def _get_control_from_config(instance_name: str) -> dict:
                     ctrl["control_port"] = int(stripped.split(":", 1)[1].strip())
                 except ValueError:
                     pass
+            elif stripped.startswith("interface:") and not stripped.startswith("interface-automatic"):
+                ip = stripped.split(":", 1)[1].strip().split("@")[0]
+                if not ip or ip == "0.0.0.0" or ip.startswith("127."):
+                    continue
+                if ":" in ip:
+                    if not ctrl["bind_ipv6"]:
+                        ctrl["bind_ipv6"] = ip
+                else:
+                    if not ctrl["bind_ipv4"]:
+                        ctrl["bind_ipv4"] = ip
     return ctrl
