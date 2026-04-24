@@ -871,6 +871,9 @@ export interface V2Instance {
   id: string;
   instance_name: string;
   bind_ip: string;
+  bind_ips?: string[];
+  bind_ipv4?: string;
+  bind_ipv6?: string;
   bind_port: number;
   outgoing_ip: string | null;
   control_port: number;
