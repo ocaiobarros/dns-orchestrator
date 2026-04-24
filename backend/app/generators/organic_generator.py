@@ -375,29 +375,15 @@ def _generate_block_domains_assets(payload: dict) -> list[dict]:
 def _generate_nftables_modular_snippets(payload: dict) -> list[dict]:
     """Reuse the existing modular nftables generator for the data plane.
 
-    The existing generator already writes correctly to /etc/nftables.d/*.nft
-    AND emits /etc/nftables.conf. We strip its /etc/nftables.conf entry and
-    rewrite the include path to /etc/network/nftables.d/*.nft to match the
-    organic layout.
+    The generator now emits directly to /etc/network/nftables.d/*.nft (matching
+    the homologated server layout). We only strip its /etc/nftables.conf
+    entrypoint because organic mode owns that file via _generate_nftables_entrypoint
+    (BEGIN/END splice).
     """
     from app.generators.nftables_generator import generate_nftables_config
 
     raw = generate_nftables_config(payload)
-    out: list[dict] = []
-    for entry in raw:
-        path = entry.get("path", "")
-        # Drop the entrypoint emitted by the legacy generator — we own it
-        # via _generate_nftables_entrypoint.
-        if path == "/etc/nftables.conf":
-            continue
-        # Relocate /etc/nftables.d/*.nft → /etc/network/nftables.d/*.nft
-        if path.startswith("/etc/nftables.d/"):
-            entry = dict(entry)
-            entry["path"] = path.replace(
-                "/etc/nftables.d/", "/etc/network/nftables.d/", 1
-            )
-        out.append(entry)
-    return out
+    return [e for e in raw if e.get("path") != "/etc/nftables.conf"]
 
 
 # ── Public entrypoint ──────────────────────────────────────────────────
