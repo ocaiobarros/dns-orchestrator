@@ -28,6 +28,7 @@ _REQUIRED_DIRS = [
     "/etc/systemd/system",
     "/usr/lib/systemd/system",
     "/etc/nftables.d",
+    "/etc/network/nftables.d",
     "/var/lib/dns-control",
     "/var/lib/dns-control/staging",
     "/var/lib/dns-control/backups",
