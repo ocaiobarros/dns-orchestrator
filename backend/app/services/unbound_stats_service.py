@@ -29,6 +29,8 @@ def get_instance_real_stats(instances: list[dict] | None = None) -> list[dict]:
         name = inst.get("name", "unbound")
         control_ip = inst.get("control_interface", "127.0.0.1")
         control_port = inst.get("control_port", 8953)
+        bind_ipv4 = inst.get("bind_ipv4", "")
+        bind_ipv6 = inst.get("bind_ipv6", "")
         config_path = f"/etc/unbound/{name}.conf"
 
         result = run_command(
