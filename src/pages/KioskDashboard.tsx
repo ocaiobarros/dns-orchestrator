@@ -119,6 +119,7 @@ export default function KioskDashboard() {
   const topClients = dns.top_clients ?? [];
   const recentQueries = dns.recent_queries ?? [];
   const collectorOk = dns.health?.collector === 'ok';
+  const isLogless = (dns.telemetry_mode ?? 'log') === 'logless';
 
   const services = host.services ?? {};
   const allServicesOk = Object.values(services).every((s: any) => s === 'active' || s === 'running');
