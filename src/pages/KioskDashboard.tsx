@@ -328,13 +328,32 @@ export default function KioskDashboard() {
           <div className="space-y-2">
             {backends.length > 0 ? backends.map((b: any) => {
               const r = b.resolver ?? {};
+              const ipStr = String(b.ip ?? '');
+              const ipv4Match = ipStr.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+              const ipv6Match = ipStr.match(/([0-9a-fA-F:]+:[0-9a-fA-F:]+)/);
+              const ipv4 = b.ipv4 ?? (ipv4Match ? ipv4Match[1] : '');
+              const ipv6 = b.ipv6 ?? (ipv6Match ? ipv6Match[1] : '');
+              const hasBoth = ipv4 && ipv6;
               return (
                 <div key={b.name} className="flex flex-col gap-1 py-2 border-b border-border/30 last:border-0">
                   <div className="flex items-center gap-2">
-                    <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${b.healthy ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                    <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${b.healthy ? 'bg-success' : 'bg-destructive'}`} />
                     <span className="font-mono text-sm font-semibold text-foreground">{b.name}</span>
-                    <span className="font-mono text-xs text-muted-foreground truncate">{b.ip}</span>
                   </div>
+                  {hasBoth ? (
+                    <div className="ml-[18px] flex flex-col gap-0.5">
+                      <div className="flex items-center gap-1.5 text-[10px] font-mono">
+                        <span className="uppercase tracking-wider text-muted-foreground/60 w-9 shrink-0">IPv4</span>
+                        <span className="text-muted-foreground truncate">{ipv4}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[10px] font-mono">
+                        <span className="uppercase tracking-wider text-muted-foreground/60 w-9 shrink-0">IPv6</span>
+                        <span className="text-muted-foreground truncate">{ipv6}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="ml-[18px] font-mono text-xs text-muted-foreground truncate">{ipStr}</div>
+                  )}
                   <div className="flex items-center gap-3 ml-[18px] text-xs font-mono text-muted-foreground">
                     <span>{r.total_queries?.toLocaleString() ?? '—'} <span className="text-muted-foreground/50">queries</span></span>
                     <span>{r.cache_hit_ratio ?? '—'}% <span className="text-muted-foreground/50">cache</span></span>
@@ -350,8 +369,11 @@ export default function KioskDashboard() {
 
         {/* Top Domains */}
         <div className="bg-card/80 backdrop-blur-sm rounded-xl border border-border/50 p-4 lg:p-6">
-          <div className="text-sm font-mono font-bold uppercase tracking-widest text-muted-foreground mb-4 flex items-center gap-2">
-            <Globe size={16} /> Top Domains
+          <div className="text-sm font-mono font-bold uppercase tracking-widest text-muted-foreground mb-4 flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2"><Globe size={16} /> Top Domains</span>
+            {isLogless && (
+              <span className="px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider rounded bg-warning/10 text-warning border border-warning/20">Logless</span>
+            )}
           </div>
           <div className="space-y-2">
             {topDomains.slice(0, 10).map((d: any, i: number) => (
@@ -364,15 +386,25 @@ export default function KioskDashboard() {
               </div>
             ))}
             {topDomains.length === 0 && (
-              <div className="text-muted-foreground font-mono text-sm">Sem dados</div>
+              isLogless ? (
+                <div className="text-xs text-muted-foreground/70 font-mono leading-snug">
+                  Telemetria de domínios indisponível.<br/>
+                  <span className="text-muted-foreground/50">Logging DNS desativado neste servidor (modo logless).</span>
+                </div>
+              ) : (
+                <div className="text-muted-foreground font-mono text-sm">Sem dados</div>
+              )
             )}
           </div>
         </div>
 
         {/* Top Clients */}
         <div className="bg-card/80 backdrop-blur-sm rounded-xl border border-border/50 p-4 lg:p-6">
-          <div className="text-sm font-mono font-bold uppercase tracking-widest text-muted-foreground mb-4 flex items-center gap-2">
-            <Wifi size={16} /> Top Clients
+          <div className="text-sm font-mono font-bold uppercase tracking-widest text-muted-foreground mb-4 flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2"><Wifi size={16} /> Top Clients</span>
+            {isLogless && (
+              <span className="px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider rounded bg-warning/10 text-warning border border-warning/20">Logless</span>
+            )}
           </div>
           <div className="space-y-2">
             {topClients.slice(0, 10).map((c: any, i: number) => (
@@ -385,7 +417,14 @@ export default function KioskDashboard() {
               </div>
             ))}
             {topClients.length === 0 && (
-              <div className="text-muted-foreground font-mono text-sm">Sem dados</div>
+              isLogless ? (
+                <div className="text-xs text-muted-foreground/70 font-mono leading-snug">
+                  Telemetria de clientes indisponível.<br/>
+                  <span className="text-muted-foreground/50">Logging DNS desativado neste servidor (modo logless).</span>
+                </div>
+              ) : (
+                <div className="text-muted-foreground font-mono text-sm">Sem dados</div>
+              )
             )}
           </div>
         </div>
