@@ -546,6 +546,13 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
                 log_source = "journalctl"
                 diag_info["attempt4_unbound_lines"] = len(unbound_lines)
 
+    if not stdout.strip():
+        logfile_out, logfile_path = _read_logfile_tail(log_detection.get("log_files", []) if log_detection else [])
+        if logfile_out.strip():
+            stdout = logfile_out
+            log_source = f"logfile:{logfile_path}"
+            diag_info["attempt5_logfile"] = {"path": logfile_path, "lines": len(logfile_out.strip().split("\n"))}
+
     # Unbound log-queries format from real journalctl:
     #   Apr 01 14:43:56 dnscontrol unbound[109556]: [1775069036] unbound[109556:3] info: 172.250.40.100 google.com. A IN
     # The key part after "info:" is: <client> <domain> <qtype> <qclass>
