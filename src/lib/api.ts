@@ -539,8 +539,44 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
     age_seconds: null,
     conf_present: true,
   };
-
-  // Import
+  if (path === '/api/telemetry/recollect' && method === 'POST') return {
+    success: true,
+    duration_ms: 1234,
+    steps: [{ step: 'run_collector', code: 0, stdout_tail: 'OK: mock collected' }],
+    telemetry_mode: 'log',
+    queries_parsed: 42,
+    log_source: 'journalctl',
+    top_domains_count: 5,
+    top_clients_count: 3,
+  };
+  if (path === '/api/telemetry/log-validation') return {
+    telemetry_mode: 'log',
+    active_parser: 'journalctl',
+    active_path: 'systemd-journal',
+    queries_parsed_last_cycle: 42,
+    domains_available: true,
+    clients_available: true,
+    log_files_discovered: [],
+    log_queries_configured: true,
+    use_syslog: true,
+    journal_entries_found: true,
+    instances: [
+      { instance: 'unbound01', log_queries: true, use_syslog: true, logfile: '', expected_parser: 'journalctl' },
+      { instance: 'unbound02', log_queries: true, use_syslog: true, logfile: '', expected_parser: 'journalctl' },
+    ],
+    diag: {},
+  };
+  if (path.startsWith('/api/telemetry/recent-queries')) return {
+    items: [
+      { time: '14:43:56', client: '172.250.40.100', domain: 'google.com', type: 'A' },
+      { time: '14:43:55', client: '172.250.40.101', domain: 'cloudflare.com', type: 'AAAA' },
+    ],
+    count: 2,
+    telemetry_mode: 'log',
+    log_source: 'journalctl',
+    available_types: ['A', 'AAAA', 'PTR'],
+    available_instances: ['unbound01', 'unbound02'],
+  };
   if (path === '/api/config/import' && method === 'POST') return { success: true, mode: 'imported', discovery: { instances: [], vip_mappings: [], dns_listeners: [] }, audit: [], errors: [] };
   if (path === '/api/config/import' && method === 'DELETE') return { success: true, mode: 'managed' };
   if (path === '/api/config/import-host') return { hostname: 'mock-host', instances: [], instanceCount: 0, network: { interfaces: [], listeners: [] } };
