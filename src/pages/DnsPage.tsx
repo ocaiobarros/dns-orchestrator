@@ -131,21 +131,47 @@ export default function DnsPage() {
                 </tr>
               </thead>
               <tbody className="font-mono">
-                {backends.map((b: any) => (
-                  <tr key={b.name} className="border-b border-border last:border-0">
-                    <td className="py-2 text-primary">{b.name} <span className="text-muted-foreground/50 text-xs">{b.ip}</span></td>
-                    <td className="py-2">
-                      <span className={`text-xs px-1.5 py-0.5 rounded ${
-                        b.healthy ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive'
-                      }`}>{b.healthy ? 'live' : 'down'}</span>
-                    </td>
-                    <td className="py-2 text-right">{safeNum(b.resolver?.total_queries).toLocaleString()}</td>
-                    <td className="py-2 text-right text-success">{safeNum(b.resolver?.cache_hit_ratio)}%</td>
-                    <td className="py-2 text-right">{safeNum(b.resolver?.recursion_avg_ms)}ms</td>
-                    <td className="py-2 text-right">{safeNum(b.resolver?.servfail)}</td>
-                    <td className="py-2 text-xs text-muted-foreground">{b.resolver?.source ?? '—'}</td>
-                  </tr>
-                ))}
+                {backends.map((b: any) => {
+                  const ipStr = String(b.ip ?? '');
+                  // Split IPv4 and IPv6 visually if both are present in the same string.
+                  // Heuristic: IPv6 contains ':' and IPv4 matches a.b.c.d.
+                  const ipv4Match = ipStr.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+                  const ipv6Match = ipStr.match(/([0-9a-fA-F:]+:[0-9a-fA-F:]+)/);
+                  const ipv4 = b.ipv4 ?? (ipv4Match ? ipv4Match[1] : '');
+                  const ipv6 = b.ipv6 ?? (ipv6Match ? ipv6Match[1] : '');
+                  const hasBoth = ipv4 && ipv6;
+                  return (
+                    <tr key={b.name} className="border-b border-border last:border-0">
+                      <td className="py-2 text-primary align-top">
+                        <div>{b.name}</div>
+                        {hasBoth ? (
+                          <div className="mt-0.5 flex flex-col gap-0.5 text-xs leading-tight">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground/60 w-9">IPv4</span>
+                              <span className="text-muted-foreground">{ipv4}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground/60 w-9">IPv6</span>
+                              <span className="text-muted-foreground">{ipv6}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground/50 text-xs">{ipStr}</span>
+                        )}
+                      </td>
+                      <td className="py-2 align-top">
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${
+                          b.healthy ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive'
+                        }`}>{b.healthy ? 'live' : 'down'}</span>
+                      </td>
+                      <td className="py-2 text-right align-top">{safeNum(b.resolver?.total_queries).toLocaleString()}</td>
+                      <td className="py-2 text-right text-success align-top">{safeNum(b.resolver?.cache_hit_ratio)}%</td>
+                      <td className="py-2 text-right align-top">{safeNum(b.resolver?.recursion_avg_ms)}ms</td>
+                      <td className="py-2 text-right align-top">{safeNum(b.resolver?.servfail)}</td>
+                      <td className="py-2 text-xs text-muted-foreground align-top">{b.resolver?.source ?? '—'}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
