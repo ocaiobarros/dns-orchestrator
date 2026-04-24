@@ -203,6 +203,8 @@ def kiosk_summary(_: User = Depends(get_current_user)):
             "top_clients": telemetry.get("top_clients", []),
             "recent_queries": telemetry.get("recent_queries", []),
             "health": telemetry.get("health", {}),
+            "telemetry_mode": telemetry.get("telemetry_mode", "log"),
+            "log_detection": telemetry.get("log_detection", {}),
         },
         "history": history[-60:],  # Last ~10 minutes of data points
     }

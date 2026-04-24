@@ -2,7 +2,9 @@
 DNS Control v2 — Health API Routes
 """
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -14,12 +16,22 @@ from app.services.health_service import (
     run_health_checks_for_instance,
 )
 
+logger = logging.getLogger("dns-control.health-v2")
 router = APIRouter()
 
 
 @router.get("/instances")
 def list_instance_health(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    return get_all_instance_states(db)
+    """Return per-instance state. Never raises 500: on engine failure returns empty list with error flag."""
+    try:
+        return get_all_instance_states(db)
+    except Exception as e:
+        logger.exception("get_all_instance_states failed; returning empty list")
+        return JSONResponse(
+            status_code=200,
+            content=[],
+            headers={"X-Engine-Error": str(e)[:120]},
+        )
 
 
 @router.get("/instances/{instance_id}")

@@ -207,6 +207,15 @@ def _emit_event(db: Session, event_type: str, severity: str, instance_id: str, m
     logger.info(f"Event [{severity}] {event_type}: {message}")
 
 
+def _ensure_aware(dt):
+    """Coerce a possibly naive datetime to UTC-aware. Returns None if dt is None."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def get_all_instance_states(db: Session) -> list[dict]:
     """Get current state of all instances with cooldown info."""
     instances = db.query(DnsInstance).filter(DnsInstance.is_enabled == True).all()
@@ -215,8 +224,9 @@ def get_all_instance_states(db: Session) -> list[dict]:
     for inst in instances:
         state = db.query(InstanceState).filter(InstanceState.instance_id == inst.id).first()
         cooldown_remaining = 0
-        if state and state.cooldown_until:
-            remaining = (state.cooldown_until - now).total_seconds()
+        cooldown_until_aware = _ensure_aware(state.cooldown_until) if state else None
+        if cooldown_until_aware:
+            remaining = (cooldown_until_aware - now).total_seconds()
             cooldown_remaining = max(0, int(remaining))
         results.append({
             "id": inst.id,
