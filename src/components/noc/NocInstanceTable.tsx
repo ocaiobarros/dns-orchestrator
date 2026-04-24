@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { CheckCircle, XCircle, AlertTriangle, Radio } from 'lucide-react';
 import type { V2Instance } from '@/lib/types';
+import IpAddressStack from '@/components/IpAddressStack';
 
 interface NocInstanceTableProps {
   instances: V2Instance[];
@@ -46,7 +47,19 @@ export default function NocInstanceTable({ instances }: NocInstanceTableProps) {
                   transition={{ duration: 0.3, delay: 0.06 + i * 0.04 }}
                 >
                   <td className="font-mono text-foreground/85 font-semibold text-[12px]">{inst.instance_name ?? '—'}</td>
-                  <td className="font-mono text-muted-foreground/35 text-[10px]">{inst.bind_ip ?? '—'}:{inst.bind_port ?? 53}</td>
+                  <td className="py-3 pr-3 align-top">
+                    <div className="min-w-[220px] max-w-[320px]">
+                      <IpAddressStack
+                        ipv4={inst.bind_ipv4}
+                        ipv6={inst.bind_ipv6}
+                        fallback={inst.bind_ip}
+                        valueClassName="text-[11px] text-muted-foreground/80"
+                      />
+                      <div className="mt-1 pl-2 text-[10px] font-mono text-muted-foreground/45">
+                        porta {inst.bind_port ?? 53}
+                      </div>
+                    </div>
+                  </td>
                   <td>
                     <span className={`inline-flex items-center gap-1.5 text-[9px] font-mono font-bold px-2.5 py-1 rounded-full ${
                       inst.current_status === 'healthy' ? 'bg-success/6 text-success border border-success/12' :

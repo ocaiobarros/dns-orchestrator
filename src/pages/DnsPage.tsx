@@ -2,6 +2,7 @@ import { useState, lazy, Suspense, useEffect, useMemo } from 'react';
 import { AlertTriangle, Clock } from 'lucide-react';
 import MetricCard from '@/components/MetricCard';
 import { LoadingState, ErrorState } from '@/components/DataStates';
+import IpAddressStack from '@/components/IpAddressStack';
 import { useTelemetry, useTelemetryHistory } from '@/lib/hooks';
 
 const DnsTimeSeriesCharts = lazy(() => import('@/components/DnsTimeSeriesCharts'));
@@ -133,31 +134,15 @@ export default function DnsPage() {
               <tbody className="font-mono">
                 {backends.map((b: any) => {
                   const ipStr = String(b.ip ?? '');
-                  // Split IPv4 and IPv6 visually if both are present in the same string.
-                  // Heuristic: IPv6 contains ':' and IPv4 matches a.b.c.d.
-                  const ipv4Match = ipStr.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
-                  const ipv6Match = ipStr.match(/([0-9a-fA-F:]+:[0-9a-fA-F:]+)/);
-                  const ipv4 = b.ipv4 ?? (ipv4Match ? ipv4Match[1] : '');
-                  const ipv6 = b.ipv6 ?? (ipv6Match ? ipv6Match[1] : '');
-                  const hasBoth = ipv4 && ipv6;
+                  const ipv4 = String(b.ipv4 ?? '');
+                  const ipv6 = String(b.ipv6 ?? '');
                   return (
                     <tr key={b.name} className="border-b border-border last:border-0">
                       <td className="py-2 text-primary align-top">
                         <div>{b.name}</div>
-                        {hasBoth ? (
-                          <div className="mt-0.5 flex flex-col gap-0.5 text-xs leading-tight">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground/60 w-9">IPv4</span>
-                              <span className="text-muted-foreground">{ipv4}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground/60 w-9">IPv6</span>
-                              <span className="text-muted-foreground">{ipv6}</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground/50 text-xs">{ipStr}</span>
-                        )}
+                        <div className="mt-1 max-w-[26rem]">
+                          <IpAddressStack ipv4={ipv4} ipv6={ipv6} fallback={ipStr} />
+                        </div>
                       </td>
                       <td className="py-2 align-top">
                         <span className={`text-xs px-1.5 py-0.5 rounded ${

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { BarChart3, Activity, Timer, AlertTriangle, Search, Users, Globe, Database } from 'lucide-react';
 import MetricCard from '@/components/MetricCard';
 import { LoadingState } from '@/components/DataStates';
+import IpAddressStack from '@/components/IpAddressStack';
 import { useTelemetry, useTelemetryStatus } from '@/lib/hooks';
 
 function safeNum(v: unknown): number {
@@ -161,7 +162,17 @@ export default function MetricsPage() {
                 <tbody>
                   {backends.map((b: any) => (
                     <tr key={b.name} className="border-b border-border last:border-0">
-                      <td className="py-2 pr-4 font-mono text-primary font-medium">{b.name} <span className="text-muted-foreground/50 text-xs">{b.ip}</span></td>
+                      <td className="py-2 pr-4 font-mono text-primary font-medium align-top">
+                        <div>{b.name}</div>
+                        <div className="mt-1 max-w-[24rem]">
+                          <IpAddressStack
+                            ipv4={b.ipv4}
+                            ipv6={b.ipv6}
+                            fallback={b.ip}
+                            valueClassName="text-[11px] text-muted-foreground"
+                          />
+                        </div>
+                      </td>
                       <td className="py-2 pr-4 text-right font-mono">{safeNum(b.resolver?.total_queries).toLocaleString()}</td>
                       <td className="py-2 pr-4 text-right font-mono text-success">{safeNum(b.resolver?.cache_hit_ratio)}%</td>
                       <td className="py-2 pr-4 text-right font-mono">{safeNum(b.resolver?.recursion_avg_ms)}ms</td>

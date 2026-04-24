@@ -18,6 +18,40 @@ logger = logging.getLogger("dns-control.health")
 PROBE_DOMAIN = "google.com"
 
 
+def _read_instance_bind_interfaces(instance_name: str) -> dict:
+    """Read IPv4/IPv6 bind interfaces directly from the live unbound config."""
+    bind_ipv4 = ""
+    bind_ipv6 = ""
+    bind_ips: list[str] = []
+
+    try:
+        with open(f"/etc/unbound/{instance_name}.conf") as f:
+            for raw_line in f:
+                stripped = raw_line.strip()
+                if stripped.startswith("#") or not stripped.startswith("interface:") or stripped.startswith("interface-automatic"):
+                    continue
+
+                ip = stripped.split(":", 1)[1].strip().split("@")[0]
+                if not ip or ip == "0.0.0.0" or ip.startswith("127."):
+                    continue
+
+                bind_ips.append(ip)
+                if ":" in ip:
+                    if not bind_ipv6:
+                        bind_ipv6 = ip
+                else:
+                    if not bind_ipv4:
+                        bind_ipv4 = ip
+    except FileNotFoundError:
+        pass
+
+    return {
+        "bind_ips": bind_ips,
+        "bind_ipv4": bind_ipv4,
+        "bind_ipv6": bind_ipv6,
+    }
+
+
 def run_health_checks_for_instance(db: Session, instance: DnsInstance) -> dict:
     """Run all health check types for a single instance (quorum health check)."""
     settings = get_health_settings(db)
@@ -223,6 +257,7 @@ def get_all_instance_states(db: Session) -> list[dict]:
     results = []
     for inst in instances:
         state = db.query(InstanceState).filter(InstanceState.instance_id == inst.id).first()
+        bind_info = _read_instance_bind_interfaces(inst.instance_name)
         cooldown_remaining = 0
         cooldown_until_aware = _ensure_aware(state.cooldown_until) if state else None
         if cooldown_until_aware:
@@ -232,6 +267,9 @@ def get_all_instance_states(db: Session) -> list[dict]:
             "id": inst.id,
             "instance_name": inst.instance_name,
             "bind_ip": inst.bind_ip,
+            "bind_ips": bind_info["bind_ips"],
+            "bind_ipv4": bind_info["bind_ipv4"] or inst.bind_ip,
+            "bind_ipv6": bind_info["bind_ipv6"],
             "bind_port": inst.bind_port,
             "outgoing_ip": inst.outgoing_ip,
             "control_port": inst.control_port,
