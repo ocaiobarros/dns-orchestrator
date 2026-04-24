@@ -11,6 +11,13 @@ from dataclasses import dataclass, field
 import glob
 import json
 import os
+import re
+
+# Real Unbound instance config file names follow the strict pattern
+# unboundNN.conf (NN = 1+ digits). This excludes auxiliary include files
+# such as unbound-block-domains.conf, anablock.conf, etc., which match
+# /etc/unbound/unbound*.conf but are NOT systemd units or control sockets.
+_INSTANCE_NAME_RE = re.compile(r"^unbound\d+$")
 
 
 @dataclass
@@ -83,7 +90,10 @@ def _discover_runtime_instances() -> list[dict]:
     instances = []
     for config_path in sorted(glob.glob("/etc/unbound/unbound*.conf")):
         name = os.path.splitext(os.path.basename(config_path))[0]
-        if name == "unbound":
+        # Only accept strict unboundNN naming. Skip auxiliary includes like
+        # unbound-block-domains.conf which would otherwise be misdetected
+        # as instances and produce phantom systemd/unbound-control commands.
+        if not _INSTANCE_NAME_RE.match(name):
             continue
         parsed = _parse_instance_config(config_path)
         instances.append({
@@ -266,12 +276,22 @@ def get_runtime_command_catalog() -> dict[str, CommandDefinition]:
             description="Probe de resolução no VIP interceptado 4.2.2.5",
             category="dns-vip", executable="dig",
             base_args=["@4.2.2.5", "google.com", "+short", "+time=3", "+tries=1"],
+            remediation_hint=(
+                "Validar interceptação do VIP no nftables (PREROUTING/OUTPUT) "
+                "e roteamento da borda. Falha indica DNAT ausente, backend "
+                "indisponível ou consulta saindo pelo upstream público."
+            ),
         )
         catalog["dns-vip-probe-4226"] = CommandDefinition(
             id="dns-vip-probe-4226", name="Service VIP @4.2.2.6",
             description="Probe de resolução no VIP interceptado 4.2.2.6",
             category="dns-vip", executable="dig",
             base_args=["@4.2.2.6", "google.com", "+short", "+time=3", "+tries=1"],
+            remediation_hint=(
+                "Validar interceptação do VIP no nftables (PREROUTING/OUTPUT) "
+                "e roteamento da borda. Falha indica DNAT ausente, backend "
+                "indisponível ou consulta saindo pelo upstream público."
+            ),
         )
         catalog["dns-vip-bind-check"] = CommandDefinition(
             id="dns-vip-bind-check", name="VIP Bind Check (lo)",
