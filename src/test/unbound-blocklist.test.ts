@@ -68,22 +68,32 @@ describe('Unbound blocklist conditional includes', () => {
       }
     });
 
-    it('generateAllFiles must NOT produce blocklist sync infra, but anablock.conf placeholder is ALWAYS guaranteed', () => {
+    it('generateAllFiles must NOT produce blocklist sync infra, but anablock.conf and unbound-block-domains.conf placeholders are ALWAYS guaranteed', () => {
       const config = baseConfig({ enableBlocklist: false });
       const files = generateAllFiles(config);
       const paths = files.map(f => f.path);
 
-      // Sync infra is conditional on enableBlocklist
-      expect(paths).not.toContain('/etc/unbound/unbound-block-domains.conf');
+      // AnaBlock sync infra é condicional ao enableBlocklist
       expect(paths).not.toContain('/opt/dns-control/scripts/anablock-sync.sh');
       expect(paths).not.toContain('/etc/systemd/system/anablock-sync.service');
       expect(paths).not.toContain('/etc/systemd/system/anablock-sync.timer');
 
-      // anablock.conf is ALWAYS materialized (safe placeholder when disabled)
-      // because unboundXX.conf includes it — missing file would break Unbound startup.
+      // anablock.conf é SEMPRE materializado (placeholder seguro quando off)
+      // porque os unboundXX.conf incluem esse arquivo — ausência quebra startup.
       expect(paths).toContain('/etc/unbound/anablock.conf');
       const anablock = files.find(f => f.path === '/etc/unbound/anablock.conf')!;
       expect(anablock.content).toContain('placeholder seguro');
+
+      // unbound-block-domains.conf TAMBÉM é sempre garantido (placeholder vazio
+      // quando block-domains.txt está vazio) — incluído pelos unboundXX.conf.
+      expect(paths).toContain('/etc/unbound/unbound-block-domains.conf');
+      const blocklist = files.find(f => f.path === '/etc/unbound/unbound-block-domains.conf')!;
+      expect(blocklist.content).toContain('placeholder');
+
+      // block-domains.txt e gen-block-domains.sh são parte do layout homologado
+      // (lista LOCAL/manual, independente do AnaBlock).
+      expect(paths).toContain('/etc/unbound/block-domains.txt');
+      expect(paths).toContain('/etc/unbound/gen-block-domains.sh');
     });
   });
 
