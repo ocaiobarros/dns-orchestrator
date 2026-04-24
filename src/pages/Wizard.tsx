@@ -1371,10 +1371,12 @@ export default function Wizard() {
     return (
       <div className="space-y-4">
         <InfoBox>
-          <strong>FRR é parte do layout homologado do modo Interceptação.</strong>{' '}
+          <strong>FRR é parte OFICIAL do layout homologado do modo Interceptação.</strong>{' '}
           Os arquivos <code>/etc/frr/frr.conf</code> e <code>/etc/frr/daemons</code> são SEMPRE
-          gerados nesse modo, mesmo com OSPF desativado (placeholder seguro). Isso garante
-          paridade estrutural com o servidor de produção homologado.
+          materializados nesse modo, mesmo com OSPF desativado. Esse comportamento{' '}
+          <strong>não é provisório</strong> — é estrutural: garante paridade exata com o
+          servidor de produção homologado e permite ativar OSPF posteriormente sem
+          regenerar o restante da configuração.
         </InfoBox>
 
         {/* ── Toggle principal ── */}

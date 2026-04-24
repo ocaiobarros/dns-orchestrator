@@ -5,6 +5,7 @@
 // ============================================================
 
 import type { WizardConfig } from './types';
+import { ROOT_HINTS_NAMED_CACHE } from './root-hints';
 
 // ═══ UNBOUND MASTER CONFIG ═══
 
@@ -1737,7 +1738,9 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
     });
   });
 
-  // Blocklist / AnaBlock
+  // AnaBlock — /etc/unbound/anablock.conf é SEMPRE garantido pelo deploy:
+  // os unboundXX.conf incluem esse arquivo, então ele precisa existir mesmo
+  // com AnaBlock desabilitado (placeholder seguro = comentários inofensivos).
   if (config.enableBlocklist) {
     files.push({ path: '/etc/unbound/unbound-block-domains.conf', content: generateBlocklistConf() });
     files.push({ path: '/etc/unbound/anablock.conf', content: `# DNS Control — AnaBlock placeholder\n# Populado pelo script de sync.\n` });
@@ -1746,6 +1749,18 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
     if (config.blocklistAutoSync) {
       files.push({ path: '/etc/systemd/system/anablock-sync.timer', content: generateAnablockTimer(config) });
     }
+  } else {
+    // Placeholder seguro — evita erro de include nos unboundXX.conf
+    files.push({
+      path: '/etc/unbound/anablock.conf',
+      content: `# DNS Control — AnaBlock desabilitado (placeholder seguro)\n# Este arquivo existe apenas para satisfazer o "include" nos unboundXX.conf.\n# Habilite AnaBlock no Wizard para que ele seja populado pelo script de sync.\n`,
+    });
+  }
+
+  // named.cache — snapshot IANA versionado (determinístico, sem download runtime).
+  // Garantido pelo deploy no modo Interceptação (forward-first usa root-hints).
+  if (isInterception) {
+    files.push({ path: '/etc/unbound/named.cache', content: ROOT_HINTS_NAMED_CACHE });
   }
 
   // IP Blocking
@@ -1767,9 +1782,13 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
   // Sysctl (complete)
   files.push(...generateSysctlFiles(config));
 
-  // FRR — parte do layout homologado do modo Interceptação.
-  // Os arquivos são SEMPRE gerados nesse modo, mesmo com OSPF desativado
-  // (placeholder seguro). No modo Simples, FRR não faz parte do layout.
+  // FRR — parte OFICIAL do layout homologado do modo Interceptação.
+  // /etc/frr/frr.conf e /etc/frr/daemons são SEMPRE materializados nesse modo,
+  // mesmo com OSPF desativado (placeholder seguro: ospfd=no, frr.conf como
+  // esqueleto comentado). Isso NÃO é um estado provisório — é o comportamento
+  // homologado: garante paridade estrutural com o servidor de produção e
+  // permite ativar OSPF depois sem regenerar o restante. No modo Simples,
+  // FRR não faz parte do layout.
   if (isInterception) {
     files.push({ path: '/etc/frr/frr.conf', content: generateFrrConf(config) });
     files.push({ path: '/etc/frr/daemons', content: generateFrrDaemons(config) });

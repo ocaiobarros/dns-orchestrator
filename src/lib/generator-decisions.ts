@@ -113,15 +113,23 @@ export function buildDecisionLog(config: WizardConfig): GeneratorDecision[] {
         : 'IPv4-only — tabelas IPv6 suprimidas, sem overhead de regras dual-stack',
     });
 
-    // FRR / OSPF — parte do layout homologado
+    // FRR / OSPF — parte OFICIAL do layout homologado (não provisório)
     const ospfActive = config.enableOspf || config.routingMode === 'frr-ospf';
     decisions.push({
       category: 'Roteamento',
-      parameter: 'FRR (layout homologado)',
-      value: ospfActive ? `OSPF ativo (router-id ${config.routerId || '—'}, área ${config.ospfArea})` : 'placeholder seguro (ospfd=no)',
+      parameter: 'FRR (layout homologado oficial)',
+      value: ospfActive ? `OSPF ativo (router-id ${config.routerId || '—'}, área ${config.ospfArea})` : 'OSPF desativado (ospfd=no, frr.conf esqueleto)',
       reasoning: ospfActive
         ? `/etc/frr/frr.conf e /etc/frr/daemons gerados com router OSPF ativo. ${config.redistributeConnected ? 'Redistribuição connected ligada (anuncia VIPs e loopbacks).' : 'Redistribuição connected desligada — apenas redes declaradas serão anunciadas.'}`
-        : '/etc/frr/frr.conf e /etc/frr/daemons SEMPRE são gerados no modo Interceptação (paridade com host homologado), mesmo sem OSPF ativo. ospfd=no, frr.conf como esqueleto comentado — pode ser ativado depois sem regenerar o restante.',
+        : 'FRR é parte oficial do layout homologado do modo Interceptação. /etc/frr/frr.conf e /etc/frr/daemons são SEMPRE materializados (mesmo com OSPF off) — comportamento estrutural, não provisório. ospfd=no e frr.conf como esqueleto comentado garantem paridade exata com o servidor de produção e permitem ativar OSPF depois sem regenerar o restante.',
+    });
+
+    // named.cache — snapshot determinístico versionado
+    decisions.push({
+      category: 'Determinismo',
+      parameter: '/etc/unbound/named.cache',
+      value: 'snapshot IANA versionado (2024-01-22)',
+      reasoning: 'Materializado a partir de snapshot congelado no repositório (src/lib/root-hints.ts ↔ backend/app/generators/data/named.cache). PROIBIDO download em runtime durante deploy: garante reprodutibilidade 100% offline. Atualizar root servers exige PR explícito alterando os dois arquivos espelhados (paridade FE/BE obrigatória).',
     });
   }
 

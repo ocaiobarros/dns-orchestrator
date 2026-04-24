@@ -68,13 +68,22 @@ describe('Unbound blocklist conditional includes', () => {
       }
     });
 
-    it('generateAllFiles must NOT produce blocklist files', () => {
+    it('generateAllFiles must NOT produce blocklist sync infra, but anablock.conf placeholder is ALWAYS guaranteed', () => {
       const config = baseConfig({ enableBlocklist: false });
       const files = generateAllFiles(config);
       const paths = files.map(f => f.path);
-      
+
+      // Sync infra is conditional on enableBlocklist
       expect(paths).not.toContain('/etc/unbound/unbound-block-domains.conf');
-      expect(paths).not.toContain('/etc/unbound/anablock.conf');
+      expect(paths).not.toContain('/opt/dns-control/scripts/anablock-sync.sh');
+      expect(paths).not.toContain('/etc/systemd/system/anablock-sync.service');
+      expect(paths).not.toContain('/etc/systemd/system/anablock-sync.timer');
+
+      // anablock.conf is ALWAYS materialized (safe placeholder when disabled)
+      // because unboundXX.conf includes it — missing file would break Unbound startup.
+      expect(paths).toContain('/etc/unbound/anablock.conf');
+      const anablock = files.find(f => f.path === '/etc/unbound/anablock.conf')!;
+      expect(anablock.content).toContain('placeholder seguro');
     });
   });
 

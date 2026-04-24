@@ -767,16 +767,15 @@ def _execute_deploy_locked(
         unbound_confd_staging = os.path.join(staging_dir, "etc/unbound/unbound.conf.d")
         os.makedirs(unbound_confd_staging, exist_ok=True)
 
-        # Stub named.cache for validation
+        # named.cache para staging — sempre via snapshot determinístico versionado.
+        # PROIBIDO baixar em runtime ou depender de cópia pré-existente do host:
+        # garante validação reproduzível offline e idêntica ao que será deployado.
         named_cache_staging = os.path.join(staging_dir, "etc/unbound/named.cache")
         if not os.path.exists(named_cache_staging):
-            prod_named_cache = "/etc/unbound/named.cache"
-            if os.path.exists(prod_named_cache):
-                shutil.copy2(prod_named_cache, named_cache_staging)
-            else:
-                with open(named_cache_staging, "w") as nc:
-                    nc.write(".\t\t\t3600000\tNS\tA.ROOT-SERVERS.NET.\n"
-                             "A.ROOT-SERVERS.NET.\t3600000\tA\t198.41.0.4\n")
+            from app.generators.unbound_generator import _generate_root_hints
+            root_hints = _generate_root_hints()
+            with open(named_cache_staging, "w") as nc:
+                nc.write(root_hints["content"])
 
         # Generate nftables validation artifact
         normalized_payload = runtime_payload
