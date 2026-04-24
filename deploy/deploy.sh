@@ -117,6 +117,7 @@ step "Criando diretórios"
 install -d -o root -g root -m 0755 /etc/unbound
 install -d -o root -g root -m 0755 /etc/unbound/unbound.conf.d
 install -d -o root -g root -m 0755 /etc/nftables.d
+install -d -o root -g root -m 0755 /etc/network/nftables.d
 install -d -o root -g root -m 0755 /etc/network
 install -d -o root -g root -m 0755 /etc/network/post-up.d
 install -d -o root -g root -m 0755 /etc/sysctl.d
@@ -238,8 +239,8 @@ step "Configurando permissões e sudoers"
 chown -R "${APP_USER}:${APP_USER}" "${APP_ROOT}"
 chown -R "${APP_USER}:${APP_USER}" "${DATA_DIR}"
 chown -R "${APP_USER}:${APP_USER}" "${LOG_DIR}"
-# NÃO alterar ownership de /etc/nftables.d — deve permanecer root:root
-# (o deploy usa sudo install para gravar arquivos lá)
+# NÃO alterar ownership de /etc/nftables.d nem /etc/network/nftables.d — devem
+# permanecer root:root (o deploy usa sudo install para gravar arquivos lá)
 
 # Instalar sudoers do repositório (fonte de verdade única)
 SUDOERS_SRC="${APP_ROOT}/deploy/sudoers/dns-control-diagnostics"
@@ -284,21 +285,25 @@ fi
 step "Configurando nftables"
 # ═══════════════════════════════════════════════════════════════
 
-# Garantir que o arquivo de configuração base existe E contém include
+# Garantir que o arquivo de configuração base existe E contém include do
+# layout homologado. O modo Interceptação usa /etc/network/nftables.d/ (paridade
+# com o servidor de produção). O modo Simples sobrescreve este arquivo com seu
+# próprio include /etc/nftables.d/ ao gerar configs.
 NFTABLES_EXPECTED='#!/usr/sbin/nft -f
 flush ruleset
-include "/etc/nftables.d/*.nft"'
+include "/etc/network/nftables.d/*.nft"'
 
 if [[ ! -f "/etc/nftables.conf" ]]; then
     printf '%s\n' "$NFTABLES_EXPECTED" > /etc/nftables.conf
-    ok "nftables.conf base criado"
-elif ! grep -q 'include "/etc/nftables.d/\*.nft"' /etc/nftables.conf; then
-    # Debian default não tem include — sobrescrever com versão correta
+    ok "nftables.conf base criado (include /etc/network/nftables.d/)"
+elif ! grep -q 'include "/etc/network/nftables.d/\*.nft"' /etc/nftables.conf \
+   && ! grep -q 'include "/etc/nftables.d/\*.nft"' /etc/nftables.conf; then
+    # Sem include conhecido — sobrescrever com o include homologado
     cp /etc/nftables.conf /etc/nftables.conf.bak.$(date +%Y%m%d%H%M%S) 2>/dev/null || true
     printf '%s\n' "$NFTABLES_EXPECTED" > /etc/nftables.conf
-    ok "nftables.conf atualizado (include adicionado)"
+    ok "nftables.conf atualizado (include /etc/network/nftables.d/ adicionado)"
 else
-    ok "nftables.conf já existe e contém include"
+    ok "nftables.conf já existe e contém include válido"
 fi
 # Garantir modo 0644 e ownership root:root (Debian default pode ser 755)
 chmod 0644 /etc/nftables.conf
