@@ -1745,13 +1745,12 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
   // os unboundXX.conf incluem esse arquivo, então ele precisa existir mesmo
   // com AnaBlock desabilitado (placeholder seguro = comentários inofensivos).
   if (config.enableBlocklist) {
-    files.push({ path: '/etc/unbound/unbound-block-domains.conf', content: generateBlocklistConf() });
-    files.push({ path: '/etc/unbound/anablock.conf', content: `# DNS Control — AnaBlock placeholder\n# Populado pelo script de sync.\n` });
     files.push({ path: '/opt/dns-control/scripts/anablock-sync.sh', content: generateAnablockSyncScript(config) });
     files.push({ path: '/etc/systemd/system/anablock-sync.service', content: generateAnablockService() });
     if (config.blocklistAutoSync) {
       files.push({ path: '/etc/systemd/system/anablock-sync.timer', content: generateAnablockTimer(config) });
     }
+    files.push({ path: '/etc/unbound/anablock.conf', content: `# DNS Control — AnaBlock placeholder\n# Populado pelo script de sync (anablock-sync.sh).\n` });
   } else {
     // Placeholder seguro — evita erro de include nos unboundXX.conf
     files.push({
@@ -1760,11 +1759,102 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
     });
   }
 
-  // named.cache — snapshot IANA versionado (determinístico, sem download runtime).
-  // Garantido pelo deploy no modo Interceptação (forward-first usa root-hints).
-  if (isInterception) {
-    files.push({ path: '/etc/unbound/named.cache', content: ROOT_HINTS_NAMED_CACHE });
+  // ═══ Block list LOCAL/manual — independente do AnaBlock ═══
+  // /etc/unbound/block-domains.txt: lista de domínios bloqueados editada
+  //   manualmente pelo operador (uma entrada por linha).
+  // /etc/unbound/gen-block-domains.sh: script idempotente que lê o .txt
+  //   e (re)gera /etc/unbound/unbound-block-domains.conf com local-zone
+  //   "<dominio>" always_nxdomain.
+  // /etc/unbound/unbound-block-domains.conf: SEMPRE existe (placeholder
+  //   vazio quando block-domains.txt está vazio) — incluído pelos
+  //   unboundXX.conf, não pode faltar.
+  files.push({
+    path: '/etc/unbound/block-domains.txt',
+    content:
+      '# DNS Control — block-domains.txt\n' +
+      '# Lista LOCAL/manual de domínios bloqueados (independente do AnaBlock).\n' +
+      '# Um domínio DNS-válido por linha. Após editar, execute:\n' +
+      '#   /etc/unbound/gen-block-domains.sh\n' +
+      '# para (re)gerar /etc/unbound/unbound-block-domains.conf.\n',
+  });
+  files.push({
+    path: '/etc/unbound/gen-block-domains.sh',
+    content:
+      '#!/bin/sh\n' +
+      '# DNS Control — gen-block-domains.sh\n' +
+      '# Lê /etc/unbound/block-domains.txt e gera\n' +
+      '# /etc/unbound/unbound-block-domains.conf no formato:\n' +
+      '#   local-zone: "<dominio>" always_nxdomain\n' +
+      '\n' +
+      'BFILE=/etc/unbound/block-domains.txt\n' +
+      'TFILE=/tmp/block-domains.txt\n' +
+      'OUTCFG=/etc/unbound/unbound-block-domains.conf\n' +
+      '\n' +
+      ': > "$OUTCFG"\n' +
+      '\n' +
+      'if [ ! -s "$BFILE" ]; then\n' +
+      '    echo "# DNS Control — block list vazia" > "$OUTCFG"\n' +
+      '    exit 0\n' +
+      'fi\n' +
+      '\n' +
+      'cat "$BFILE" 2>/dev/null \\\n' +
+      "    | egrep '^([a-z0-9]+[a-z0-9-](-[a-z0-9]+)*\\.)+[a-z]{2,}$' \\\n" +
+      "    | tr '[:upper:]' '[:lower:]' \\\n" +
+      '    | sort -u \\\n' +
+      '    > "$TFILE"\n' +
+      '\n' +
+      'total=$(wc -l < "$TFILE" 2>/dev/null || echo 0)\n' +
+      'if [ "$total" = "0" ]; then\n' +
+      '    echo "# DNS Control — nenhum domínio válido em $BFILE" > "$OUTCFG"\n' +
+      '    exit 0\n' +
+      'fi\n' +
+      '\n' +
+      'while IFS= read -r domain; do\n' +
+      "    printf 'local-zone: \"%s\" always_nxdomain\\n' \"$domain\" >> \"$OUTCFG\"\n" +
+      'done < "$TFILE"\n' +
+      '\n' +
+      'echo "# DNS Control — gerado $total domínios bloqueados em $OUTCFG"\n' +
+      'exit 0\n',
+  });
+  // unbound-block-domains.conf: garantir que sempre exista (placeholder vazio
+  // quando AnaBlock está off e block-domains.txt está vazio).
+  if (config.enableBlocklist) {
+    files.push({ path: '/etc/unbound/unbound-block-domains.conf', content: generateBlocklistConf() });
+  } else {
+    files.push({
+      path: '/etc/unbound/unbound-block-domains.conf',
+      content: '# DNS Control — block list vazia (placeholder)\n# Edite /etc/unbound/block-domains.txt e rode /etc/unbound/gen-block-domains.sh.\n',
+    });
   }
+
+  // ═══ Layout homologado — apenas no modo Interceptação ═══
+  if (isInterception) {
+    // named.cache — snapshot IANA versionado (determinístico, sem download runtime).
+    files.push({ path: '/etc/unbound/named.cache', content: ROOT_HINTS_NAMED_CACHE });
+
+    // remote-control drop-in compartilhado (paridade com host homologado).
+    // O bloco per-instância continua nos unboundXX.conf — este drop-in
+    // garante que a unit unbound.service do pacote também tenha controle
+    // habilitado.
+    files.push({
+      path: '/etc/unbound/unbound.conf.d/remote-control.conf',
+      content:
+        '# DNS Control — remote-control drop-in (layout homologado)\n' +
+        'remote-control:\n' +
+        '    control-enable: yes\n' +
+        '    control-interface: /run/unbound.ctl\n' +
+        '    control-use-cert: "no"\n',
+    });
+    // DNSSEC trust anchor drop-in (presente no host homologado).
+    files.push({
+      path: '/etc/unbound/unbound.conf.d/root-auto-trust-anchor-file.conf',
+      content:
+        '# DNS Control — DNSSEC trust anchor drop-in (layout homologado)\n' +
+        'server:\n' +
+        '    auto-trust-anchor-file: "/var/lib/unbound/root.key"\n',
+    });
+  }
+
 
   // IP Blocking
   if (config.enableIpBlocking) {
