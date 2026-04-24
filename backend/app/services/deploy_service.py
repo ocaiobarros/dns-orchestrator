@@ -23,6 +23,7 @@ On failure after backup → automatic rollback.
 
 import json
 import os
+import re
 import glob
 import shutil
 import time
