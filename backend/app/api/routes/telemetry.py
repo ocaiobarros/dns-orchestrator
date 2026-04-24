@@ -6,8 +6,11 @@ Serves collector JSON output to the frontend.
 import json
 import os
 import logging
+import shutil
+import subprocess
+import time
 from pathlib import Path
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from app.api.deps import get_current_user
 from app.models.user import User
 
