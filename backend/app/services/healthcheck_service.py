@@ -8,7 +8,13 @@ import time
 import logging
 import glob
 import os
+import re
 from typing import Any
+
+# Strict pattern for real Unbound instance configs (unboundNN.conf).
+# Excludes auxiliary include files such as unbound-block-domains.conf,
+# unbound.conf (package default), etc.
+_INSTANCE_NAME_RE = re.compile(r"^unbound\d+$")
 
 from app.executors.command_runner import run_command
 
@@ -101,7 +107,7 @@ def _discover_instances() -> list[dict]:
         for line in result["stdout"].split("\n"):
             if "unbound" in line and ".service" in line:
                 name = line.split()[0].replace(".service", "")
-                if name == "unbound":
+                if not _INSTANCE_NAME_RE.match(name):
                     continue
                 bind_ips = _get_bind_ips_from_config(name)
                 instances.append({"name": name, "bind_ips": bind_ips, "port": 53})
@@ -109,7 +115,7 @@ def _discover_instances() -> list[dict]:
     if not instances:
         for config_path in sorted(glob.glob("/etc/unbound/unbound*.conf")):
             name = os.path.splitext(os.path.basename(config_path))[0]
-            if name == "unbound":
+            if not _INSTANCE_NAME_RE.match(name):
                 continue
             instances.append({"name": name, "bind_ips": _get_bind_ips_from_config(name), "port": 53})
 
