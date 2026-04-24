@@ -159,3 +159,176 @@ def telemetry_anablock(_: User = Depends(get_current_user)):
         response["message"] = f"Status corrompido: {e}"
 
     return response
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Recollect endpoint — observation/observed mode helper.
+# Re-runs the collector synchronously and (optionally) restarts the
+# collector service so the next timer cycle starts fresh.
+# ──────────────────────────────────────────────────────────────────────
+
+COLLECTOR_SCRIPT_CANDIDATES = [
+    Path("/opt/dns-control/collector/collector.py"),
+    Path("/opt/dns-control/backend/collector/collector.py"),
+    Path(__file__).resolve().parents[3] / "collector" / "collector.py",
+]
+
+
+def _find_collector_script() -> Path | None:
+    for p in COLLECTOR_SCRIPT_CANDIDATES:
+        try:
+            if p.exists():
+                return p
+        except OSError:
+            continue
+    return None
+
+
+@router.post("/recollect")
+def telemetry_recollect(_: User = Depends(get_current_user)):
+    """Re-run collector synchronously and restart its systemd service.
+
+    Used by the Observation Mode panel to refresh top domains/clients
+    and re-validate the log parser after fixing host configuration.
+    """
+    started = time.time()
+    steps: list[dict] = []
+
+    script = _find_collector_script()
+    if not script:
+        return {
+            "success": False,
+            "error": "collector.py not found in expected paths",
+            "candidates": [str(p) for p in COLLECTOR_SCRIPT_CANDIDATES],
+        }
+
+    python_bin = shutil.which("python3") or "/usr/bin/python3"
+    try:
+        proc = subprocess.run(
+            [python_bin, str(script)],
+            capture_output=True,
+            text=True,
+            timeout=45,
+            env={**os.environ},
+        )
+        steps.append({
+            "step": "run_collector",
+            "code": proc.returncode,
+            "stdout_tail": (proc.stdout or "")[-500:],
+            "stderr_tail": (proc.stderr or "")[-500:],
+        })
+    except subprocess.TimeoutExpired:
+        steps.append({"step": "run_collector", "code": -1, "error": "timeout"})
+
+    # Best-effort restart (non-fatal — service may not exist in dev hosts)
+    try:
+        rc = subprocess.run(
+            ["sudo", "-n", "systemctl", "restart", "dns-control-collector.service"],
+            capture_output=True, text=True, timeout=15,
+        )
+        steps.append({
+            "step": "restart_service",
+            "code": rc.returncode,
+            "stderr_tail": (rc.stderr or "")[-300:],
+        })
+    except Exception as e:
+        steps.append({"step": "restart_service", "code": -1, "error": str(e)[:200]})
+
+    latest = _read_telemetry("latest.json")
+    return {
+        "success": True,
+        "duration_ms": int((time.time() - started) * 1000),
+        "steps": steps,
+        "telemetry_mode": latest.get("telemetry_mode"),
+        "queries_parsed": latest.get("query_analytics", {}).get("queries_parsed", 0),
+        "log_source": latest.get("query_analytics", {}).get("log_source", "none"),
+        "top_domains_count": len(latest.get("top_domains", [])),
+        "top_clients_count": len(latest.get("top_clients", [])),
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Log validation endpoint — exposes per-instance log discovery so the
+# operator can confirm which logfile/parser is feeding the dashboard.
+# ──────────────────────────────────────────────────────────────────────
+
+@router.get("/log-validation")
+def telemetry_log_validation(_: User = Depends(get_current_user)):
+    """Return per-instance log file detection + active parser source."""
+    data = _read_telemetry("latest.json")
+    detection = data.get("log_detection", {}) or {}
+    analytics = data.get("query_analytics", {}) or {}
+
+    log_source_raw = analytics.get("log_source", "none") or "none"
+    if log_source_raw.startswith("logfile:"):
+        active_parser = "logfile"
+        active_path = log_source_raw.split(":", 1)[1]
+    elif log_source_raw == "journalctl":
+        active_parser = "journalctl"
+        active_path = "systemd-journal"
+    else:
+        active_parser = "none"
+        active_path = ""
+
+    instances = []
+    for d in detection.get("details", []):
+        instances.append({
+            "instance": d.get("instance"),
+            "log_queries": d.get("log_queries", False),
+            "use_syslog": d.get("use_syslog", False),
+            "logfile": d.get("logfile") or "",
+            "expected_parser": (
+                "logfile" if d.get("logfile") else
+                "journalctl" if d.get("use_syslog") else
+                "none"
+            ),
+        })
+
+    return {
+        "telemetry_mode": detection.get("telemetry_mode", "unknown"),
+        "active_parser": active_parser,
+        "active_path": active_path,
+        "queries_parsed_last_cycle": analytics.get("queries_parsed", 0),
+        "domains_available": analytics.get("domains_available", False),
+        "clients_available": analytics.get("clients_available", False),
+        "log_files_discovered": detection.get("log_files", []),
+        "log_queries_configured": detection.get("log_queries_configured", False),
+        "use_syslog": detection.get("use_syslog", False),
+        "journal_entries_found": detection.get("journal_entries_found", False),
+        "instances": instances,
+        "diag": analytics.get("diag", {}),
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Recent queries — exposes the collector's recent_queries buffer with
+# basic filtering for the observation page.
+# ──────────────────────────────────────────────────────────────────────
+
+@router.get("/recent-queries")
+def telemetry_recent_queries(
+    instance: str | None = None,
+    qtype: str | None = None,
+    limit: int = 200,
+    _: User = Depends(get_current_user),
+):
+    """Return the most recent DNS queries collected by the telemetry agent."""
+    data = _read_telemetry("latest.json")
+    queries = data.get("recent_queries", []) or []
+
+    if instance:
+        # recent_queries don't carry instance attribution today — keep filter
+        # available for forward compatibility (collector enhancement).
+        queries = [q for q in queries if (q.get("instance") or "").lower() == instance.lower()]
+    if qtype:
+        queries = [q for q in queries if (q.get("type") or "").upper() == qtype.upper()]
+
+    queries = queries[-max(1, min(limit, 1000)) :]
+    return {
+        "items": list(reversed(queries)),
+        "count": len(queries),
+        "telemetry_mode": data.get("telemetry_mode"),
+        "log_source": data.get("query_analytics", {}).get("log_source"),
+        "available_types": sorted({q.get("type", "?") for q in data.get("recent_queries", []) if q.get("type")}),
+        "available_instances": [i.get("name") for i in data.get("backends", []) if i.get("name")],
+    }
