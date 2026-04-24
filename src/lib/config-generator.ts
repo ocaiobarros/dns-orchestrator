@@ -1101,7 +1101,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
   // ═══ TABLE FILTER — EDGE ACL (security boundary) ═══
   // ACL is enforced HERE at nftables INPUT, BEFORE DNAT reaches Unbound.
   // Unbound remains 0.0.0.0/0 allow — it trusts nftables to filter.
-  files.push(...generateNftablesFilterTable(config));
+  files.push(...generateNftablesFilterTable(config, '/etc/network/nftables.d'));
 
   // VIP definitions — 'define' stays at top level (outside table blocks)
   const allVipIpv4s: string[] = [];
