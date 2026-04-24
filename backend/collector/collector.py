@@ -799,6 +799,8 @@ def collect_all() -> dict:
         backends.append({
             "name": rs["instance"],
             "ip": rs.get("bind_ip", ""),
+            "ipv4": rs.get("bind_ipv4", ""),
+            "ipv6": rs.get("bind_ipv6", ""),
             "healthy": rs.get("healthy", False),
             "resolver": {
                 "total_queries": rs["total_queries"],
