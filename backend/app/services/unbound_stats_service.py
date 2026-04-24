@@ -100,6 +100,8 @@ def get_instance_real_stats(instances: list[dict] | None = None) -> list[dict]:
                 "error": result.get("stderr", "")[:200],
                 "control_interface": control_ip,
                 "control_port": control_port,
+                "bindIpv4": bind_ipv4,
+                "bindIpv6": bind_ipv6,
             })
 
     return results
