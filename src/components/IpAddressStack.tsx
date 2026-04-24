@@ -1,32 +1,31 @@
+import { resolveIpPair } from '@/lib/ip-utils';
+
 interface IpAddressStackProps {
   ipv4?: string | null;
   ipv6?: string | null;
   fallback?: string | null;
+  /** Optional list of additional candidate strings (e.g. bind_ips array). */
+  ips?: Array<string | null | undefined> | null;
   className?: string;
   valueClassName?: string;
-}
-
-function detectLabel(value: string): 'IPv4' | 'IPv6' | 'IP' {
-  if (value.includes(':')) return 'IPv6';
-  if (value.includes('.')) return 'IPv4';
-  return 'IP';
 }
 
 export default function IpAddressStack({
   ipv4,
   ipv6,
   fallback,
+  ips,
   className = '',
   valueClassName = '',
 }: IpAddressStackProps) {
-  const rows = [
-    ipv4 ? { label: 'IPv4', value: ipv4 } : null,
-    ipv6 ? { label: 'IPv6', value: ipv6 } : null,
-  ].filter(Boolean) as Array<{ label: string; value: string }>;
+  // Auto-normalize: if explicit fields are missing OR the single value is a
+  // glued IPv4+IPv6 string, resolveIpPair will split them automatically.
+  const resolved = resolveIpPair({ ipv4, ipv6, ip: fallback, ips });
 
-  if (!rows.length && fallback) {
-    rows.push({ label: detectLabel(fallback), value: fallback });
-  }
+  const rows = [
+    resolved.ipv4 ? { label: 'IPv4', value: resolved.ipv4 } : null,
+    resolved.ipv6 ? { label: 'IPv6', value: resolved.ipv6 } : null,
+  ].filter(Boolean) as Array<{ label: string; value: string }>;
 
   if (!rows.length) {
     return <span className="text-muted-foreground/50">—</span>;
