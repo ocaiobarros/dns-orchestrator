@@ -486,13 +486,31 @@ def _get_file_owner_group(target_path: str) -> tuple[str, str]:
 
 
 def _is_nftables_system_path(target_path: str) -> bool:
-    return target_path.startswith("/etc/nftables.d/") and target_path.endswith(".nft")
+    # Simple mode emits to /etc/nftables.d/, Interception mode emits to
+    # /etc/network/nftables.d/ (homologated host layout).
+    return (
+        target_path.endswith(".nft")
+        and (
+            target_path.startswith("/etc/nftables.d/")
+            or target_path.startswith("/etc/network/nftables.d/")
+        )
+    )
 
 
 def _collect_nftables_owner_report(paths: list[str] | None = None) -> dict[str, Any]:
-    nft_paths = sorted(paths or glob.glob("/etc/nftables.d/*.nft"))
+    if paths is None:
+        nft_paths = sorted(
+            glob.glob("/etc/nftables.d/*.nft")
+            + glob.glob("/etc/network/nftables.d/*.nft")
+        )
+    else:
+        nft_paths = sorted(paths)
     if not nft_paths:
-        return {"command": "stat -c %U:%G %n /etc/nftables.d/*.nft", "report": [], "non_root": []}
+        return {
+            "command": "stat -c %U:%G %n /etc/nftables.d/*.nft /etc/network/nftables.d/*.nft",
+            "report": [],
+            "non_root": [],
+        }
 
     stat_result = run_command("stat", ["-c", "%U:%G %n", *nft_paths], timeout=10)
     report = [line.strip() for line in (stat_result.get("stdout") or "").splitlines() if line.strip()]
