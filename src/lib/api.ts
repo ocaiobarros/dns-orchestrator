@@ -277,6 +277,51 @@ export const api = {
     age_seconds: number | null;
     conf_present: boolean;
   }>('GET', '/telemetry/anablock'),
+  recollectTelemetry: () => apiCall<{
+    success: boolean;
+    duration_ms: number;
+    steps: Array<{ step: string; code: number; stdout_tail?: string; stderr_tail?: string; error?: string }>;
+    telemetry_mode?: string;
+    queries_parsed?: number;
+    log_source?: string;
+    top_domains_count?: number;
+    top_clients_count?: number;
+  }>('POST', '/telemetry/recollect'),
+  getLogValidation: () => apiCall<{
+    telemetry_mode: string;
+    active_parser: 'logfile' | 'journalctl' | 'none';
+    active_path: string;
+    queries_parsed_last_cycle: number;
+    domains_available: boolean;
+    clients_available: boolean;
+    log_files_discovered: string[];
+    log_queries_configured: boolean;
+    use_syslog: boolean;
+    journal_entries_found: boolean;
+    instances: Array<{
+      instance: string;
+      log_queries: boolean;
+      use_syslog: boolean;
+      logfile: string;
+      expected_parser: 'logfile' | 'journalctl' | 'none';
+    }>;
+    diag: Record<string, unknown>;
+  }>('GET', '/telemetry/log-validation'),
+  getRecentQueries: (params?: { instance?: string; qtype?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.instance) q.set('instance', params.instance);
+    if (params?.qtype) q.set('qtype', params.qtype);
+    if (params?.limit) q.set('limit', String(params.limit));
+    const qs = q.toString();
+    return apiCall<{
+      items: Array<{ time: string; client: string; domain: string; type: string; instance?: string }>;
+      count: number;
+      telemetry_mode?: string;
+      log_source?: string;
+      available_types: string[];
+      available_instances: string[];
+    }>('GET', `/telemetry/recent-queries${qs ? `?${qs}` : ''}`);
+  },
 
   // Kiosk (NOC TV)
   getKioskSummary: () => apiCall<any>('GET', '/kiosk/summary'),
