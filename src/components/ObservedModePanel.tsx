@@ -59,10 +59,22 @@ export default function ObservedModePanel({ onDisable, disabling }: ObservedMode
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm text-blue-400/90">
           <strong>Modo OBSERVAÇÃO ativo</strong> — Descoberta automática via runtime.
           Deploy, apply e rollback estão <strong>bloqueados</strong>.
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={handleRecollect} disabled={recollecting}>
+            {recollecting ? <Loader2 size={12} className="mr-1 animate-spin" /> : <RefreshCw size={12} className="mr-1" />}
+            Reexecutar coleta e reiniciar collector
+          </Button>
+          <Button asChild size="sm" variant="ghost">
+            <Link to="/observed/queries"><ListTree size={12} className="mr-1" /> Últimas queries</Link>
+          </Button>
+          <Button asChild size="sm" variant="ghost">
+            <Link to="/observed/log-validation"><FileText size={12} className="mr-1" /> Validar logs</Link>
+          </Button>
         </div>
       </div>
 
