@@ -144,8 +144,18 @@ def discover_instances() -> list[dict]:
 
 
 def parse_control_config(name: str) -> dict:
-    """Parse unbound config file for control/bind info."""
-    ctrl = {"control_interface": "127.0.0.1", "control_port": 8953, "bind_ip": ""}
+    """Parse unbound config file for control/bind info.
+
+    Captures ALL `interface:` lines (not just the last one) so we can expose
+    both IPv4 and IPv6 service addresses for the UI/kiosk display.
+    """
+    ctrl = {
+        "control_interface": "127.0.0.1",
+        "control_port": 8953,
+        "bind_ip": "",
+        "bind_ipv4": "",
+        "bind_ipv6": "",
+    }
     conf_path = f"/etc/unbound/{name}.conf"
     try:
         with open(conf_path) as f:
@@ -160,8 +170,17 @@ def parse_control_config(name: str) -> dict:
                         pass
                 elif s.startswith("interface:") and not s.startswith("interface-automatic"):
                     ip = s.split(":", 1)[1].strip().split("@")[0]
-                    if ip and ip != "0.0.0.0" and not ip.startswith("127."):
-                        ctrl["bind_ip"] = ip
+                    if not ip or ip == "0.0.0.0" or ip.startswith("127."):
+                        continue
+                    # Classify v4 vs v6
+                    if ":" in ip:
+                        if not ctrl["bind_ipv6"]:
+                            ctrl["bind_ipv6"] = ip
+                    else:
+                        if not ctrl["bind_ipv4"]:
+                            ctrl["bind_ipv4"] = ip
+        # Prefer IPv4 as the canonical bind_ip for legacy consumers; fall back to v6.
+        ctrl["bind_ip"] = ctrl["bind_ipv4"] or ctrl["bind_ipv6"]
     except FileNotFoundError:
         pass
     return ctrl
