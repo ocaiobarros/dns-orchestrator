@@ -827,7 +827,10 @@ post-up /etc/network/post-up.sh
 // Security boundary: all DNS access control is enforced at nftables INPUT
 // chain BEFORE DNAT reaches Unbound. Unbound remains 0.0.0.0/0 allow.
 
-export function generateNftablesFilterTable(config: WizardConfig): { path: string; content: string }[] {
+export function generateNftablesFilterTable(
+  config: WizardConfig,
+  basePath: string = '/etc/nftables.d',
+): { path: string; content: string }[] {
   // Legacy mode: no filter table at all — reproduces Part1/Part2 runtime
   if (config.securityProfile === 'legacy') {
     return [];
@@ -893,7 +896,7 @@ export function generateNftablesFilterTable(config: WizardConfig): { path: strin
   ipv4Lines.push('}');
 
   files.push({
-    path: '/etc/nftables.d/0060-filter-table-ipv4.nft',
+    path: `${basePath}/0060-filter-table-ipv4.nft`,
     content: ipv4Lines.join('\n') + '\n',
   });
 
@@ -946,7 +949,7 @@ export function generateNftablesFilterTable(config: WizardConfig): { path: strin
     ipv6Lines.push('}');
 
     files.push({
-      path: '/etc/nftables.d/0061-filter-table-ipv6.nft',
+      path: `${basePath}/0061-filter-table-ipv6.nft`,
       content: ipv6Lines.join('\n') + '\n',
     });
   }
