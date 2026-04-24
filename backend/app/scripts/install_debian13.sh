@@ -30,6 +30,7 @@ ensure_runtime_dirs() {
     mkdir -p "/etc/unbound"
     mkdir -p "/etc/unbound/unbound.conf.d"
     mkdir -p "/etc/nftables.d"
+    mkdir -p "/etc/network/nftables.d"
     mkdir -p "/etc/network"
     mkdir -p "/etc/network/post-up.d"
     mkdir -p "/etc/sysctl.d"
@@ -514,6 +515,7 @@ chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${DATA_DIR}"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${LOG_DIR}"
 chown "${SERVICE_USER}:${SERVICE_USER}" "/etc/nftables.d" 2>/dev/null || true
+chown "${SERVICE_USER}:${SERVICE_USER}" "/etc/network/nftables.d" 2>/dev/null || true
 chmod 600 "${DB_PATH}" 2>/dev/null || true
 chmod 700 "${ENV_DIR}"
 ok "Permissions set on install dir, data dir, and log dir"
@@ -571,8 +573,8 @@ echo "[10/${TOTAL_STEPS}] Installing systemd service..."
 
 # Re-assert runtime dirs before service start (hardening + upgrades)
 ensure_runtime_dirs
-if [[ ! -d "/etc/nftables.d" ]]; then
-    fail "Required runtime directory missing before service start: /etc/nftables.d"
+if [[ ! -d "/etc/nftables.d" ]] || [[ ! -d "/etc/network/nftables.d" ]]; then
+    fail "Required runtime directories missing before service start: /etc/nftables.d and/or /etc/network/nftables.d"
     ERRORS=$((ERRORS+1))
     exit 1
 fi

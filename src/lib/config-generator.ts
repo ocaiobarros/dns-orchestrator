@@ -827,7 +827,10 @@ post-up /etc/network/post-up.sh
 // Security boundary: all DNS access control is enforced at nftables INPUT
 // chain BEFORE DNAT reaches Unbound. Unbound remains 0.0.0.0/0 allow.
 
-export function generateNftablesFilterTable(config: WizardConfig): { path: string; content: string }[] {
+export function generateNftablesFilterTable(
+  config: WizardConfig,
+  basePath: string = '/etc/nftables.d',
+): { path: string; content: string }[] {
   // Legacy mode: no filter table at all — reproduces Part1/Part2 runtime
   if (config.securityProfile === 'legacy') {
     return [];
@@ -893,7 +896,7 @@ export function generateNftablesFilterTable(config: WizardConfig): { path: strin
   ipv4Lines.push('}');
 
   files.push({
-    path: '/etc/nftables.d/0060-filter-table-ipv4.nft',
+    path: `${basePath}/0060-filter-table-ipv4.nft`,
     content: ipv4Lines.join('\n') + '\n',
   });
 
@@ -946,7 +949,7 @@ export function generateNftablesFilterTable(config: WizardConfig): { path: strin
     ipv6Lines.push('}');
 
     files.push({
-      path: '/etc/nftables.d/0061-filter-table-ipv6.nft',
+      path: `${basePath}/0061-filter-table-ipv6.nft`,
       content: ipv6Lines.join('\n') + '\n',
     });
   }
@@ -962,7 +965,7 @@ export function generateNftablesConf(config: WizardConfig): string {
 # Distribution: ${config.distributionPolicy}
 
 flush ruleset
-include "/etc/nftables.d/*.nft"
+include "/etc/network/nftables.d/*.nft"
 `;
 }
 
@@ -1066,31 +1069,31 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
   files.push({ path: '/etc/nftables.conf', content: generateNftablesConf(config) });
 
   // Tables (block syntax — empty table is additive in nft -f mode)
-  files.push({ path: '/etc/nftables.d/0002-table-ipv4-nat.nft', content: 'table ip nat {\n}\n' });
+  files.push({ path: '/etc/network/nftables.d/0002-table-ipv4-nat.nft', content: 'table ip nat {\n}\n' });
   if (config.enableIpv6) {
-    files.push({ path: '/etc/nftables.d/0003-table-ipv6-nat.nft', content: 'table ip6 nat {\n}\n' });
+    files.push({ path: '/etc/network/nftables.d/0003-table-ipv6-nat.nft', content: 'table ip6 nat {\n}\n' });
   }
 
   // PREROUTING hooks (base chains inside table block)
   files.push({
-    path: '/etc/nftables.d/0051-hook-ipv4-prerouting.nft',
+    path: '/etc/network/nftables.d/0051-hook-ipv4-prerouting.nft',
     content: `table ip nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n`,
   });
   if (config.enableIpv6) {
     files.push({
-      path: '/etc/nftables.d/0052-hook-ipv6-prerouting.nft',
+      path: '/etc/network/nftables.d/0052-hook-ipv6-prerouting.nft',
       content: `table ip6 nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n`,
     });
   }
 
   // OUTPUT hooks (local interception — captures DNS from host itself)
   files.push({
-    path: '/etc/nftables.d/0053-hook-ipv4-output.nft',
+    path: '/etc/network/nftables.d/0053-hook-ipv4-output.nft',
     content: `table ip nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n`,
   });
   if (config.enableIpv6) {
     files.push({
-      path: '/etc/nftables.d/0054-hook-ipv6-output.nft',
+      path: '/etc/network/nftables.d/0054-hook-ipv6-output.nft',
       content: `table ip6 nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n`,
     });
   }
@@ -1098,7 +1101,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
   // ═══ TABLE FILTER — EDGE ACL (security boundary) ═══
   // ACL is enforced HERE at nftables INPUT, BEFORE DNAT reaches Unbound.
   // Unbound remains 0.0.0.0/0 allow — it trusts nftables to filter.
-  files.push(...generateNftablesFilterTable(config));
+  files.push(...generateNftablesFilterTable(config, '/etc/network/nftables.d'));
 
   // VIP definitions — 'define' stays at top level (outside table blocks)
   const allVipIpv4s: string[] = [];
@@ -1116,13 +1119,13 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
 
   if (allVipIpv4s.length > 0) {
     files.push({
-      path: '/etc/nftables.d/5100-nat-define-anyaddr-ipv4.nft',
+      path: '/etc/network/nftables.d/5100-nat-define-anyaddr-ipv4.nft',
       content: `define DNS_ANYCAST_IPV4 = { ${allVipIpv4s.join(', ')} }\n`,
     });
 
     if (config.enableIpv6 && allVipIpv6s.length > 0) {
       files.push({
-        path: '/etc/nftables.d/5200-nat-define-anyaddr-ipv6.nft',
+        path: '/etc/network/nftables.d/5200-nat-define-anyaddr-ipv6.nft',
         content: `define DNS_ANYCAST_IPV6 = { ${allVipIpv6s.join(', ')} }\n`,
       });
     }
@@ -1131,7 +1134,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
   // DNS dispatch chains (IPv4) — empty chains inside table block
   for (const proto of ['tcp', 'udp']) {
     files.push({
-      path: `/etc/nftables.d/510${proto === 'tcp' ? '2' : '3'}-nat-chain-ipv4_${proto}_dns.nft`,
+      path: `/etc/network/nftables.d/510${proto === 'tcp' ? '2' : '3'}-nat-chain-ipv4_${proto}_dns.nft`,
       content: `table ip nat {\n    chain ipv4_${proto}_dns {\n    }\n}\n`,
     });
   }
@@ -1139,7 +1142,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
   // PREROUTING capture rules — rules inside chain inside table block
   for (const proto of ['tcp', 'udp']) {
     files.push({
-      path: `/etc/nftables.d/511${proto === 'tcp' ? '1' : '2'}-nat-rule-ipv4_${proto}_dns.nft`,
+      path: `/etc/network/nftables.d/511${proto === 'tcp' ? '1' : '2'}-nat-rule-ipv4_${proto}_dns.nft`,
       content: `table ip nat {\n    chain PREROUTING {\n        ip daddr $DNS_ANYCAST_IPV4 ${proto} dport 53 counter packets 0 bytes 0 jump ipv4_${proto}_dns\n    }\n}\n`,
     });
   }
@@ -1147,7 +1150,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
   // OUTPUT capture rules (local interception)
   for (const proto of ['tcp', 'udp']) {
     files.push({
-      path: `/etc/nftables.d/511${proto === 'tcp' ? '3' : '4'}-nat-rule-output-ipv4_${proto}_dns.nft`,
+      path: `/etc/network/nftables.d/511${proto === 'tcp' ? '3' : '4'}-nat-rule-output-ipv4_${proto}_dns.nft`,
       content: `table ip nat {\n    chain OUTPUT {\n        ip daddr $DNS_ANYCAST_IPV4 ${proto} dport 53 counter packets 0 bytes 0 jump ipv4_${proto}_dns\n    }\n}\n`,
     });
   }
@@ -1162,7 +1165,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
 
       // Set definition inside table block (multi-line, no semicolons)
       files.push({
-        path: `/etc/nftables.d/${ruleid}-nat-addrlist-${subusers}.nft`,
+        path: `/etc/network/nftables.d/${ruleid}-nat-addrlist-${subusers}.nft`,
         content: [
           'table ip nat {',
           `    set ${subusers} {`,
@@ -1176,7 +1179,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
       });
       // Chain inside table block
       files.push({
-        path: `/etc/nftables.d/${ruleid}-nat-chain-${subchain}.nft`,
+        path: `/etc/network/nftables.d/${ruleid}-nat-chain-${subchain}.nft`,
         content: `table ip nat {\n    chain ${subchain} {\n    }\n}\n`,
       });
       ruleid++;
@@ -1191,7 +1194,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
       const subusers = `ipv4_users_${inst.name}`;
 
       files.push({
-        path: `/etc/nftables.d/${ruleid}-nat-rule-action-${subchain}.nft`,
+        path: `/etc/network/nftables.d/${ruleid}-nat-rule-action-${subchain}.nft`,
         content: [
           'table ip nat {',
           `    chain ${subchain} {`,
@@ -1215,7 +1218,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
       const subusers = `ipv4_users_${inst.name}`;
 
       files.push({
-        path: `/etc/nftables.d/${ruleid}-nat-rule-memorized-${subchain}.nft`,
+        path: `/etc/network/nftables.d/${ruleid}-nat-rule-memorized-${subchain}.nft`,
         content: `table ip nat {\n    chain ${topchain} {\n        ip saddr @${subusers} counter jump ${subchain}\n    }\n}\n`,
       });
       ruleid++;
@@ -1229,7 +1232,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     let randnum = config.instances.length;
     config.instances.forEach(inst => {
       files.push({
-        path: `/etc/nftables.d/${ruleid}-nat-rule-nth-ipv4_${proto}_dns_${inst.name}.nft`,
+        path: `/etc/network/nftables.d/${ruleid}-nat-rule-nth-ipv4_${proto}_dns_${inst.name}.nft`,
         content: `table ip nat {\n    chain ${topchain} {\n        numgen inc mod ${randnum} 0 counter packets 0 bytes 0 jump ipv4_dns_${proto}_${inst.name}\n    }\n}\n`,
       });
       ruleid++;
@@ -1241,16 +1244,16 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
   if (config.enableIpv6) {
     for (const proto of ['tcp', 'udp']) {
       files.push({
-        path: `/etc/nftables.d/520${proto === 'tcp' ? '2' : '3'}-nat-chain-ipv6_${proto}_dns.nft`,
+        path: `/etc/network/nftables.d/520${proto === 'tcp' ? '2' : '3'}-nat-chain-ipv6_${proto}_dns.nft`,
         content: `table ip6 nat {\n    chain ipv6_${proto}_dns {\n    }\n}\n`,
       });
       files.push({
-        path: `/etc/nftables.d/521${proto === 'tcp' ? '1' : '2'}-nat-rule-ipv6_${proto}_dns.nft`,
+        path: `/etc/network/nftables.d/521${proto === 'tcp' ? '1' : '2'}-nat-rule-ipv6_${proto}_dns.nft`,
         content: `table ip6 nat {\n    chain PREROUTING {\n        ip6 daddr $DNS_ANYCAST_IPV6 ${proto} dport 53 counter packets 0 bytes 0 jump ipv6_${proto}_dns\n    }\n}\n`,
       });
       // OUTPUT capture (IPv6 local interception)
       files.push({
-        path: `/etc/nftables.d/521${proto === 'tcp' ? '3' : '4'}-nat-rule-output-ipv6_${proto}_dns.nft`,
+        path: `/etc/network/nftables.d/521${proto === 'tcp' ? '3' : '4'}-nat-rule-output-ipv6_${proto}_dns.nft`,
         content: `table ip6 nat {\n    chain OUTPUT {\n        ip6 daddr $DNS_ANYCAST_IPV6 ${proto} dport 53 counter packets 0 bytes 0 jump ipv6_${proto}_dns\n    }\n}\n`,
       });
     }
@@ -1262,7 +1265,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
         const subchain = `ipv6_dns_${proto}_${inst.name}`;
         const subusers = `ipv6_users_${inst.name}`;
         files.push({
-          path: `/etc/nftables.d/${ruleid}-nat-addrlist-${subusers}.nft`,
+          path: `/etc/network/nftables.d/${ruleid}-nat-addrlist-${subusers}.nft`,
           content: [
             'table ip6 nat {',
             `    set ${subusers} {`,
@@ -1275,7 +1278,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
           ].join('\n') + '\n',
         });
         files.push({
-          path: `/etc/nftables.d/${ruleid}-nat-chain-${subchain}.nft`,
+          path: `/etc/network/nftables.d/${ruleid}-nat-chain-${subchain}.nft`,
           content: `table ip6 nat {\n    chain ${subchain} {\n    }\n}\n`,
         });
         ruleid++;
@@ -1289,7 +1292,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
         const subchain = `ipv6_dns_${proto}_${inst.name}`;
         const subusers = `ipv6_users_${inst.name}`;
         files.push({
-          path: `/etc/nftables.d/${ruleid}-nat-rule-action-${subchain}.nft`,
+          path: `/etc/network/nftables.d/${ruleid}-nat-rule-action-${subchain}.nft`,
           content: [
             'table ip6 nat {',
             `    chain ${subchain} {`,
@@ -1312,7 +1315,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
         const subchain = `ipv6_dns_${proto}_${inst.name}`;
         const subusers = `ipv6_users_${inst.name}`;
         files.push({
-          path: `/etc/nftables.d/${ruleid}-nat-rule-memorized-${subchain}.nft`,
+          path: `/etc/network/nftables.d/${ruleid}-nat-rule-memorized-${subchain}.nft`,
           content: `table ip6 nat {\n    chain ${topchain} {\n        ip6 saddr @${subusers} counter jump ${subchain}\n    }\n}\n`,
         });
         ruleid++;
@@ -1326,7 +1329,7 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
       let randnum = ipv6Instances.length;
       ipv6Instances.forEach(inst => {
         files.push({
-          path: `/etc/nftables.d/${ruleid}-nat-rule-nth-ipv6_${proto}_dns_${inst.name}.nft`,
+          path: `/etc/network/nftables.d/${ruleid}-nat-rule-nth-ipv6_${proto}_dns_${inst.name}.nft`,
           content: `table ip6 nat {\n    chain ${topchain} {\n        numgen inc mod ${randnum} 0 counter packets 0 bytes 0 jump ipv6_dns_${proto}_${inst.name}\n    }\n}\n`,
         });
         ruleid++;
@@ -1742,13 +1745,12 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
   // os unboundXX.conf incluem esse arquivo, então ele precisa existir mesmo
   // com AnaBlock desabilitado (placeholder seguro = comentários inofensivos).
   if (config.enableBlocklist) {
-    files.push({ path: '/etc/unbound/unbound-block-domains.conf', content: generateBlocklistConf() });
-    files.push({ path: '/etc/unbound/anablock.conf', content: `# DNS Control — AnaBlock placeholder\n# Populado pelo script de sync.\n` });
     files.push({ path: '/opt/dns-control/scripts/anablock-sync.sh', content: generateAnablockSyncScript(config) });
     files.push({ path: '/etc/systemd/system/anablock-sync.service', content: generateAnablockService() });
     if (config.blocklistAutoSync) {
       files.push({ path: '/etc/systemd/system/anablock-sync.timer', content: generateAnablockTimer(config) });
     }
+    files.push({ path: '/etc/unbound/anablock.conf', content: `# DNS Control — AnaBlock placeholder\n# Populado pelo script de sync (anablock-sync.sh).\n` });
   } else {
     // Placeholder seguro — evita erro de include nos unboundXX.conf
     files.push({
@@ -1757,11 +1759,102 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
     });
   }
 
-  // named.cache — snapshot IANA versionado (determinístico, sem download runtime).
-  // Garantido pelo deploy no modo Interceptação (forward-first usa root-hints).
-  if (isInterception) {
-    files.push({ path: '/etc/unbound/named.cache', content: ROOT_HINTS_NAMED_CACHE });
+  // ═══ Block list LOCAL/manual — independente do AnaBlock ═══
+  // /etc/unbound/block-domains.txt: lista de domínios bloqueados editada
+  //   manualmente pelo operador (uma entrada por linha).
+  // /etc/unbound/gen-block-domains.sh: script idempotente que lê o .txt
+  //   e (re)gera /etc/unbound/unbound-block-domains.conf com local-zone
+  //   "<dominio>" always_nxdomain.
+  // /etc/unbound/unbound-block-domains.conf: SEMPRE existe (placeholder
+  //   vazio quando block-domains.txt está vazio) — incluído pelos
+  //   unboundXX.conf, não pode faltar.
+  files.push({
+    path: '/etc/unbound/block-domains.txt',
+    content:
+      '# DNS Control — block-domains.txt\n' +
+      '# Lista LOCAL/manual de domínios bloqueados (independente do AnaBlock).\n' +
+      '# Um domínio DNS-válido por linha. Após editar, execute:\n' +
+      '#   /etc/unbound/gen-block-domains.sh\n' +
+      '# para (re)gerar /etc/unbound/unbound-block-domains.conf.\n',
+  });
+  files.push({
+    path: '/etc/unbound/gen-block-domains.sh',
+    content:
+      '#!/bin/sh\n' +
+      '# DNS Control — gen-block-domains.sh\n' +
+      '# Lê /etc/unbound/block-domains.txt e gera\n' +
+      '# /etc/unbound/unbound-block-domains.conf no formato:\n' +
+      '#   local-zone: "<dominio>" always_nxdomain\n' +
+      '\n' +
+      'BFILE=/etc/unbound/block-domains.txt\n' +
+      'TFILE=/tmp/block-domains.txt\n' +
+      'OUTCFG=/etc/unbound/unbound-block-domains.conf\n' +
+      '\n' +
+      ': > "$OUTCFG"\n' +
+      '\n' +
+      'if [ ! -s "$BFILE" ]; then\n' +
+      '    echo "# DNS Control — block list vazia" > "$OUTCFG"\n' +
+      '    exit 0\n' +
+      'fi\n' +
+      '\n' +
+      'cat "$BFILE" 2>/dev/null \\\n' +
+      "    | egrep '^([a-z0-9]+[a-z0-9-](-[a-z0-9]+)*\\.)+[a-z]{2,}$' \\\n" +
+      "    | tr '[:upper:]' '[:lower:]' \\\n" +
+      '    | sort -u \\\n' +
+      '    > "$TFILE"\n' +
+      '\n' +
+      'total=$(wc -l < "$TFILE" 2>/dev/null || echo 0)\n' +
+      'if [ "$total" = "0" ]; then\n' +
+      '    echo "# DNS Control — nenhum domínio válido em $BFILE" > "$OUTCFG"\n' +
+      '    exit 0\n' +
+      'fi\n' +
+      '\n' +
+      'while IFS= read -r domain; do\n' +
+      "    printf 'local-zone: \"%s\" always_nxdomain\\n' \"$domain\" >> \"$OUTCFG\"\n" +
+      'done < "$TFILE"\n' +
+      '\n' +
+      'echo "# DNS Control — gerado $total domínios bloqueados em $OUTCFG"\n' +
+      'exit 0\n',
+  });
+  // unbound-block-domains.conf: garantir que sempre exista (placeholder vazio
+  // quando AnaBlock está off e block-domains.txt está vazio).
+  if (config.enableBlocklist) {
+    files.push({ path: '/etc/unbound/unbound-block-domains.conf', content: generateBlocklistConf() });
+  } else {
+    files.push({
+      path: '/etc/unbound/unbound-block-domains.conf',
+      content: '# DNS Control — block list vazia (placeholder)\n# Edite /etc/unbound/block-domains.txt e rode /etc/unbound/gen-block-domains.sh.\n',
+    });
   }
+
+  // ═══ Layout homologado — apenas no modo Interceptação ═══
+  if (isInterception) {
+    // named.cache — snapshot IANA versionado (determinístico, sem download runtime).
+    files.push({ path: '/etc/unbound/named.cache', content: ROOT_HINTS_NAMED_CACHE });
+
+    // remote-control drop-in compartilhado (paridade com host homologado).
+    // O bloco per-instância continua nos unboundXX.conf — este drop-in
+    // garante que a unit unbound.service do pacote também tenha controle
+    // habilitado.
+    files.push({
+      path: '/etc/unbound/unbound.conf.d/remote-control.conf',
+      content:
+        '# DNS Control — remote-control drop-in (layout homologado)\n' +
+        'remote-control:\n' +
+        '    control-enable: yes\n' +
+        '    control-interface: /run/unbound.ctl\n' +
+        '    control-use-cert: "no"\n',
+    });
+    // DNSSEC trust anchor drop-in (presente no host homologado).
+    files.push({
+      path: '/etc/unbound/unbound.conf.d/root-auto-trust-anchor-file.conf',
+      content:
+        '# DNS Control — DNSSEC trust anchor drop-in (layout homologado)\n' +
+        'server:\n' +
+        '    auto-trust-anchor-file: "/var/lib/unbound/root.key"\n',
+    });
+  }
+
 
   // IP Blocking
   if (config.enableIpBlocking) {

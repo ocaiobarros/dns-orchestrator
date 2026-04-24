@@ -12,6 +12,7 @@ router = APIRouter()
 
 MANAGED_PATHS = [
     "/etc/unbound/", "/etc/nftables.conf", "/etc/frr/frr.conf",
+    "/etc/nftables.d/", "/etc/network/nftables.d/",
     "/etc/network/interfaces.d/", "/etc/systemd/system/",
 ]
 
