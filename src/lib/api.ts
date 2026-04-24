@@ -277,6 +277,51 @@ export const api = {
     age_seconds: number | null;
     conf_present: boolean;
   }>('GET', '/telemetry/anablock'),
+  recollectTelemetry: () => apiCall<{
+    success: boolean;
+    duration_ms: number;
+    steps: Array<{ step: string; code: number; stdout_tail?: string; stderr_tail?: string; error?: string }>;
+    telemetry_mode?: string;
+    queries_parsed?: number;
+    log_source?: string;
+    top_domains_count?: number;
+    top_clients_count?: number;
+  }>('POST', '/telemetry/recollect'),
+  getLogValidation: () => apiCall<{
+    telemetry_mode: string;
+    active_parser: 'logfile' | 'journalctl' | 'none';
+    active_path: string;
+    queries_parsed_last_cycle: number;
+    domains_available: boolean;
+    clients_available: boolean;
+    log_files_discovered: string[];
+    log_queries_configured: boolean;
+    use_syslog: boolean;
+    journal_entries_found: boolean;
+    instances: Array<{
+      instance: string;
+      log_queries: boolean;
+      use_syslog: boolean;
+      logfile: string;
+      expected_parser: 'logfile' | 'journalctl' | 'none';
+    }>;
+    diag: Record<string, unknown>;
+  }>('GET', '/telemetry/log-validation'),
+  getRecentQueries: (params?: { instance?: string; qtype?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.instance) q.set('instance', params.instance);
+    if (params?.qtype) q.set('qtype', params.qtype);
+    if (params?.limit) q.set('limit', String(params.limit));
+    const qs = q.toString();
+    return apiCall<{
+      items: Array<{ time: string; client: string; domain: string; type: string; instance?: string }>;
+      count: number;
+      telemetry_mode?: string;
+      log_source?: string;
+      available_types: string[];
+      available_instances: string[];
+    }>('GET', `/telemetry/recent-queries${qs ? `?${qs}` : ''}`);
+  },
 
   // Kiosk (NOC TV)
   getKioskSummary: () => apiCall<any>('GET', '/kiosk/summary'),
@@ -494,8 +539,44 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
     age_seconds: null,
     conf_present: true,
   };
-
-  // Import
+  if (path === '/api/telemetry/recollect' && method === 'POST') return {
+    success: true,
+    duration_ms: 1234,
+    steps: [{ step: 'run_collector', code: 0, stdout_tail: 'OK: mock collected' }],
+    telemetry_mode: 'log',
+    queries_parsed: 42,
+    log_source: 'journalctl',
+    top_domains_count: 5,
+    top_clients_count: 3,
+  };
+  if (path === '/api/telemetry/log-validation') return {
+    telemetry_mode: 'log',
+    active_parser: 'journalctl',
+    active_path: 'systemd-journal',
+    queries_parsed_last_cycle: 42,
+    domains_available: true,
+    clients_available: true,
+    log_files_discovered: [],
+    log_queries_configured: true,
+    use_syslog: true,
+    journal_entries_found: true,
+    instances: [
+      { instance: 'unbound01', log_queries: true, use_syslog: true, logfile: '', expected_parser: 'journalctl' },
+      { instance: 'unbound02', log_queries: true, use_syslog: true, logfile: '', expected_parser: 'journalctl' },
+    ],
+    diag: {},
+  };
+  if (path.startsWith('/api/telemetry/recent-queries')) return {
+    items: [
+      { time: '14:43:56', client: '172.250.40.100', domain: 'google.com', type: 'A' },
+      { time: '14:43:55', client: '172.250.40.101', domain: 'cloudflare.com', type: 'AAAA' },
+    ],
+    count: 2,
+    telemetry_mode: 'log',
+    log_source: 'journalctl',
+    available_types: ['A', 'AAAA', 'PTR'],
+    available_instances: ['unbound01', 'unbound02'],
+  };
   if (path === '/api/config/import' && method === 'POST') return { success: true, mode: 'imported', discovery: { instances: [], vip_mappings: [], dns_listeners: [] }, audit: [], errors: [] };
   if (path === '/api/config/import' && method === 'DELETE') return { success: true, mode: 'managed' };
   if (path === '/api/config/import-host') return { hostname: 'mock-host', instances: [], instanceCount: 0, network: { interfaces: [], listeners: [] } };

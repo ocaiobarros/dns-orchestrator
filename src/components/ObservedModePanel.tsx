@@ -1,7 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Eye, Server, Globe, Network, ShieldAlert, Wifi, Activity, AlertTriangle, CheckCircle2, XCircle, Loader2, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { Eye, Server, Globe, Network, ShieldAlert, Wifi, Activity, AlertTriangle, CheckCircle2, XCircle, Loader2, Trash2, RefreshCw, FileText, ListTree } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Link } from 'react-router-dom';
 
 interface ObservedModePanelProps {
   onDisable: () => void;
@@ -9,6 +12,9 @@ interface ObservedModePanelProps {
 }
 
 export default function ObservedModePanel({ onDisable, disabling }: ObservedModePanelProps) {
+  const queryClient = useQueryClient();
+  const [recollecting, setRecollecting] = useState(false);
+
   const { data: inventory, isLoading } = useQuery({
     queryKey: ['runtime-inventory-full'],
     queryFn: async () => {
@@ -17,6 +23,32 @@ export default function ObservedModePanel({ onDisable, disabling }: ObservedMode
     },
     refetchInterval: 30000,
   });
+
+  const handleRecollect = async () => {
+    setRecollecting(true);
+    try {
+      const res = await api.recollectTelemetry();
+      if (res.success && res.data?.success) {
+        const d = res.data;
+        toast.success(
+          `Coleta concluída em ${d.duration_ms}ms · ${d.queries_parsed ?? 0} queries · ` +
+          `domains=${d.top_domains_count ?? 0} clients=${d.top_clients_count ?? 0}`,
+        );
+        // Invalidate dependent queries so dashboards refresh.
+        queryClient.invalidateQueries({ queryKey: ['runtime-inventory-full'] });
+        queryClient.invalidateQueries({ queryKey: ['kiosk-summary'] });
+        queryClient.invalidateQueries({ queryKey: ['telemetry-latest'] });
+        queryClient.invalidateQueries({ queryKey: ['recent-queries'] });
+        queryClient.invalidateQueries({ queryKey: ['log-validation'] });
+      } else {
+        toast.error(res.data?.steps?.[0]?.error ?? 'Falha ao reexecutar coleta');
+      }
+    } catch (e: any) {
+      toast.error(`Erro: ${e?.message ?? 'desconhecido'}`);
+    } finally {
+      setRecollecting(false);
+    }
+  };
 
   const instances = inventory?.instances ?? [];
   const vips = inventory?.vips ?? [];
@@ -27,10 +59,22 @@ export default function ObservedModePanel({ onDisable, disabling }: ObservedMode
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm text-blue-400/90">
           <strong>Modo OBSERVAÇÃO ativo</strong> — Descoberta automática via runtime.
           Deploy, apply e rollback estão <strong>bloqueados</strong>.
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={handleRecollect} disabled={recollecting}>
+            {recollecting ? <Loader2 size={12} className="mr-1 animate-spin" /> : <RefreshCw size={12} className="mr-1" />}
+            Reexecutar coleta e reiniciar collector
+          </Button>
+          <Button asChild size="sm" variant="ghost">
+            <Link to="/observed/queries"><ListTree size={12} className="mr-1" /> Últimas queries</Link>
+          </Button>
+          <Button asChild size="sm" variant="ghost">
+            <Link to="/observed/log-validation"><FileText size={12} className="mr-1" /> Validar logs</Link>
+          </Button>
         </div>
       </div>
 
