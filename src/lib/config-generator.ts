@@ -1782,9 +1782,13 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
   // Sysctl (complete)
   files.push(...generateSysctlFiles(config));
 
-  // FRR — parte do layout homologado do modo Interceptação.
-  // Os arquivos são SEMPRE gerados nesse modo, mesmo com OSPF desativado
-  // (placeholder seguro). No modo Simples, FRR não faz parte do layout.
+  // FRR — parte OFICIAL do layout homologado do modo Interceptação.
+  // /etc/frr/frr.conf e /etc/frr/daemons são SEMPRE materializados nesse modo,
+  // mesmo com OSPF desativado (placeholder seguro: ospfd=no, frr.conf como
+  // esqueleto comentado). Isso NÃO é um estado provisório — é o comportamento
+  // homologado: garante paridade estrutural com o servidor de produção e
+  // permite ativar OSPF depois sem regenerar o restante. No modo Simples,
+  // FRR não faz parte do layout.
   if (isInterception) {
     files.push({ path: '/etc/frr/frr.conf', content: generateFrrConf(config) });
     files.push({ path: '/etc/frr/daemons', content: generateFrrDaemons(config) });
