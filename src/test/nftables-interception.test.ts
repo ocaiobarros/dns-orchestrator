@@ -70,7 +70,7 @@ function fileByPath(files: { path: string; content: string }[], path: string) {
 }
 
 function nftNatFiles(files: { path: string }[]) {
-  return files.filter(f => f.path.startsWith('/etc/nftables.d/') && !f.path.includes('filter'));
+  return files.filter(f => f.path.startsWith('/etc/network/nftables.d/') && !f.path.includes('filter'));
 }
 
 // ═══ 1. GOLDEN FILE SNAPSHOT TESTS ═══
@@ -83,29 +83,29 @@ describe('Golden File — 1 service VIP, 2 instances', () => {
     const master = fileByPath(files, '/etc/nftables.conf');
     expect(master).toBeDefined();
     expect(master!.content).toContain('flush ruleset');
-    expect(master!.content).toContain('include "/etc/nftables.d/*.nft"');
+    expect(master!.content).toContain('include "/etc/network/nftables.d/*.nft"');
   });
 
   it('generates table ip nat (empty additive)', () => {
-    const f = fileByPath(files, '/etc/nftables.d/0002-table-ipv4-nat.nft');
+    const f = fileByPath(files, '/etc/network/nftables.d/0002-table-ipv4-nat.nft');
     expect(f).toBeDefined();
     expect(f!.content).toBe('table ip nat {\n}\n');
   });
 
   it('generates PREROUTING hook', () => {
-    const f = fileByPath(files, '/etc/nftables.d/0051-hook-ipv4-prerouting.nft');
+    const f = fileByPath(files, '/etc/network/nftables.d/0051-hook-ipv4-prerouting.nft');
     expect(f).toBeDefined();
     expect(f!.content).toContain('type nat hook prerouting priority dstnat');
   });
 
   it('generates OUTPUT hook (local interception)', () => {
-    const f = fileByPath(files, '/etc/nftables.d/0053-hook-ipv4-output.nft');
+    const f = fileByPath(files, '/etc/network/nftables.d/0053-hook-ipv4-output.nft');
     expect(f).toBeDefined();
     expect(f!.content).toContain('type nat hook output priority dstnat');
   });
 
   it('defines DNS_ANYCAST_IPV4 with service VIP', () => {
-    const f = fileByPath(files, '/etc/nftables.d/5100-nat-define-anyaddr-ipv4.nft');
+    const f = fileByPath(files, '/etc/network/nftables.d/5100-nat-define-anyaddr-ipv4.nft');
     expect(f).toBeDefined();
     expect(f!.content).toContain('45.160.10.1');
   });
@@ -113,14 +113,14 @@ describe('Golden File — 1 service VIP, 2 instances', () => {
   it('generates PREROUTING + OUTPUT capture rules for tcp and udp', () => {
     for (const proto of ['tcp', 'udp']) {
       const suffix = proto === 'tcp' ? '1' : '2';
-      const preCap = fileByPath(files, `/etc/nftables.d/511${suffix}-nat-rule-ipv4_${proto}_dns.nft`);
+      const preCap = fileByPath(files, `/etc/network/nftables.d/511${suffix}-nat-rule-ipv4_${proto}_dns.nft`);
       expect(preCap).toBeDefined();
       expect(preCap!.content).toContain(`${proto} dport 53`);
       expect(preCap!.content).toContain('$DNS_ANYCAST_IPV4');
       expect(preCap!.content).toContain('chain PREROUTING');
 
       const outSuffix = proto === 'tcp' ? '3' : '4';
-      const outCap = fileByPath(files, `/etc/nftables.d/511${outSuffix}-nat-rule-output-ipv4_${proto}_dns.nft`);
+      const outCap = fileByPath(files, `/etc/network/nftables.d/511${outSuffix}-nat-rule-output-ipv4_${proto}_dns.nft`);
       expect(outCap).toBeDefined();
       expect(outCap!.content).toContain('chain OUTPUT');
       expect(outCap!.content).toContain(`${proto} dport 53`);
@@ -184,7 +184,7 @@ describe('Golden File — Multiple intercepted VIPs', () => {
   const files = nftFiles(config);
 
   it('merges all VIPs into DNS_ANYCAST_IPV4', () => {
-    const f = fileByPath(files, '/etc/nftables.d/5100-nat-define-anyaddr-ipv4.nft');
+    const f = fileByPath(files, '/etc/network/nftables.d/5100-nat-define-anyaddr-ipv4.nft');
     expect(f).toBeDefined();
     expect(f!.content).toContain('45.160.10.1');
     expect(f!.content).toContain('4.2.2.5');
@@ -208,7 +208,7 @@ describe('Golden File — Service VIP + Intercepted VIP (mixed)', () => {
   const files = nftFiles(config);
 
   it('DNS_ANYCAST_IPV4 contains all 3 IPs without duplicates', () => {
-    const f = fileByPath(files, '/etc/nftables.d/5100-nat-define-anyaddr-ipv4.nft');
+    const f = fileByPath(files, '/etc/network/nftables.d/5100-nat-define-anyaddr-ipv4.nft');
     const content = f!.content;
     expect(content).toContain('45.160.10.1');
     expect(content).toContain('45.160.10.2');
@@ -231,16 +231,16 @@ describe('Golden File — With IPv6', () => {
   const files = nftFiles(config);
 
   it('generates ip6 nat table', () => {
-    expect(fileByPath(files, '/etc/nftables.d/0003-table-ipv6-nat.nft')).toBeDefined();
+    expect(fileByPath(files, '/etc/network/nftables.d/0003-table-ipv6-nat.nft')).toBeDefined();
   });
 
   it('generates IPv6 PREROUTING and OUTPUT hooks', () => {
-    expect(fileByPath(files, '/etc/nftables.d/0052-hook-ipv6-prerouting.nft')).toBeDefined();
-    expect(fileByPath(files, '/etc/nftables.d/0054-hook-ipv6-output.nft')).toBeDefined();
+    expect(fileByPath(files, '/etc/network/nftables.d/0052-hook-ipv6-prerouting.nft')).toBeDefined();
+    expect(fileByPath(files, '/etc/network/nftables.d/0054-hook-ipv6-output.nft')).toBeDefined();
   });
 
   it('defines DNS_ANYCAST_IPV6', () => {
-    const f = fileByPath(files, '/etc/nftables.d/5200-nat-define-anyaddr-ipv6.nft');
+    const f = fileByPath(files, '/etc/network/nftables.d/5200-nat-define-anyaddr-ipv6.nft');
     expect(f).toBeDefined();
     expect(f!.content).toContain('2001:db8::1');
   });
@@ -248,9 +248,9 @@ describe('Golden File — With IPv6', () => {
   it('generates IPv6 capture rules (PREROUTING + OUTPUT)', () => {
     for (const proto of ['tcp', 'udp']) {
       const suffix = proto === 'tcp' ? '1' : '2';
-      expect(fileByPath(files, `/etc/nftables.d/521${suffix}-nat-rule-ipv6_${proto}_dns.nft`)).toBeDefined();
+      expect(fileByPath(files, `/etc/network/nftables.d/521${suffix}-nat-rule-ipv6_${proto}_dns.nft`)).toBeDefined();
       const outSuffix = proto === 'tcp' ? '3' : '4';
-      expect(fileByPath(files, `/etc/nftables.d/521${outSuffix}-nat-rule-output-ipv6_${proto}_dns.nft`)).toBeDefined();
+      expect(fileByPath(files, `/etc/network/nftables.d/521${outSuffix}-nat-rule-output-ipv6_${proto}_dns.nft`)).toBeDefined();
     }
   });
 
@@ -379,7 +379,7 @@ describe('Deterministic order — file prefix ordering', () => {
     ],
   });
   const files = nftFiles(config);
-  const nftDFiles = files.filter(f => f.path.startsWith('/etc/nftables.d/')).sort((a, b) => a.path.localeCompare(b.path));
+  const nftDFiles = files.filter(f => f.path.startsWith('/etc/network/nftables.d/')).sort((a, b) => a.path.localeCompare(b.path));
 
   it('tables (0002-0003) come before hooks (0051-0054)', () => {
     const tablePaths = nftDFiles.filter(f => f.path.includes('/0002-') || f.path.includes('/0003-'));
@@ -463,7 +463,7 @@ describe('Frontend/Backend Parity — nftables interception', () => {
 
   it('block syntax: every snippet uses table ip nat { ... }', () => {
     const natFiles = files.filter(f =>
-      f.path.startsWith('/etc/nftables.d/') &&
+      f.path.startsWith('/etc/network/nftables.d/') &&
       !f.path.includes('filter') &&
       !f.path.includes('define') &&
       f.path !== '/etc/nftables.conf'
@@ -529,7 +529,7 @@ describe('Structural validation — nftables interception', () => {
   const files = nftFiles(config);
 
   it('OUTPUT hook present when intercepted VIPs exist', () => {
-    const outputHook = fileByPath(files, '/etc/nftables.d/0053-hook-ipv4-output.nft');
+    const outputHook = fileByPath(files, '/etc/network/nftables.d/0053-hook-ipv4-output.nft');
     expect(outputHook).toBeDefined();
     expect(outputHook!.content).toContain('hook output');
   });
@@ -537,7 +537,7 @@ describe('Structural validation — nftables interception', () => {
   it('OUTPUT capture rules present and correct', () => {
     for (const proto of ['tcp', 'udp']) {
       const suffix = proto === 'tcp' ? '3' : '4';
-      const f = fileByPath(files, `/etc/nftables.d/511${suffix}-nat-rule-output-ipv4_${proto}_dns.nft`);
+      const f = fileByPath(files, `/etc/network/nftables.d/511${suffix}-nat-rule-output-ipv4_${proto}_dns.nft`);
       expect(f).toBeDefined();
       expect(f!.content).toContain('chain OUTPUT');
       expect(f!.content).toContain('$DNS_ANYCAST_IPV4');
@@ -598,8 +598,8 @@ describe('Structural validation — nftables interception', () => {
   });
 
   it('hook priorities are consistent', () => {
-    const preHook = fileByPath(files, '/etc/nftables.d/0051-hook-ipv4-prerouting.nft');
-    const outHook = fileByPath(files, '/etc/nftables.d/0053-hook-ipv4-output.nft');
+    const preHook = fileByPath(files, '/etc/network/nftables.d/0051-hook-ipv4-prerouting.nft');
+    const outHook = fileByPath(files, '/etc/network/nftables.d/0053-hook-ipv4-output.nft');
     expect(preHook!.content).toContain('priority dstnat');
     expect(outHook!.content).toContain('priority dstnat');
   });
@@ -625,7 +625,7 @@ describe('Syntactic validation — nftables snippets', () => {
 
   it('all table block snippets have matching braces', () => {
     const tableFiles = files.filter(f =>
-      f.path.startsWith('/etc/nftables.d/') && f.content.includes('table ')
+      f.path.startsWith('/etc/network/nftables.d/') && f.content.includes('table ')
     );
     for (const f of tableFiles) {
       const opens = (f.content.match(/\{/g) || []).length;
@@ -681,7 +681,7 @@ describe('Filter table non-regression', () => {
     const files = nftFiles(config);
     const filterFiles = files.filter(f => f.path.includes('filter'));
     expect(filterFiles.length).toBe(1);
-    expect(filterFiles[0].path).toBe('/etc/nftables.d/0060-filter-table-ipv4.nft');
+    expect(filterFiles[0].path).toBe('/etc/network/nftables.d/0060-filter-table-ipv4.nft');
   });
 
   it('filter table content is independent of nat refactoring', () => {
@@ -737,7 +737,7 @@ describe('Filter table non-regression', () => {
     const config = makeInterceptionConfig({ securityProfile: 'isp-hardened' });
     const files = nftFiles(config);
     const natOnly = files.filter(f =>
-      f.path.startsWith('/etc/nftables.d/') && !f.path.includes('filter') && !f.path.includes('define')
+      f.path.startsWith('/etc/network/nftables.d/') && !f.path.includes('filter') && !f.path.includes('define')
     );
     for (const f of natOnly) {
       expect(f.content).not.toContain('table ip filter');
