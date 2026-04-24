@@ -221,6 +221,8 @@ def collect_unbound_stats(inst: dict) -> dict | None:
     return {
         "instance": name,
         "bind_ip": inst.get("bind_ip", ""),
+        "bind_ipv4": inst.get("bind_ipv4", ""),
+        "bind_ipv6": inst.get("bind_ipv6", ""),
         "total_queries": total_q,
         "cache_hits": cache_hits,
         "cache_misses": cache_miss,
