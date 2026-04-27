@@ -118,19 +118,41 @@ def _generate_access_control(payload: dict, wizard_cfg: dict) -> str:
             lines.append("    access-control: ::/0 allow")
         return "\n".join(lines)
 
+    def _add_acl(lines_acc: list[str], seen_acc: set[tuple[str, str]], network: str, action: str = "allow") -> None:
+        network = str(network or "").strip()
+        action = str(action or "allow").strip()
+        if not network or (network, action) in seen_acc:
+            return
+        seen_acc.add((network, action))
+        lines_acc.append(f"    access-control: {network} {action}")
+
     # ── ISP Hardened: restrictive ACLs ──
-    lines = ["    access-control: 127.0.0.0/8 allow"]
+    lines: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    _add_acl(lines, seen, "127.0.0.0/8", "allow")
     ipv4_addr = payload.get("ipv4Address") or wizard_cfg.get("ipv4Address", "")
     import re
     cidr_match = re.match(r"^(\d+\.\d+\.\d+\.\d+)/(\d+)$", ipv4_addr)
     if cidr_match:
         ip, mask = cidr_match.group(1), int(cidr_match.group(2))
         net = _compute_network_address(ip, mask)
-        lines.append(f"    access-control: {net}/{mask} allow")
-    lines.append("    access-control: 100.64.0.0/10 allow")
+        _add_acl(lines, seen, f"{net}/{mask}", "allow")
+
+    configured_acls = (
+        wizard_cfg.get("accessControlIpv4")
+        or payload.get("accessControlIpv4")
+        or (payload.get("security", {}) or {}).get("accessControlIpv4")
+        or []
+    )
+    for entry in configured_acls:
+        if not isinstance(entry, dict):
+            continue
+        _add_acl(lines, seen, entry.get("network", ""), entry.get("action", "allow"))
+
+    _add_acl(lines, seen, "100.64.0.0/10", "allow")
     enable_ipv6 = payload.get("enableIpv6") or wizard_cfg.get("enableIpv6", False)
     if enable_ipv6:
-        lines.append("    access-control: ::1/128 allow")
+        _add_acl(lines, seen, "::1/128", "allow")
     return "\n".join(lines)
 
 

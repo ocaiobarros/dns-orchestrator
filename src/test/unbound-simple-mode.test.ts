@@ -144,6 +144,18 @@ describe('Unbound Simple Mode — ACL from CIDR', () => {
     expect(content).not.toContain('access-control: 0.0.0.0/0 allow');
   });
 
+  it('honors explicit IPv4 ACL networks from the wizard', () => {
+    const config = makeSimpleConfig({
+      accessControlIpv4: [
+        { network: '172.16.20.0/24', action: 'allow', label: 'Rede_Corporativa' },
+        { network: '172.16.50.0/24', action: 'allow', label: 'Rede_VoIP' },
+      ],
+    });
+    const content = generateUnboundConf(config, 0);
+    expect(content).toContain('access-control: 172.16.20.0/24 allow');
+    expect(content).toContain('access-control: 172.16.50.0/24 allow');
+  });
+
   it('legacy profile DOES emit 0.0.0.0/0 allow (open resolver)', () => {
     const config = makeSimpleConfig({ securityProfile: 'legacy' });
     const content = generateUnboundConf(config, 0);
