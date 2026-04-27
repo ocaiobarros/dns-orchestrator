@@ -1,6 +1,7 @@
 import unittest
 
 from app.generators.unbound_generator import generate_unbound_configs
+from app.generators.nftables_simple_generator import generate_simple_nftables_config
 
 
 class UnboundGeneratorStructuralTest(unittest.TestCase):
@@ -117,6 +118,20 @@ class UnboundSecurityProfileTest(unittest.TestCase):
         self.assertIn("access-control: 172.250.40.0/23 allow", content)
         self.assertIn("access-control: 100.64.0.0/10 allow", content)
         self.assertNotIn("access-control: 0.0.0.0/0 allow", content)
+
+    def test_simple_nftables_filter_mirrors_implicit_unbound_host_acl(self):
+        payload = self._make_payload("isp-hardened")
+        payload["frontendDnsIp"] = "172.250.40.3"
+        payload["accessControlIpv4"] = [{"network": "127.0.0.0/8", "action": "allow", "label": "Loopback"}]
+        payload["_wizardConfig"]["frontendDnsIp"] = payload["frontendDnsIp"]
+        payload["_wizardConfig"]["accessControlIpv4"] = payload["accessControlIpv4"]
+
+        files = generate_simple_nftables_config(payload)
+        content = next(f["content"] for f in files if f["path"] == "/etc/nftables.d/0060-filter-table-ipv4.nft")
+
+        self.assertIn("ip saddr 172.250.40.0/23 udp dport 53 counter accept", content)
+        self.assertIn("ip saddr 172.250.40.0/23 tcp dport 53 counter accept", content)
+        self.assertIn("ip saddr 100.64.0.0/10 udp dport 53 counter accept", content)
 
     def test_isp_hardened_profile_honors_configured_acl_networks(self):
         payload = self._make_payload("isp-hardened")

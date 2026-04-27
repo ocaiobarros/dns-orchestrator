@@ -347,6 +347,12 @@ def _materialize_network(payload: dict[str, Any] | None = None) -> dict[str, Any
 
     normalized = normalize_payload(payload)
     instances = normalized.get("instances", []) or []
+    frontend_ip = str(
+        normalized.get("frontendDnsIp")
+        or normalized.get("_wizardConfig", {}).get("frontendDnsIp", "")
+        or ""
+    ).strip()
+    host_ip = str(normalized.get("ipv4Address") or "").split("/", 1)[0].strip()
 
     listener_ips = _dedupe_preserve_order([
         str(inst.get("bindIp") or inst.get("listenAddress") or inst.get("listen_address") or inst.get("ip") or "").strip()
@@ -354,6 +360,8 @@ def _materialize_network(payload: dict[str, Any] | None = None) -> dict[str, Any
         if str(inst.get("bindIp") or inst.get("listenAddress") or inst.get("listen_address") or inst.get("ip") or "").strip()
         not in ("", "127.0.0.1", "0.0.0.0")
     ])
+    if frontend_ip and frontend_ip != host_ip and frontend_ip not in listener_ips:
+        listener_ips.append(frontend_ip)
 
     if not listener_ips:
         return {
@@ -2197,10 +2205,17 @@ def _run_health_checks(payload: dict) -> list[dict]:
         # Frontend DNS probe
         if frontend_ip:
             t0 = time.monotonic()
-            r = run_command("dig", [f"@{frontend_ip}", "localhost", "+short", "+time=2", "+tries=1"], timeout=5)
+            r = _retry_command(
+                "dig",
+                [f"@{frontend_ip}", "dell.com", "+short", "+time=2", "+tries=1"],
+                timeout=5,
+                attempts=3,
+                wait_seconds=1.0,
+                success_predicate=lambda result: result.get("exit_code") == 0 and bool((result.get("stdout") or "").strip()),
+            )
             checks.append({
                 "name": f"Frontend DNS ({frontend_ip}) responde", "target": frontend_ip,
-                "status": "pass" if r["exit_code"] == 0 else "fail",
+                "status": "pass" if r["exit_code"] == 0 and (r.get("stdout") or "").strip() else "fail",
                 "detail": r["stdout"].strip()[:200] or "Sem resposta",
                 "durationMs": int((time.monotonic() - t0) * 1000),
             })
