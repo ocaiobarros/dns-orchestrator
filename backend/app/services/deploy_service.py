@@ -1610,10 +1610,34 @@ def _execute_deploy_locked(
         s_nft_simple = _step(order, "Aplicar balanceamento local (nftables)", "nft -f /etc/nftables.conf")
         def apply_nft_simple():
             r = run_command("nft", ["-f", "/etc/nftables.conf"], timeout=15, use_privilege=True)
+            if r["exit_code"] != 0:
+                return {
+                    "status": "failed",
+                    "output": (r["stdout"] or "")[:500],
+                    "stderr": (r["stderr"] or "")[:500],
+                }
+            # Post-load verification: `nft -f` can succeed (exit 0) and load
+            # nothing if /etc/nftables.conf has the package-default content
+            # (no include) or /etc/nftables.d/ is empty. Surface that here
+            # instead of letting it fall through to a confusing "No tables"
+            # in the post-deploy health check.
+            verify = run_command("nft", ["list", "table", "ip", "nat"], timeout=10, use_privilege=True)
+            if verify["exit_code"] != 0 or "table ip nat" not in (verify.get("stdout") or ""):
+                conf_dump = run_command("cat", ["/etc/nftables.conf"], timeout=5, use_privilege=True)
+                ls_dump = run_command("ls", ["-la", "/etc/nftables.d/"], timeout=5, use_privilege=True)
+                return {
+                    "status": "failed",
+                    "output": "nft -f executou mas nenhuma tabela 'ip nat' foi carregada",
+                    "stderr": (
+                        f"verify stderr: {(verify.get('stderr') or '')[:200]} | "
+                        f"/etc/nftables.conf:\n{(conf_dump.get('stdout') or '')[:400]}\n"
+                        f"/etc/nftables.d/ listing:\n{(ls_dump.get('stdout') or '')[:400]}"
+                    ),
+                }
             return {
-                "status": "success" if r["exit_code"] == 0 else "failed",
-                "output": r["stdout"][:500] or "Balanceamento local carregado",
-                "stderr": r["stderr"][:500],
+                "status": "success",
+                "output": "Balanceamento local carregado (table ip nat presente)",
+                "stderr": "",
             }
         _run_step(s_nft_simple, apply_nft_simple)
         steps.append(s_nft_simple)
