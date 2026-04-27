@@ -46,6 +46,7 @@ def check_instance_health(bind_ip: str, port: int = 53, name: str = "") -> dict[
         "probe_domain": PROBE_DOMAIN,
         "error": result["stderr"].strip() if not healthy else None,
         "timestamp": time.time(),
+        "probe_method": "direct_dig",
     }
 
     if not healthy:
@@ -56,9 +57,81 @@ def check_instance_health(bind_ip: str, port: int = 53, name: str = "") -> dict[
     return status
 
 
-def check_all_instances(instances: list[dict] | None = None) -> dict[str, Any]:
+def _check_port_bound(bind_ip: str, port: int = 53) -> tuple[bool, int]:
+    """Verify the listener socket is bound on bind_ip:port using ss.
+
+    Returns (is_bound, elapsed_ms). Used in modes where direct DNS probe is not
+    representative of the operational path (Simple mode: traffic flows through
+    the Frontend DNS / DNAT, ACL may refuse direct loopback queries).
+    """
+    start = time.monotonic()
+    result = run_command("ss", ["-lntup"], timeout=5)
+    elapsed_ms = int((time.monotonic() - start) * 1000)
+    out = result.get("stdout") or ""
+    bound = (bind_ip in out) and (f":{port}" in out)
+    return bound, elapsed_ms
+
+
+def check_instance_health_via_frontend(
+    bind_ip: str,
+    port: int = 53,
+    name: str = "",
+    frontend_ip: str | None = None,
+    frontend_healthy: bool | None = None,
+    frontend_latency_ms: int | None = None,
+) -> dict[str, Any]:
+    """Health probe for Simple mode.
+
+    The Unbound backends (e.g. 100.127.255.x bound on lo0) only receive traffic
+    routed via the Frontend DNS through nftables DNAT, and their ACL typically
+    refuses direct queries from arbitrary sources. Probing them directly with
+    `dig` produces false negatives (REFUSED / timeout). Instead, validate:
+      1. The listener socket is bound (ss).
+      2. The Frontend DNS responds (probed once, shared across instances).
+    """
+    bound, elapsed_ms = _check_port_bound(bind_ip, port)
+    healthy = bool(bound and (frontend_healthy if frontend_healthy is not None else True))
+    latency = frontend_latency_ms if frontend_latency_ms is not None else elapsed_ms
+
+    error: str | None = None
+    if not bound:
+        error = f"Listener {bind_ip}:{port} not bound"
+    elif frontend_healthy is False:
+        error = f"Frontend DNS {frontend_ip or '?'} not responding"
+
+    return {
+        "instance": name or bind_ip,
+        "bind_ip": bind_ip,
+        "port": port,
+        "healthy": healthy,
+        "resolved_ip": "",
+        "latency_ms": latency,
+        "probe_domain": PROBE_DOMAIN,
+        "error": error,
+        "timestamp": time.time(),
+        "probe_method": "frontend_dns" if frontend_ip else "listener_only",
+        "frontend_ip": frontend_ip,
+    }
+
+
+def check_all_instances(
+    instances: list[dict] | None = None,
+    *,
+    operation_mode: str | None = None,
+    frontend_ip: str | None = None,
+) -> dict[str, Any]:
     if instances is None:
         instances = _discover_instances()
+
+    is_simple = (operation_mode or "").lower() in ("simple", "recursivo_simples", "recursivo simples")
+
+    # In Simple mode, probe the Frontend DNS once and reuse across instances.
+    fe_healthy: bool | None = None
+    fe_latency: int | None = None
+    if is_simple and frontend_ip:
+        fe_probe = check_instance_health(bind_ip=frontend_ip, name="frontend-dns")
+        fe_healthy = bool(fe_probe.get("healthy"))
+        fe_latency = int(fe_probe.get("latency_ms") or 0)
 
     results = []
     for inst in instances:
@@ -67,11 +140,21 @@ def check_all_instances(instances: list[dict] | None = None) -> dict[str, Any]:
             bind_ips = [inst.get("bind_ip", inst.get("bindIp", "127.0.0.1"))]
 
         for ip in bind_ips:
-            r = check_instance_health(
-                bind_ip=ip,
-                port=inst.get("port", 53),
-                name=inst.get("name", ""),
-            )
+            if is_simple:
+                r = check_instance_health_via_frontend(
+                    bind_ip=ip,
+                    port=inst.get("port", 53),
+                    name=inst.get("name", ""),
+                    frontend_ip=frontend_ip,
+                    frontend_healthy=fe_healthy,
+                    frontend_latency_ms=fe_latency,
+                )
+            else:
+                r = check_instance_health(
+                    bind_ip=ip,
+                    port=inst.get("port", 53),
+                    name=inst.get("name", ""),
+                )
             results.append(r)
 
     healthy_count = sum(1 for r in results if r["healthy"])
@@ -85,6 +168,8 @@ def check_all_instances(instances: list[dict] | None = None) -> dict[str, Any]:
         "down": healthy_count == 0 and total > 0,
         "instances": results,
         "timestamp": time.time(),
+        "operation_mode": (operation_mode or "").lower() or None,
+        "frontend_ip": frontend_ip,
     }
 
 
