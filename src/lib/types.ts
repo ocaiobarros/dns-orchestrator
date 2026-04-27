@@ -440,6 +440,8 @@ export interface InstanceHealthResult {
   probe_domain: string;
   error: string | null;
   timestamp: number;
+  probe_method?: string;
+  frontend_ip?: string | null;
 }
 
 export interface InstanceHealthReport {
@@ -451,6 +453,8 @@ export interface InstanceHealthReport {
   instances: InstanceHealthResult[];
   vip?: InstanceHealthResult;
   timestamp: number;
+  operation_mode?: string | null;
+  frontend_ip?: string | null;
 }
 
 // ---- NAT / nftables ----
