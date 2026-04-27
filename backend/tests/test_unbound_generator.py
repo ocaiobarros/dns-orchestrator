@@ -118,6 +118,20 @@ class UnboundSecurityProfileTest(unittest.TestCase):
         self.assertIn("access-control: 100.64.0.0/10 allow", content)
         self.assertNotIn("access-control: 0.0.0.0/0 allow", content)
 
+    def test_isp_hardened_profile_honors_configured_acl_networks(self):
+        payload = self._make_payload("isp-hardened")
+        payload["accessControlIpv4"] = [
+            {"network": "172.16.20.0/24", "action": "allow", "label": "Rede_Corporativa"},
+            {"network": "172.16.50.0/24", "action": "allow", "label": "Rede_VoIP"},
+        ]
+        payload["_wizardConfig"]["accessControlIpv4"] = payload["accessControlIpv4"]
+
+        files = generate_unbound_configs(payload)
+        content = next(f["content"] for f in files if f["path"] == "/etc/unbound/unbound01.conf")
+
+        self.assertIn("access-control: 172.16.20.0/24 allow", content)
+        self.assertIn("access-control: 172.16.50.0/24 allow", content)
+
     def test_legacy_profile_with_ipv6_emits_open_v6(self):
         payload = self._make_payload("legacy")
         payload["enableIpv6"] = True
