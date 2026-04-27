@@ -75,9 +75,11 @@ def generate_simple_nftables_config(payload: dict[str, Any], validation_mode: bo
     files = _generate_modular(frontend_ip, backends, sticky_timeout_min, use_sticky)
 
     # ═══ TABLE FILTER — EDGE ACL ═══
+    # Modo Simples: layout dedicado em /etc/nftables.d/ (NÃO usar /etc/network/nftables.d/,
+    # que é exclusivo do modo Interceptação no layout homologado).
     from app.generators.nftables_generator import _generate_filter_table
     enable_ipv6 = payload.get("enableIpv6") or (payload.get("_wizardConfig", {}) or {}).get("enableIpv6", False)
-    files.extend(_generate_filter_table(payload, enable_ipv6))
+    files.extend(_generate_filter_table(payload, enable_ipv6, base_dir="/etc/nftables.d"))
 
     return files
 
