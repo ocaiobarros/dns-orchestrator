@@ -83,11 +83,27 @@ _NETWORK_MATERIALIZATION_SCRIPTS = (
     "/etc/network/post-up.d/dns-control",
 )
 _STABLE_RUNTIME_BASE_FILES = frozenset({"/etc/nftables.conf"})
-_STABLE_RUNTIME_BASE_SIGNATURES: dict[str, tuple[str, ...]] = {
+# Assinaturas aceitas para considerar /etc/nftables.conf "válido o suficiente"
+# para pular a substituição. Aceitamos AMBOS os layouts do produto:
+#   - Modo Simples:       include "/etc/nftables.d/*.nft"
+#   - Modo Interceptação: include "/etc/network/nftables.d/*.nft"
+# A presença de QUALQUER um dos includes (linhas dentro de required_lines
+# checadas por _has_valid_stable_runtime_base) já é suficiente — a função
+# usa OR lógico via tupla de variantes representada como tuple-de-tuplas.
+_STABLE_RUNTIME_BASE_SIGNATURES: dict[str, tuple[tuple[str, ...], ...]] = {
     "/etc/nftables.conf": (
-        "#!/usr/sbin/nft -f",
-        "flush ruleset",
-        'include "/etc/nftables.d/*.nft"',
+        # Variante 1 — Modo Simples
+        (
+            "#!/usr/sbin/nft -f",
+            "flush ruleset",
+            'include "/etc/nftables.d/*.nft"',
+        ),
+        # Variante 2 — Modo Interceptação (layout homologado)
+        (
+            "#!/usr/sbin/nft -f",
+            "flush ruleset",
+            'include "/etc/network/nftables.d/*.nft"',
+        ),
     ),
 }
 
