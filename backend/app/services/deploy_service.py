@@ -622,7 +622,10 @@ def _install_file_to_target(source_path: str, target_path: str, permissions: str
                 "duration_ms": 0,
                 "command": f"read {source_path}",
             }
-        tee_cmd = f"tee {shlex.quote(target_path)} > /dev/null"
+        # Do not rely on shell redirection here: command_runner sanitizes shell
+        # metacharacters before executing `bash -c`. Plain `tee <target>` keeps
+        # the command allowlist-safe while stdin_data carries the staged file.
+        tee_cmd = f"tee {shlex.quote(target_path)}"
         tee_result = run_command(
             "bash",
             ["-c", tee_cmd],
@@ -660,6 +663,8 @@ def _install_file_to_target(source_path: str, target_path: str, permissions: str
                 "duration_ms": tee_result.get("duration_ms", 0),
                 "command": tee_cmd,
             }
+        if tee_result.get("exit_code") == 0:
+            tee_result = {**tee_result, "stdout": ""}
         result = tee_result
     else:
         install_args = ["-m", mode, "-o", "root", "-g", "root", source_path, target_path]
