@@ -672,12 +672,15 @@ export function generatePostUpScript(config: WizardConfig): string {
   lines.push('     /usr/sbin/ip link set lo0 up');
 
   // Listener IPv4 on lo0
-  if (config.instances.some(i => i.bindIp)) {
+  const hostIp = config.ipv4Address?.split('/')[0]?.trim() || '';
+  const listenerIpv4 = Array.from(new Set([
+    ...config.instances.map(i => i.bindIp).filter(Boolean),
+    ...(config.frontendDnsIp && config.frontendDnsIp !== hostIp ? [config.frontendDnsIp] : []),
+  ]));
+  if (listenerIpv4.length > 0) {
     lines.push('');
-    config.instances.forEach(inst => {
-      if (inst.bindIp) {
-        lines.push(`     /usr/sbin/ip addr add ${inst.bindIp}/32 dev lo0`);
-      }
+    listenerIpv4.forEach(ip => {
+      lines.push(`     /usr/sbin/ip addr add ${ip}/32 dev lo0`);
     });
   }
 
@@ -851,9 +854,9 @@ export function generateNftablesFilterTable(
 
   const files: { path: string; content: string }[] = [];
 
-  // Collect allowed networks from wizard ACLs
-  const ipv4Allows = config.accessControlIpv4.filter(a => a.network && a.action === 'allow');
-  const ipv4Denies = config.accessControlIpv4.filter(a => a.network && (a.action === 'refuse' || a.action === 'deny'));
+  const effectiveIpv4Acls = buildEffectiveIpv4Acls(config);
+  const ipv4Allows = effectiveIpv4Acls.filter(a => a.network && a.action === 'allow');
+  const ipv4Denies = effectiveIpv4Acls.filter(a => a.network && (a.action === 'refuse' || a.action === 'deny'));
   const ipv6Allows = config.enableIpv6 ? config.accessControlIpv6.filter(a => a.network && a.action === 'allow') : [];
   const ipv6Denies = config.enableIpv6 ? config.accessControlIpv6.filter(a => a.network && (a.action === 'refuse' || a.action === 'deny')) : [];
 
