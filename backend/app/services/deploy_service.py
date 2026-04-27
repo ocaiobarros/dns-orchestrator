@@ -685,8 +685,12 @@ def _has_compatible_stable_runtime_base(source_path: str, target_path: str) -> b
 
 
 def _has_valid_stable_runtime_base(target_path: str) -> bool:
-    required_lines = _STABLE_RUNTIME_BASE_SIGNATURES.get(target_path)
-    if not required_lines or not os.path.exists(target_path):
+    """Returns True if the target file matches ANY of the accepted signature
+    variants. A variant is a tuple of required lines that must all be present.
+    The presence of any single matching variant is sufficient.
+    """
+    variants = _STABLE_RUNTIME_BASE_SIGNATURES.get(target_path)
+    if not variants or not os.path.exists(target_path):
         return False
 
     try:
@@ -696,7 +700,10 @@ def _has_valid_stable_runtime_base(target_path: str) -> bool:
         return False
 
     target_lines = set(normalized_target.splitlines())
-    return all(line in target_lines for line in required_lines)
+    return any(
+        all(line in target_lines for line in required_lines)
+        for required_lines in variants
+    )
 
 
 def _cleanup_partial_file(target_path: str):
