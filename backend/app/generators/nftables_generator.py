@@ -440,11 +440,19 @@ def _generate_monolithic_validation(
     }]
 
 
-def _generate_filter_table(payload: dict[str, Any], enable_ipv6: bool) -> list[dict]:
+def _generate_filter_table(
+    payload: dict[str, Any],
+    enable_ipv6: bool,
+    base_dir: str = "/etc/network/nftables.d",
+) -> list[dict]:
     """Generate table ip filter / table ip6 filter with INPUT chain for DNS ACL.
     Security boundary: access control is enforced at nftables EDGE before DNAT.
     Unbound remains 0.0.0.0/0 allow — it trusts nftables to filter.
     In legacy mode, no filter table is generated (reproduces Part1/Part2 runtime).
+
+    base_dir: target directory for the .nft snippets. Defaults to the
+    Interception layout (/etc/network/nftables.d). The Simple mode passes
+    /etc/nftables.d to honor the homologated layout split.
     """
     wizard_cfg = payload.get("_wizardConfig", {}) or {}
     security_profile = payload.get("securityProfile") or wizard_cfg.get("securityProfile", "legacy")
@@ -517,7 +525,7 @@ def _generate_filter_table(payload: dict[str, Any], enable_ipv6: bool) -> list[d
     lines.append("}")
 
     files.append({
-        "path": "/etc/network/nftables.d/0060-filter-table-ipv4.nft",
+        "path": f"{base_dir}/0060-filter-table-ipv4.nft",
         "content": "\n".join(lines) + "\n",
         "permissions": "0644",
         "owner": "root:root",
@@ -579,7 +587,7 @@ def _generate_filter_table(payload: dict[str, Any], enable_ipv6: bool) -> list[d
         lines6.append("}")
 
         files.append({
-            "path": "/etc/network/nftables.d/0061-filter-table-ipv6.nft",
+            "path": f"{base_dir}/0061-filter-table-ipv6.nft",
             "content": "\n".join(lines6) + "\n",
             "permissions": "0644",
             "owner": "root:root",
