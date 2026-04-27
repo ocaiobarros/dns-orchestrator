@@ -2362,14 +2362,25 @@ def _save_deploy_state(deploy_id: str, operator: str, success: bool, backup_id: 
         existing = get_deploy_state()
         total = existing.get("totalDeployments", 0) + 1
 
-        # Extract operation mode and frontend IP from payload
+        # Extract operation mode, frontend IP and upstream forwarders from payload
         operation_mode = ""
         frontend_dns_ip = ""
+        forward_addrs: list[str] = []
+        forward_first = False
         managed_instances: list[str] = []
         if payload:
             normalized = normalize_payload(payload)
+            wizard_cfg = normalized.get("_wizardConfig", {}) or {}
             operation_mode = normalized.get("operationMode", "")
             frontend_dns_ip = normalized.get("frontendDnsIp", "")
+            raw_forward_addrs = normalized.get("forwardAddrs") or wizard_cfg.get("forwardAddrs") or []
+            if isinstance(raw_forward_addrs, list):
+                forward_addrs = _dedupe_preserve_order([str(x).strip() for x in raw_forward_addrs])
+            forward_first = bool(
+                normalized.get("forwardFirst")
+                if normalized.get("forwardFirst") is not None
+                else wizard_cfg.get("forwardFirst", False)
+            )
             managed_instances = [
                 str(inst.get("name", "")).strip()
                 for inst in normalized.get("instances", [])
@@ -2388,6 +2399,8 @@ def _save_deploy_state(deploy_id: str, operator: str, success: bool, backup_id: 
             "lastBackupPath": os.path.join(BACKUP_ROOT, backup_id) if backup_id else None,
             "operationMode": operation_mode,
             "frontendDnsIp": frontend_dns_ip,
+            "forwardAddrs": forward_addrs,
+            "forwardFirst": forward_first,
             "managedInstances": managed_instances,
         }
         os.makedirs(os.path.dirname(DEPLOY_STATE_FILE), exist_ok=True)
