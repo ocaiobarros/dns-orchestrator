@@ -2054,6 +2054,13 @@ def _run_health_checks(payload: dict) -> list[dict]:
     checks = []
     instances = normalized.get("instances", [])
     vips = normalized.get("nat", {}).get("serviceVips", []) or normalized.get("serviceVips", []) or []
+    operation_mode = str(
+        normalized.get("operationMode")
+        or normalized.get("_wizardConfig", {}).get("operationMode", "")
+        or ""
+    ).lower()
+    is_simple_mode = operation_mode in ("simple", "recursivo_simples", "recursivo simples")
+    is_no_mode = operation_mode == ""
 
     for inst in instances:
         name = inst.get("name", "unbound")
@@ -2078,8 +2085,18 @@ def _run_health_checks(payload: dict) -> list[dict]:
             "durationMs": int((time.monotonic() - t0) * 1000),
         })
 
-        # DNS probe
-        if bind_ip:
+        # DNS probe direto por backend não representa o caminho operacional do
+        # modo Simples: o tráfego real entra pelo frontend local e é distribuído
+        # via nftables. A instância continua validada por systemd, porta 53 e
+        # remote-control; a resolução DNS é validada no frontend mais abaixo.
+        if bind_ip and is_simple_mode:
+            checks.append({
+                "name": f"{name} DNS probe direto ({bind_ip})", "target": bind_ip,
+                "status": "skip",
+                "detail": "Validado via Frontend DNS e balanceamento local no modo Simples",
+                "durationMs": 0,
+            })
+        elif bind_ip:
             t0 = time.monotonic()
             r = _retry_command(
                 "dig",
@@ -2139,14 +2156,6 @@ def _run_health_checks(payload: dict) -> list[dict]:
             })
 
     # ── nftables checks: mode-dependent ──
-    operation_mode = str(
-        normalized.get("operationMode")
-        or normalized.get("_wizardConfig", {}).get("operationMode", "")
-        or ""
-    ).lower()
-    is_simple_mode = operation_mode in ("simple", "recursivo_simples", "recursivo simples")
-    is_no_mode = operation_mode == ""
-
     nft_ruleset = ""
 
     if is_simple_mode:
