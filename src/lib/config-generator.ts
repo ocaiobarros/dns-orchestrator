@@ -248,19 +248,32 @@ function generateAccessControlBlock(config: WizardConfig): string {
 
   // ISP Hardened: restrictive ACLs
   const lines: string[] = [];
-  lines.push('    access-control: 127.0.0.0/8 allow');
+  const seen = new Set<string>();
+  const addAcl = (network?: string, action: string = 'allow') => {
+    const cleanNetwork = (network || '').trim();
+    const cleanAction = (action || 'allow').trim();
+    const key = `${cleanNetwork}|${cleanAction}`;
+    if (!cleanNetwork || seen.has(key)) return;
+    seen.add(key);
+    lines.push(`    access-control: ${cleanNetwork} ${cleanAction}`);
+  };
+
+  addAcl('127.0.0.0/8', 'allow');
   if (config.ipv4Address) {
     const cidrMatch = config.ipv4Address.match(/^(\d+\.\d+\.\d+\.\d+)\/(\d+)$/);
     if (cidrMatch) {
       const mask = parseInt(cidrMatch[2]);
       const ip = cidrMatch[1];
       const networkAddr = computeNetworkAddress(ip, mask);
-      lines.push(`    access-control: ${networkAddr}/${mask} allow`);
+      addAcl(`${networkAddr}/${mask}`, 'allow');
     }
   }
-  lines.push('    access-control: 100.64.0.0/10 allow');
+  for (const entry of config.accessControlIpv4 || []) {
+    addAcl(entry.network, entry.action || 'allow');
+  }
+  addAcl('100.64.0.0/10', 'allow');
   if (config.enableIpv6) {
-    lines.push('    access-control: ::1/128 allow');
+    addAcl('::1/128', 'allow');
   }
   return lines.join('\n');
 }
