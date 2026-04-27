@@ -44,6 +44,54 @@ def _dedupe(items: list[str]) -> list[str]:
     return ordered
 
 
+def _compute_network_address(ip: str, mask: int) -> str:
+    octets = [int(o) for o in ip.split(".")]
+    ip_num = (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]
+    mask_bits = (0xFFFFFFFF << (32 - mask)) & 0xFFFFFFFF if mask > 0 else 0
+    network = ip_num & mask_bits
+    return f"{(network >> 24) & 0xFF}.{(network >> 16) & 0xFF}.{(network >> 8) & 0xFF}.{network & 0xFF}"
+
+
+def _effective_filter_acls(payload: dict[str, Any], wizard_cfg: dict[str, Any]) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """Return nftables ACLs using the same implicit allows as Unbound.
+
+    The Wizard derives the host LAN from ipv4Address for Unbound access-control;
+    the EDGE filter must mirror that or client traffic is dropped before DNAT.
+    """
+    import re
+
+    ipv4_raw = payload.get("accessControlIpv4") or wizard_cfg.get("accessControlIpv4") or []
+    ipv6_raw = payload.get("accessControlIpv6") or wizard_cfg.get("accessControlIpv6") or []
+
+    ipv4: list[dict[str, str]] = []
+    seen_v4: set[tuple[str, str]] = set()
+
+    def add_v4(network: str, action: str = "allow", label: str = "") -> None:
+        network = str(network or "").strip()
+        action = str(action or "allow").strip()
+        if not network or (network, action) in seen_v4:
+            return
+        seen_v4.add((network, action))
+        entry = {"network": network, "action": action}
+        if label:
+            entry["label"] = label
+        ipv4.append(entry)
+
+    add_v4("127.0.0.0/8", "allow", "Loopback")
+    ipv4_addr = str(payload.get("ipv4Address") or wizard_cfg.get("ipv4Address") or "").strip()
+    cidr_match = re.match(r"^(\d+\.\d+\.\d+\.\d+)/(\d+)$", ipv4_addr)
+    if cidr_match:
+        ip, mask = cidr_match.group(1), int(cidr_match.group(2))
+        add_v4(f"{_compute_network_address(ip, mask)}/{mask}", "allow", "Rede do host")
+
+    for entry in ipv4_raw:
+        if isinstance(entry, dict):
+            add_v4(entry.get("network", ""), entry.get("action", "allow"), entry.get("label", ""))
+
+    add_v4("100.64.0.0/10", "allow", "Backends internos")
+    return ipv4, [entry for entry in ipv6_raw if isinstance(entry, dict)]
+
+
 def _collect_backends(instances: list[dict[str, Any]]) -> list[dict[str, str]]:
     """Return list of {name, ipv4, ipv6} per instance."""
     backends = []
@@ -461,8 +509,7 @@ def _generate_filter_table(
 
     files: list[dict] = []
 
-    acl_ipv4 = payload.get("accessControlIpv4") or wizard_cfg.get("accessControlIpv4") or []
-    acl_ipv6 = payload.get("accessControlIpv6") or wizard_cfg.get("accessControlIpv6") or []
+    acl_ipv4, acl_ipv6 = _effective_filter_acls(payload, wizard_cfg)
     enable_rate_limit = payload.get("enableDnsProtection") or wizard_cfg.get("enableDnsProtection", False)
     enable_anti_amp = payload.get("enableAntiAmplification") or wizard_cfg.get("enableAntiAmplification", False)
     open_resolver_confirmed = payload.get("openResolverConfirmed") or wizard_cfg.get("openResolverConfirmed", False)
