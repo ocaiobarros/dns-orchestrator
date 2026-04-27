@@ -51,6 +51,8 @@ class DeployServiceNetworkMaterializationTest(unittest.TestCase):
         calls: list[tuple[str, list[str], bool]] = []
         payload = {
             "operationMode": "simple",
+            "ipv4Address": "172.250.40.2/23",
+            "frontendDnsIp": "172.250.40.3",
             "instances": [
                 {"name": "unbound01", "bindIp": "100.127.255.105"},
                 {"name": "unbound02", "bindIp": "100.127.255.106"},
@@ -68,11 +70,12 @@ class DeployServiceNetworkMaterializationTest(unittest.TestCase):
             result = deploy_service._materialize_network(payload)
 
         self.assertEqual(result["status"], "success")
-        self.assertIn("2 IP(s) materializados em lo0", result["output"])
+        self.assertIn("3 IP(s) materializados em lo0", result["output"])
         self.assertIn(("ip", ["link", "add", "lo0", "type", "dummy"], True), calls)
         self.assertIn(("ip", ["link", "set", "lo0", "up"], True), calls)
         self.assertIn(("ip", ["addr", "add", "100.127.255.105/32", "dev", "lo0"], True), calls)
         self.assertIn(("ip", ["addr", "add", "100.127.255.106/32", "dev", "lo0"], True), calls)
+        self.assertIn(("ip", ["addr", "add", "172.250.40.3/32", "dev", "lo0"], True), calls)
         self.assertNotIn(("ip", ["addr", "add", "127.0.0.1/32", "dev", "lo0"], True), calls)
 
 
