@@ -608,6 +608,7 @@ def _install_file_to_target(source_path: str, target_path: str, permissions: str
     # unlink+create which destroys the bind-mount and triggers
     # "Read-only file system" errors. Use `tee` to overwrite the file content
     # in-place, preserving the inode and the bind-mount.
+    install_args: list[str] = []
     if target_path in _STABLE_RUNTIME_BASE_FILES and os.path.exists(target_path):
         try:
             with open(source_path, "rb") as src_fp:
@@ -620,17 +621,44 @@ def _install_file_to_target(source_path: str, target_path: str, permissions: str
                 "duration_ms": 0,
                 "command": f"read {source_path}",
             }
-        # Use tee via shell to preserve inode (writes to existing file in place).
+        tee_cmd = f"tee {shlex.quote(target_path)} > /dev/null"
         tee_result = run_command(
             "bash",
-            ["-c", f"tee {shlex.quote(target_path)} > /dev/null"],
+            ["-c", tee_cmd],
             timeout=15,
             use_privilege=True,
             stdin_data=new_content.decode("utf-8", errors="replace"),
         )
-        # Best-effort permissions/ownership normalization (idempotent, in-place).
         run_command("chmod", [mode, target_path], timeout=5, use_privilege=True)
         run_command("chown", ["root:root", target_path], timeout=5, use_privilege=True)
+        # Post-write verification: ensure the on-disk content matches the staged
+        # content. Without this a silent failure (sudoers missing, redirect lost,
+        # ProtectSystem variant) would leave the package-default nftables.conf
+        # in place — `nft -f` would then load nothing and the deploy would
+        # appear to succeed but produce "No tables" at runtime.
+        try:
+            with open(target_path, "rb") as verify_fp:
+                if verify_fp.read() != new_content:
+                    tee_result = {
+                        "exit_code": 1,
+                        "stdout": tee_result.get("stdout", ""),
+                        "stderr": (
+                            f"in-place write to {target_path} reported success but "
+                            f"on-disk content differs from staged content. "
+                            f"stderr={tee_result.get('stderr', '')[:200]}"
+                        ),
+                        "duration_ms": tee_result.get("duration_ms", 0),
+                        "command": tee_cmd,
+                        "executed_privileged": tee_result.get("executed_privileged", False),
+                    }
+        except OSError as exc:
+            tee_result = {
+                "exit_code": 1,
+                "stdout": "",
+                "stderr": f"post-write verification failed for {target_path}: {exc}",
+                "duration_ms": tee_result.get("duration_ms", 0),
+                "command": tee_cmd,
+            }
         result = tee_result
     else:
         install_args = ["-m", mode, "-o", "root", "-g", "root", source_path, target_path]
@@ -644,7 +672,7 @@ def _install_file_to_target(source_path: str, target_path: str, permissions: str
         owner_after = f"{owner_name}:{group_name}"
 
     audit = {
-        "command": result.get("command") or f"install {' '.join(install_args)}",
+        "command": result.get("command") or (f"install {' '.join(install_args)}" if install_args else "in-place write"),
         "effective_uid": os.geteuid(),
         "effective_gid": os.getegid(),
         "effective_user": effective_user,
