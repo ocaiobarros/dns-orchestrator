@@ -295,12 +295,13 @@ function computeNetworkAddress(ip: string, mask: number): string {
 function buildEffectiveIpv4Acls(config: WizardConfig) {
   const entries: Array<{ network: string; action: 'allow' | 'refuse' | 'deny'; label?: string }> = [];
   const seen = new Set<string>();
-  const add = (network?: string, action: 'allow' | 'refuse' | 'deny' = 'allow', label?: string) => {
+  const add = (network?: string, action: string = 'allow', label?: string) => {
     const cleanNetwork = (network || '').trim();
-    const key = `${cleanNetwork}|${action}`;
+    const cleanAction: 'allow' | 'refuse' | 'deny' = action === 'deny' || action === 'refuse' ? action : 'allow';
+    const key = `${cleanNetwork}|${cleanAction}`;
     if (!cleanNetwork || seen.has(key)) return;
     seen.add(key);
-    entries.push({ network: cleanNetwork, action, label });
+    entries.push({ network: cleanNetwork, action: cleanAction, label });
   };
 
   add('127.0.0.0/8', 'allow', 'Loopback');
