@@ -110,6 +110,11 @@ post-up /etc/network/post-up.sh
     post_up_lines.append("     /usr/sbin/ip link set lo0 up")
 
     # Listener IPv4 on lo0
+    frontend_ip = str(payload.get("frontendDnsIp") or wizard_cfg.get("frontendDnsIp") or "").strip()
+    host_ip = ipv4_address.split("/", 1)[0].strip() if "/" in ipv4_address else ipv4_address.strip()
+    if frontend_ip and frontend_ip != host_ip and frontend_ip not in listener_ips:
+        listener_ips.append(frontend_ip)
+
     if listener_ips:
         post_up_lines.append(f"")
         for lip in listener_ips:
