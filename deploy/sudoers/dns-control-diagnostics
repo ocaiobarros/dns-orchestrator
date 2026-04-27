@@ -29,6 +29,7 @@ dns-control ALL=(root) NOPASSWD: \
     /usr/bin/install -m 0644 -o root -g root * *, \
     /usr/bin/install -m 0640 -o root -g root * *, \
     /usr/bin/install -m 0755 -o root -g root * *, \
+    /usr/bin/ls -la *, \
     /usr/bin/cp --no-preserve=ownership *, \
     /usr/bin/chmod *, \
     /usr/bin/chown *, \

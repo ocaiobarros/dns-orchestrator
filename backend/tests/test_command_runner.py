@@ -1,6 +1,6 @@
 import unittest
 
-from app.executors.command_runner import run_command
+from app.executors.command_runner import _is_sudo_allowed, run_command
 
 
 class CommandRunnerTest(unittest.TestCase):
@@ -9,6 +9,9 @@ class CommandRunnerTest(unittest.TestCase):
 
         self.assertEqual(result["exit_code"], 0, result)
         self.assertEqual(result["stdout"], "payload-from-stdin")
+
+    def test_nft_list_specific_table_is_privilege_allowlisted(self):
+        self.assertTrue(_is_sudo_allowed("nft", ["list", "table", "ip", "nat"]))
 
 
 if __name__ == "__main__":
