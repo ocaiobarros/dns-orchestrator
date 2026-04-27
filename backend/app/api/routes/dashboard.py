@@ -48,6 +48,13 @@ def instance_health(_: User = Depends(get_current_user)):
             "latency_ms": fe.get("latency_ms"),
             "role": "frontend_dns",
         }
+    raw_forwards = state.get("forwardAddrs") or []
+    if isinstance(raw_forwards, list):
+        forwards = [str(x).strip() for x in raw_forwards if str(x).strip()]
+    else:
+        forwards = []
+    result["forward_addresses"] = forwards
+    result["forward_first"] = bool(state.get("forwardFirst"))
     return result
 
 

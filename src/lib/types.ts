@@ -455,6 +455,8 @@ export interface InstanceHealthReport {
   timestamp: number;
   operation_mode?: string | null;
   frontend_ip?: string | null;
+  forward_addresses?: string[] | null;
+  forward_first?: boolean | null;
 }
 
 // ---- NAT / nftables ----

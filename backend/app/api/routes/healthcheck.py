@@ -36,6 +36,17 @@ def healthcheck_all(_: User = Depends(get_current_user)):
     else:
         vip = check_vip_health()
         result["vip"] = vip
+
+    # Expose configured upstream forwarders so the NOC topology map can render
+    # the real operational path (e.g. 1.1.1.1, 8.8.8.8) instead of an artificial
+    # "N/A" upstream node when probes don't capture a resolved upstream IP.
+    raw_forwards = state.get("forwardAddrs") or []
+    if isinstance(raw_forwards, list):
+        forwards = [str(x).strip() for x in raw_forwards if str(x).strip()]
+    else:
+        forwards = []
+    result["forward_addresses"] = forwards
+    result["forward_first"] = bool(state.get("forwardFirst"))
     return result
 
 
