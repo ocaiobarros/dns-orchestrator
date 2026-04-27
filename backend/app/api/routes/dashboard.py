@@ -30,8 +30,25 @@ def instance_stats(_: User = Depends(get_current_user)):
 
 @router.get("/instance-health")
 def instance_health(_: User = Depends(get_current_user)):
-    """Per-instance health check via dig against all bind IPs."""
-    return check_all_instances()
+    """Per-instance health.
+
+    In Simple mode, the operational path is Frontend DNS → DNAT → backend, so
+    direct probes against backends would be ACL-refused. Health is therefore
+    derived from listener bind state + Frontend DNS availability.
+    """
+    state = get_deploy_state()
+    operation_mode = str(state.get("operationMode") or "").lower()
+    frontend_ip = str(state.get("frontendDnsIp") or "").strip() or None
+    result = check_all_instances(operation_mode=operation_mode, frontend_ip=frontend_ip)
+    if operation_mode == "simple" and frontend_ip:
+        fe = check_instance_health(bind_ip=frontend_ip, name="frontend-dns")
+        result["vip"] = {
+            "bind_ip": frontend_ip,
+            "healthy": bool(fe.get("healthy")),
+            "latency_ms": fe.get("latency_ms"),
+            "role": "frontend_dns",
+        }
+    return result
 
 
 @router.get("/vip-diagnostics")
