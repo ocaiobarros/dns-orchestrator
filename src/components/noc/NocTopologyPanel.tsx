@@ -94,21 +94,26 @@ function buildTopology(
     });
   });
 
-  // Upstream nodes — unique resolved IPs. In Simple mode the health service
-  // intentionally validates backends through the Frontend DNS, so backend
-  // probes do not expose a resolved upstream IP. Do not render an artificial
-  // N/A upstream node; the map must show only the real operational path.
-  const upstreamIps = Array.from(
+  // Upstream nodes — prefer the configured forwarders (e.g. 1.1.1.1, 8.8.8.8)
+  // exposed by the backend, since per-instance probes do not capture the
+  // resolved upstream IP. Fall back to probe-resolved IPs when forwarders are
+  // not configured (pure recursive mode).
+  const configuredForwards = (health.forward_addresses ?? []).filter(Boolean);
+  const probeResolvedIps = Array.from(
     new Set(
       instances
         .map(i => i.resolved_ip)
         .filter((ip): ip is string => Boolean(ip && ip !== '—')),
     ),
   );
+  const upstreamIps = configuredForwards.length > 0 ? configuredForwards : probeResolvedIps;
+  const upstreamsAreForwarders = configuredForwards.length > 0;
 
   upstreamIps.forEach((ip, idx) => {
     const id = `upstream-${idx}`;
-    const relatedInstances = instances.filter(i => i.resolved_ip === ip);
+    const relatedInstances = upstreamsAreForwarders
+      ? instances
+      : instances.filter(i => i.resolved_ip === ip);
     const anyHealthy = relatedInstances.some(i => i.healthy);
 
     nodes.push({
@@ -117,13 +122,16 @@ function buildTopology(
       type: 'upstream',
       status: anyHealthy ? 'ok' : 'unknown',
       bindIp: ip,
+      extra: upstreamsAreForwarders ? 'forwarder' : undefined,
     });
 
     // Edges resolver → upstream
     resolverIds.forEach(rid => {
       const resolverName = rid.replace('resolver-', '');
       const resolverInsts = grouped.get(resolverName) ?? [];
-      const matchesUpstream = resolverInsts.some(i => i.resolved_ip === ip);
+      const matchesUpstream = upstreamsAreForwarders
+        ? true
+        : resolverInsts.some(i => i.resolved_ip === ip);
       if (matchesUpstream || (!isSimpleMode && upstreamIps.length === 1)) {
         edges.push({
           from: rid,
