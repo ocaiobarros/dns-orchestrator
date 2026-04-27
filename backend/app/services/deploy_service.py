@@ -582,15 +582,16 @@ def _install_file_to_target(source_path: str, target_path: str, permissions: str
 
     mode = _infer_permissions(target_path, permissions)
 
-    # ── Unconditional skip for stable runtime base files with valid content ──
-    # These files (e.g. /etc/nftables.conf) are provisioned by deploy.sh and
-    # must NOT be overwritten by the wizard pipeline.  If content is valid,
-    # skip regardless of metadata — avoids failures on read-only FS, transient
-    # permission issues, or install-command quirks.
+    # ── Conditional skip for stable runtime base files ──
+    # Only skip if the on-disk content EXACTLY matches the STAGED content for
+    # the CURRENT deploy. This prevents the previous bug where a host carrying
+    # the Interception-mode include (/etc/network/nftables.d/*.nft) was
+    # accepted as "valid" during a Simple-mode deploy (which expects the
+    # /etc/nftables.d/*.nft include), causing nft -f to load an empty ruleset.
     if target_path in _STABLE_RUNTIME_BASE_FILES and os.path.exists(target_path):
-        if _has_valid_stable_runtime_base(target_path):
-            logger.info("Stable base file %s has valid content — skipping install unconditionally", target_path)
-            return _build_skipped_install_result(target_path, mode, "stable base file valid — skipped")
+        if _has_compatible_stable_runtime_base(source_path, target_path):
+            logger.info("Stable base file %s already matches staged content — skipping install", target_path)
+            return _build_skipped_install_result(target_path, mode, "stable base file matches staged — skipped")
 
     try:
         if os.path.exists(target_path):
