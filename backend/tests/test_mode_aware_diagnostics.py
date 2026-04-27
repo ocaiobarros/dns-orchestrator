@@ -4,6 +4,7 @@ from unittest.mock import patch
 from app.api.routes import healthcheck as healthcheck_route
 from app.executors.command_catalog import get_runtime_command_catalog
 from app.services import diagnostics_service
+from app.services import healthcheck_service
 
 
 class ModeAwareDiagnosticsTest(unittest.TestCase):
@@ -58,6 +59,31 @@ class ModeAwareDiagnosticsTest(unittest.TestCase):
         self.assertNotIn("100.127.255.102", targets)
         self.assertNotIn("191.243.128.205", targets)
         self.assertNotIn("191.243.128.206", targets)
+
+    def test_healthcheck_discovers_real_root_forwarders_from_deployed_unbound_configs(self):
+        config = '''server:
+    interface: 100.127.255.101
+
+forward-zone:
+    name: "."
+    forward-addr: 8.8.8.8
+    forward-addr: 1.1.1.1
+
+forward-zone:
+    name: "corp.local"
+    forward-addr: 10.0.0.10
+'''
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = os.path.join(temp_dir, "unbound01.conf")
+            with open(path, "w", encoding="utf-8") as fp:
+                fp.write(config)
+
+            forwards = healthcheck_service.discover_root_forward_addresses(f"{temp_dir}/unbound*.conf")
+
+        self.assertEqual(forwards, ["8.8.8.8", "1.1.1.1"])
 
 
 if __name__ == "__main__":
