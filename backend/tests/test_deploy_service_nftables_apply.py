@@ -58,6 +58,8 @@ class DeployServiceNftablesApplyTest(unittest.TestCase):
         installed_paths: list[str] = []
 
         def fake_run_command(executable: str, args: list[str], timeout: int = 30, use_privilege: bool = False, **kwargs):
+            if executable == "nft" and args == ["list", "table", "ip", "nat"]:
+                return {**_ok_result(executable, args, timeout=timeout, use_privilege=use_privilege, **kwargs), "stdout": "table ip nat { }"}
             return _ok_result(executable, args, timeout=timeout, use_privilege=use_privilege, **kwargs)
 
         def fake_install_from_staging(staging_dir: str, target_path: str, permissions: str = "0644"):
