@@ -22,7 +22,7 @@ ALLOWED_EXECUTABLES = frozenset({
     "ping", "traceroute", "ifreload", "ifquery",
     "dpkg", "apt",
     "chmod", "sysctl", "echo",
-    "install", "mkdir", "bash", "killall",
+    "install", "mkdir", "bash", "killall", "chown",
     "/etc/network/post-up.d/dns-control",
 })
 
@@ -47,6 +47,7 @@ _SUDO_ALLOWED_COMMANDS: list[tuple[str, list[str]]] = [
     ("journalctl", ["--no-pager"]),
     # Deploy operations
     ("chmod", []),
+    ("chown", []),
     ("install", ["-m"]),
     ("mkdir", ["-p"]),
     ("systemctl", ["daemon-reload"]),
@@ -125,7 +126,7 @@ def _is_sudo_allowed(executable: str, args: list[str]) -> bool:
 def _must_not_fallback_without_privilege(executable: str, args: list[str]) -> bool:
     """Return True for commands that must fail closed if sudo is unavailable."""
     if executable in {
-        "install", "mkdir", "systemctl", "nft", "sysctl", "killall", "ip",
+        "install", "mkdir", "chmod", "chown", "systemctl", "nft", "sysctl", "killall", "ip",
         "/etc/network/post-up.d/dns-control",
     }:
         return True
@@ -235,6 +236,7 @@ def run_command(
     try:
         result = subprocess.run(
             cmd,
+            input=stdin_data,
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -267,7 +269,7 @@ def run_command(
             start2 = time.monotonic()
             try:
                 result2 = subprocess.run(
-                    cmd_nosudo, capture_output=True, text=True,
+                    cmd_nosudo, input=stdin_data, capture_output=True, text=True,
                     timeout=timeout, shell=False,
                 )
                 elapsed_ms2 = int((time.monotonic() - start2) * 1000)

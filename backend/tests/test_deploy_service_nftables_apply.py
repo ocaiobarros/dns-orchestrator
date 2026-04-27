@@ -58,6 +58,8 @@ class DeployServiceNftablesApplyTest(unittest.TestCase):
         installed_paths: list[str] = []
 
         def fake_run_command(executable: str, args: list[str], timeout: int = 30, use_privilege: bool = False, **kwargs):
+            if executable == "nft" and args == ["list", "table", "ip", "nat"]:
+                return {**_ok_result(executable, args, timeout=timeout, use_privilege=use_privilege, **kwargs), "stdout": "table ip nat { }"}
             return _ok_result(executable, args, timeout=timeout, use_privilege=use_privilege, **kwargs)
 
         def fake_install_from_staging(staging_dir: str, target_path: str, permissions: str = "0644"):
@@ -126,7 +128,52 @@ class DeployServiceNftablesApplyTest(unittest.TestCase):
 
             self.assertEqual(result["exit_code"], 0)
             self.assertEqual(result["stdout"], "UNCHANGED")
-            self.assertIn("stable base file valid", result["command"])
+            self.assertIn("stable base file matches staged", result["command"])
+
+    def test_stable_runtime_base_in_place_write_replaces_existing_content(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = f"{temp_dir}/source-nftables.conf"
+            target_path = f"{temp_dir}/target-nftables.conf"
+
+            with open(source_path, "w", encoding="utf-8") as fp:
+                fp.write("#!/usr/sbin/nft -f\nflush ruleset\ninclude \"/etc/nftables.d/*.nft\"\n")
+
+            with open(target_path, "w", encoding="utf-8") as fp:
+                fp.write("#!/usr/sbin/nft -f\nflush ruleset\ninclude \"/etc/network/nftables.d/*.nft\"\n")
+
+            patched_base_files = frozenset({target_path})
+            patched_signatures = {
+                target_path: (
+                    (
+                        "#!/usr/sbin/nft -f",
+                        "flush ruleset",
+                        'include "/etc/nftables.d/*.nft"',
+                    ),
+                ),
+            }
+
+            def fake_run_command(executable, args, timeout=30, use_privilege=False, stdin_data=None, **kwargs):
+                if executable == "mkdir":
+                    return {"exit_code": 0, "stdout": "", "stderr": "", "duration_ms": 0, "executed_privileged": use_privilege, "command": f"{executable} {' '.join(args)}"}
+                if executable == "bash" and args[:2] == ["-c", f"tee {target_path}"]:
+                    with open(target_path, "w", encoding="utf-8") as fp:
+                        fp.write(stdin_data or "")
+                    return {"exit_code": 0, "stdout": stdin_data or "", "stderr": "", "duration_ms": 0, "executed_privileged": use_privilege, "command": f"{executable} {' '.join(args)}"}
+                if executable in {"chmod", "chown"}:
+                    return {"exit_code": 0, "stdout": "", "stderr": "", "duration_ms": 0, "executed_privileged": use_privilege, "command": f"{executable} {' '.join(args)}"}
+                return _ok_result(executable, args, timeout=timeout, use_privilege=use_privilege, **kwargs)
+
+            with patch.object(deploy_service, "_STABLE_RUNTIME_BASE_FILES", patched_base_files), \
+                 patch.object(deploy_service, "_STABLE_RUNTIME_BASE_SIGNATURES", patched_signatures), \
+                 patch.object(deploy_service, "run_command", side_effect=fake_run_command):
+                result = deploy_service._install_file_to_target(source_path, target_path, "0644")
+
+            with open(target_path, encoding="utf-8") as fp:
+                target_content = fp.read()
+
+            self.assertEqual(result["exit_code"], 0, result)
+            self.assertIn('include "/etc/nftables.d/*.nft"', target_content)
+            self.assertNotIn('/etc/network/nftables.d', target_content)
 
 
 if __name__ == "__main__":
