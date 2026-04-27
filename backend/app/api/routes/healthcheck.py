@@ -14,10 +14,26 @@ router = APIRouter()
 
 @router.get("")
 def healthcheck_all(_: User = Depends(get_current_user)):
-    """Check all Unbound instances + VIP."""
-    result = check_all_instances()
-    operation_mode = str(get_deploy_state().get("operationMode") or "").lower()
-    if operation_mode != "simple":
+    """Check all Unbound instances + VIP/Frontend.
+
+    In Simple mode, instance probes go through the Frontend DNS (the operational
+    path) instead of direct dig against backends, which would be refused by
+    Unbound ACLs and produce false negatives.
+    """
+    state = get_deploy_state()
+    operation_mode = str(state.get("operationMode") or "").lower()
+    frontend_ip = str(state.get("frontendDnsIp") or "").strip() or None
+    result = check_all_instances(operation_mode=operation_mode, frontend_ip=frontend_ip)
+    if operation_mode == "simple":
+        if frontend_ip:
+            fe = check_instance_health(bind_ip=frontend_ip, name="frontend-dns")
+            result["vip"] = {
+                "bind_ip": frontend_ip,
+                "healthy": bool(fe.get("healthy")),
+                "latency_ms": fe.get("latency_ms"),
+                "role": "frontend_dns",
+            }
+    else:
         vip = check_vip_health()
         result["vip"] = vip
     return result
