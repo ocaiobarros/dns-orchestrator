@@ -113,6 +113,8 @@ class DeployServiceNftablesApplyTest(unittest.TestCase):
             elif executable == "dig":
                 self.assertEqual(args[0], "@172.250.40.11")
                 result["stdout"] = "127.0.0.1"
+            elif executable == "ip" and args == ["-4", "addr"]:
+                result["stdout"] = "inet 100.127.255.105/32 scope global lo0"
             return result
 
         with patch.object(deploy_service, "run_command", side_effect=fake_run_command):
