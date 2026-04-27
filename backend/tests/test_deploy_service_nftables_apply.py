@@ -107,9 +107,11 @@ class DeployServiceNftablesApplyTest(unittest.TestCase):
             patched_base_files = frozenset({target_path})
             patched_signatures = {
                 target_path: (
-                    "#!/usr/sbin/nft -f",
-                    "flush ruleset",
-                    'include "/etc/nftables.d/*.nft"',
+                    (
+                        "#!/usr/sbin/nft -f",
+                        "flush ruleset",
+                        'include "/etc/nftables.d/*.nft"',
+                    ),
                 ),
             }
 

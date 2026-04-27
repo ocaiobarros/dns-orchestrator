@@ -25,6 +25,7 @@ import json
 import os
 import re
 import glob
+import shlex
 import shutil
 import time
 import uuid
@@ -83,11 +84,27 @@ _NETWORK_MATERIALIZATION_SCRIPTS = (
     "/etc/network/post-up.d/dns-control",
 )
 _STABLE_RUNTIME_BASE_FILES = frozenset({"/etc/nftables.conf"})
-_STABLE_RUNTIME_BASE_SIGNATURES: dict[str, tuple[str, ...]] = {
+# Assinaturas aceitas para considerar /etc/nftables.conf "válido o suficiente"
+# para pular a substituição. Aceitamos AMBOS os layouts do produto:
+#   - Modo Simples:       include "/etc/nftables.d/*.nft"
+#   - Modo Interceptação: include "/etc/network/nftables.d/*.nft"
+# A presença de QUALQUER um dos includes (linhas dentro de required_lines
+# checadas por _has_valid_stable_runtime_base) já é suficiente — a função
+# usa OR lógico via tupla de variantes representada como tuple-de-tuplas.
+_STABLE_RUNTIME_BASE_SIGNATURES: dict[str, tuple[tuple[str, ...], ...]] = {
     "/etc/nftables.conf": (
-        "#!/usr/sbin/nft -f",
-        "flush ruleset",
-        'include "/etc/nftables.d/*.nft"',
+        # Variante 1 — Modo Simples
+        (
+            "#!/usr/sbin/nft -f",
+            "flush ruleset",
+            'include "/etc/nftables.d/*.nft"',
+        ),
+        # Variante 2 — Modo Interceptação (layout homologado)
+        (
+            "#!/usr/sbin/nft -f",
+            "flush ruleset",
+            'include "/etc/network/nftables.d/*.nft"',
+        ),
     ),
 }
 
@@ -585,8 +602,39 @@ def _install_file_to_target(source_path: str, target_path: str, permissions: str
     except OSError:
         pass
 
-    install_args = ["-m", mode, "-o", "root", "-g", "root", source_path, target_path]
-    result = run_command("install", install_args, timeout=15, use_privilege=True)
+    # ── In-place write for stable base files ──
+    # Files in _STABLE_RUNTIME_BASE_FILES (e.g. /etc/nftables.conf) are bind-mounted
+    # as writable by systemd's ProtectSystem=strict. The `install` command does
+    # unlink+create which destroys the bind-mount and triggers
+    # "Read-only file system" errors. Use `tee` to overwrite the file content
+    # in-place, preserving the inode and the bind-mount.
+    if target_path in _STABLE_RUNTIME_BASE_FILES and os.path.exists(target_path):
+        try:
+            with open(source_path, "rb") as src_fp:
+                new_content = src_fp.read()
+        except OSError as exc:
+            return {
+                "exit_code": 1,
+                "stdout": "",
+                "stderr": f"failed reading staged content: {exc}",
+                "duration_ms": 0,
+                "command": f"read {source_path}",
+            }
+        # Use tee via shell to preserve inode (writes to existing file in place).
+        tee_result = run_command(
+            "bash",
+            ["-c", f"tee {shlex.quote(target_path)} > /dev/null"],
+            timeout=15,
+            use_privilege=True,
+            stdin_data=new_content.decode("utf-8", errors="replace"),
+        )
+        # Best-effort permissions/ownership normalization (idempotent, in-place).
+        run_command("chmod", [mode, target_path], timeout=5, use_privilege=True)
+        run_command("chown", ["root:root", target_path], timeout=5, use_privilege=True)
+        result = tee_result
+    else:
+        install_args = ["-m", mode, "-o", "root", "-g", "root", source_path, target_path]
+        result = run_command("install", install_args, timeout=15, use_privilege=True)
 
     final_check = _verify_file_metadata(target_path, mode)
     effective_user, effective_group = _get_effective_user_group()
@@ -669,8 +717,12 @@ def _has_compatible_stable_runtime_base(source_path: str, target_path: str) -> b
 
 
 def _has_valid_stable_runtime_base(target_path: str) -> bool:
-    required_lines = _STABLE_RUNTIME_BASE_SIGNATURES.get(target_path)
-    if not required_lines or not os.path.exists(target_path):
+    """Returns True if the target file matches ANY of the accepted signature
+    variants. A variant is a tuple of required lines that must all be present.
+    The presence of any single matching variant is sufficient.
+    """
+    variants = _STABLE_RUNTIME_BASE_SIGNATURES.get(target_path)
+    if not variants or not os.path.exists(target_path):
         return False
 
     try:
@@ -680,7 +732,10 @@ def _has_valid_stable_runtime_base(target_path: str) -> bool:
         return False
 
     target_lines = set(normalized_target.splitlines())
-    return all(line in target_lines for line in required_lines)
+    return any(
+        all(line in target_lines for line in required_lines)
+        for required_lines in variants
+    )
 
 
 def _cleanup_partial_file(target_path: str):
