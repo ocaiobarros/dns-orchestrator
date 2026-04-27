@@ -41,6 +41,7 @@ function buildTopology(
   const nodes: MapNode[] = [];
   const edges: MapEdge[] = [];
   const instances = health.instances ?? [];
+  const isSimpleMode = String(health.operation_mode ?? '').toLowerCase().includes('simple');
 
   // VIP node
   const vipIp = vipAddress || health.vip?.bind_ip || 'N/A';
@@ -93,7 +94,10 @@ function buildTopology(
     });
   });
 
-  // Upstream nodes — unique resolved IPs
+  // Upstream nodes — unique resolved IPs. In Simple mode the health service
+  // intentionally validates backends through the Frontend DNS, so backend
+  // probes do not expose a resolved upstream IP. Do not render an artificial
+  // N/A upstream node; the map must show only the real operational path.
   const upstreamIps = Array.from(
     new Set(
       instances
@@ -101,10 +105,6 @@ function buildTopology(
         .filter((ip): ip is string => Boolean(ip && ip !== '—')),
     ),
   );
-
-  if (upstreamIps.length === 0) {
-    upstreamIps.push('N/A');
-  }
 
   upstreamIps.forEach((ip, idx) => {
     const id = `upstream-${idx}`;
@@ -115,7 +115,7 @@ function buildTopology(
       id,
       label: ip,
       type: 'upstream',
-      status: ip === 'N/A' ? 'inactive' : anyHealthy ? 'ok' : 'failed',
+      status: anyHealthy ? 'ok' : 'unknown',
       bindIp: ip,
     });
 
@@ -124,7 +124,7 @@ function buildTopology(
       const resolverName = rid.replace('resolver-', '');
       const resolverInsts = grouped.get(resolverName) ?? [];
       const matchesUpstream = resolverInsts.some(i => i.resolved_ip === ip);
-      if (matchesUpstream || upstreamIps.length === 1) {
+      if (matchesUpstream || (!isSimpleMode && upstreamIps.length === 1)) {
         edges.push({
           from: rid,
           to: id,
