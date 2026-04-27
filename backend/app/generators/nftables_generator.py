@@ -525,7 +525,7 @@ def _generate_filter_table(
     lines.append("}")
 
     files.append({
-        "path": "/etc/network/nftables.d/0060-filter-table-ipv4.nft",
+        "path": f"{base_dir}/0060-filter-table-ipv4.nft",
         "content": "\n".join(lines) + "\n",
         "permissions": "0644",
         "owner": "root:root",
