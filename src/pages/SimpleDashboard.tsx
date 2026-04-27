@@ -468,6 +468,7 @@ export default function SimpleDashboard() {
             cacheHitRatio={cacheHitRatio}
             avgLatency={avgLatency}
             dnsMetricsAvailable={telemetryConnected}
+            forwardAddresses={deployState?.forwardAddrs ?? null}
             entryLabel="FRONTEND"
           />
         </div>

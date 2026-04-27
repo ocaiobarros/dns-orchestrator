@@ -631,6 +631,8 @@ export interface DeployState {
   rollbackAvailable: boolean;
   operationMode?: string;
   frontendDnsIp?: string;
+  forwardAddrs?: string[];
+  forwardFirst?: boolean;
   simpleDistributionStrategy?: 'round-robin' | 'sticky-source';
 }
 

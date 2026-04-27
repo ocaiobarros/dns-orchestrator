@@ -72,6 +72,80 @@ def _check_port_bound(bind_ip: str, port: int = 53) -> tuple[bool, int]:
     return bound, elapsed_ms
 
 
+def _dedupe_preserve_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in items:
+        value = str(item).strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        ordered.append(value)
+    return ordered
+
+
+def _extract_root_forward_addresses(config_text: str) -> list[str]:
+    """Extract forward-addr values from the root forward-zone only."""
+    forwards: list[str] = []
+    in_forward_zone = False
+    current_zone: str | None = None
+
+    for raw_line in config_text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line == "forward-zone:":
+            in_forward_zone = True
+            current_zone = None
+            continue
+        if in_forward_zone and line.endswith(":") and line != "forward-zone:":
+            in_forward_zone = False
+            current_zone = None
+            continue
+        if not in_forward_zone:
+            continue
+        if line.startswith("name:"):
+            current_zone = line.split(":", 1)[1].strip().strip('"')
+            continue
+        if current_zone == "." and line.startswith("forward-addr:"):
+            forwards.append(line.split(":", 1)[1].strip())
+
+    return _dedupe_preserve_order(forwards)
+
+
+def discover_root_forward_addresses(config_glob: str = "/etc/unbound/unbound*.conf") -> list[str]:
+    """Read deployed Unbound instance configs and return real root forwarders.
+
+    This keeps dashboard topology accurate even for deploy-state files created
+    before forwardAddrs were persisted there.
+    """
+    forwards: list[str] = []
+    for config_path in sorted(glob.glob(config_glob)):
+        name = os.path.splitext(os.path.basename(config_path))[0]
+        if not _INSTANCE_NAME_RE.match(name):
+            continue
+        try:
+            with open(config_path, encoding="utf-8") as fp:
+                forwards.extend(_extract_root_forward_addresses(fp.read()))
+        except OSError:
+            continue
+    return _dedupe_preserve_order(forwards)
+
+
+def resolve_forward_addresses_from_state(state: dict[str, Any]) -> list[str]:
+    raw_forwards = (
+        state.get("forwardAddrs")
+        or state.get("forward_addresses")
+        or (state.get("_wizardConfig") or {}).get("forwardAddrs")
+        or []
+    )
+    if isinstance(raw_forwards, list):
+        forwards = _dedupe_preserve_order([str(x).strip() for x in raw_forwards])
+    else:
+        forwards = []
+    return forwards or discover_root_forward_addresses()
+
+
 def check_instance_health_via_frontend(
     bind_ip: str,
     port: int = 53,

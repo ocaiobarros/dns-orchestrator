@@ -13,6 +13,7 @@ interface NocTopologyPanelProps {
   cacheHitRatio?: number;
   avgLatency?: number;
   dnsMetricsAvailable?: boolean;
+  forwardAddresses?: string[] | null;
   /** Override the entry-point label (defaults to 'VIP') */
   entryLabel?: string;
 }
@@ -36,6 +37,7 @@ function buildTopology(
   totalQueries?: number,
   cacheHitRatio?: number,
   avgLatency?: number,
+  forwardAddresses?: string[] | null,
   entryLabel?: string,
 ): { nodes: MapNode[]; edges: MapEdge[] } {
   const nodes: MapNode[] = [];
@@ -98,7 +100,7 @@ function buildTopology(
   // exposed by the backend, since per-instance probes do not capture the
   // resolved upstream IP. Fall back to probe-resolved IPs when forwarders are
   // not configured (pure recursive mode).
-  const configuredForwards = (health.forward_addresses ?? []).filter(Boolean);
+  const configuredForwards = (health.forward_addresses?.length ? health.forward_addresses : forwardAddresses ?? []).filter(Boolean);
   const probeResolvedIps = Array.from(
     new Set(
       instances
@@ -155,14 +157,15 @@ export default function NocTopologyPanel({
   cacheHitRatio,
   avgLatency,
   dnsMetricsAvailable,
+  forwardAddresses,
   entryLabel,
 }: NocTopologyPanelProps) {
   const hasData = Boolean(health && Array.isArray(health.instances) && health.instances.length > 0);
 
   const { nodes, edges } = useMemo(() => {
     if (!hasData || !health) return { nodes: [], edges: [] };
-    return buildTopology(health, vipConfigured, vipAddress, totalQueries, cacheHitRatio, avgLatency, entryLabel);
-  }, [health, vipConfigured, vipAddress, totalQueries, cacheHitRatio, avgLatency, hasData, entryLabel]);
+    return buildTopology(health, vipConfigured, vipAddress, totalQueries, cacheHitRatio, avgLatency, forwardAddresses, entryLabel);
+  }, [health, vipConfigured, vipAddress, totalQueries, cacheHitRatio, avgLatency, forwardAddresses, hasData, entryLabel]);
 
   return (
     <motion.div
