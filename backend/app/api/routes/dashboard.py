@@ -9,7 +9,8 @@ from app.api.deps import get_current_user
 from app.models.user import User
 from app.services.diagnostics_service import get_dashboard_summary
 from app.services.unbound_stats_service import get_instance_real_stats
-from app.services.healthcheck_service import check_all_instances
+from app.services.healthcheck_service import check_all_instances, check_instance_health
+from app.services.deploy_service import get_deploy_state
 from app.services.vip_diagnostics_service import run_vip_diagnostics, export_vip_audit
 
 logger = logging.getLogger("dns-control.dashboard")
