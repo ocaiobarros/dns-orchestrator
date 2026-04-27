@@ -292,6 +292,31 @@ function computeNetworkAddress(ip: string, mask: number): string {
   ].join('.');
 }
 
+function buildEffectiveIpv4Acls(config: WizardConfig) {
+  const entries: Array<{ network: string; action: 'allow' | 'refuse' | 'deny'; label?: string }> = [];
+  const seen = new Set<string>();
+  const add = (network?: string, action: 'allow' | 'refuse' | 'deny' = 'allow', label?: string) => {
+    const cleanNetwork = (network || '').trim();
+    const key = `${cleanNetwork}|${action}`;
+    if (!cleanNetwork || seen.has(key)) return;
+    seen.add(key);
+    entries.push({ network: cleanNetwork, action, label });
+  };
+
+  add('127.0.0.0/8', 'allow', 'Loopback');
+  const cidrMatch = config.ipv4Address?.match(/^(\d+\.\d+\.\d+\.\d+)\/(\d+)$/);
+  if (cidrMatch) {
+    const ip = cidrMatch[1];
+    const mask = parseInt(cidrMatch[2], 10);
+    add(`${computeNetworkAddress(ip, mask)}/${mask}`, 'allow', 'Rede do host');
+  }
+  for (const acl of config.accessControlIpv4 || []) {
+    add(acl.network, acl.action || 'allow', acl.label);
+  }
+  add('100.64.0.0/10', 'allow', 'Backends internos');
+  return entries;
+}
+
 // ═══ BLOCKLIST / ANABLOCK ═══
 
 function buildAnablockApiUrl(config: WizardConfig): string {
