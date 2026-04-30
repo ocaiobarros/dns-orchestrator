@@ -115,7 +115,9 @@ def _get_persisted_dns_metrics(db: Session, since: datetime, instance: str | Non
 
     rows = list(buckets.values())
     for previous, current in zip(rows, rows[1:]):
-        elapsed = max(1, (datetime.fromisoformat(current["timestamp"]) - datetime.fromisoformat(previous["timestamp"])).total_seconds())
+        current_ts = datetime.fromisoformat(str(current["timestamp"]).replace("Z", "+00:00"))
+        previous_ts = datetime.fromisoformat(str(previous["timestamp"]).replace("Z", "+00:00"))
+        elapsed = max(1, (current_ts - previous_ts).total_seconds())
         current["qps"] = round(max(0, current.get("total_queries", 0) - previous.get("total_queries", 0)) / elapsed, 2)
     if rows:
         rows[0]["qps"] = 0
