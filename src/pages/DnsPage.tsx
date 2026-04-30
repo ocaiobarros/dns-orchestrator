@@ -14,6 +14,30 @@ function safeNum(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
 
+function firstNum(...values: unknown[]): number {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return 0;
+}
+
+function toTs(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value > 1_000_000_000_000 ? value : value * 1000;
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function countWindow(rows: Array<Record<string, number>>, key: string): number {
+  const values = rows.map(r => safeNum(r[key])).filter(v => v > 0);
+  if (values.length === 0) return 0;
+  const monotonic = values.every((v, i) => i === 0 || v >= values[i - 1]);
+  if (monotonic && values.length > 1) return Math.max(0, values[values.length - 1] - values[0]);
+  return values.reduce((sum, v) => sum + v, 0);
+}
+
 /* ============================================================
    KPI CARD — large, with circular glowing icon + sparkline
    ============================================================ */
