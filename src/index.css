@@ -89,7 +89,7 @@
     --sidebar-footer-y: 0.75rem;
     --table-cell-y: 0.75rem;
     --table-cell-x: 0.875rem;
-    --chart-panel-height: clamp(12.5rem, 18vh, 20rem);
+    --chart-panel-height: clamp(16rem, 26vh, 28rem);
   }
 }
 
@@ -125,7 +125,13 @@
       --sidebar-nav-y: 0.35rem;
       --sidebar-link-y: 0.42rem;
       --sidebar-footer-y: 0.5rem;
-      --chart-panel-height: clamp(14rem, 17vh, 24rem);
+      --chart-panel-height: clamp(22rem, 30vh, 36rem);
+    }
+  }
+
+  @media (min-width: 3840px) {
+    html {
+      --chart-panel-height: clamp(28rem, 34vh, 46rem);
     }
   }
 

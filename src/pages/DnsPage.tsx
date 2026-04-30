@@ -67,15 +67,53 @@ function queryDomainOf(row: any): string {
   return String(row?.domain ?? row?.qname ?? row?.query ?? row?.name ?? '').replace(/\.$/, '');
 }
 
-function rowMatchesFilters(row: any, instance: string, type: string): boolean {
+function rowMatchesFilters(
+  row: any,
+  instance: string,
+  type: string,
+  options: { allowMissingInstance?: boolean; allowMissingType?: boolean } = {},
+): boolean {
   const rowInstance = queryInstanceOf(row);
-  const matchesInstance = !instance || !rowHasInstance(row) || sameInstance(rowInstance, instance);
-  const matchesType = !type || !rowHasQueryType(row) || queryTypeOf(row) === type;
+  const matchesInstance = !instance || (rowHasInstance(row) ? sameInstance(rowInstance, instance) : Boolean(options.allowMissingInstance));
+  const matchesType = !type || (rowHasQueryType(row) ? queryTypeOf(row) === type : Boolean(options.allowMissingType));
   return matchesInstance && matchesType;
 }
 
 const SELECT_PANEL = 'noc-overlay-panel z-[120]';
 const SELECT_ITEM = 'font-mono text-[11px] text-popover-foreground focus:bg-primary/15 focus:text-primary data-[state=checked]:text-primary';
+const DNS_FILTER_STORAGE_KEY = 'dns-control:dns-page-filters:v1';
+const DEFAULT_DNS_FILTERS = { hours: 1, selectedInstance: '', qtype: '' };
+const PERIOD_LABELS: Record<number, string> = {
+  1: 'Última 1 hora',
+  6: 'Últimas 6 horas',
+  12: 'Últimas 12 horas',
+  24: 'Últimas 24 horas',
+  48: 'Últimas 48 horas',
+  72: 'Últimas 72 horas',
+};
+
+type DnsFilterState = typeof DEFAULT_DNS_FILTERS;
+
+function normalizeHours(value: unknown): number {
+  const parsed = Number(value);
+  return Object.prototype.hasOwnProperty.call(PERIOD_LABELS, parsed) ? parsed : DEFAULT_DNS_FILTERS.hours;
+}
+
+function readStoredDnsFilters(): DnsFilterState {
+  if (typeof window === 'undefined') return DEFAULT_DNS_FILTERS;
+  try {
+    const raw = window.localStorage.getItem(DNS_FILTER_STORAGE_KEY);
+    if (!raw) return DEFAULT_DNS_FILTERS;
+    const parsed = JSON.parse(raw) as Partial<DnsFilterState>;
+    return {
+      hours: normalizeHours(parsed.hours),
+      selectedInstance: String(parsed.selectedInstance || ''),
+      qtype: String(parsed.qtype || '').toUpperCase(),
+    };
+  } catch {
+    return DEFAULT_DNS_FILTERS;
+  }
+}
 
 /* ============================================================
    KPI CARD — large, with circular glowing icon + sparkline
@@ -202,9 +240,9 @@ function Panel({
    Time-series chart panel
    ============================================================ */
 function ChartPanel({
-  title, data, dataKey, accent,
+  title, data, dataKey, accent, rangeLabel,
 }: {
-  title: string; data: any[]; dataKey: string; accent: Accent;
+  title: string; data: any[]; dataKey: string; accent: Accent; rangeLabel?: string;
 }) {
   const color = `hsl(${ACCENT_HSL[accent]})`;
   const colorAlpha = (a: number) => `hsl(${ACCENT_HSL[accent]} / ${a})`;
@@ -213,7 +251,7 @@ function ChartPanel({
   const series = data.length > 0 ? data : Array.from({ length: 2 }, () => ({ time: '', [dataKey]: 0 }));
 
   return (
-    <Panel title={title} accent={accent}>
+    <Panel title={title} accent={accent} badge={rangeLabel ? <span className="ml-2 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : undefined}>
       <div className="noc-chart-frame">
         <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={180}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
@@ -251,11 +289,11 @@ function ChartPanel({
 /* ============================================================
    Cache Hit chart — line only, magenta/violet
    ============================================================ */
-function CacheHitChart({ data }: { data: any[] }) {
+function CacheHitChart({ data, rangeLabel }: { data: any[]; rangeLabel?: string }) {
   const color = 'hsl(290 80% 60%)';
   const series = data.length > 0 ? data : Array.from({ length: 2 }, () => ({ time: '', hitRatio: 0 }));
   return (
-    <Panel title="Cache Hit Ratio (%)" accent="violet">
+    <Panel title="Cache Hit Ratio (%)" accent="violet" badge={rangeLabel ? <span className="ml-2 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : undefined}>
       <div className="noc-chart-frame">
         <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={180}>
           <LineChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
@@ -279,14 +317,14 @@ function CacheHitChart({ data }: { data: any[] }) {
 /* ============================================================
    Errors chart — area, pink/magenta
    ============================================================ */
-function ErrorsChart({ data }: { data: any[] }) {
+function ErrorsChart({ data, rangeLabel }: { data: any[]; rangeLabel?: string }) {
   const color = 'hsl(330 90% 60%)';
   const colorA = (a: number) => `hsl(330 90% 60% / ${a})`;
   const series = data.length > 0
     ? data.map(d => ({ ...d, total: safeNum(d.servfail) + safeNum(d.nxdomain) }))
     : Array.from({ length: 2 }, () => ({ time: '', total: 0 }));
   return (
-    <Panel title="Erros. (SERVFAIL + NXDOMAIN)" accent="violet">
+    <Panel title="Erros. (SERVFAIL + NXDOMAIN)" accent="violet" badge={rangeLabel ? <span className="ml-2 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : undefined}>
       <div className="noc-chart-frame">
         <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={180}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
@@ -316,15 +354,30 @@ function ErrorsChart({ data }: { data: any[] }) {
    MAIN PAGE
    ============================================================ */
 export default function DnsPage() {
+  const storedFilters = useMemo(() => readStoredDnsFilters(), []);
   const { data: telemetry, isLoading, error } = useTelemetry();
   const { data: historyData } = useTelemetryHistory();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [hours, setHours] = useState(1);
-  const [selectedInstance, setSelectedInstance] = useState('');
-  const [qtype, setQtype] = useState('');
+  const [hours, setHours] = useState(storedFilters.hours);
+  const [selectedInstance, setSelectedInstance] = useState(storedFilters.selectedInstance);
+  const [qtype, setQtype] = useState(storedFilters.qtype);
   const [showOnlyAlerts, setShowOnlyAlerts] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    window.localStorage.setItem(DNS_FILTER_STORAGE_KEY, JSON.stringify({ hours, selectedInstance, qtype }));
+  }, [hours, selectedInstance, qtype]);
+
+  const resetFilters = () => {
+    setHours(DEFAULT_DNS_FILTERS.hours);
+    setSelectedInstance(DEFAULT_DNS_FILTERS.selectedInstance);
+    setQtype(DEFAULT_DNS_FILTERS.qtype);
+    setShowOnlyAlerts(false);
+    window.localStorage.removeItem(DNS_FILTER_STORAGE_KEY);
+    qc.invalidateQueries({ queryKey: ['dns'] });
+    qc.invalidateQueries({ queryKey: ['telemetry', 'recent-queries'] });
+  };
 
   const { data: filteredMetrics } = useQuery({
     queryKey: ['dns', 'metrics', hours, selectedInstance],
@@ -334,8 +387,12 @@ export default function DnsPage() {
   });
 
   const { data: recentQueries } = useQuery({
-    queryKey: ['telemetry', 'recent-queries', qtype],
-    queryFn: async () => { const r = await api.getRecentQueries({ qtype: qtype || undefined, limit: 1000 }); if (!r.success) throw new Error(r.error!); return r.data; },
+    queryKey: ['telemetry', 'recent-queries', selectedInstance, qtype],
+    queryFn: async () => {
+      const r = await api.getRecentQueries({ qtype: qtype || undefined, limit: 1000 });
+      if (!r.success) throw new Error(r.error!);
+      return r.data;
+    },
     refetchInterval: 15000,
     placeholderData: previousData => previousData,
   });
@@ -345,16 +402,33 @@ export default function DnsPage() {
   const chartData = useMemo(() => {
     const metricRows = Array.isArray(filteredMetrics) ? filteredMetrics : [];
     const historyRows = Array.isArray(historyData) ? historyData : [];
+    const telemetryBackends = Array.isArray(telemetry?.backends) ? telemetry.backends : [];
+    const selectedBackend = selectedInstance
+      ? telemetryBackends.find((b: any) => sameInstance(backendName(b), selectedInstance))
+      : null;
+    const allBackendQueries = telemetryBackends.reduce((sum: number, b: any) => sum + safeNum(b?.resolver?.total_queries), 0);
+    const instanceShare = selectedInstance && selectedBackend && allBackendQueries > 0
+      ? Math.max(0, Math.min(1, safeNum(selectedBackend?.resolver?.total_queries) / allBackendQueries))
+      : 1;
+    const queryTypeRows = Array.isArray(telemetry?.top_query_types) ? telemetry.top_query_types : [];
+    const allTypeQueries = queryTypeRows.reduce((sum: number, t: any) => sum + safeNum(t?.count), 0);
+    const selectedTypeQueries = qtype
+      ? safeNum(queryTypeRows.find((t: any) => queryTypeOf(t) === qtype)?.count)
+      : 0;
+    const typeShare = qtype && allTypeQueries > 0
+      ? Math.max(0, Math.min(1, selectedTypeQueries / allTypeQueries))
+      : 1;
+    const countShare = instanceShare * typeShare;
     const timedMetrics = metricRows
-      .filter((p: any) => rowMatchesFilters(p, selectedInstance, qtype))
+      .filter((p: any) => rowMatchesFilters(p, selectedInstance, ''))
       .filter((p: any) => toTs(p.timestamp ?? p.epoch) > 0);
     const liveMetricRows = selectedInstance && metricRows.length > 0
       ? metricRows
-        .filter((p: any) => rowMatchesFilters(p, selectedInstance, qtype))
+        .filter((p: any) => rowMatchesFilters(p, selectedInstance, ''))
         .map((p: any) => ({ ...p, timestamp: p.timestamp ?? telemetry?.timestamp ?? new Date().toISOString() }))
       : [];
-    const filteredHistoryRows = historyRows.filter((p: any) => rowMatchesFilters(p, selectedInstance, qtype));
-    const history = timedMetrics.length > 0 ? timedMetrics : liveMetricRows.length > 0 ? liveMetricRows : filteredHistoryRows;
+    const filteredHistoryRows = historyRows.filter((p: any) => rowMatchesFilters(p, selectedInstance, '', { allowMissingInstance: true }));
+    const history = timedMetrics.length > 0 ? timedMetrics : filteredHistoryRows.length > 0 ? filteredHistoryRows : liveMetricRows;
     const minTs = Date.now() - hours * 60 * 60 * 1000;
     const series = history
       .filter((p: any) => {
@@ -363,28 +437,28 @@ export default function DnsPage() {
       })
       .map((p: any) => ({
         time: (p.timestamp || p.epoch) ? new Date(toTs(p.timestamp ?? p.epoch)).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
-        qps: firstNum(p.qps, p.queries_per_second),
-        latency: firstNum(p.latency_ms, p.latency_avg_ms, p.avgLatencyMs, p.avg_latency_ms),
-        servfail: firstNum(p.servfail, p.servfail_count),
-        nxdomain: firstNum(p.nxdomain, p.nxdomain_count),
-        hitRatio: firstNum(p.cache_hit_ratio, p.cacheHitRatio),
-        totalQueries: firstNum(p.total_queries, p.totalQueries, p.queries_total, p.queries),
-        cacheHits: firstNum(p.cache_hits, p.cacheHits),
-        cacheMisses: firstNum(p.cache_misses, p.cacheMisses),
+        qps: Math.round(firstNum(p.qps, p.queries_per_second) * countShare * 100) / 100,
+        latency: selectedBackend ? safeNum(selectedBackend?.resolver?.recursion_avg_ms) : firstNum(p.latency_ms, p.latency_avg_ms, p.avgLatencyMs, p.avg_latency_ms),
+        servfail: Math.round(firstNum(p.servfail, p.servfail_count) * countShare),
+        nxdomain: Math.round(firstNum(p.nxdomain, p.nxdomain_count) * countShare),
+        hitRatio: selectedBackend ? safeNum(selectedBackend?.resolver?.cache_hit_ratio) : firstNum(p.cache_hit_ratio, p.cacheHitRatio),
+        totalQueries: Math.round(firstNum(p.total_queries, p.totalQueries, p.queries_total, p.queries) * countShare),
+        cacheHits: Math.round(firstNum(p.cache_hits, p.cacheHits) * countShare),
+        cacheMisses: Math.round(firstNum(p.cache_misses, p.cacheMisses) * countShare),
       }));
 
     if (series.length > 0) return series;
     const resolver = telemetry?.resolver ?? {};
     return [{
       time: telemetry?.timestamp ? new Date(telemetry.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
-      qps: firstNum(resolver.qps),
-      latency: firstNum(resolver.avg_latency_ms),
-      servfail: firstNum(resolver.servfail),
-      nxdomain: firstNum(resolver.nxdomain),
-      hitRatio: firstNum(resolver.cache_hit_ratio),
-      totalQueries: firstNum(resolver.total_queries),
-      cacheHits: firstNum(resolver.cache_hits),
-      cacheMisses: firstNum(resolver.cache_misses),
+      qps: Math.round(firstNum(resolver.qps) * countShare * 100) / 100,
+      latency: selectedBackend ? safeNum(selectedBackend?.resolver?.recursion_avg_ms) : firstNum(resolver.avg_latency_ms),
+      servfail: Math.round(firstNum(resolver.servfail) * countShare),
+      nxdomain: Math.round(firstNum(resolver.nxdomain) * countShare),
+      hitRatio: selectedBackend ? safeNum(selectedBackend?.resolver?.cache_hit_ratio) : firstNum(resolver.cache_hit_ratio),
+      totalQueries: Math.round(firstNum(resolver.total_queries) * countShare),
+      cacheHits: Math.round(firstNum(resolver.cache_hits) * countShare),
+      cacheMisses: Math.round(firstNum(resolver.cache_misses) * countShare),
     }];
   }, [filteredMetrics, historyData, hours, selectedInstance, qtype, telemetry]);
 
@@ -400,7 +474,7 @@ export default function DnsPage() {
     const apiItems = Array.isArray(recentQueries?.items) ? recentQueries.items : [];
     const telemetryItems = Array.isArray(telemetry?.recent_queries) ? telemetry.recent_queries : [];
     const src = apiItems.length ? apiItems : telemetryItems;
-    return src.filter((q: any) => rowMatchesFilters(q, selectedInstance, qtype));
+    return src.filter((q: any) => rowMatchesFilters(q, selectedInstance, qtype, { allowMissingInstance: true }));
   }, [recentQueries, telemetry, selectedInstance, qtype]);
   const availableQtypes = useMemo(() => {
     const fromApi = Array.isArray(recentQueries?.available_types) ? recentQueries.available_types : [];
@@ -434,7 +508,7 @@ export default function DnsPage() {
       cacheMisses: 0,
     }));
   }, [qtype, selectedInstance, filteredRecentItems]);
-  const effectiveChartData = querySeries.length ? querySeries : chartData;
+  const effectiveChartData = chartData.length ? chartData : querySeries;
   const topDomainsRaw = Array.isArray(telemetry?.top_domains) ? telemetry.top_domains
     : Array.isArray(queryAnalytics?.top_domains) ? queryAnalytics.top_domains : [];
 
@@ -459,12 +533,10 @@ export default function DnsPage() {
   const backendCacheMisses = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_misses), 0);
   const backendServfail = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.servfail), 0);
 
-  const totalQueries = hasQueryFilterData
-    ? qtypeSelectedCount
-    : selectedInstance
-      ? backendQueries
-    : countWindow(metricsArr, 'totalQueries')
+  const totalQueries = countWindow(metricsArr, 'totalQueries')
       || safeNum(latestMetric?.totalQueries)
+      || (hasQueryFilterData ? qtypeSelectedCount : 0)
+      || (selectedInstance ? backendQueries : 0)
       || backendQueries
       || safeNum(resolver.total_queries);
 
@@ -482,14 +554,13 @@ export default function DnsPage() {
       ? selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.recursion_avg_ms), 0) / selectedBackends.length
       : safeNum(resolver.avg_latency_ms));
 
-  const totalServfail = selectedInstance
-    ? backendServfail
-    : countWindow(metricsArr, 'servfail')
+  const totalServfail = countWindow(metricsArr, 'servfail')
       || safeNum(latestMetric?.servfail)
+      || (selectedInstance ? backendServfail : 0)
       || backendServfail
       || safeNum(resolver.servfail);
 
-  const qps = hasQueryFilterData ? qtypeSelectedCount : safeNum(latestMetric?.qps) || safeNum(resolver.qps);
+  const qps = safeNum(latestMetric?.qps) || safeNum(resolver.qps);
 
   // Sparkline data per KPI
   const sparkQ = effectiveChartData.slice(-30).map(d => safeNum(d.qps));
@@ -506,17 +577,20 @@ export default function DnsPage() {
     ? Object.entries(recentDomainCounts)
         .map(([domain, count]) => ({ domain, count: Number(count) || 0 }))
         .sort((a, b) => b.count - a.count)
-    : topDomainsRaw.filter((d: any) => {
-        if (!qtype) return true;
-        const rowType = queryTypeOf(d);
-        return rowType ? rowType === qtype : false;
-      });
+    : topDomainsRaw;
   const topDomains = topDomainsSource
     .slice(0, showOnlyAlerts ? 5 : 9).map((d: any) => ({
       domain: d.domain || d.name || '—',
       count: firstNum(d.query_count, d.queryCount, d.count, d.queries),
     }));
   const maxDomain = Math.max(1, ...topDomains.map((d: any) => d.count));
+  const periodLabel = PERIOD_LABELS[hours] ?? PERIOD_LABELS[DEFAULT_DNS_FILTERS.hours];
+  const activeFilters = [
+    `Instância: ${selectedInstance || 'Todas'}`,
+    `QType: ${qtype || 'Todos'}`,
+    `Período: ${periodLabel}`,
+  ];
+  const hasActiveFilters = selectedInstance !== DEFAULT_DNS_FILTERS.selectedInstance || qtype !== DEFAULT_DNS_FILTERS.qtype || hours !== DEFAULT_DNS_FILTERS.hours;
 
   const refreshAll = async () => {
     setRefreshing(true);
@@ -617,13 +691,32 @@ export default function DnsPage() {
             )}
           </button>
           <button
-            onClick={() => { setSelectedInstance(''); setQtype(''); setShowOnlyAlerts(false); setHours(1); }}
-            title="Limpar filtros"
-            className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+            onClick={resetFilters}
+            title="Resetar filtros"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono font-bold text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <SlidersHorizontal size={14} />
+            Reset
           </button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/80 px-4 py-3 font-mono text-[11px] shadow-[0_0_24px_hsl(var(--background)/0.35)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-muted-foreground uppercase tracking-[0.18em]">Filtro ativo</span>
+          {activeFilters.map(filter => (
+            <span key={filter} className="rounded border border-primary/25 bg-primary/10 px-2.5 py-1 text-primary">
+              {filter}
+            </span>
+          ))}
+        </div>
+        <button
+          onClick={resetFilters}
+          disabled={!hasActiveFilters}
+          className="rounded-md border border-border bg-secondary px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-secondary-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          Resetar estado inicial
+        </button>
       </div>
 
       {/* 4 KPI cards */}
@@ -750,14 +843,14 @@ export default function DnsPage() {
 
       {/* QPS + Latência */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartPanel title="QPS ao longo do tempo" data={effectiveChartData} dataKey="qps" accent="mint" />
-        <ChartPanel title="Latência (ms)" data={effectiveChartData} dataKey="latency" accent="orange" />
+        <ChartPanel title="QPS ao longo do tempo" data={effectiveChartData} dataKey="qps" accent="mint" rangeLabel={periodLabel} />
+        <ChartPanel title="Latência (ms)" data={effectiveChartData} dataKey="latency" accent="orange" rangeLabel={periodLabel} />
       </div>
 
       {/* Cache Hit + Errors (full width each) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <CacheHitChart data={effectiveChartData} />
-        <ErrorsChart data={effectiveChartData} />
+        <CacheHitChart data={effectiveChartData} rangeLabel={periodLabel} />
+        <ErrorsChart data={effectiveChartData} rangeLabel={periodLabel} />
       </div>
     </div>
   );
