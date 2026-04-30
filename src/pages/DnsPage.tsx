@@ -553,11 +553,11 @@ export default function DnsPage() {
     const countShare = instanceShare * typeShare;
     const timedMetrics = metricRows
       .filter((p: any) => rowMatchesFilters(p, selectedInstance, ''))
-      .filter((p: any) => toTs(p.timestamp ?? p.epoch) > 0);
+      .filter((p: any) => toTs(p.timestamp_utc ?? p.timestamp ?? p.epoch) > 0);
     const liveMetricRows = selectedInstance && metricRows.length > 0
       ? metricRows
         .filter((p: any) => rowMatchesFilters(p, selectedInstance, ''))
-        .map((p: any) => ({ ...p, timestamp: p.timestamp ?? telemetry?.timestamp ?? new Date().toISOString() }))
+        .map((p: any) => ({ ...p, timestamp_utc: p.timestamp_utc ?? p.timestamp ?? telemetry?.timestamp ?? new Date().toISOString() }))
       : [];
     const filteredHistoryRows = historyRows.filter((p: any) => rowMatchesFilters(p, selectedInstance, '', { allowMissingInstance: true }));
     const history = timedMetrics.length > 0 ? timedMetrics : filteredHistoryRows.length > 0 ? filteredHistoryRows : liveMetricRows;
@@ -765,7 +765,7 @@ export default function DnsPage() {
   const hasActiveFilters = filters.instance !== DEFAULT_DNS_FILTERS.instance || filters.qtype !== DEFAULT_DNS_FILTERS.qtype || filters.timeRange !== DEFAULT_DNS_FILTERS.timeRange;
 
   // Environment summary
-  const lastCollect = telemetry?.timestamp ? new Date(telemetry.timestamp).toLocaleTimeString('pt-BR', { hour12: false }) : '—';
+  const lastCollect = telemetry?.timestamp ? formatServerDateTime(telemetry.timestamp, timeMeta, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
   const uniqueClients = topClientsRaw.length || safeNum((telemetry as any)?.top_clients_count);
   const uniqueDomains = topDomainsRaw.length || safeNum((telemetry as any)?.top_domains_count);
 
@@ -1174,6 +1174,7 @@ export default function DnsPage() {
               <SummaryRow label="Fonte de Dados" value="Unbound-Control + nftables" />
               <SummaryRow label="Collector" value={collectorOk ? 'OK' : 'DEGRADADO'} valueColor={collectorOk ? 'text-primary' : 'text-warning'} />
               <SummaryRow label="Última Coleta" value={lastCollect} />
+              <SummaryRow label="Timezone" value={`${timeMeta.timezone_label} (${timeMeta.timezone}) ${timeMeta.utc_offset}`} />
               <SummaryRow label="Período" value={periodLabel} />
               <SummaryRow label="Backends Ativos" value={String(backends.filter((b: any) => b.healthy !== false).length)} />
               <SummaryRow label="Clientes Únicos" value={uniqueClients ? uniqueClients.toLocaleString('de-DE') : '—'} />
