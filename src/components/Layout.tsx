@@ -4,9 +4,17 @@ import {
   LayoutDashboard, Server, Network, Globe, Shield, Router,
   FileText, Wrench, Settings, History, FolderOpen, Menu, X, Wand2, Users, LogOut,
   HeartPulse, BarChart3, Bell, Search, ChevronDown, PanelLeftClose, PanelLeftOpen,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useNoc } from '@/lib/noc-context';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard, adminOnly: false },
@@ -28,6 +36,20 @@ const navItems = [
 ];
 
 const SIDEBAR_COLLAPSED_KEY = 'dns-control:sidebar-collapsed';
+const UI_DENSITY_KEY = 'dns-control:ui-density';
+type UiDensity = 'compact' | 'standard' | 'comfortable';
+
+const densityLabels: Record<UiDensity, string> = {
+  compact: 'Compacta',
+  standard: 'Padrão',
+  comfortable: 'Confortável',
+};
+
+function readDensity(): UiDensity {
+  if (typeof window === 'undefined') return 'standard';
+  const value = localStorage.getItem(UI_DENSITY_KEY);
+  return value === 'compact' || value === 'comfortable' ? value : 'standard';
+}
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
@@ -37,6 +59,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     if (typeof window === 'undefined') return false;
     return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
   });
+  const [density, setDensity] = useState<UiDensity>(() => readDensity());
   const { user, logout } = useAuth();
   const { fullscreen } = useNoc();
   const isViewer = user?.role === 'viewer';
@@ -44,6 +67,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch {}
   }, [collapsed]);
+
+  useEffect(() => {
+    document.documentElement.dataset.density = density;
+    try { localStorage.setItem(UI_DENSITY_KEY, density); } catch {}
+  }, [density]);
 
   const filteredNavItems = isViewer ? navItems.filter(item => !item.adminOnly) : navItems;
 
@@ -58,10 +86,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Sidebar scales with breakpoints so it stays proportional on 4K / 72" walls
-  const sidebarWidth = collapsed
-    ? 'w-16 2xl:w-20 4k:w-24'
-    : 'w-56 2xl:w-64 4k:w-72';
+  const sidebarStyle = {
+    width: sidebarOpen ? 'min(var(--sidebar-width), 86vw)' : collapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)',
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -70,13 +97,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Sidebar */}
-      <aside className={`
-        fixed lg:static inset-y-0 left-0 z-50 ${sidebarWidth} flex flex-col
+      <aside style={sidebarStyle} className={`
+        fixed lg:static inset-y-0 left-0 z-50 flex flex-col shrink-0
         bg-sidebar border-r border-sidebar-border
         transform transition-all duration-200 ease-out
-        ${sidebarOpen ? 'translate-x-0 w-56' : '-translate-x-full lg:translate-x-0'}
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
-        <div className="flex items-center gap-2 px-3 h-14 border-b border-sidebar-border overflow-hidden">
+        <div className="flex items-center gap-2 px-3 h-[var(--app-header-height)] border-b border-sidebar-border overflow-hidden shrink-0">
           <div className="w-7 h-7 rounded bg-primary flex items-center justify-center flex-shrink-0">
             <span className="text-primary-foreground font-bold text-sm font-mono">D</span>
           </div>
@@ -88,7 +115,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
+        <nav className="flex-1 min-h-0 overflow-y-auto py-[var(--sidebar-nav-y)] px-2 space-y-0.5 overscroll-contain">
           {filteredNavItems.map(item => {
             const active = location.pathname === item.path;
             const showLabel = !collapsed || sidebarOpen;
@@ -99,7 +126,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 onClick={() => setSidebarOpen(false)}
                 title={collapsed && !sidebarOpen ? item.label : undefined}
                 className={`
-                  flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors
+                  flex items-center gap-2.5 px-3 py-[var(--sidebar-link-y)] rounded-md text-sm transition-colors
                   ${collapsed && !sidebarOpen ? 'justify-center' : ''}
                   ${active
                     ? 'bg-sidebar-accent text-sidebar-primary font-medium'
@@ -114,7 +141,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className="px-3 py-3 border-t border-sidebar-border space-y-2">
+        <div className="px-3 py-[var(--sidebar-footer-y)] border-t border-sidebar-border space-y-2 shrink-0">
           {user && (!collapsed || sidebarOpen) && (
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-1.5 min-w-0">
@@ -148,7 +175,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 flex items-center gap-3 px-5 border-b border-border bg-card/50 backdrop-blur">
+        <header className="h-[var(--app-header-height)] flex items-center gap-3 px-[var(--app-main-padding)] border-b border-border bg-card/50 backdrop-blur shrink-0">
           {/* Mobile open */}
           <button className="lg:hidden text-foreground" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu">
             <Menu size={20} />
@@ -182,6 +209,25 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <Bell size={16} />
               <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-accent text-accent-foreground text-[9px] font-bold flex items-center justify-center">2</span>
             </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="inline-flex items-center gap-2 p-2 xl:px-3 rounded-md hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground border border-border/60"
+                  title="Densidade da interface"
+                  aria-label="Selecionar densidade da interface"
+                >
+                  <SlidersHorizontal size={16} />
+                  <span className="hidden 2xl:inline text-[10px] font-mono font-bold uppercase tracking-[0.12em]">{densityLabels[density]}</span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="z-[110] border-border bg-popover text-popover-foreground shadow-[0_0_28px_hsl(var(--background)/0.85)]">
+                <DropdownMenuRadioGroup value={density} onValueChange={(value) => setDensity(value as UiDensity)}>
+                  <DropdownMenuRadioItem value="compact" className="font-mono text-xs focus:bg-primary/15 focus:text-primary">Compacta</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="standard" className="font-mono text-xs focus:bg-primary/15 focus:text-primary">Padrão</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="comfortable" className="font-mono text-xs focus:bg-primary/15 focus:text-primary">Confortável</DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <div className="noc-status-chip" data-state="ok">
               <span className="w-1.5 h-1.5 rounded-full bg-primary"
                 style={{ boxShadow: '0 0 6px hsl(var(--primary))' }} />
@@ -191,7 +237,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6 2xl:p-8 4k:p-10 w-full max-w-none">
+        <main className="flex-1 overflow-y-auto p-[var(--app-main-padding)] w-full max-w-none">
           {children}
         </main>
       </div>

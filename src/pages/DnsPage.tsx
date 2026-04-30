@@ -55,18 +55,26 @@ function queryInstanceOf(row: any): string {
   return String(row?.instance ?? row?.backend ?? row?.backend_ip ?? row?.backendIp ?? '');
 }
 
+function rowHasQueryType(row: any): boolean {
+  return Boolean(row?.type ?? row?.qtype ?? row?.query_type ?? row?.queryType);
+}
+
+function rowHasInstance(row: any): boolean {
+  return Boolean(row?.instance ?? row?.backend ?? row?.backend_ip ?? row?.backendIp);
+}
+
 function queryDomainOf(row: any): string {
   return String(row?.domain ?? row?.qname ?? row?.query ?? row?.name ?? '').replace(/\.$/, '');
 }
 
 function rowMatchesFilters(row: any, instance: string, type: string): boolean {
   const rowInstance = queryInstanceOf(row);
-  const matchesInstance = !instance || sameInstance(rowInstance, instance);
-  const matchesType = !type || queryTypeOf(row) === type;
+  const matchesInstance = !instance || !rowHasInstance(row) || sameInstance(rowInstance, instance);
+  const matchesType = !type || !rowHasQueryType(row) || queryTypeOf(row) === type;
   return matchesInstance && matchesType;
 }
 
-const SELECT_PANEL = 'border-border bg-popover text-popover-foreground shadow-[0_0_28px_hsl(var(--background)/0.85)]';
+const SELECT_PANEL = 'noc-overlay-panel z-[120]';
 const SELECT_ITEM = 'font-mono text-[11px] text-popover-foreground focus:bg-primary/15 focus:text-primary data-[state=checked]:text-primary';
 
 /* ============================================================
@@ -194,9 +202,9 @@ function Panel({
    Time-series chart panel
    ============================================================ */
 function ChartPanel({
-  title, data, dataKey, accent, height = 200,
+  title, data, dataKey, accent,
 }: {
-  title: string; data: any[]; dataKey: string; accent: Accent; height?: number;
+  title: string; data: any[]; dataKey: string; accent: Accent;
 }) {
   const color = `hsl(${ACCENT_HSL[accent]})`;
   const colorAlpha = (a: number) => `hsl(${ACCENT_HSL[accent]} / ${a})`;
@@ -206,8 +214,8 @@ function ChartPanel({
 
   return (
     <Panel title={title} accent={accent}>
-      <div className="w-full min-w-0" style={{ height, minHeight: height }}>
-        <ResponsiveContainer width="100%" height={height} minWidth={1} minHeight={height}>
+      <div className="noc-chart-frame">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={180}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <defs>
               <linearGradient id={gid} x1="0" x2="0" y1="0" y2="1">
@@ -248,8 +256,8 @@ function CacheHitChart({ data }: { data: any[] }) {
   const series = data.length > 0 ? data : Array.from({ length: 2 }, () => ({ time: '', hitRatio: 0 }));
   return (
     <Panel title="Cache Hit Ratio (%)" accent="violet">
-      <div className="w-full min-w-0" style={{ height: 200, minHeight: 200 }}>
-        <ResponsiveContainer width="100%" height={200} minWidth={1} minHeight={200}>
+      <div className="noc-chart-frame">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={180}>
           <LineChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <CartesianGrid stroke="hsl(290 60% 40% / 0.15)" strokeDasharray="2 4" vertical={false} />
             <XAxis dataKey="time" stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
@@ -279,8 +287,8 @@ function ErrorsChart({ data }: { data: any[] }) {
     : Array.from({ length: 2 }, () => ({ time: '', total: 0 }));
   return (
     <Panel title="Erros. (SERVFAIL + NXDOMAIN)" accent="violet">
-      <div className="w-full min-w-0" style={{ height: 200, minHeight: 200 }}>
-        <ResponsiveContainer width="100%" height={200} minWidth={1} minHeight={200}>
+      <div className="noc-chart-frame">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={180}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <defs>
               <linearGradient id="err-grad" x1="0" x2="0" y1="0" y2="1">
@@ -326,8 +334,8 @@ export default function DnsPage() {
   });
 
   const { data: recentQueries } = useQuery({
-    queryKey: ['telemetry', 'recent-queries'],
-    queryFn: async () => { const r = await api.getRecentQueries({ limit: 1000 }); if (!r.success) throw new Error(r.error!); return r.data; },
+    queryKey: ['telemetry', 'recent-queries', qtype],
+    queryFn: async () => { const r = await api.getRecentQueries({ qtype: qtype || undefined, limit: 1000 }); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 15000,
     placeholderData: previousData => previousData,
   });
@@ -403,7 +411,8 @@ export default function DnsPage() {
       ...(Array.isArray(recentQueries?.items) ? recentQueries.items : []),
       ...(Array.isArray(telemetry?.recent_queries) ? telemetry.recent_queries : []),
     ].map(queryTypeOf);
-    return Array.from(new Set([...fromApi, ...fromTelemetry, ...fromRecent].filter(Boolean).map((t: string) => t.toUpperCase()))).sort();
+    const stableDefaults = ['A', 'AAAA', 'HTTPS', 'NAPTR', 'NS', 'PTR', 'SOA', 'SRV', 'SVCB', 'TXT'];
+    return Array.from(new Set([...stableDefaults, ...fromApi, ...fromTelemetry, ...fromRecent].filter(Boolean).map((t: string) => t.toUpperCase()))).sort();
   }, [recentQueries, telemetry]);
   const filteredRecentItems = allRecentItems;
   const querySeries = useMemo(() => {
@@ -440,14 +449,18 @@ export default function DnsPage() {
 
   // Fall back to backend-aggregated values from telemetry for instant display
   const filteredRecentCount = filteredRecentItems.length;
-  const hasQueryFilterData = (qtype || selectedInstance) && filteredRecentCount > 0;
+  const qtypeAggregateCount = qtype && Array.isArray(telemetry?.top_query_types)
+    ? safeNum(telemetry.top_query_types.find((t: any) => queryTypeOf(t) === qtype)?.count)
+    : 0;
+  const qtypeSelectedCount = qtype ? (filteredRecentCount || qtypeAggregateCount) : 0;
+  const hasQueryFilterData = Boolean(qtype);
   const backendQueries = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.total_queries), 0);
   const backendCacheHits = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_hits), 0);
   const backendCacheMisses = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_misses), 0);
   const backendServfail = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.servfail), 0);
 
   const totalQueries = hasQueryFilterData
-    ? filteredRecentCount
+    ? qtypeSelectedCount
     : selectedInstance
       ? backendQueries
     : countWindow(metricsArr, 'totalQueries')
@@ -476,7 +489,7 @@ export default function DnsPage() {
       || backendServfail
       || safeNum(resolver.servfail);
 
-  const qps = hasQueryFilterData ? filteredRecentCount : safeNum(latestMetric?.qps) || safeNum(resolver.qps);
+  const qps = hasQueryFilterData ? qtypeSelectedCount : safeNum(latestMetric?.qps) || safeNum(resolver.qps);
 
   // Sparkline data per KPI
   const sparkQ = effectiveChartData.slice(-30).map(d => safeNum(d.qps));
@@ -646,16 +659,17 @@ export default function DnsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Instances 2/3 */}
         <Panel title="Instâncias (Fonte: unbound-control)" accent="mint" className="lg:col-span-2">
-          <table className="w-full">
+          <div className="noc-data-table-wrap">
+          <table className="noc-data-table">
             <thead>
               <tr className="text-left">
-                <th className="pb-3 text-[10px] font-mono font-bold uppercase tracking-wider text-muted-foreground/70">Instância</th>
-                <th className="pb-3 text-[10px] font-mono font-bold uppercase tracking-wider text-muted-foreground/70">Status</th>
-                <th className="pb-3 text-[10px] font-mono font-bold uppercase tracking-wider text-muted-foreground/70">Queries</th>
-                <th className="pb-3 text-[10px] font-mono font-bold uppercase tracking-wider text-muted-foreground/70">Cache Hit</th>
-                <th className="pb-3 text-[10px] font-mono font-bold uppercase tracking-wider text-muted-foreground/70">Latência</th>
-                <th className="pb-3 text-[10px] font-mono font-bold uppercase tracking-wider text-muted-foreground/70">SERVFAIL</th>
-                <th className="pb-3 text-[10px] font-mono font-bold uppercase tracking-wider text-muted-foreground/70">Fonte</th>
+                <th>Instância</th>
+                <th>Status</th>
+                <th className="text-right">Queries</th>
+                <th className="text-right">Cache Hit</th>
+                <th className="text-right">Latência</th>
+                <th className="text-right">SERVFAIL</th>
+                <th>Fonte</th>
               </tr>
             </thead>
             <tbody className="font-mono text-[12px]">
@@ -664,7 +678,7 @@ export default function DnsPage() {
               )}
               {visibleBackends.map((b: any) => (
                 <tr key={b.name} className="border-t border-border/30">
-                  <td className="py-3.5 align-top">
+                  <td className="cell-wrap min-w-[14rem]">
                     <div className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 rounded-full bg-primary" style={{ boxShadow: '0 0 6px hsl(var(--primary))' }} />
                       <span className="text-primary font-bold">{b.name}</span>
@@ -674,7 +688,7 @@ export default function DnsPage() {
                       <span className="text-foreground/85 text-[11px]">{b.ipv4 || b.ip || '—'}</span>
                     </div>
                   </td>
-                  <td className="py-3.5 align-top">
+                  <td className="cell-nowrap">
                     <div className="flex items-center gap-1.5">
                       <span className={`w-1.5 h-1.5 rounded-full ${b.healthy ? 'bg-primary' : 'bg-destructive'}`}
                         style={{ boxShadow: b.healthy ? '0 0 6px hsl(var(--primary))' : '0 0 6px hsl(var(--destructive))' }} />
@@ -683,15 +697,15 @@ export default function DnsPage() {
                       </span>
                     </div>
                   </td>
-                  <td className="py-3.5 text-foreground/90 align-top">{safeNum(b.resolver?.total_queries).toLocaleString()}</td>
-                  <td className="py-3.5 align-top">
+                  <td className="cell-nowrap text-right text-foreground/90">{safeNum(b.resolver?.total_queries).toLocaleString()}</td>
+                  <td className="cell-nowrap text-right">
                     <span className={safeNum(b.resolver?.cache_hit_ratio) >= 90 ? 'text-primary' : 'text-warning'}>
                       {safeNum(b.resolver?.cache_hit_ratio)}%
                     </span>
                   </td>
-                  <td className="py-3.5 text-foreground/90 align-top">{safeNum(b.resolver?.recursion_avg_ms).toFixed(2)}ms</td>
-                  <td className="py-3.5 text-foreground/90 align-top">{safeNum(b.resolver?.servfail)}</td>
-                  <td className="py-3.5 align-top">
+                  <td className="cell-nowrap text-right text-foreground/90">{safeNum(b.resolver?.recursion_avg_ms).toFixed(2)}ms</td>
+                  <td className="cell-nowrap text-right text-foreground/90">{safeNum(b.resolver?.servfail)}</td>
+                  <td className="cell-nowrap">
                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground/80"
                       style={{ background: 'hsl(220 42% 9%)', border: '1px solid hsl(220 35% 14%)' }}>
                       <Shield size={9} />
@@ -702,6 +716,7 @@ export default function DnsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </Panel>
 
         {/* Top Domains 1/3 */}
