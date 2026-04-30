@@ -91,7 +91,7 @@ export function useReachability() {
 export function useDnsMetrics(hours: number = 6, instance?: string) {
   return useQuery({
     queryKey: queryKeys.dnsMetrics(hours, instance),
-    queryFn: async () => { const r = await api.getDnsMetrics(hours, instance); if (!r.success) throw new Error(r.error!); return r.data; },
+    queryFn: async () => { const r = await api.getDnsMetrics({ hours, instance }); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 60000,
   });
 }
