@@ -38,6 +38,22 @@ function countWindow(rows: Array<Record<string, number>>, key: string): number {
   return values.reduce((sum, v) => sum + v, 0);
 }
 
+function backendName(b: any): string {
+  return String(b?.name ?? b?.instance ?? b?.id ?? '');
+}
+
+function sameInstance(a: unknown, b: unknown): boolean {
+  return String(a ?? '').toLowerCase() === String(b ?? '').toLowerCase();
+}
+
+function queryTypeOf(row: any): string {
+  return String(row?.type ?? row?.qtype ?? row?.query_type ?? row?.queryType ?? '').toUpperCase();
+}
+
+function queryInstanceOf(row: any): string {
+  return String(row?.instance ?? row?.backend ?? row?.backend_ip ?? row?.backendIp ?? '');
+}
+
 /* ============================================================
    KPI CARD — large, with circular glowing icon + sparkline
    ============================================================ */
@@ -307,7 +323,10 @@ export default function DnsPage() {
     const metricRows = Array.isArray(filteredMetrics) ? filteredMetrics : [];
     const historyRows = Array.isArray(historyData) ? historyData : [];
     const timedMetrics = metricRows.filter((p: any) => toTs(p.timestamp ?? p.epoch) > 0);
-    const history = timedMetrics.length > 0 ? timedMetrics : historyRows;
+    const liveMetricRows = selectedInstance && metricRows.length > 0
+      ? metricRows.map((p: any) => ({ ...p, timestamp: p.timestamp ?? telemetry?.timestamp ?? new Date().toISOString() }))
+      : [];
+    const history = timedMetrics.length > 0 ? timedMetrics : liveMetricRows.length > 0 ? liveMetricRows : historyRows;
     const minTs = Date.now() - hours * 60 * 60 * 1000;
     const series = history
       .filter((p: any) => {
@@ -339,20 +358,58 @@ export default function DnsPage() {
       cacheHits: firstNum(resolver.cache_hits),
       cacheMisses: firstNum(resolver.cache_misses),
     }];
-  }, [filteredMetrics, historyData, hours, telemetry]);
-
-  if (isLoading) return <LoadingState />;
-  if (error) return <ErrorState message={error.message} />;
+  }, [filteredMetrics, historyData, hours, selectedInstance, telemetry]);
 
   const collectorOk = telemetry?.health?.collector === 'ok';
   const resolver = telemetry?.resolver ?? {};
   const backends = Array.isArray(telemetry?.backends) ? telemetry.backends : [];
   const queryAnalytics = telemetry?.query_analytics ?? {};
-  const availableQtypes = recentQueries?.available_types ?? [];
+  const allRecentItems = useMemo(() => {
+    const apiItems = Array.isArray(recentQueries?.items) ? recentQueries.items : [];
+    const telemetryItems = Array.isArray(telemetry?.recent_queries) ? telemetry.recent_queries : [];
+    const src = apiItems.length ? apiItems : telemetryItems;
+    return src.filter((q: any) => {
+      const matchesInstance = !selectedInstance || !queryInstanceOf(q) || sameInstance(queryInstanceOf(q), selectedInstance);
+      const matchesType = !qtype || queryTypeOf(q) === qtype;
+      return matchesInstance && matchesType;
+    });
+  }, [recentQueries, telemetry, selectedInstance, qtype]);
+  const availableQtypes = useMemo(() => {
+    const fromApi = Array.isArray(recentQueries?.available_types) ? recentQueries.available_types : [];
+    const fromTelemetry = Array.isArray(telemetry?.top_query_types)
+      ? telemetry.top_query_types.map((t: any) => t.type)
+      : [];
+    const fromRecent = [
+      ...(Array.isArray(recentQueries?.items) ? recentQueries.items : []),
+      ...(Array.isArray(telemetry?.recent_queries) ? telemetry.recent_queries : []),
+    ].map(queryTypeOf);
+    return Array.from(new Set([...fromApi, ...fromTelemetry, ...fromRecent].filter(Boolean).map((t: string) => t.toUpperCase()))).sort();
+  }, [recentQueries, telemetry]);
   const visibleBackends = selectedInstance
-    ? backends.filter((b: any) => b.name === selectedInstance || b.instance === selectedInstance || b.id === selectedInstance)
+    ? backends.filter((b: any) => sameInstance(backendName(b), selectedInstance))
     : backends;
-  const filteredRecentItems = recentQueries?.items ?? [];
+  const selectedBackends = visibleBackends.length ? visibleBackends : backends;
+  const filteredRecentItems = allRecentItems;
+  const querySeries = useMemo(() => {
+    if (!qtype || filteredRecentItems.length === 0) return [];
+    const buckets = filteredRecentItems.reduce((acc: Record<string, number>, q: any) => {
+      const time = String(q?.time ?? '').slice(0, 5) || '--:--';
+      acc[time] = (acc[time] ?? 0) + 1;
+      return acc;
+    }, {});
+    return Object.entries(buckets).sort(([a], [b]) => a.localeCompare(b)).map(([time, count]) => ({
+      time,
+      qps: count,
+      latency: 0,
+      servfail: 0,
+      nxdomain: 0,
+      hitRatio: 0,
+      totalQueries: count,
+      cacheHits: 0,
+      cacheMisses: 0,
+    }));
+  }, [qtype, filteredRecentItems]);
+  const effectiveChartData = querySeries.length ? querySeries : chartData;
   const topDomainsRaw = Array.isArray(telemetry?.top_domains) ? telemetry.top_domains
     : Array.isArray(queryAnalytics?.top_domains) ? queryAnalytics.top_domains : [];
 
@@ -362,46 +419,72 @@ export default function DnsPage() {
   const telemetryConnected = collectorOk || hasMetrics || hasBackends;
 
   // Aggregate window metrics (sum/avg over the selected range, not last point only)
-  const metricsArr: any[] = chartData;
+  const metricsArr: any[] = effectiveChartData;
   const latestMetric = metricsArr.length > 0 ? metricsArr[metricsArr.length - 1] : null;
 
   // Fall back to backend-aggregated values from telemetry for instant display
-  const totalQueries =
-    countWindow(metricsArr, 'totalQueries')
-    || safeNum(latestMetric?.totalQueries)
-    || backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.total_queries), 0)
-    || safeNum(resolver.total_queries);
+  const backendQueries = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.total_queries), 0);
+  const backendCacheHits = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_hits), 0);
+  const backendCacheMisses = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_misses), 0);
+  const backendServfail = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.servfail), 0);
 
-  const cacheHitRatio = safeNum(latestMetric?.hitRatio)
-    || (backends.length
-      ? Math.round(backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_hit_ratio), 0) / backends.length)
+  const totalQueries = selectedInstance
+    ? (qtype ? filteredRecentItems.length : backendQueries)
+    : qtype
+      ? filteredRecentItems.length
+    : countWindow(metricsArr, 'totalQueries')
+      || safeNum(latestMetric?.totalQueries)
+      || backendQueries
+      || safeNum(resolver.total_queries);
+
+  const cacheHitRatio = selectedInstance && (backendCacheHits + backendCacheMisses) > 0
+    ? Math.round((backendCacheHits / (backendCacheHits + backendCacheMisses)) * 1000) / 10
+    : safeNum(latestMetric?.hitRatio)
+    || (selectedBackends.length
+      ? Math.round(selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_hit_ratio), 0) / selectedBackends.length)
       : safeNum(resolver.cache_hit_ratio));
 
-  const avgLatency = safeNum(latestMetric?.latency)
-    || (backends.length
-      ? backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.recursion_avg_ms), 0) / backends.length
+  const avgLatency = selectedInstance
+    ? (selectedBackends.length ? selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.recursion_avg_ms), 0) / selectedBackends.length : 0)
+    : safeNum(latestMetric?.latency)
+    || (selectedBackends.length
+      ? selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.recursion_avg_ms), 0) / selectedBackends.length
       : safeNum(resolver.avg_latency_ms));
 
-  const totalServfail =
-    countWindow(metricsArr, 'servfail')
-    || safeNum(latestMetric?.servfail)
-    || backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.servfail), 0)
-    || safeNum(resolver.servfail);
+  const totalServfail = selectedInstance
+    ? backendServfail
+    : countWindow(metricsArr, 'servfail')
+      || safeNum(latestMetric?.servfail)
+      || backendServfail
+      || safeNum(resolver.servfail);
 
-  const qps = safeNum(latestMetric?.qps) || safeNum(resolver.qps);
+  const qps = qtype ? filteredRecentItems.length : safeNum(latestMetric?.qps) || safeNum(resolver.qps);
 
   // Sparkline data per KPI
-  const sparkQ = chartData.slice(-30).map(d => d.qps);
-  const sparkH = chartData.slice(-30).map(d => d.hitRatio);
-  const sparkL = chartData.slice(-30).map(d => d.latency);
-  const sparkE = chartData.slice(-30).map(d => d.servfail + d.nxdomain);
+  const sparkQ = effectiveChartData.slice(-30).map(d => safeNum(d.qps));
+  const sparkH = effectiveChartData.slice(-30).map(d => safeNum(d.hitRatio) || cacheHitRatio);
+  const sparkL = effectiveChartData.slice(-30).map(d => safeNum(d.latency) || avgLatency);
+  const sparkE = effectiveChartData.slice(-30).map(d => safeNum(d.servfail) + safeNum(d.nxdomain));
 
-  const topDomains = topDomainsRaw
-    .filter((d: any) => !qtype || !('query_type' in d || 'queryType' in d || 'type' in d) || d.query_type === qtype || d.queryType === qtype || d.type === qtype)
+  const recentDomainCounts = allRecentItems.reduce((acc: Record<string, number>, q: any) => {
+    const domain = String(q?.domain ?? q?.qname ?? '').replace(/\.$/, '');
+    if (domain) acc[domain] = (acc[domain] ?? 0) + 1;
+    return acc;
+  }, {});
+  const topDomainsSource = (qtype || selectedInstance) && Object.keys(recentDomainCounts).length
+    ? Object.entries(recentDomainCounts)
+        .map(([domain, count]) => ({ domain, count: Number(count) || 0 }))
+        .sort((a, b) => b.count - a.count)
+    : topDomainsRaw.filter((d: any) => {
+        if (!qtype) return true;
+        const rowType = queryTypeOf(d);
+        return rowType ? rowType === qtype : false;
+      });
+  const topDomains = topDomainsSource
     .slice(0, showOnlyAlerts ? 5 : 9).map((d: any) => ({
-    domain: d.domain || d.name || '—',
-    count: firstNum(d.query_count, d.queryCount, d.count, d.queries),
-  }));
+      domain: d.domain || d.name || '—',
+      count: firstNum(d.query_count, d.queryCount, d.count, d.queries),
+    }));
   const maxDomain = Math.max(1, ...topDomains.map((d: any) => d.count));
 
   const refreshAll = async () => {
@@ -416,6 +499,9 @@ export default function DnsPage() {
       setRefreshing(false);
     }
   };
+
+  if (isLoading) return <LoadingState />;
+  if (error) return <ErrorState message={error.message} />;
 
   return (
     <div className="space-y-4 -mx-1">
@@ -458,7 +544,6 @@ export default function DnsPage() {
             <ChevronDown size={13} />
             <select value={qtype} onChange={(e) => setQtype(e.target.value)} className="bg-transparent outline-none text-foreground min-w-[72px] cursor-pointer">
               <option value="">Todos tipos</option>
-              {availableQtypes.length === 0 && ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'PTR', 'SRV'].map(t => <option key={t} value={t}>{t}</option>)}
               {availableQtypes.map((t: string) => <option key={t} value={t}>{t}</option>)}
             </select>
           </label>
