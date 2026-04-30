@@ -415,7 +415,16 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path === '/api/network/reachability') return mockReachability;
 
   // DNS
-  if (path.startsWith('/api/dns/metrics')) return generateDnsMetrics(6);
+  if (path.startsWith('/api/dns/metrics')) {
+    const params = new URLSearchParams(path.split('?')[1] || '');
+    const rangeHours = Number((params.get('range') || '6h').replace('h', '')) || 6;
+    const instance = params.get('instance');
+    const qtype = params.get('qtype');
+    const typeFactor = qtype === 'AAAA' ? 0.32 : qtype && qtype !== 'A' ? 0.18 : 1;
+    return generateDnsMetrics(rangeHours)
+      .filter(row => !instance || row.instance === instance)
+      .map(row => ({ ...row, qps: Math.round(row.qps * typeFactor), noerror: Math.round(row.noerror * typeFactor) }));
+  }
   if (path.startsWith('/api/dns/top-domains')) return mockTopDomains;
   if (path === '/api/dns/instances') return mockInstanceStats;
 
