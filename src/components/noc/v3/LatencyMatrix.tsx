@@ -46,13 +46,13 @@ export default function LatencyMatrix({ frontend, resolvers, upstreams }: Props)
       </div>
 
       {/* Upstreams column */}
-      <div className="flex flex-col gap-6 z-10">
+      <div className="flex flex-col gap-3 z-10">
         {upstreams.map((u, i) => (
-          <div key={i} className="flex flex-col items-center gap-1.5">
+          <div key={i} className="flex flex-col items-center gap-1">
             <div className="text-[10px] font-bold text-destructive">{u.latencyMs}ms</div>
-            <div className="w-14 h-14 rounded-full bg-card border-2 border-destructive/60 flex items-center justify-center"
-              style={{ boxShadow: '0 0 20px -4px hsl(var(--destructive) / 0.6)' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--destructive))" strokeWidth="2">
+            <div className="w-12 h-12 rounded-full bg-card border-2 border-destructive/60 flex items-center justify-center"
+              style={{ boxShadow: '0 0 16px -4px hsl(var(--destructive) / 0.6)' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--destructive))" strokeWidth="2">
                 <circle cx="12" cy="12" r="9" /><path d="M3 12 H21 M12 3 C15 7 15 17 12 21 C9 17 9 7 12 3" />
               </svg>
             </div>
