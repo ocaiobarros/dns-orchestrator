@@ -82,27 +82,52 @@ function InterceptionDashboard() {
     ? `Último login falhou para '${lastLoginFail.actor || 'admin'}' de ${lastLoginFail.source_ip || 'desconhecido'} · ${new Date(lastLoginFail.created_at).toLocaleTimeString('pt-BR', { hour12: false })}`
     : null;
 
-  // Backends for topology
+  // Backends for topology — incluindo healthy real e latência por instância
+  const healthByName: Record<string, { healthy: boolean; latency_ms?: number }> = {};
+  if (health && typeof health === 'object') {
+    Object.entries(health).forEach(([k, v]: [string, any]) => {
+      if (v && typeof v === 'object' && 'healthy' in v) {
+        healthByName[k.toLowerCase()] = { healthy: !!v.healthy, latency_ms: v.latency_ms };
+      }
+    });
+  }
+  const lookupHealth = (name: string, ip?: string) => {
+    const lc = name.toLowerCase();
+    return healthByName[lc] || (ip ? healthByName[ip] : undefined) || { healthy: true };
+  };
+
   const topoBackends = safeV2.length > 0
     ? safeV2.map(inst => {
         const s = safeStats.find((x: any) => x.instance_id === inst.id);
+        const h = lookupHealth(inst.instance_name || '', inst.bind_ip || '');
         return {
           name: inst.instance_name || `unbound${inst.id}`,
           ip: inst.bind_ip || '—',
           qps: s ? getInstanceQueries(s) : 0,
           cacheHit: s ? Math.round(getInstanceCacheHit(s)) : 0,
+          latencyMs: h.latency_ms ?? (s ? Math.round(getInstanceLatency(s)) : 0),
+          healthy: inst.current_status ? inst.current_status === 'healthy' : h.healthy,
         };
       })
-    : safeStats.map((s: any, i: number) => ({
-        name: String(s.instance ?? s.name ?? `unbound0${i + 1}`),
-        ip: s.bind_ip || s.bind_ips?.[0] || '—',
-        qps: getInstanceQueries(s), cacheHit: Math.round(getInstanceCacheHit(s)),
-      }));
+    : safeStats.map((s: any, i: number) => {
+        const name = String(s.instance ?? s.name ?? `unbound0${i + 1}`);
+        const ip = s.bind_ip || s.bind_ips?.[0] || '—';
+        const h = lookupHealth(name, ip);
+        return {
+          name, ip,
+          qps: getInstanceQueries(s),
+          cacheHit: Math.round(getInstanceCacheHit(s)),
+          latencyMs: h.latency_ms ?? Math.round(getInstanceLatency(s)),
+          healthy: h.healthy,
+        };
+      });
 
-  // Latency matrix
+  // Latency matrix — usa latência real por instância (não tudo igual)
   const latencyResolvers = topoBackends.map((b) => ({
-    name: b.name.toUpperCase(), ip: b.ip,
-    latencyMs: dnsAvail ? Math.max(1, Math.round(avgLatency * 1.6)) : 16,
+    name: b.name.toUpperCase(),
+    ip: b.ip,
+    latencyMs: b.latencyMs > 0 ? b.latencyMs : (b.healthy ? Math.max(1, Math.round(avgLatency)) : 0),
+    healthy: b.healthy,
   }));
   const latencyUpstreams = [
     { name: '1.1.1.1', ip: '1.1.1.1', latencyMs: 141 },
