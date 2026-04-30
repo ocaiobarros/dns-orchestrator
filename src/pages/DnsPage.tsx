@@ -214,13 +214,11 @@ function ChartPanel({
    ============================================================ */
 function CacheHitChart({ data }: { data: any[] }) {
   const color = 'hsl(290 80% 60%)';
-  const series = data.length > 0 ? data : Array.from({ length: 80 }, (_, i) => ({
-    time: '', hitRatio: 50 + Math.sin(i / 4) * 25 + Math.random() * 18,
-  }));
+  const series = data.length > 0 ? data : Array.from({ length: 2 }, () => ({ time: '', hitRatio: 0 }));
   return (
     <Panel title="Cache Hit Ratio (%)" accent="violet">
-      <div style={{ height: 200 }}>
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="w-full min-w-0" style={{ height: 200, minHeight: 200 }}>
+        <ResponsiveContainer width="100%" height={200} minWidth={0}>
           <LineChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <CartesianGrid stroke="hsl(290 60% 40% / 0.15)" strokeDasharray="2 4" vertical={false} />
             <XAxis dataKey="time" stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
@@ -247,11 +245,11 @@ function ErrorsChart({ data }: { data: any[] }) {
   const colorA = (a: number) => `hsl(330 90% 60% / ${a})`;
   const series = data.length > 0
     ? data.map(d => ({ ...d, total: safeNum(d.servfail) + safeNum(d.nxdomain) }))
-    : Array.from({ length: 80 }, (_, i) => ({ time: '', total: Math.max(0, Math.sin(i / 2) * 8 + Math.random() * 14 + 2) }));
+    : Array.from({ length: 2 }, () => ({ time: '', total: 0 }));
   return (
     <Panel title="Erros. (SERVFAIL + NXDOMAIN)" accent="violet">
-      <div style={{ height: 200 }}>
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="w-full min-w-0" style={{ height: 200, minHeight: 200 }}>
+        <ResponsiveContainer width="100%" height={200} minWidth={0}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <defs>
               <linearGradient id="err-grad" x1="0" x2="0" y1="0" y2="1">
