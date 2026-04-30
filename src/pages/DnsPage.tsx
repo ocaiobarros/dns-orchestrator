@@ -485,7 +485,7 @@ export default function DnsPage() {
   const sparkE = effectiveChartData.slice(-30).map(d => safeNum(d.servfail) + safeNum(d.nxdomain));
 
   const recentDomainCounts = allRecentItems.reduce((acc: Record<string, number>, q: any) => {
-    const domain = String(q?.domain ?? q?.qname ?? '').replace(/\.$/, '');
+    const domain = queryDomainOf(q);
     if (domain) acc[domain] = (acc[domain] ?? 0) + 1;
     return acc;
   }, {});
