@@ -237,8 +237,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-[var(--app-main-padding)] w-full max-w-none">
-          {children}
+        <main className="flex-1 overflow-y-auto w-full max-w-none">
+          <div className="noc-page" style={{ paddingBlock: 'var(--app-main-padding)' }}>
+            {children}
+          </div>
         </main>
       </div>
     </div>
