@@ -400,15 +400,15 @@ export default function DnsPage() {
     return Object.entries(buckets).sort(([a], [b]) => a.localeCompare(b)).map(([time, count]) => ({
       time,
       qps: count,
-      latency: avgLatency || 0,
+      latency: 0,
       servfail: 0,
       nxdomain: 0,
-      hitRatio: cacheHitRatio || 0,
+      hitRatio: 0,
       totalQueries: count,
       cacheHits: 0,
       cacheMisses: 0,
     }));
-  }, [qtype, filteredRecentItems, avgLatency, cacheHitRatio]);
+  }, [qtype, filteredRecentItems]);
   const effectiveChartData = querySeries.length ? querySeries : chartData;
   const topDomainsRaw = Array.isArray(telemetry?.top_domains) ? telemetry.top_domains
     : Array.isArray(queryAnalytics?.top_domains) ? queryAnalytics.top_domains : [];
