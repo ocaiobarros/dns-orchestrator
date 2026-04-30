@@ -476,7 +476,8 @@
     @apply text-[10px] font-mono font-bold uppercase tracking-[0.18em] text-muted-foreground/70;
   }
   .noc-kpi-value {
-    @apply text-3xl font-bold font-mono leading-none tracking-tight text-foreground mt-2;
+    @apply font-bold font-mono leading-none tracking-tight text-foreground mt-2;
+    font-size: clamp(1.05rem, 1.6vw, 1.6rem);
   }
   .noc-kpi-sub {
     @apply text-[11px] font-mono text-muted-foreground/60 mt-1.5;

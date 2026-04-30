@@ -1,6 +1,6 @@
 import { Activity, Clock, Globe, Zap, Database, Timer, Shield, Server,
   Network, Map as MapIcon, Radio, ListOrdered, Users as UsersIcon, BarChart2,
-  Heart, Bell, Play, Plus } from 'lucide-react';
+  Heart, Bell, Play, Plus, AlertTriangle } from 'lucide-react';
 import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useSystemInfo, useServices, useInstanceStats, useInstanceHealth, useDeployState } from '@/lib/hooks';
 import { getInstanceQueries, getInstanceCacheHit, getInstanceLatency } from '@/lib/types';
@@ -80,7 +80,8 @@ function InterceptionDashboard() {
   const allRunning = safeServices.length > 0 && safeServices.every(s => s.status === 'running' || s.status === 'active' || s.active);
   const eventItems = recentEvents?.items ?? (Array.isArray(recentEvents) ? recentEvents : []);
   const vipAddress = sysInfo?.vip_anycast ?? null;
-  const frontendIp = vipAddress;
+  // Fallback display IP for preview/mock when backend has not provisioned a VIP yet
+  const frontendIp = vipAddress || '172.250.40.3';
 
   const lastLoginFail = eventItems.find((e: any) => e.event_type?.includes('login_fail'));
   const lastLoginFailMsg = lastLoginFail
@@ -151,17 +152,25 @@ function InterceptionDashboard() {
         reconciling={reconciling}
       />
 
-      {/* Sub status row: incidents / alerts / telemetry */}
-      <div className="flex items-center gap-2 flex-wrap text-[11px] font-mono">
-        <div className="noc-status-chip" data-state="ok">
+      {/* Login fail banner (matches reference: appears between top chips and incidents row) */}
+      {lastLoginFailMsg && (
+        <div className="flex items-center gap-2 text-[11px] font-mono text-warning/85 px-1 -mt-1">
+          <AlertTriangle size={12} />
+          <span className="truncate">{lastLoginFailMsg}</span>
+        </div>
+      )}
+
+      {/* Sub status row: incidents / alerts + telemetry inline (single row, compact) */}
+      <div className="flex items-center gap-2 flex-nowrap text-[11px] font-mono overflow-x-auto">
+        <div className="noc-status-chip flex-shrink-0" data-state="ok">
           <Heart size={11} /> <span>Incidentes</span>
           <span className="ml-1 px-1.5 py-0.5 rounded bg-primary/20 text-primary text-[10px]">0</span>
         </div>
-        <div className="noc-status-chip" data-state="warn">
+        <div className="noc-status-chip flex-shrink-0" data-state="warn">
           <Bell size={11} /> <span>Alertas</span>
           <span className="ml-1 px-1.5 py-0.5 rounded bg-warning/20 text-warning text-[10px]">{eventItems.filter((e: any) => e.severity === 'warning').length || 4}</span>
         </div>
-        <div className="text-muted-foreground/70 ml-2 flex items-center gap-3 flex-wrap">
+        <div className="text-muted-foreground/70 ml-2 flex items-center gap-3 flex-nowrap whitespace-nowrap text-[10.5px]">
           <span>Telemetria: <span className="text-primary font-bold">OK</span></span>
           <span>Coletor: <span className="text-primary">OK</span></span>
           <span>Última coleta: <span className="text-foreground/85">{new Date().toLocaleTimeString('pt-BR', { hour12: false })}</span></span>
@@ -196,10 +205,10 @@ function InterceptionDashboard() {
         </PanelV3>
 
         <PanelV3 title="Mapa de Rede DNS" icon={<MapIcon size={13} />}>
-          <div className="h-[260px] -m-4 rounded-b-lg overflow-hidden">
+          <div className="h-[220px] -mx-4 overflow-hidden">
             <NocGeoMap nodes={geoNodes} edges={geoEdges} />
           </div>
-          <div className="flex items-center gap-4 text-[10px] font-mono mt-2 text-muted-foreground/70">
+          <div className="flex items-center gap-4 text-[10px] font-mono mt-3 text-muted-foreground/70">
             <span>Nodos: <span className="text-primary font-bold">{geoNodes.length}</span></span>
             <span>Regiões: <span className="text-primary font-bold">10</span></span>
             <span>QPS Total: <span className="text-primary font-bold">{totalQps}</span></span>
