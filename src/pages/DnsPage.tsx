@@ -524,7 +524,6 @@ export default function DnsPage() {
             <ChevronDown size={13} />
             <select value={qtype} onChange={(e) => setQtype(e.target.value)} className="bg-transparent outline-none text-foreground min-w-[72px] cursor-pointer">
               <option value="">Todos tipos</option>
-              {availableQtypes.length === 0 && ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'PTR', 'SRV'].map(t => <option key={t} value={t}>{t}</option>)}
               {availableQtypes.map((t: string) => <option key={t} value={t}>{t}</option>)}
             </select>
           </label>
