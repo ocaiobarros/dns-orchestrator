@@ -334,8 +334,8 @@ export default function DnsPage() {
   });
 
   const { data: recentQueries } = useQuery({
-    queryKey: ['telemetry', 'recent-queries'],
-    queryFn: async () => { const r = await api.getRecentQueries({ limit: 1000 }); if (!r.success) throw new Error(r.error!); return r.data; },
+    queryKey: ['telemetry', 'recent-queries', qtype],
+    queryFn: async () => { const r = await api.getRecentQueries({ qtype: qtype || undefined, limit: 1000 }); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 15000,
     placeholderData: previousData => previousData,
   });
@@ -411,7 +411,8 @@ export default function DnsPage() {
       ...(Array.isArray(recentQueries?.items) ? recentQueries.items : []),
       ...(Array.isArray(telemetry?.recent_queries) ? telemetry.recent_queries : []),
     ].map(queryTypeOf);
-    return Array.from(new Set([...fromApi, ...fromTelemetry, ...fromRecent].filter(Boolean).map((t: string) => t.toUpperCase()))).sort();
+    const stableDefaults = ['A', 'AAAA', 'HTTPS', 'NAPTR', 'NS', 'PTR', 'SOA', 'SRV', 'SVCB', 'TXT'];
+    return Array.from(new Set([...stableDefaults, ...fromApi, ...fromTelemetry, ...fromRecent].filter(Boolean).map((t: string) => t.toUpperCase()))).sort();
   }, [recentQueries, telemetry]);
   const filteredRecentItems = allRecentItems;
   const querySeries = useMemo(() => {
