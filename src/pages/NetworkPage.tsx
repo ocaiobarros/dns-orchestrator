@@ -158,13 +158,17 @@ export default function NetworkPage() {
   const reachability = useReachability();
 
   // Server time metadata
-  const { data: serverTimeMeta } = useQuery({
+  const { data: serverTimeMeta } = useQuery<ServerTimeMetadata>({
     queryKey: ['system', 'time'],
-    queryFn: api.getServerTime,
+    queryFn: async () => {
+      const r = await api.getSystemTime();
+      if (!r.success) throw new Error(r.error!);
+      return r.data as ServerTimeMetadata;
+    },
     refetchInterval: 60000,
     staleTime: 30000,
   });
-  const timeMeta = serverTimeMeta ?? DEFAULT_SERVER_TIME_META;
+  const timeMeta: ServerTimeMetadata = serverTimeMeta ?? DEFAULT_SERVER_TIME_META;
 
   // DNS listeners
   const { data: listeners } = useQuery({
