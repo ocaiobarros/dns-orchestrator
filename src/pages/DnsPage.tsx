@@ -537,7 +537,7 @@ export default function DnsPage() {
             <span className="w-1.5 h-1.5 rounded-full bg-primary" style={{ boxShadow: '0 0 6px hsl(var(--primary))' }} />
             <span className="text-primary">Operacional</span>
           </div>
-          <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
+          <div className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <Calendar size={13} />
             <Select value={String(hours)} onValueChange={(value) => setHours(Number(value))}>
@@ -553,8 +553,8 @@ export default function DnsPage() {
                 <SelectItem className={SELECT_ITEM} value="72">Últimas 72 horas</SelectItem>
               </SelectContent>
             </Select>
-          </label>
-          <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
+          </div>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <Layers size={13} />
             <Select value={selectedInstance || 'all'} onValueChange={(value) => setSelectedInstance(value === 'all' ? '' : value)}>
@@ -569,8 +569,8 @@ export default function DnsPage() {
                 })}
               </SelectContent>
             </Select>
-          </label>
-          <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
+          </div>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <ChevronDown size={13} />
             <Select value={qtype || 'all'} onValueChange={(value) => setQtype(value === 'all' ? '' : value)}>
@@ -582,7 +582,7 @@ export default function DnsPage() {
                 {availableQtypes.map((t: string) => <SelectItem className={SELECT_ITEM} key={t} value={t}>{t}</SelectItem>)}
               </SelectContent>
             </Select>
-          </label>
+          </div>
           <button
             onClick={refreshAll}
             disabled={refreshing}
