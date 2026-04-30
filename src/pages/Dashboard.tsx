@@ -1,6 +1,6 @@
 import { Activity, Clock, Globe, Zap, Database, Timer, Shield, Server,
   Network, Map as MapIcon, Radio, ListOrdered, Users as UsersIcon, BarChart2,
-  Heart, Bell, Play, Plus } from 'lucide-react';
+  Heart, Bell, Play, Plus, AlertTriangle } from 'lucide-react';
 import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useSystemInfo, useServices, useInstanceStats, useInstanceHealth, useDeployState } from '@/lib/hooks';
 import { getInstanceQueries, getInstanceCacheHit, getInstanceLatency } from '@/lib/types';
