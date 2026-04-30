@@ -428,8 +428,9 @@ function SectionTabs({ value, onChange }: { value: SectionTab; onChange: (v: Sec
 /* ============================================================
    Multi-line traffic chart (QPS + CacheHit + Latência)
    ============================================================ */
-function TrafficEvolutionChart({ data, rangeLabel }: { data: any[]; rangeLabel?: string }) {
-  const series = data.length > 0 ? data : Array.from({ length: 2 }, () => ({ time: '', qps: 0, hitRatio: 0, latency: 0 }));
+function TrafficEvolutionChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; rangeLabel?: string; timeMeta: ServerTimeMetadata; timeRange: string }) {
+  const series = data.length > 0 ? data : Array.from({ length: 2 }, (_, i) => ({ ts: Date.now() + i, qps: 0, hitRatio: 0, latency: 0 }));
+  const ticks = buildServerTimeTicks(series, timeRange);
   const cQps = 'hsl(200 90% 60%)';
   const cHit = 'hsl(162 72% 51%)';
   const cLat = 'hsl(270 75% 65%)';
@@ -437,21 +438,18 @@ function TrafficEvolutionChart({ data, rangeLabel }: { data: any[]; rangeLabel?:
     <Panel
       title="Evolução do Tráfego"
       accent="blue"
-      badge={rangeLabel ? <span className="ml-2 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : undefined}
+      badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}
     >
       <div className="noc-chart-frame">
         <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={220}>
           <LineChart data={series} margin={{ top: 6, right: 30, bottom: 4, left: -10 }}>
             <CartesianGrid stroke="hsl(220 35% 18% / 0.6)" strokeDasharray="2 4" vertical={false} />
-            <XAxis dataKey="time" stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
             <YAxis yAxisId="left" stroke={cQps} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cQps }} tickLine={false} axisLine={false} width={36}
               label={{ value: 'Queries (QPS)', angle: -90, position: 'insideLeft', style: { fill: cQps, fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: 40 }} />
             <YAxis yAxisId="right" orientation="right" stroke={cLat} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cLat }} tickLine={false} axisLine={false} width={36}
               label={{ value: 'Latência (ms)', angle: 90, position: 'insideRight', style: { fill: cLat, fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: -40 }} />
-            <Tooltip
-              contentStyle={{ background: 'hsl(220 50% 4%)', border: '1px solid hsl(220 35% 18%)', borderRadius: 6, fontFamily: 'JetBrains Mono', fontSize: 11 }}
-              labelStyle={{ color: 'hsl(215 15% 60%)' }}
-            />
+            <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Legend wrapperStyle={{ fontSize: 10, fontFamily: 'JetBrains Mono' }} iconType="line" />
             <Line yAxisId="left" type="monotone" dataKey="qps" name="Queries (QPS)" stroke={cQps} strokeWidth={1.6} dot={false} isAnimationActive={false}
               style={{ filter: `drop-shadow(0 0 4px ${cQps})` }} />
