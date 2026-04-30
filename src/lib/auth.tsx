@@ -100,43 +100,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     warningTriggeredRef.current = false;
   }, []);
 
-  const startSessionTimers = useCallback((expiresAt: string, warningSeconds: number, role?: string) => {
-    // Skip session timers entirely for viewer/kiosk users
-    if (role === 'viewer') {
-      clearTimers();
-      return;
-    }
-
+  const startSessionTimers = useCallback((_expiresAt: string, _warningSeconds: number, _role?: string) => {
+    // Sessão eterna/persistente para todos os perfis (admin e viewer).
+    // Não disparamos timers de aviso nem expulsão automática no cliente.
     clearTimers();
-    const expiresMs = new Date(expiresAt).getTime();
-
-    const checkExpiry = () => {
-      const now = Date.now();
-      const remaining = Math.max(0, Math.floor((expiresMs - now) / 1000));
-
-      if (remaining <= 0) {
-        // Session expired
-        clearTimers();
-        setShowSessionWarning(false);
-        setUser(null);
-        setSessionInfo(null);
-        if (IS_PREVIEW) sessionStorage.removeItem(SESSION_KEY);
-        else localStorage.removeItem(TOKEN_KEY);
-        return;
-      }
-
-      if (remaining <= warningSeconds && !warningTriggeredRef.current) {
-        warningTriggeredRef.current = true;
-        setShowSessionWarning(true);
-      }
-
-      if (warningTriggeredRef.current) {
-        setSessionSecondsLeft(remaining);
-      }
-    };
-
-    warningTimerRef.current = setInterval(checkExpiry, 1000);
-    checkExpiry();
+    setShowSessionWarning(false);
   }, [clearTimers]);
 
   const checkSession = useCallback(async () => {
