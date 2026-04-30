@@ -354,15 +354,30 @@ function ErrorsChart({ data }: { data: any[] }) {
    MAIN PAGE
    ============================================================ */
 export default function DnsPage() {
+  const storedFilters = useMemo(() => readStoredDnsFilters(), []);
   const { data: telemetry, isLoading, error } = useTelemetry();
   const { data: historyData } = useTelemetryHistory();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [hours, setHours] = useState(1);
-  const [selectedInstance, setSelectedInstance] = useState('');
-  const [qtype, setQtype] = useState('');
+  const [hours, setHours] = useState(storedFilters.hours);
+  const [selectedInstance, setSelectedInstance] = useState(storedFilters.selectedInstance);
+  const [qtype, setQtype] = useState(storedFilters.qtype);
   const [showOnlyAlerts, setShowOnlyAlerts] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    window.localStorage.setItem(DNS_FILTER_STORAGE_KEY, JSON.stringify({ hours, selectedInstance, qtype }));
+  }, [hours, selectedInstance, qtype]);
+
+  const resetFilters = () => {
+    setHours(DEFAULT_DNS_FILTERS.hours);
+    setSelectedInstance(DEFAULT_DNS_FILTERS.selectedInstance);
+    setQtype(DEFAULT_DNS_FILTERS.qtype);
+    setShowOnlyAlerts(false);
+    window.localStorage.removeItem(DNS_FILTER_STORAGE_KEY);
+    qc.invalidateQueries({ queryKey: ['dns'] });
+    qc.invalidateQueries({ queryKey: ['telemetry', 'recent-queries'] });
+  };
 
   const { data: filteredMetrics } = useQuery({
     queryKey: ['dns', 'metrics', hours, selectedInstance],
