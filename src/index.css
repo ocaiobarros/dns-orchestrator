@@ -78,6 +78,18 @@
     --gradient-card: linear-gradient(160deg, hsl(220 42% 8%) 0%, hsl(220 50% 4%) 100%);
     --glow-mint: 0 0 40px -8px hsl(162 90% 60% / 0.4);
     --glow-violet: 0 0 40px -8px hsl(280 85% 70% / 0.35);
+
+    --ui-density-scale: 1;
+    --app-header-height: 4rem;
+    --app-main-padding: 1.5rem;
+    --sidebar-width: clamp(14rem, 10vw, 18rem);
+    --sidebar-collapsed-width: clamp(4rem, 3vw, 5rem);
+    --sidebar-nav-y: 0.5rem;
+    --sidebar-link-y: 0.5rem;
+    --sidebar-footer-y: 0.75rem;
+    --table-cell-y: 0.75rem;
+    --table-cell-x: 0.875rem;
+    --chart-panel-height: clamp(12.5rem, 18vh, 20rem);
   }
 }
 
@@ -95,12 +107,27 @@
   html {
     font-size: 16px;
   }
-  @media (min-width: 1600px) { html { font-size: 17px; } }
-  @media (min-width: 1920px) { html { font-size: 18px; } }   /* Full HD */
-  @media (min-width: 2560px) { html { font-size: 21px; } }   /* 2K / QHD */
-  @media (min-width: 3200px) { html { font-size: 24px; } }
-  @media (min-width: 3840px) { html { font-size: 28px; } }   /* 4K UHD */
-  @media (min-width: 5120px) { html { font-size: 32px; } }   /* 5K+ video wall */
+  html[data-density="compact"] { --ui-density-scale: 0.9; --table-cell-y: 0.45rem; --sidebar-link-y: 0.38rem; --app-main-padding: 1.25rem; }
+  html[data-density="standard"] { --ui-density-scale: 1; }
+  html[data-density="comfortable"] { --ui-density-scale: 1.08; --table-cell-y: 0.95rem; --sidebar-link-y: 0.68rem; --app-main-padding: 1.75rem; }
+
+  @media (min-width: 1600px) { html { font-size: calc(16px * var(--ui-density-scale)); } }
+  @media (min-width: 1920px) { html { font-size: calc(17px * var(--ui-density-scale)); } }
+  @media (min-width: 2560px) { html { font-size: calc(18px * var(--ui-density-scale)); } }
+  @media (min-width: 3200px) { html { font-size: calc(19px * var(--ui-density-scale)); } }
+  @media (min-width: 3840px) { html { font-size: calc(20px * var(--ui-density-scale)); } }
+  @media (min-width: 5120px) { html { font-size: calc(22px * var(--ui-density-scale)); } }
+
+  @media (min-width: 2560px) {
+    html {
+      --app-header-height: 3.5rem;
+      --app-main-padding: 1.75rem;
+      --sidebar-nav-y: 0.35rem;
+      --sidebar-link-y: 0.42rem;
+      --sidebar-footer-y: 0.5rem;
+      --chart-panel-height: clamp(14rem, 17vh, 24rem);
+    }
+  }
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
@@ -116,6 +143,8 @@
   code, pre, .font-mono {
     font-family: var(--font-mono);
   }
+
+  [data-radix-popper-content-wrapper] { z-index: 120 !important; }
 }
 
 @layer components {
