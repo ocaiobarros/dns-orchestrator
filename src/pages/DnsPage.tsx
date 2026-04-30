@@ -61,7 +61,7 @@ function queryDomainOf(row: any): string {
 
 function rowMatchesFilters(row: any, instance: string, type: string): boolean {
   const rowInstance = queryInstanceOf(row);
-  const matchesInstance = !instance || !rowInstance || sameInstance(rowInstance, instance);
+  const matchesInstance = !instance || sameInstance(rowInstance, instance);
   const matchesType = !type || queryTypeOf(row) === type;
   return matchesInstance && matchesType;
 }
