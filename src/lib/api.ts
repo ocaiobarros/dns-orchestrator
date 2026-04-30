@@ -30,6 +30,13 @@ export interface AuthUserRecord {
   last_login_at?: string | null;
   lastLoginAt?: string | null;
 }
+
+export interface ServerTimeMetadata {
+  server_time: string;
+  timezone: string;
+  timezone_label: string;
+  utc_offset: string;
+}
 import {
   mockSystemInfo, mockServices, mockInterfaces, mockRoutes,
   mockReachability, generateDnsMetrics, mockTopDomains,
@@ -239,6 +246,7 @@ export const api = {
     apiCall<{ success: boolean }>('PATCH', '/settings', { settings }),
 
   // System
+  getSystemTime: () => apiCall<ServerTimeMetadata>('GET', '/system/time'),
   runSystemSelfTest: (credentials?: { username?: string; password?: string }) =>
     apiCall<SystemSelfTestResult>('POST', '/system/self-test', credentials || {}),
 
@@ -600,6 +608,14 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path === '/api/kiosk/summary') return mockKioskSummary();
 
   // System
+  if (path === '/api/system/time' && method === 'GET') {
+    return {
+      server_time: new Date().toISOString(),
+      timezone: 'America/Campo_Grande',
+      timezone_label: 'Campo Grande/MS',
+      utc_offset: '-04:00',
+    };
+  }
   if (path === '/api/system/self-test' && method === 'POST') {
     return {
       overall: 'ok',
