@@ -449,14 +449,18 @@ export default function DnsPage() {
 
   // Fall back to backend-aggregated values from telemetry for instant display
   const filteredRecentCount = filteredRecentItems.length;
-  const hasQueryFilterData = Boolean(qtype) && filteredRecentCount > 0;
+  const qtypeAggregateCount = qtype && Array.isArray(telemetry?.top_query_types)
+    ? safeNum(telemetry.top_query_types.find((t: any) => queryTypeOf(t) === qtype)?.count)
+    : 0;
+  const qtypeSelectedCount = qtype ? (filteredRecentCount || qtypeAggregateCount) : 0;
+  const hasQueryFilterData = Boolean(qtype);
   const backendQueries = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.total_queries), 0);
   const backendCacheHits = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_hits), 0);
   const backendCacheMisses = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_misses), 0);
   const backendServfail = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.servfail), 0);
 
   const totalQueries = hasQueryFilterData
-    ? filteredRecentCount
+    ? qtypeSelectedCount
     : selectedInstance
       ? backendQueries
     : countWindow(metricsArr, 'totalQueries')
@@ -485,7 +489,7 @@ export default function DnsPage() {
       || backendServfail
       || safeNum(resolver.servfail);
 
-  const qps = hasQueryFilterData ? filteredRecentCount : safeNum(latestMetric?.qps) || safeNum(resolver.qps);
+  const qps = hasQueryFilterData ? qtypeSelectedCount : safeNum(latestMetric?.qps) || safeNum(resolver.qps);
 
   // Sparkline data per KPI
   const sparkQ = effectiveChartData.slice(-30).map(d => safeNum(d.qps));
