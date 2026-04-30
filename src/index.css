@@ -6,66 +6,78 @@
 
 @layer base {
   :root {
-    --background: 225 30% 5%;
-    --foreground: 210 25% 95%;
+    /* Deep navy background — matches NOC reference */
+    --background: 220 45% 4%;
+    --foreground: 180 15% 92%;
 
-    --card: 225 25% 8%;
-    --card-foreground: 210 25% 95%;
+    --card: 220 40% 7%;
+    --card-foreground: 180 15% 92%;
 
-    --popover: 225 25% 8%;
-    --popover-foreground: 210 25% 95%;
+    --popover: 220 40% 7%;
+    --popover-foreground: 180 15% 92%;
 
-    --primary: 160 84% 39%;
-    --primary-foreground: 225 30% 5%;
+    /* Mint neon — primary brand */
+    --primary: 162 72% 51%;
+    --primary-foreground: 220 45% 4%;
+    --primary-glow: 162 90% 60%;
 
-    --secondary: 225 22% 12%;
-    --secondary-foreground: 210 20% 82%;
+    --secondary: 220 35% 11%;
+    --secondary-foreground: 180 12% 78%;
 
-    --muted: 225 22% 10%;
-    --muted-foreground: 218 15% 46%;
+    --muted: 220 30% 9%;
+    --muted-foreground: 215 15% 50%;
 
-    --accent: 190 90% 50%;
-    --accent-foreground: 225 30% 5%;
+    /* Violet accent — secondary glow seen in charts/maps */
+    --accent: 270 75% 65%;
+    --accent-foreground: 220 45% 4%;
+    --accent-glow: 280 85% 70%;
 
-    --destructive: 0 76% 50%;
+    --destructive: 0 80% 58%;
     --destructive-foreground: 0 0% 100%;
 
-    --warning: 38 95% 50%;
-    --warning-foreground: 225 30% 5%;
+    --warning: 35 95% 55%;
+    --warning-foreground: 220 45% 4%;
 
-    --success: 152 76% 40%;
-    --success-foreground: 225 30% 5%;
+    --success: 162 72% 51%;
+    --success-foreground: 220 45% 4%;
 
-    --border: 225 22% 13%;
-    --input: 225 22% 13%;
-    --ring: 160 84% 39%;
+    --border: 220 35% 14%;
+    --input: 220 35% 14%;
+    --ring: 162 72% 51%;
 
-    --radius: 0.625rem;
+    --radius: 0.5rem;
 
-    --sidebar-background: 225 30% 4%;
-    --sidebar-foreground: 210 20% 60%;
-    --sidebar-primary: 160 84% 39%;
-    --sidebar-primary-foreground: 225 30% 5%;
-    --sidebar-accent: 225 22% 9%;
-    --sidebar-accent-foreground: 210 20% 90%;
-    --sidebar-border: 225 22% 11%;
-    --sidebar-ring: 160 84% 39%;
+    --sidebar-background: 220 50% 3%;
+    --sidebar-foreground: 215 15% 55%;
+    --sidebar-primary: 162 72% 51%;
+    --sidebar-primary-foreground: 220 45% 4%;
+    --sidebar-accent: 220 40% 8%;
+    --sidebar-accent-foreground: 180 15% 92%;
+    --sidebar-border: 220 35% 10%;
+    --sidebar-ring: 162 72% 51%;
 
     --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
     --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
 
-    --chart-1: 160 84% 39%;
-    --chart-2: 190 90% 50%;
-    --chart-3: 38 95% 50%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 0 76% 50%;
+    --chart-1: 162 72% 51%;
+    --chart-2: 270 75% 65%;
+    --chart-3: 35 95% 55%;
+    --chart-4: 195 90% 55%;
+    --chart-5: 0 80% 58%;
 
-    /* Surface layers */
-    --noc-depth-0: 225 30% 4%;
-    --noc-depth-1: 225 25% 7%;
-    --noc-depth-2: 225 24% 10%;
-    --noc-depth-3: 225 22% 13%;
-    --noc-depth-4: 225 20% 16%;
+    /* Surface layers — very dark navy stack */
+    --noc-depth-0: 220 50% 3%;
+    --noc-depth-1: 220 45% 5%;
+    --noc-depth-2: 220 42% 7%;
+    --noc-depth-3: 220 38% 10%;
+    --noc-depth-4: 220 35% 14%;
+
+    /* Premium gradients & glows */
+    --gradient-mint: linear-gradient(135deg, hsl(162 72% 51% / 0.22), hsl(162 90% 60% / 0.05));
+    --gradient-violet: linear-gradient(135deg, hsl(270 75% 65% / 0.22), hsl(280 85% 70% / 0.05));
+    --gradient-card: linear-gradient(160deg, hsl(220 42% 8%) 0%, hsl(220 50% 4%) 100%);
+    --glow-mint: 0 0 40px -8px hsl(162 90% 60% / 0.4);
+    --glow-violet: 0 0 40px -8px hsl(280 85% 70% / 0.35);
   }
 }
 
@@ -406,6 +418,106 @@
   .noc-sparkline {
     @apply block;
     filter: drop-shadow(0 0 2px currentColor);
+  }
+
+  /* ================================================================
+     NOC v3 — Print-style cards (mint+violet, glow, visual KPI)
+     ================================================================ */
+
+  .noc-status-chip {
+    @apply relative inline-flex items-center gap-2 px-3.5 py-2 rounded-md
+           text-[11px] font-mono font-bold uppercase tracking-[0.14em]
+           transition-all duration-300;
+    background: linear-gradient(135deg, hsl(var(--noc-depth-2) / 0.9), hsl(var(--noc-depth-1) / 0.95));
+    border: 1px solid hsl(var(--border) / 0.6);
+    color: hsl(var(--muted-foreground));
+  }
+  .noc-status-chip[data-state="ok"] {
+    border-color: hsl(var(--primary) / 0.45);
+    color: hsl(var(--primary));
+    box-shadow: inset 0 0 16px -4px hsl(var(--primary) / 0.18), 0 0 22px -10px hsl(var(--primary) / 0.4);
+  }
+  .noc-status-chip[data-state="warn"] {
+    border-color: hsl(var(--warning) / 0.5);
+    color: hsl(var(--warning));
+    box-shadow: inset 0 0 16px -4px hsl(var(--warning) / 0.2), 0 0 22px -10px hsl(var(--warning) / 0.45);
+  }
+  .noc-status-chip[data-state="info"] {
+    border-color: hsl(var(--accent) / 0.45);
+    color: hsl(var(--accent));
+    box-shadow: inset 0 0 16px -4px hsl(var(--accent) / 0.18), 0 0 22px -10px hsl(var(--accent) / 0.4);
+  }
+
+  .noc-kpi-card {
+    @apply relative overflow-hidden rounded-lg p-4 transition-all duration-300;
+    background: var(--gradient-card);
+    border: 1px solid hsl(var(--border) / 0.55);
+    min-height: 110px;
+  }
+  .noc-kpi-card::before {
+    content: '';
+    @apply absolute inset-x-0 top-0 h-px;
+    background: linear-gradient(90deg, transparent, hsl(var(--primary) / 0.4), transparent);
+  }
+  .noc-kpi-card:hover {
+    border-color: hsl(var(--primary) / 0.4);
+    box-shadow: var(--glow-mint);
+    transform: translateY(-1px);
+  }
+  .noc-kpi-card[data-accent="violet"]::before {
+    background: linear-gradient(90deg, transparent, hsl(var(--accent) / 0.4), transparent);
+  }
+  .noc-kpi-card[data-accent="violet"]:hover {
+    border-color: hsl(var(--accent) / 0.4);
+    box-shadow: var(--glow-violet);
+  }
+
+  .noc-kpi-label {
+    @apply text-[10px] font-mono font-bold uppercase tracking-[0.18em] text-muted-foreground/70;
+  }
+  .noc-kpi-value {
+    @apply text-3xl font-bold font-mono leading-none tracking-tight text-foreground mt-2;
+  }
+  .noc-kpi-sub {
+    @apply text-[11px] font-mono text-muted-foreground/60 mt-1.5;
+  }
+
+  .noc-panel-v3 {
+    @apply relative overflow-hidden rounded-lg;
+    background: var(--gradient-card);
+    border: 1px solid hsl(var(--border) / 0.5);
+    box-shadow: 0 12px 48px -16px hsl(var(--noc-depth-0) / 0.8);
+  }
+  .noc-panel-v3-header {
+    @apply flex items-center gap-2 px-4 py-3 border-b border-border/40;
+  }
+  .noc-panel-v3-title {
+    @apply text-[11px] font-mono font-bold uppercase tracking-[0.16em] text-muted-foreground/85;
+  }
+  .noc-panel-v3-icon {
+    @apply text-primary;
+    filter: drop-shadow(0 0 6px hsl(var(--primary) / 0.5));
+  }
+  .noc-panel-v3-body { @apply p-4; }
+
+  .noc-glow-mint {
+    color: hsl(var(--primary));
+    text-shadow: 0 0 12px hsl(var(--primary) / 0.5);
+  }
+  .noc-glow-violet {
+    color: hsl(var(--accent));
+    text-shadow: 0 0 12px hsl(var(--accent) / 0.5);
+  }
+
+  .noc-search {
+    @apply flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-mono w-72;
+    background: hsl(var(--noc-depth-2) / 0.6);
+    border: 1px solid hsl(var(--border) / 0.5);
+    color: hsl(var(--muted-foreground));
+  }
+  .noc-search:focus-within {
+    border-color: hsl(var(--primary) / 0.4);
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.08);
   }
 }
 

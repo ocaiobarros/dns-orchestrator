@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Server, Network, Globe, Shield, Router,
   FileText, Wrench, Settings, History, FolderOpen, Menu, X, Wand2, Users, LogOut,
-  HeartPulse, BarChart3, Bell,
+  HeartPulse, BarChart3, Bell, Search, ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useNoc } from '@/lib/noc-context';
@@ -122,16 +122,32 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-14 flex items-center gap-3 px-4 border-b border-border bg-card">
+        <header className="h-16 flex items-center gap-3 px-5 border-b border-border bg-card/50 backdrop-blur">
           <button className="lg:hidden text-foreground" onClick={() => setSidebarOpen(true)}>
             <Menu size={20} />
           </button>
-          <h1 className="text-sm font-medium text-foreground">
-            {navItems.find(n => n.path === location.pathname)?.label || 'DNS Control'}
+          <h1 className="text-sm font-bold uppercase tracking-[0.16em] text-foreground/90">
+            {navItems.find(n => n.path === location.pathname)?.label || 'Dashboard'}
           </h1>
           <div className="ml-auto flex items-center gap-3">
-            <span className="status-dot-ok" />
-            <span className="text-xs text-muted-foreground font-mono">Operacional</span>
+            <label className="noc-search hidden md:flex">
+              <Search size={13} className="text-muted-foreground/60" />
+              <input
+                type="text"
+                placeholder="Buscar (Ctrl+K)"
+                className="bg-transparent outline-none flex-1 text-foreground placeholder:text-muted-foreground/50"
+              />
+            </label>
+            <button className="relative p-2 rounded-md hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground">
+              <Bell size={16} />
+              <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-accent text-accent-foreground text-[9px] font-bold flex items-center justify-center">2</span>
+            </button>
+            <div className="noc-status-chip" data-state="ok">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary"
+                style={{ boxShadow: '0 0 6px hsl(var(--primary))' }} />
+              <span>Operacional</span>
+              <ChevronDown size={11} />
+            </div>
           </div>
         </header>
 
