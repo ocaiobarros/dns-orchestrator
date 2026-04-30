@@ -153,8 +153,7 @@ systemctl list-timers dns-control-collector.timer
 
 O nginx é configurado como proxy reverso com SPA fallback:
 
-- `/api/*` → proxy para `127.0.0.1:8000`
-- `/metrics` → proxy para `127.0.0.1:8000`
+- `/api/*` → proxy para `127.0.0.1:8000` (inclui `/api/prometheus` para scrape)
 - `/docs` → proxy para `127.0.0.1:8000` (Swagger)
 - `/*` → `try_files $uri $uri/ /index.html` (SPA fallback)
 
