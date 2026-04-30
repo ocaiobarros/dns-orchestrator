@@ -390,6 +390,26 @@ export default function DnsPage() {
     : backends;
   const selectedBackends = visibleBackends.length ? visibleBackends : backends;
   const filteredRecentItems = allRecentItems;
+  const querySeries = useMemo(() => {
+    if (!qtype || filteredRecentItems.length === 0) return [];
+    const buckets = filteredRecentItems.reduce((acc: Record<string, number>, q: any) => {
+      const time = String(q?.time ?? '').slice(0, 5) || '--:--';
+      acc[time] = (acc[time] ?? 0) + 1;
+      return acc;
+    }, {});
+    return Object.entries(buckets).sort(([a], [b]) => a.localeCompare(b)).map(([time, count]) => ({
+      time,
+      qps: count,
+      latency: avgLatency || 0,
+      servfail: 0,
+      nxdomain: 0,
+      hitRatio: cacheHitRatio || 0,
+      totalQueries: count,
+      cacheHits: 0,
+      cacheMisses: 0,
+    }));
+  }, [qtype, filteredRecentItems, avgLatency, cacheHitRatio]);
+  const effectiveChartData = querySeries.length ? querySeries : chartData;
   const topDomainsRaw = Array.isArray(telemetry?.top_domains) ? telemetry.top_domains
     : Array.isArray(queryAnalytics?.top_domains) ? queryAnalytics.top_domains : [];
 
