@@ -436,13 +436,12 @@
 
   .noc-chart-frame {
     width: 100%;
-    min-width: 200px;
     height: var(--chart-panel-height);
     min-height: var(--chart-panel-height);
     position: relative;
+    contain: layout size;
   }
   .noc-chart-frame > .recharts-responsive-container {
-    min-width: 200px !important;
     min-height: 180px !important;
   }
 
