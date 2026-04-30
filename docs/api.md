@@ -248,16 +248,18 @@ Dados de telemetria específicos do modo Recursivo com Interceptação.
 ## Prometheus
 
 ```bash
-curl -s http://127.0.0.1:8000/metrics | head -20
+curl -s http://127.0.0.1:8000/api/prometheus | head -20
 ```
 
-Endpoint `/metrics` expõe métricas em formato Prometheus text. Configuração de scrape:
+Endpoint `/api/prometheus` expõe métricas em formato Prometheus text.
+O path raiz `/metrics` é reservado para a página do painel (SPA).
+Configuração de scrape:
 
 ```yaml
 scrape_configs:
   - job_name: 'dns-control'
     scrape_interval: 15s
-    metrics_path: '/metrics'
+    metrics_path: '/api/prometheus'
     static_configs:
       - targets: ['172.250.40.100:8000']
 ```
