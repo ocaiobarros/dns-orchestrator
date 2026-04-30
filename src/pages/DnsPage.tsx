@@ -5,6 +5,7 @@ import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useTelemetry, useTelemetryHistory } from '@/lib/hooks';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip,
@@ -53,6 +54,20 @@ function queryTypeOf(row: any): string {
 function queryInstanceOf(row: any): string {
   return String(row?.instance ?? row?.backend ?? row?.backend_ip ?? row?.backendIp ?? '');
 }
+
+function queryDomainOf(row: any): string {
+  return String(row?.domain ?? row?.qname ?? row?.query ?? row?.name ?? '').replace(/\.$/, '');
+}
+
+function rowMatchesFilters(row: any, instance: string, type: string): boolean {
+  const rowInstance = queryInstanceOf(row);
+  const matchesInstance = !instance || sameInstance(rowInstance, instance);
+  const matchesType = !type || queryTypeOf(row) === type;
+  return matchesInstance && matchesType;
+}
+
+const SELECT_PANEL = 'border-border bg-popover text-popover-foreground shadow-[0_0_28px_hsl(var(--background)/0.85)]';
+const SELECT_ITEM = 'font-mono text-[11px] text-popover-foreground focus:bg-primary/15 focus:text-primary data-[state=checked]:text-primary';
 
 /* ============================================================
    KPI CARD — large, with circular glowing icon + sparkline
@@ -311,8 +326,8 @@ export default function DnsPage() {
   });
 
   const { data: recentQueries } = useQuery({
-    queryKey: ['telemetry', 'recent-queries', selectedInstance, qtype],
-    queryFn: async () => { const r = await api.getRecentQueries({ instance: selectedInstance || undefined, qtype: qtype || undefined, limit: 100 }); if (!r.success) throw new Error(r.error!); return r.data; },
+    queryKey: ['telemetry', 'recent-queries'],
+    queryFn: async () => { const r = await api.getRecentQueries({ limit: 1000 }); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 15000,
     placeholderData: previousData => previousData,
   });
@@ -322,11 +337,16 @@ export default function DnsPage() {
   const chartData = useMemo(() => {
     const metricRows = Array.isArray(filteredMetrics) ? filteredMetrics : [];
     const historyRows = Array.isArray(historyData) ? historyData : [];
-    const timedMetrics = metricRows.filter((p: any) => toTs(p.timestamp ?? p.epoch) > 0);
+    const timedMetrics = metricRows
+      .filter((p: any) => rowMatchesFilters(p, selectedInstance, qtype))
+      .filter((p: any) => toTs(p.timestamp ?? p.epoch) > 0);
     const liveMetricRows = selectedInstance && metricRows.length > 0
-      ? metricRows.map((p: any) => ({ ...p, timestamp: p.timestamp ?? telemetry?.timestamp ?? new Date().toISOString() }))
+      ? metricRows
+        .filter((p: any) => rowMatchesFilters(p, selectedInstance, qtype))
+        .map((p: any) => ({ ...p, timestamp: p.timestamp ?? telemetry?.timestamp ?? new Date().toISOString() }))
       : [];
-    const history = timedMetrics.length > 0 ? timedMetrics : liveMetricRows.length > 0 ? liveMetricRows : historyRows;
+    const filteredHistoryRows = historyRows.filter((p: any) => rowMatchesFilters(p, selectedInstance, qtype));
+    const history = timedMetrics.length > 0 ? timedMetrics : liveMetricRows.length > 0 ? liveMetricRows : filteredHistoryRows;
     const minTs = Date.now() - hours * 60 * 60 * 1000;
     const series = history
       .filter((p: any) => {
@@ -358,21 +378,21 @@ export default function DnsPage() {
       cacheHits: firstNum(resolver.cache_hits),
       cacheMisses: firstNum(resolver.cache_misses),
     }];
-  }, [filteredMetrics, historyData, hours, selectedInstance, telemetry]);
+  }, [filteredMetrics, historyData, hours, selectedInstance, qtype, telemetry]);
 
   const collectorOk = telemetry?.health?.collector === 'ok';
   const resolver = telemetry?.resolver ?? {};
   const backends = Array.isArray(telemetry?.backends) ? telemetry.backends : [];
   const queryAnalytics = telemetry?.query_analytics ?? {};
+  const visibleBackends = selectedInstance
+    ? backends.filter((b: any) => sameInstance(backendName(b), selectedInstance))
+    : backends;
+  const selectedBackends = visibleBackends.length ? visibleBackends : backends;
   const allRecentItems = useMemo(() => {
     const apiItems = Array.isArray(recentQueries?.items) ? recentQueries.items : [];
     const telemetryItems = Array.isArray(telemetry?.recent_queries) ? telemetry.recent_queries : [];
     const src = apiItems.length ? apiItems : telemetryItems;
-    return src.filter((q: any) => {
-      const matchesInstance = !selectedInstance || !queryInstanceOf(q) || sameInstance(queryInstanceOf(q), selectedInstance);
-      const matchesType = !qtype || queryTypeOf(q) === qtype;
-      return matchesInstance && matchesType;
-    });
+    return src.filter((q: any) => rowMatchesFilters(q, selectedInstance, qtype));
   }, [recentQueries, telemetry, selectedInstance, qtype]);
   const availableQtypes = useMemo(() => {
     const fromApi = Array.isArray(recentQueries?.available_types) ? recentQueries.available_types : [];
@@ -385,13 +405,9 @@ export default function DnsPage() {
     ].map(queryTypeOf);
     return Array.from(new Set([...fromApi, ...fromTelemetry, ...fromRecent].filter(Boolean).map((t: string) => t.toUpperCase()))).sort();
   }, [recentQueries, telemetry]);
-  const visibleBackends = selectedInstance
-    ? backends.filter((b: any) => sameInstance(backendName(b), selectedInstance))
-    : backends;
-  const selectedBackends = visibleBackends.length ? visibleBackends : backends;
   const filteredRecentItems = allRecentItems;
   const querySeries = useMemo(() => {
-    if (!qtype || filteredRecentItems.length === 0) return [];
+    if ((!qtype && !selectedInstance) || filteredRecentItems.length === 0) return [];
     const buckets = filteredRecentItems.reduce((acc: Record<string, number>, q: any) => {
       const time = String(q?.time ?? '').slice(0, 5) || '--:--';
       acc[time] = (acc[time] ?? 0) + 1;
@@ -408,7 +424,7 @@ export default function DnsPage() {
       cacheHits: 0,
       cacheMisses: 0,
     }));
-  }, [qtype, filteredRecentItems]);
+  }, [qtype, selectedInstance, filteredRecentItems]);
   const effectiveChartData = querySeries.length ? querySeries : chartData;
   const topDomainsRaw = Array.isArray(telemetry?.top_domains) ? telemetry.top_domains
     : Array.isArray(queryAnalytics?.top_domains) ? queryAnalytics.top_domains : [];
@@ -423,15 +439,17 @@ export default function DnsPage() {
   const latestMetric = metricsArr.length > 0 ? metricsArr[metricsArr.length - 1] : null;
 
   // Fall back to backend-aggregated values from telemetry for instant display
+  const filteredRecentCount = filteredRecentItems.length;
+  const hasQueryFilterData = (qtype || selectedInstance) && filteredRecentCount > 0;
   const backendQueries = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.total_queries), 0);
   const backendCacheHits = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_hits), 0);
   const backendCacheMisses = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_misses), 0);
   const backendServfail = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.servfail), 0);
 
-  const totalQueries = selectedInstance
-    ? (qtype ? filteredRecentItems.length : backendQueries)
-    : qtype
-      ? filteredRecentItems.length
+  const totalQueries = hasQueryFilterData
+    ? filteredRecentCount
+    : selectedInstance
+      ? backendQueries
     : countWindow(metricsArr, 'totalQueries')
       || safeNum(latestMetric?.totalQueries)
       || backendQueries
@@ -458,7 +476,7 @@ export default function DnsPage() {
       || backendServfail
       || safeNum(resolver.servfail);
 
-  const qps = qtype ? filteredRecentItems.length : safeNum(latestMetric?.qps) || safeNum(resolver.qps);
+  const qps = hasQueryFilterData ? filteredRecentCount : safeNum(latestMetric?.qps) || safeNum(resolver.qps);
 
   // Sparkline data per KPI
   const sparkQ = effectiveChartData.slice(-30).map(d => safeNum(d.qps));
@@ -467,7 +485,7 @@ export default function DnsPage() {
   const sparkE = effectiveChartData.slice(-30).map(d => safeNum(d.servfail) + safeNum(d.nxdomain));
 
   const recentDomainCounts = allRecentItems.reduce((acc: Record<string, number>, q: any) => {
-    const domain = String(q?.domain ?? q?.qname ?? '').replace(/\.$/, '');
+    const domain = queryDomainOf(q);
     if (domain) acc[domain] = (acc[domain] ?? 0) + 1;
     return acc;
   }, {});
@@ -519,34 +537,52 @@ export default function DnsPage() {
             <span className="w-1.5 h-1.5 rounded-full bg-primary" style={{ boxShadow: '0 0 6px hsl(var(--primary))' }} />
             <span className="text-primary">Operacional</span>
           </div>
-          <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
+          <div className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <Calendar size={13} />
-            <select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="bg-transparent outline-none text-foreground cursor-pointer">
-              <option value={1}>Última 1 hora</option>
-              <option value={6}>Últimas 6 horas</option>
-              <option value={12}>Últimas 12 horas</option>
-              <option value={24}>Últimas 24 horas</option>
-              <option value={48}>Últimas 48 horas</option>
-              <option value={72}>Últimas 72 horas</option>
-            </select>
-          </label>
-          <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
+            <Select value={String(hours)} onValueChange={(value) => setHours(Number(value))}>
+              <SelectTrigger className="h-auto min-h-0 w-[132px] border-0 bg-transparent p-0 font-mono text-[11px] text-foreground ring-offset-0 focus:ring-0 focus:ring-offset-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className={SELECT_PANEL}>
+                <SelectItem className={SELECT_ITEM} value="1">Última 1 hora</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="6">Últimas 6 horas</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="12">Últimas 12 horas</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="24">Últimas 24 horas</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="48">Últimas 48 horas</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="72">Últimas 72 horas</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <Layers size={13} />
-            <select value={selectedInstance} onChange={(e) => setSelectedInstance(e.target.value)} className="bg-transparent outline-none text-foreground min-w-[112px] cursor-pointer">
-              <option value="">Todas instâncias</option>
-              {backends.map((b: any) => <option key={b.name || b.instance || b.id} value={b.name || b.instance || b.id}>{b.name || b.instance || b.id}</option>)}
-            </select>
-          </label>
-          <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
+            <Select value={selectedInstance || 'all'} onValueChange={(value) => setSelectedInstance(value === 'all' ? '' : value)}>
+              <SelectTrigger className="h-auto min-h-0 w-[150px] border-0 bg-transparent p-0 font-mono text-[11px] text-foreground ring-offset-0 focus:ring-0 focus:ring-offset-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className={SELECT_PANEL}>
+                <SelectItem className={SELECT_ITEM} value="all">Todas instâncias</SelectItem>
+                {backends.map((b: any) => {
+                  const id = String(b.name || b.instance || b.id || '');
+                  return id ? <SelectItem className={SELECT_ITEM} key={id} value={id}>{id}</SelectItem> : null;
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <ChevronDown size={13} />
-            <select value={qtype} onChange={(e) => setQtype(e.target.value)} className="bg-transparent outline-none text-foreground min-w-[72px] cursor-pointer">
-              <option value="">Todos tipos</option>
-              {availableQtypes.map((t: string) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </label>
+            <Select value={qtype || 'all'} onValueChange={(value) => setQtype(value === 'all' ? '' : value)}>
+              <SelectTrigger className="h-auto min-h-0 w-[112px] border-0 bg-transparent p-0 font-mono text-[11px] text-foreground ring-offset-0 focus:ring-0 focus:ring-offset-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className={SELECT_PANEL}>
+                <SelectItem className={SELECT_ITEM} value="all">Todos tipos</SelectItem>
+                {availableQtypes.map((t: string) => <SelectItem className={SELECT_ITEM} key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
           <button
             onClick={refreshAll}
             disabled={refreshing}
@@ -699,14 +735,14 @@ export default function DnsPage() {
 
       {/* QPS + Latência */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartPanel title="QPS ao longo do tempo" data={chartData} dataKey="qps" accent="mint" />
-        <ChartPanel title="Latência (ms)" data={chartData} dataKey="latency" accent="orange" />
+        <ChartPanel title="QPS ao longo do tempo" data={effectiveChartData} dataKey="qps" accent="mint" />
+        <ChartPanel title="Latência (ms)" data={effectiveChartData} dataKey="latency" accent="orange" />
       </div>
 
       {/* Cache Hit + Errors (full width each) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <CacheHitChart data={chartData} />
-        <ErrorsChart data={chartData} />
+        <CacheHitChart data={effectiveChartData} />
+        <ErrorsChart data={effectiveChartData} />
       </div>
     </div>
   );
