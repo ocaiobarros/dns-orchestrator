@@ -1,4 +1,4 @@
-interface Backend { name: string; ip: string; cacheHit?: number; qps?: number; }
+interface Backend { name: string; ip: string; cacheHit?: number; qps?: number; healthy?: boolean }
 interface Props {
   clientLabel?: string;
   frontendIp?: string | null;
@@ -8,71 +8,76 @@ interface Props {
 }
 
 export default function TopologyMini({
-  clientLabel = 'CLIENTES DNS', frontendIp, frontendQps = 0, backends, upstreamLabel = 'UPSTREAM DNS',
+  clientLabel = 'CLIENTES DNS', frontendIp, frontendQps = 0, backends, upstreamLabel = 'UPSTREAM',
 }: Props) {
   return (
-    <div className="flex items-center justify-between gap-4 py-6 px-2 min-h-[220px] font-mono text-[10px]">
+    <div className="relative flex items-center justify-between gap-1.5 py-4 px-1 min-h-[220px] font-mono text-[9px]">
       {/* Clients */}
-      <div className="flex flex-col items-center gap-2">
-        <div className="w-14 h-14 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center"
-          style={{ boxShadow: '0 0 18px -4px hsl(var(--primary) / 0.5)' }}>
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--primary))" strokeWidth="1.6">
+      <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
+        <div className="w-11 h-11 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center"
+          style={{ boxShadow: '0 0 14px -4px hsl(var(--primary) / 0.5)' }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--primary))" strokeWidth="1.6">
             <circle cx="9" cy="8" r="3" /><circle cx="17" cy="9" r="2.5" />
             <path d="M3 20 c0-3 3-5 6-5 s6 2 6 5" /><path d="M14 20 c0-2.5 2-4 4-4 s4 1.5 4 4" />
           </svg>
         </div>
-        <div className="text-[9px] font-bold uppercase tracking-wider text-primary">{clientLabel}</div>
+        <div className="text-[8px] font-bold uppercase tracking-wider text-primary text-center leading-tight">{clientLabel}</div>
       </div>
 
-      {/* Edge → Frontend */}
-      <Edge />
+      <AnimatedEdge />
 
       {/* Frontend DNS */}
-      <div className="flex flex-col items-center gap-2">
-        <div className="px-3 py-2.5 rounded-lg bg-card border border-primary/40 text-center min-w-[140px]"
-          style={{ boxShadow: '0 0 22px -4px hsl(var(--primary) / 0.4)' }}>
-          <div className="text-[9px] font-bold text-primary uppercase tracking-wider">Frontend DNS</div>
-          <div className="text-foreground font-mono text-[11px] mt-0.5">{frontendIp || '—'}</div>
-          <div className="text-muted-foreground text-[9px] mt-0.5">{frontendQps} q/s</div>
+      <div className="flex flex-col items-center gap-1.5 flex-shrink min-w-0">
+        <div className="px-2 py-1.5 rounded-lg bg-card border border-primary/40 text-center min-w-0 max-w-[130px]"
+          style={{ boxShadow: '0 0 18px -4px hsl(var(--primary) / 0.4)' }}>
+          <div className="text-[8px] font-bold text-primary uppercase tracking-wider">Frontend DNS</div>
+          <div className="text-foreground font-mono text-[9.5px] mt-0.5 break-all leading-tight">{frontendIp || '—'}</div>
+          <div className="text-muted-foreground text-[8px] mt-0.5">{frontendQps} q/s</div>
         </div>
       </div>
 
-      {/* Edge → Backends */}
-      <div className="flex flex-col gap-2">
-        {backends.map(() => <Edge key={Math.random()} />)}
-      </div>
+      <AnimatedEdge multiple={Math.min(backends.length, 3)} />
 
       {/* Backends */}
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1.5 flex-shrink min-w-0">
         {backends.length === 0 && (
-          <div className="text-muted-foreground text-[10px]">Nenhum backend</div>
+          <div className="text-muted-foreground text-[10px]">Sem backends</div>
         )}
-        {backends.map((b) => (
-          <div key={b.name} className="px-3 py-2 rounded-md bg-card border border-primary/25 min-w-[140px]"
-            style={{ boxShadow: '0 0 14px -6px hsl(var(--primary) / 0.4)' }}>
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary"
-                style={{ boxShadow: '0 0 6px hsl(var(--primary))' }} />
-              <span className="text-primary text-[10px] font-bold">{b.name}</span>
+        {backends.slice(0, 3).map((b) => {
+          const ok = b.healthy !== false;
+          return (
+            <div key={b.name} className="px-2 py-1 rounded-md bg-card border min-w-0 max-w-[130px]"
+              style={{
+                borderColor: ok ? 'hsl(var(--primary) / 0.3)' : 'hsl(var(--destructive) / 0.4)',
+                boxShadow: ok ? '0 0 10px -5px hsl(var(--primary) / 0.4)' : '0 0 10px -5px hsl(var(--destructive) / 0.4)',
+              }}>
+              <div className="flex items-center gap-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${ok ? 'bg-primary' : 'bg-destructive'}`}
+                  style={{
+                    boxShadow: ok ? '0 0 5px hsl(var(--primary))' : '0 0 5px hsl(var(--destructive))',
+                    animation: 'noc-pulse 1.6s ease-in-out infinite',
+                  }} />
+                <span className={`text-[9px] font-bold ${ok ? 'text-primary' : 'text-destructive'}`}>{b.name}</span>
+              </div>
+              <div className="text-foreground/90 text-[9px] font-mono mt-0.5 truncate">{b.ip}</div>
+              <div className="text-muted-foreground text-[8px] mt-0.5">
+                {b.qps ?? 0} q/s · {b.cacheHit ?? 0}%
+              </div>
             </div>
-            <div className="text-foreground/90 text-[10px] font-mono mt-0.5">{b.ip}</div>
-            <div className="text-muted-foreground text-[9px] mt-0.5">
-              {b.qps ?? 0} q/s · {b.cacheHit ?? 0}% cache
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {/* Edge → Upstream */}
-      <Edge />
+      <AnimatedEdge />
 
       {/* Upstream */}
-      <div className="flex flex-col items-center gap-2">
-        <div className="px-3 py-2.5 rounded-lg bg-warning/10 border border-warning/40 text-center min-w-[120px]"
-          style={{ boxShadow: '0 0 18px -6px hsl(var(--warning) / 0.5)' }}>
-          <div className="flex items-center justify-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-warning" />
-            <span className="text-warning text-[9px] font-bold uppercase tracking-wider">{upstreamLabel}</span>
+      <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
+        <div className="px-2 py-1.5 rounded-lg bg-warning/10 border border-warning/40 text-center"
+          style={{ boxShadow: '0 0 14px -5px hsl(var(--warning) / 0.5)' }}>
+          <div className="flex items-center justify-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-warning"
+              style={{ animation: 'noc-pulse 1.6s ease-in-out infinite' }} />
+            <span className="text-warning text-[8px] font-bold uppercase tracking-wider">{upstreamLabel}</span>
           </div>
         </div>
       </div>
@@ -80,10 +85,23 @@ export default function TopologyMini({
   );
 }
 
-function Edge() {
+function AnimatedEdge({ multiple = 1 }: { multiple?: number }) {
+  const lines = Math.max(multiple, 1);
   return (
-    <svg width="40" height="2" className="flex-shrink-0">
-      <line x1="0" y1="1" x2="40" y2="1" stroke="hsl(var(--primary) / 0.5)" strokeWidth="1.5" strokeDasharray="3 3" />
+    <svg width="28" height={Math.max(20, lines * 16)} className="flex-shrink-0" viewBox={`0 0 28 ${Math.max(20, lines * 16)}`}>
+      {Array.from({ length: lines }).map((_, i) => {
+        const y = lines === 1 ? 10 : 8 + (i * (Math.max(20, lines * 16) - 16) / Math.max(lines - 1, 1));
+        return (
+          <g key={i}>
+            <line x1="0" y1={y} x2="28" y2={y}
+              stroke="hsl(var(--primary) / 0.4)" strokeWidth="1" strokeDasharray="2 2" />
+            <circle cx="0" cy={y} r="1.4" fill="hsl(var(--primary))">
+              <animate attributeName="cx" from="0" to="28" dur={`${1.2 + i * 0.2}s`} repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0;1;1;0" dur={`${1.2 + i * 0.2}s`} repeatCount="indefinite" />
+            </circle>
+          </g>
+        );
+      })}
     </svg>
   );
 }
