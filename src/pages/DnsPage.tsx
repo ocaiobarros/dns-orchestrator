@@ -218,7 +218,7 @@ function CacheHitChart({ data }: { data: any[] }) {
   return (
     <Panel title="Cache Hit Ratio (%)" accent="violet">
       <div className="w-full min-w-0" style={{ height: 200, minHeight: 200 }}>
-        <ResponsiveContainer width="100%" height={200} minWidth={0}>
+        <ResponsiveContainer width="100%" height={200} minWidth={1} minHeight={200}>
           <LineChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <CartesianGrid stroke="hsl(290 60% 40% / 0.15)" strokeDasharray="2 4" vertical={false} />
             <XAxis dataKey="time" stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
@@ -249,7 +249,7 @@ function ErrorsChart({ data }: { data: any[] }) {
   return (
     <Panel title="Erros. (SERVFAIL + NXDOMAIN)" accent="violet">
       <div className="w-full min-w-0" style={{ height: 200, minHeight: 200 }}>
-        <ResponsiveContainer width="100%" height={200} minWidth={0}>
+        <ResponsiveContainer width="100%" height={200} minWidth={1} minHeight={200}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <defs>
               <linearGradient id="err-grad" x1="0" x2="0" y1="0" y2="1">
