@@ -333,7 +333,7 @@ function InterceptionDashboard() {
       </div>
 
       {/* Bottom row: Feed Operacional + Replay/Simulação */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <div className="noc-grid-duo">
         <PanelV3
           title="Feed Operacional"
           icon={<Activity size={13} />}
