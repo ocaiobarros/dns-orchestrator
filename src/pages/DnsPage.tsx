@@ -5,6 +5,16 @@ import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useTelemetry } from '@/lib/hooks';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import type { ServerTimeMetadata } from '@/lib/api';
+import {
+  DEFAULT_SERVER_TIME_META,
+  buildServerTimeTicks,
+  formatServerAxisTime,
+  formatServerDateTime,
+  formatServerTooltipTime,
+  parseUtcTimestamp,
+  timezoneBadgeText,
+} from '@/lib/server-time';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, XAxis, YAxis,
@@ -23,12 +33,7 @@ function firstNum(...values: unknown[]): number {
 }
 
 function toTs(value: unknown): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value > 1_000_000_000_000 ? value : value * 1000;
-  if (typeof value === 'string') {
-    const parsed = Date.parse(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
+  return parseUtcTimestamp(value);
 }
 
 function countWindow(rows: Array<Record<string, number>>, key: string): number {
@@ -251,22 +256,41 @@ function Panel({
   );
 }
 
+function ChartTooltip({ active, payload, label, meta }: { active?: boolean; payload?: any[]; label?: unknown; meta: ServerTimeMetadata }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-md border border-primary/30 bg-card/95 px-3 py-2 font-mono text-[11px] shadow-[0_0_24px_-8px_hsl(var(--primary)/0.65)]">
+      <div className="font-bold text-foreground">{formatServerTooltipTime(label, meta)}</div>
+      <div className="mt-0.5 text-muted-foreground">{meta.timezone_label} ({meta.timezone})</div>
+      <div className="mt-2 space-y-1">
+        {payload.filter(item => item?.value !== undefined && item?.value !== null).map(item => (
+          <div key={item.dataKey || item.name} className="flex items-center justify-between gap-5">
+            <span style={{ color: item.color }}>{item.name || item.dataKey}</span>
+            <span className="font-bold text-foreground tabular-nums">{typeof item.value === 'number' ? item.value.toFixed(item.value % 1 === 0 ? 0 : 2) : item.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ============================================================
    Time-series chart panel
    ============================================================ */
 function ChartPanel({
-  title, data, dataKey, accent, rangeLabel,
+  title, data, dataKey, accent, rangeLabel, timeMeta, timeRange,
 }: {
-  title: string; data: any[]; dataKey: string; accent: Accent; rangeLabel?: string;
+  title: string; data: any[]; dataKey: string; accent: Accent; rangeLabel?: string; timeMeta: ServerTimeMetadata; timeRange: string;
 }) {
   const color = `hsl(${ACCENT_HSL[accent]})`;
   const colorAlpha = (a: number) => `hsl(${ACCENT_HSL[accent]} / ${a})`;
   const gid = `chart-${title.replace(/\s+/g, '-')}`;
 
-  const series = data.length > 0 ? data : Array.from({ length: 2 }, () => ({ time: '', [dataKey]: 0 }));
+  const series = data.length > 0 ? data : Array.from({ length: 2 }, (_, i) => ({ ts: Date.now() + i, [dataKey]: 0 }));
+  const ticks = buildServerTimeTicks(series, timeRange);
 
   return (
-    <Panel title={title} accent={accent} badge={rangeLabel ? <span className="ml-2 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : undefined}>
+    <Panel title={title} accent={accent} badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}>
       <div className="noc-chart-frame">
         <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={180}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
@@ -277,17 +301,9 @@ function ChartPanel({
               </linearGradient>
             </defs>
             <CartesianGrid stroke={colorAlpha(0.12)} strokeDasharray="2 4" vertical={false} />
-            <XAxis dataKey="time" stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
             <YAxis stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={40} />
-            <Tooltip
-              contentStyle={{
-                background: 'hsl(220 50% 4%)', border: `1px solid ${colorAlpha(0.4)}`,
-                borderRadius: 6, fontFamily: 'JetBrains Mono', fontSize: 11,
-                boxShadow: `0 0 24px -4px ${colorAlpha(0.4)}`,
-              }}
-              labelStyle={{ color: 'hsl(215 15% 60%)' }}
-              itemStyle={{ color }}
-            />
+            <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Area
               type="monotone" dataKey={dataKey} stroke={color} strokeWidth={1.5}
               fill={`url(#${gid})`} isAnimationActive={false}
@@ -304,21 +320,19 @@ function ChartPanel({
 /* ============================================================
    Cache Hit chart — line only, magenta/violet
    ============================================================ */
-function CacheHitChart({ data, rangeLabel }: { data: any[]; rangeLabel?: string }) {
+function CacheHitChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; rangeLabel?: string; timeMeta: ServerTimeMetadata; timeRange: string }) {
   const color = 'hsl(290 80% 60%)';
-  const series = data.length > 0 ? data : Array.from({ length: 2 }, () => ({ time: '', hitRatio: 0 }));
+  const series = data.length > 0 ? data : Array.from({ length: 2 }, (_, i) => ({ ts: Date.now() + i, hitRatio: 0 }));
+  const ticks = buildServerTimeTicks(series, timeRange);
   return (
-    <Panel title="Cache Hit Ratio (%)" accent="violet" badge={rangeLabel ? <span className="ml-2 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : undefined}>
+    <Panel title="Cache Hit Ratio (%)" accent="violet" badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}>
       <div className="noc-chart-frame">
         <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={180}>
           <LineChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <CartesianGrid stroke="hsl(290 60% 40% / 0.15)" strokeDasharray="2 4" vertical={false} />
-            <XAxis dataKey="time" stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
             <YAxis domain={[0, 100]} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={40} />
-            <Tooltip
-              contentStyle={{ background: 'hsl(220 50% 4%)', border: `1px solid ${color}`, borderRadius: 6, fontFamily: 'JetBrains Mono', fontSize: 11 }}
-              labelStyle={{ color: 'hsl(215 15% 60%)' }} itemStyle={{ color }}
-            />
+            <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Line type="monotone" dataKey="hitRatio" stroke={color} strokeWidth={1.5} dot={false}
               isAnimationActive={false}
               style={{ filter: `drop-shadow(0 0 4px ${color})` }} />
@@ -332,14 +346,15 @@ function CacheHitChart({ data, rangeLabel }: { data: any[]; rangeLabel?: string 
 /* ============================================================
    Errors chart — area, pink/magenta
    ============================================================ */
-function ErrorsChart({ data, rangeLabel }: { data: any[]; rangeLabel?: string }) {
+function ErrorsChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; rangeLabel?: string; timeMeta: ServerTimeMetadata; timeRange: string }) {
   const color = 'hsl(330 90% 60%)';
   const colorA = (a: number) => `hsl(330 90% 60% / ${a})`;
   const series = data.length > 0
     ? data.map(d => ({ ...d, total: safeNum(d.servfail) + safeNum(d.nxdomain) }))
-    : Array.from({ length: 2 }, () => ({ time: '', total: 0 }));
+    : Array.from({ length: 2 }, (_, i) => ({ ts: Date.now() + i, total: 0 }));
+  const ticks = buildServerTimeTicks(series, timeRange);
   return (
-    <Panel title="Erros. (SERVFAIL + NXDOMAIN)" accent="violet" badge={rangeLabel ? <span className="ml-2 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : undefined}>
+    <Panel title="Erros. (SERVFAIL + NXDOMAIN)" accent="violet" badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}>
       <div className="noc-chart-frame">
         <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={180}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
@@ -350,12 +365,9 @@ function ErrorsChart({ data, rangeLabel }: { data: any[]; rangeLabel?: string })
               </linearGradient>
             </defs>
             <CartesianGrid stroke={colorA(0.1)} strokeDasharray="2 4" vertical={false} />
-            <XAxis dataKey="time" stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
             <YAxis stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={40} />
-            <Tooltip
-              contentStyle={{ background: 'hsl(220 50% 4%)', border: `1px solid ${color}`, borderRadius: 6, fontFamily: 'JetBrains Mono', fontSize: 11 }}
-              labelStyle={{ color: 'hsl(215 15% 60%)' }} itemStyle={{ color }}
-            />
+            <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Area type="monotone" dataKey="total" stroke={color} strokeWidth={1.5} fill="url(#err-grad)" isAnimationActive={false}
               style={{ filter: `drop-shadow(0 0 4px ${color})` }} />
           </AreaChart>
@@ -416,8 +428,9 @@ function SectionTabs({ value, onChange }: { value: SectionTab; onChange: (v: Sec
 /* ============================================================
    Multi-line traffic chart (QPS + CacheHit + Latência)
    ============================================================ */
-function TrafficEvolutionChart({ data, rangeLabel }: { data: any[]; rangeLabel?: string }) {
-  const series = data.length > 0 ? data : Array.from({ length: 2 }, () => ({ time: '', qps: 0, hitRatio: 0, latency: 0 }));
+function TrafficEvolutionChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; rangeLabel?: string; timeMeta: ServerTimeMetadata; timeRange: string }) {
+  const series = data.length > 0 ? data : Array.from({ length: 2 }, (_, i) => ({ ts: Date.now() + i, qps: 0, hitRatio: 0, latency: 0 }));
+  const ticks = buildServerTimeTicks(series, timeRange);
   const cQps = 'hsl(200 90% 60%)';
   const cHit = 'hsl(162 72% 51%)';
   const cLat = 'hsl(270 75% 65%)';
@@ -425,21 +438,18 @@ function TrafficEvolutionChart({ data, rangeLabel }: { data: any[]; rangeLabel?:
     <Panel
       title="Evolução do Tráfego"
       accent="blue"
-      badge={rangeLabel ? <span className="ml-2 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : undefined}
+      badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}
     >
       <div className="noc-chart-frame">
         <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={220}>
           <LineChart data={series} margin={{ top: 6, right: 30, bottom: 4, left: -10 }}>
             <CartesianGrid stroke="hsl(220 35% 18% / 0.6)" strokeDasharray="2 4" vertical={false} />
-            <XAxis dataKey="time" stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
             <YAxis yAxisId="left" stroke={cQps} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cQps }} tickLine={false} axisLine={false} width={36}
               label={{ value: 'Queries (QPS)', angle: -90, position: 'insideLeft', style: { fill: cQps, fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: 40 }} />
             <YAxis yAxisId="right" orientation="right" stroke={cLat} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cLat }} tickLine={false} axisLine={false} width={36}
               label={{ value: 'Latência (ms)', angle: 90, position: 'insideRight', style: { fill: cLat, fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: -40 }} />
-            <Tooltip
-              contentStyle={{ background: 'hsl(220 50% 4%)', border: '1px solid hsl(220 35% 18%)', borderRadius: 6, fontFamily: 'JetBrains Mono', fontSize: 11 }}
-              labelStyle={{ color: 'hsl(215 15% 60%)' }}
-            />
+            <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Legend wrapperStyle={{ fontSize: 10, fontFamily: 'JetBrains Mono' }} iconType="line" />
             <Line yAxisId="left" type="monotone" dataKey="qps" name="Queries (QPS)" stroke={cQps} strokeWidth={1.6} dot={false} isAnimationActive={false}
               style={{ filter: `drop-shadow(0 0 4px ${cQps})` }} />
@@ -495,6 +505,17 @@ export default function DnsPage() {
     refetchInterval: 30000,
   });
 
+  const { data: serverTimeMeta } = useQuery({
+    queryKey: ['system', 'time'],
+    queryFn: async () => {
+      const r = await api.getSystemTime();
+      if (!r.success) throw new Error(r.error!);
+      return r.data;
+    },
+    refetchInterval: 60000,
+  });
+  const timeMeta = serverTimeMeta ?? DEFAULT_SERVER_TIME_META;
+
   const { data: recentQueries } = useQuery({
     queryKey: ['telemetry', 'recent-queries', filters.instance, filters.qtype, filters.timeRange],
     queryFn: async () => {
@@ -532,22 +553,25 @@ export default function DnsPage() {
     const countShare = instanceShare * typeShare;
     const timedMetrics = metricRows
       .filter((p: any) => rowMatchesFilters(p, selectedInstance, ''))
-      .filter((p: any) => toTs(p.timestamp ?? p.epoch) > 0);
+      .filter((p: any) => toTs(p.timestamp_utc ?? p.timestamp ?? p.epoch) > 0);
     const liveMetricRows = selectedInstance && metricRows.length > 0
       ? metricRows
         .filter((p: any) => rowMatchesFilters(p, selectedInstance, ''))
-        .map((p: any) => ({ ...p, timestamp: p.timestamp ?? telemetry?.timestamp ?? new Date().toISOString() }))
+        .map((p: any) => ({ ...p, timestamp_utc: p.timestamp_utc ?? p.timestamp ?? telemetry?.timestamp ?? new Date().toISOString() }))
       : [];
     const filteredHistoryRows = historyRows.filter((p: any) => rowMatchesFilters(p, selectedInstance, '', { allowMissingInstance: true }));
     const history = timedMetrics.length > 0 ? timedMetrics : filteredHistoryRows.length > 0 ? filteredHistoryRows : liveMetricRows;
     const minTs = Date.now() - hours * 60 * 60 * 1000;
     const series = history
       .filter((p: any) => {
-        const ts = toTs(p.timestamp ?? p.epoch);
+        const ts = toTs(p.timestamp_utc ?? p.timestamp ?? p.epoch);
         return !ts || ts >= minTs;
       })
-      .map((p: any) => ({
-        time: (p.timestamp || p.epoch) ? new Date(toTs(p.timestamp ?? p.epoch)).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
+      .map((p: any) => {
+        const ts = toTs(p.timestamp_utc ?? p.timestamp ?? p.epoch);
+        return {
+        ts,
+        time: ts ? formatServerAxisTime(ts, timeMeta) : '',
         qps: Math.round(firstNum(p.qps, p.queries_per_second) * countShare * 100) / 100,
         latency: selectedBackend ? safeNum(selectedBackend?.resolver?.recursion_avg_ms) : firstNum(p.latency_ms, p.latency_avg_ms, p.avgLatencyMs, p.avg_latency_ms),
         servfail: Math.round(firstNum(p.servfail, p.servfail_count) * countShare),
@@ -556,12 +580,15 @@ export default function DnsPage() {
         totalQueries: Math.round(firstNum(p.total_queries, p.totalQueries, p.queries_total, p.queries) * countShare),
         cacheHits: Math.round(firstNum(p.cache_hits, p.cacheHits) * countShare),
         cacheMisses: Math.round(firstNum(p.cache_misses, p.cacheMisses) * countShare),
-      }));
+      };
+      });
 
     if (series.length > 0) return series;
     const resolver = telemetry?.resolver ?? {};
+    const fallbackTs = toTs(telemetry?.timestamp ?? Date.now());
     return [{
-      time: telemetry?.timestamp ? new Date(telemetry.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
+      ts: fallbackTs,
+      time: fallbackTs ? formatServerAxisTime(fallbackTs, timeMeta) : '',
       qps: Math.round(firstNum(resolver.qps) * countShare * 100) / 100,
       latency: selectedBackend ? safeNum(selectedBackend?.resolver?.recursion_avg_ms) : firstNum(resolver.avg_latency_ms),
       servfail: Math.round(firstNum(resolver.servfail) * countShare),
@@ -571,7 +598,7 @@ export default function DnsPage() {
       cacheHits: Math.round(firstNum(resolver.cache_hits) * countShare),
       cacheMisses: Math.round(firstNum(resolver.cache_misses) * countShare),
     }];
-  }, [filteredMetrics, hours, selectedInstance, qtype, telemetry]);
+  }, [filteredMetrics, hours, selectedInstance, qtype, telemetry, timeMeta]);
 
   const collectorOk = telemetry?.health?.collector === 'ok';
   const resolver = telemetry?.resolver ?? {};
@@ -607,7 +634,9 @@ export default function DnsPage() {
       acc[time] = (acc[time] ?? 0) + 1;
       return acc;
     }, {});
+    const today = new Date();
     return Object.entries(buckets).sort(([a], [b]) => a.localeCompare(b)).map(([time, count]) => ({
+      ts: Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), Number(time.slice(0, 2)) || 0, Number(time.slice(3, 5)) || 0),
       time,
       qps: count,
       latency: 0,
@@ -736,7 +765,7 @@ export default function DnsPage() {
   const hasActiveFilters = filters.instance !== DEFAULT_DNS_FILTERS.instance || filters.qtype !== DEFAULT_DNS_FILTERS.qtype || filters.timeRange !== DEFAULT_DNS_FILTERS.timeRange;
 
   // Environment summary
-  const lastCollect = telemetry?.timestamp ? new Date(telemetry.timestamp).toLocaleTimeString('pt-BR', { hour12: false }) : '—';
+  const lastCollect = telemetry?.timestamp ? formatServerDateTime(telemetry.timestamp, timeMeta, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
   const uniqueClients = topClientsRaw.length || safeNum((telemetry as any)?.top_clients_count);
   const uniqueDomains = topDomainsRaw.length || safeNum((telemetry as any)?.top_domains_count);
 
@@ -1137,7 +1166,7 @@ export default function DnsPage() {
       {/* ───── Bottom: Evolução do Tráfego (full-width multi-line) + Resumo do Ambiente ───── */}
       <div className="grid gap-3" style={{ gridTemplateColumns: 'minmax(0, 3fr) minmax(0, 1fr)' }}>
         <div className={`min-w-0 ${focusRing('traffic')} rounded-xl`}>
-          <TrafficEvolutionChart data={effectiveChartData} rangeLabel={periodLabel} />
+          <TrafficEvolutionChart data={effectiveChartData} rangeLabel={periodLabel} timeMeta={timeMeta} timeRange={timeRange} />
         </div>
         <div className="min-w-0">
           <Panel title="Resumo do Ambiente" accent="mint">
@@ -1145,6 +1174,7 @@ export default function DnsPage() {
               <SummaryRow label="Fonte de Dados" value="Unbound-Control + nftables" />
               <SummaryRow label="Collector" value={collectorOk ? 'OK' : 'DEGRADADO'} valueColor={collectorOk ? 'text-primary' : 'text-warning'} />
               <SummaryRow label="Última Coleta" value={lastCollect} />
+              <SummaryRow label="Timezone" value={`${timeMeta.timezone_label} (${timeMeta.timezone}) ${timeMeta.utc_offset}`} />
               <SummaryRow label="Período" value={periodLabel} />
               <SummaryRow label="Backends Ativos" value={String(backends.filter((b: any) => b.healthy !== false).length)} />
               <SummaryRow label="Clientes Únicos" value={uniqueClients ? uniqueClients.toLocaleString('de-DE') : '—'} />
@@ -1156,12 +1186,12 @@ export default function DnsPage() {
 
       {/* ───── Secondary charts (preserved — were tab "Tráfego") ───── */}
       <div className={`grid grid-cols-1 lg:grid-cols-2 gap-3 ${focusRing('traffic')} rounded-xl`}>
-        <ChartPanel title="QPS ao longo do tempo" data={effectiveChartData} dataKey="qps" accent="blue" rangeLabel={periodLabel} />
-        <ChartPanel title="Latência (ms)" data={effectiveChartData} dataKey="latency" accent="violet" rangeLabel={periodLabel} />
+        <ChartPanel title="QPS ao longo do tempo" data={effectiveChartData} dataKey="qps" accent="blue" rangeLabel={periodLabel} timeMeta={timeMeta} timeRange={timeRange} />
+        <ChartPanel title="Latência (ms)" data={effectiveChartData} dataKey="latency" accent="violet" rangeLabel={periodLabel} timeMeta={timeMeta} timeRange={timeRange} />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <CacheHitChart data={effectiveChartData} rangeLabel={periodLabel} />
-        <ErrorsChart data={effectiveChartData} rangeLabel={periodLabel} />
+        <CacheHitChart data={effectiveChartData} rangeLabel={periodLabel} timeMeta={timeMeta} timeRange={timeRange} />
+        <ErrorsChart data={effectiveChartData} rangeLabel={periodLabel} timeMeta={timeMeta} timeRange={timeRange} />
       </div>
     </div>
   );

@@ -45,8 +45,8 @@ def get_dns_metrics(
     stats = get_instance_real_stats()
     if instance:
         stats = [s for s in stats if s.get("instance") == instance]
-    now = datetime.now(timezone.utc).isoformat()
-    return [{**s, "timestamp": now, "range": range_value or f"{effective_hours}h", "qtype": qtype or "all"} for s in stats]
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return [{**s, "timestamp": now, "timestamp_utc": now, "range": range_value or f"{effective_hours}h", "qtype": qtype or "all"} for s in stats]
 
 
 def _get_persisted_dns_metrics(db: Session, since: datetime, instance: str | None, qtype: str | None) -> list[dict]:
@@ -62,8 +62,9 @@ def _get_persisted_dns_metrics(db: Session, since: datetime, instance: str | Non
         buckets: dict[datetime, dict] = {}
         for event in events:
             bucket = event.timestamp.replace(second=0, microsecond=0)
+            timestamp_utc = bucket.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
             row = buckets.setdefault(bucket, {
-                "timestamp": bucket.isoformat(), "instance": instance or "all", "qtype": qtype or "all",
+                "timestamp": timestamp_utc, "timestamp_utc": timestamp_utc, "instance": instance or "all", "qtype": qtype or "all",
                 "qps": 0, "total_queries": 0, "latency_ms": 0, "servfail": 0, "nxdomain": 0,
                 "refused": 0, "noerror": 0, "cache_hit_ratio": 0, "cache_hits": 0, "cache_misses": 0,
             })
@@ -100,7 +101,8 @@ def _get_persisted_dns_metrics(db: Session, since: datetime, instance: str | Non
     }
     for sample, inst in samples:
         bucket = sample.collected_at.replace(second=0, microsecond=0)
-        row = buckets.setdefault(bucket, {"timestamp": bucket.isoformat(), "instance": instance or "all", "qtype": "all"})
+        timestamp_utc = bucket.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
+        row = buckets.setdefault(bucket, {"timestamp": timestamp_utc, "timestamp_utc": timestamp_utc, "instance": instance or "all", "qtype": "all"})
         key = metric_map.get(sample.metric_name)
         if not key:
             continue
@@ -113,7 +115,9 @@ def _get_persisted_dns_metrics(db: Session, since: datetime, instance: str | Non
 
     rows = list(buckets.values())
     for previous, current in zip(rows, rows[1:]):
-        elapsed = max(1, (datetime.fromisoformat(current["timestamp"]) - datetime.fromisoformat(previous["timestamp"])).total_seconds())
+        current_ts = datetime.fromisoformat(str(current["timestamp"]).replace("Z", "+00:00"))
+        previous_ts = datetime.fromisoformat(str(previous["timestamp"]).replace("Z", "+00:00"))
+        elapsed = max(1, (current_ts - previous_ts).total_seconds())
         current["qps"] = round(max(0, current.get("total_queries", 0) - previous.get("total_queries", 0)) / elapsed, 2)
     if rows:
         rows[0]["qps"] = 0
