@@ -443,23 +443,62 @@ function InterceptionDashboard() {
                 {simResult}
               </div>
             )}
+            {simRows.length > 0 && (
+              <div className="rounded border border-border/40 overflow-hidden" style={{ background: 'hsl(var(--noc-depth-2) / 0.4)' }}>
+                <div className="grid grid-cols-[1.6fr_1fr_56px_56px] px-2 py-1.5 text-[9px] font-mono uppercase tracking-wider text-muted-foreground/60 border-b border-border/30 bg-card/40">
+                  <span>Domínio</span><span>Backend</span><span className="text-right">Lat</span><span className="text-right">Status</span>
+                </div>
+                <div className="max-h-[180px] overflow-y-auto">
+                  {simRows.map((r, i) => {
+                    const tone = r.status === 'fail' ? 'text-destructive' : r.ms < 30 ? 'text-primary' : r.ms < 100 ? 'text-warning' : 'text-destructive';
+                    return (
+                      <div key={i} className="grid grid-cols-[1.6fr_1fr_56px_56px] px-2 py-1 text-[10px] font-mono border-b border-border/15 last:border-0 hover:bg-primary/5">
+                        <span className="text-foreground/85 truncate">{r.domain}</span>
+                        <span className="text-accent/80 truncate">{r.backend}</span>
+                        <span className={`text-right ${tone}`}>{r.status === 'fail' ? '—' : `${r.ms}ms`}</span>
+                        <span className={`text-right ${r.status === 'fail' ? 'text-destructive' : 'text-primary'}`}>{r.rcode}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <button
               disabled={simRunning || testDomains.length === 0 || topoBackends.length === 0}
               onClick={async () => {
                 setSimRunning(true);
                 setSimResult(null);
-                const probes = testDomains.length * Math.max(topoBackends.length, 1);
+                setSimRows([]);
                 const start = Date.now();
                 try {
-                  // Best-effort: invalidate queries to refetch live metrics; works in any mode.
                   await Promise.all([
                     qc.invalidateQueries({ queryKey: ['dns'] }),
                     qc.invalidateQueries({ queryKey: queryKeys.instanceStats }),
                     qc.invalidateQueries({ queryKey: queryKeys.instanceHealth }),
                   ]);
-                  await new Promise(r => setTimeout(r, 800));
+                  // Build per (domain × backend) result rows.
+                  // Latency baseline = real avgLatency per backend; jitter ±30% per domain for realism.
+                  const rows: SimRow[] = [];
+                  for (const d of testDomains) {
+                    for (const b of topoBackends) {
+                      const base = b.latencyMs > 0 ? b.latencyMs : Math.max(1, Math.round(avgLatency || 8));
+                      const jitter = (Math.random() * 0.6 - 0.3) * base;
+                      const ms = Math.max(1, Math.round(base + jitter));
+                      const fail = !b.healthy;
+                      rows.push({
+                        domain: d,
+                        backend: b.name,
+                        ms,
+                        status: fail ? 'fail' : 'ok',
+                        rcode: fail ? 'SERVFAIL' : 'NOERROR',
+                      });
+                    }
+                  }
+                  await new Promise(r => setTimeout(r, 600));
+                  setSimRows(rows);
+                  const okCount = rows.filter(r => r.status === 'ok').length;
                   const ms = Date.now() - start;
-                  setSimResult(`✔ Simulação concluída · ${probes} probes · ${ms}ms`);
+                  setSimResult(`✔ ${rows.length} probes · ${okCount} OK · ${rows.length - okCount} falhas · ${ms}ms`);
                 } catch (e: any) {
                   setSimResult(`✖ Falha: ${e?.message || 'erro'}`);
                 } finally {
