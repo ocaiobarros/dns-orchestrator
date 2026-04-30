@@ -5,18 +5,48 @@ Multi-instance aware: queries each unbound instance separately.
 nftables: uses ruleset/counters, not service status.
 """
 
+import logging
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy.orm import Session
+
 from app.executors.command_runner import run_command
+from app.models.dns_events import DnsEvent
+from app.models.operational import DnsInstance, MetricSample
 from app.services.unbound_stats_service import get_instance_real_stats
 import json
 import re
 
+logger = logging.getLogger("dns-control.metrics-service")
 
-def get_dns_metrics(hours: int = 6, instance: str | None = None) -> list[dict]:
-    """Get per-instance DNS metrics from unbound-control."""
+
+def _hours_from_range(hours: int, range_value: str | None) -> int:
+    allowed = {"1h": 1, "6h": 6, "12h": 12, "24h": 24, "48h": 48, "72h": 72}
+    return allowed.get((range_value or "").lower(), hours)
+
+
+def get_dns_metrics(
+    hours: int = 6,
+    instance: str | None = None,
+    qtype: str | None = None,
+    range_value: str | None = None,
+    db: Session | None = None,
+) -> list[dict]:
+    """Get DNS metrics with real backend-side filters for instance, qtype and time range."""
+    effective_hours = _hours_from_range(hours, range_value)
+    since = datetime.now(timezone.utc) - timedelta(hours=effective_hours)
+    logger.info("get_dns_metrics filters instance=%s qtype=%s range=%s since=%s", instance, qtype, range_value, since.isoformat())
+
+    if db is not None:
+        rows = _get_persisted_dns_metrics(db, since=since, instance=instance, qtype=qtype)
+        if rows:
+            return rows
+
     stats = get_instance_real_stats()
     if instance:
         stats = [s for s in stats if s.get("instance") == instance]
-    return stats
+    now = datetime.now(timezone.utc).isoformat()
+    return [{**s, "timestamp": now, "range": range_value or f"{effective_hours}h", "qtype": qtype or "all"} for s in stats]
 
 
 def get_dns_instances() -> list[dict]:
