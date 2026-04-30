@@ -58,7 +58,8 @@ function KpiCardLarge({
 }) {
   const color = `hsl(${ACCENT_HSL[accent]})`;
   const colorAlpha = (a: number) => `hsl(${ACCENT_HSL[accent]} / ${a})`;
-  const data = sparkData.map((v, i) => ({ i, v }));
+  const cleanSpark = sparkData.length ? sparkData : [0, 0, 0, 0, 0, 0];
+  const data = cleanSpark.map((v, i) => ({ i, v }));
   const gradId = `kpi-grad-${accent}`;
 
   return (
@@ -103,8 +104,8 @@ function KpiCardLarge({
         </div>
 
         {/* sparkline */}
-        <div className="w-24 h-12 flex-shrink-0 self-end opacity-90">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="w-24 min-w-[96px] h-12 min-h-[48px] flex-shrink-0 self-end opacity-90">
+          <ResponsiveContainer width="100%" height={48} minWidth={96}>
             <AreaChart data={data} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id={gradId} x1="0" x2="0" y1="0" y2="1">
