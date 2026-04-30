@@ -141,8 +141,13 @@ export const api = {
   checkReachability: () => apiCall<ReachabilityResult[]>('GET', '/network/reachability'),
 
   // DNS
-  getDnsMetrics: (hours: number = 6, instance?: string) =>
-    apiCall<DnsMetrics[]>('GET', `/dns/metrics?hours=${hours}${instance ? `&instance=${instance}` : ''}`),
+  getDnsMetrics: (params: { instance?: string; qtype?: string; range?: string; hours?: number } = {}) => {
+    const q = new URLSearchParams();
+    q.set('range', params.range ?? `${params.hours ?? 6}h`);
+    if (params.instance) q.set('instance', params.instance);
+    if (params.qtype) q.set('qtype', params.qtype);
+    return apiCall<DnsMetrics[]>('GET', `/dns/metrics?${q.toString()}`);
+  },
   getTopDomains: (limit: number = 20) =>
     apiCall<DnsTopDomain[]>('GET', `/dns/top-domains?limit=${limit}`),
   getInstanceStats: () => apiCall<DnsInstanceStats[]>('GET', '/dns/instances'),
@@ -307,10 +312,11 @@ export const api = {
     }>;
     diag: Record<string, unknown>;
   }>('GET', '/telemetry/log-validation'),
-  getRecentQueries: (params?: { instance?: string; qtype?: string; limit?: number }) => {
+  getRecentQueries: (params?: { instance?: string; qtype?: string; range?: string; limit?: number }) => {
     const q = new URLSearchParams();
     if (params?.instance) q.set('instance', params.instance);
     if (params?.qtype) q.set('qtype', params.qtype);
+    if (params?.range) q.set('range', params.range);
     if (params?.limit) q.set('limit', String(params.limit));
     const qs = q.toString();
     return apiCall<{
@@ -409,7 +415,16 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path === '/api/network/reachability') return mockReachability;
 
   // DNS
-  if (path.startsWith('/api/dns/metrics')) return generateDnsMetrics(6);
+  if (path.startsWith('/api/dns/metrics')) {
+    const params = new URLSearchParams(path.split('?')[1] || '');
+    const rangeHours = Number((params.get('range') || '6h').replace('h', '')) || 6;
+    const instance = params.get('instance');
+    const qtype = params.get('qtype');
+    const typeFactor = qtype === 'AAAA' ? 0.32 : qtype && qtype !== 'A' ? 0.18 : 1;
+    return generateDnsMetrics(rangeHours)
+      .filter(row => !instance || row.instance === instance)
+      .map(row => ({ ...row, qps: Math.round(row.qps * typeFactor), noerror: Math.round(row.noerror * typeFactor) }));
+  }
   if (path.startsWith('/api/dns/top-domains')) return mockTopDomains;
   if (path === '/api/dns/instances') return mockInstanceStats;
 

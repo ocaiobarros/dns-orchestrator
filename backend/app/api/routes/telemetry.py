@@ -309,10 +309,12 @@ def telemetry_log_validation(_: User = Depends(get_current_user)):
 def telemetry_recent_queries(
     instance: str | None = None,
     qtype: str | None = None,
+    range: str | None = None,
     limit: int = 200,
     _: User = Depends(get_current_user),
 ):
     """Return the most recent DNS queries collected by the telemetry agent."""
+    logger.info("Recent queries request: instance=%s qtype=%s range=%s limit=%s", instance, qtype, range, limit)
     data = _read_telemetry("latest.json")
     queries = data.get("recent_queries", []) or []
 

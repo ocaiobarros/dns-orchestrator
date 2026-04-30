@@ -5,18 +5,119 @@ Multi-instance aware: queries each unbound instance separately.
 nftables: uses ruleset/counters, not service status.
 """
 
+import logging
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy.orm import Session
+
 from app.executors.command_runner import run_command
+from app.models.dns_events import DnsEvent
+from app.models.operational import DnsInstance, MetricSample
 from app.services.unbound_stats_service import get_instance_real_stats
 import json
 import re
 
+logger = logging.getLogger("dns-control.metrics-service")
 
-def get_dns_metrics(hours: int = 6, instance: str | None = None) -> list[dict]:
-    """Get per-instance DNS metrics from unbound-control."""
+
+def _hours_from_range(hours: int, range_value: str | None) -> int:
+    allowed = {"1h": 1, "6h": 6, "12h": 12, "24h": 24, "48h": 48, "72h": 72}
+    return allowed.get((range_value or "").lower(), hours)
+
+
+def get_dns_metrics(
+    hours: int = 6,
+    instance: str | None = None,
+    qtype: str | None = None,
+    range_value: str | None = None,
+    db: Session | None = None,
+) -> list[dict]:
+    """Get DNS metrics with real backend-side filters for instance, qtype and time range."""
+    effective_hours = _hours_from_range(hours, range_value)
+    since = datetime.now(timezone.utc) - timedelta(hours=effective_hours)
+    logger.info("get_dns_metrics filters instance=%s qtype=%s range=%s since=%s", instance, qtype, range_value, since.isoformat())
+
+    if db is not None:
+        rows = _get_persisted_dns_metrics(db, since=since, instance=instance, qtype=qtype)
+        if rows:
+            return rows
+
     stats = get_instance_real_stats()
     if instance:
         stats = [s for s in stats if s.get("instance") == instance]
-    return stats
+    now = datetime.now(timezone.utc).isoformat()
+    return [{**s, "timestamp": now, "range": range_value or f"{effective_hours}h", "qtype": qtype or "all"} for s in stats]
+
+
+def _get_persisted_dns_metrics(db: Session, since: datetime, instance: str | None, qtype: str | None) -> list[dict]:
+    """Read persisted DNS events/samples and apply filters in SQL before returning chart rows."""
+    event_query = db.query(DnsEvent).filter(DnsEvent.timestamp >= since)
+    if instance:
+        event_query = event_query.filter(DnsEvent.instance_name == instance)
+    if qtype:
+        event_query = event_query.filter(DnsEvent.qtype == qtype.upper())
+
+    events = event_query.order_by(DnsEvent.timestamp.asc()).limit(5000).all()
+    if events:
+        buckets: dict[datetime, dict] = {}
+        for event in events:
+            bucket = event.timestamp.replace(second=0, microsecond=0)
+            row = buckets.setdefault(bucket, {
+                "timestamp": bucket.isoformat(), "instance": instance or "all", "qtype": qtype or "all",
+                "qps": 0, "total_queries": 0, "latency_ms": 0, "servfail": 0, "nxdomain": 0,
+                "refused": 0, "noerror": 0, "cache_hit_ratio": 0, "cache_hits": 0, "cache_misses": 0,
+            })
+            row["total_queries"] += 1
+            row["qps"] = round(row["total_queries"] / 60, 2)
+            rcode = (event.rcode or "").upper()
+            if rcode == "SERVFAIL":
+                row["servfail"] += 1
+            elif rcode == "NXDOMAIN":
+                row["nxdomain"] += 1
+            elif rcode == "REFUSED":
+                row["refused"] += 1
+            elif rcode == "NOERROR":
+                row["noerror"] += 1
+            if event.latency_ms is not None:
+                row["latency_ms"] = round((row["latency_ms"] + float(event.latency_ms)) / 2, 2) if row["latency_ms"] else round(float(event.latency_ms), 2)
+        return list(buckets.values())
+
+    if qtype:
+        return []
+
+    sample_query = db.query(MetricSample, DnsInstance).join(DnsInstance, MetricSample.instance_id == DnsInstance.id).filter(MetricSample.collected_at >= since)
+    if instance:
+        sample_query = sample_query.filter(DnsInstance.instance_name == instance)
+    samples = sample_query.order_by(MetricSample.collected_at.asc()).limit(10000).all()
+    if not samples:
+        return []
+
+    buckets: dict[datetime, dict] = {}
+    metric_map = {
+        "dns_queries_total": "total_queries", "dns_cache_hits": "cache_hits", "dns_cache_misses": "cache_misses",
+        "dns_latency_ms": "latency_ms", "dns_servfail_total": "servfail", "dns_nxdomain_total": "nxdomain",
+        "dns_noerror_total": "noerror", "dns_cache_hit_ratio": "cache_hit_ratio",
+    }
+    for sample, inst in samples:
+        bucket = sample.collected_at.replace(second=0, microsecond=0)
+        row = buckets.setdefault(bucket, {"timestamp": bucket.isoformat(), "instance": instance or "all", "qtype": "all"})
+        key = metric_map.get(sample.metric_name)
+        if not key:
+            continue
+        value = float(sample.metric_value)
+        if key in {"latency_ms", "cache_hit_ratio"}:
+            existing = row.get(key)
+            row[key] = round((float(existing) + value) / 2, 2) if existing is not None else round(value, 2)
+        else:
+            row[key] = int(row.get(key, 0) + value)
+
+    rows = list(buckets.values())
+    for previous, current in zip(rows, rows[1:]):
+        elapsed = max(1, (datetime.fromisoformat(current["timestamp"]) - datetime.fromisoformat(previous["timestamp"])).total_seconds())
+        current["qps"] = round(max(0, current.get("total_queries", 0) - previous.get("total_queries", 0)) / elapsed, 2)
+    if rows:
+        rows[0]["qps"] = 0
+    return rows
 
 
 def get_dns_instances() -> list[dict]:

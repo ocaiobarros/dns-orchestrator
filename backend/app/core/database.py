@@ -77,6 +77,7 @@ def init_db():
     import app.models.apply_job  # noqa
     import app.models.log_entry  # noqa
     import app.models.operational  # noqa  — v2 operational models
+    import app.models.dns_events  # noqa  — DNS query/error events for filtered analytics
     import app.models.vip_counter  # noqa  — VIP counter history
 
     Base.metadata.create_all(bind=engine)

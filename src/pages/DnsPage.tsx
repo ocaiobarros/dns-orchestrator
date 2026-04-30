@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, RefreshCw, Bell, SlidersHorizontal, Layers, Database, Timer, Shield, ChevronDown } from 'lucide-react';
 import { LoadingState, ErrorState } from '@/components/DataStates';
-import { useTelemetry, useTelemetryHistory } from '@/lib/hooks';
+import { useTelemetry } from '@/lib/hooks';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -81,22 +81,36 @@ function rowMatchesFilters(
 
 const SELECT_PANEL = 'noc-overlay-panel z-[120]';
 const SELECT_ITEM = 'font-mono text-[11px] text-popover-foreground focus:bg-primary/15 focus:text-primary data-[state=checked]:text-primary';
-const DNS_FILTER_STORAGE_KEY = 'dns-control:dns-page-filters:v1';
-const DEFAULT_DNS_FILTERS = { hours: 1, selectedInstance: '', qtype: '' };
-const PERIOD_LABELS: Record<number, string> = {
-  1: 'Última 1 hora',
-  6: 'Últimas 6 horas',
-  12: 'Últimas 12 horas',
-  24: 'Últimas 24 horas',
-  48: 'Últimas 48 horas',
-  72: 'Últimas 72 horas',
+const DNS_FILTER_STORAGE_KEY = 'dns-control:dns-page-filters:v2';
+const DEFAULT_DNS_FILTERS = { instance: 'all', qtype: 'all', timeRange: '1h' } as const;
+const TIME_RANGE_HOURS: Record<string, number> = {
+  '1h': 1,
+  '6h': 6,
+  '12h': 12,
+  '24h': 24,
+  '48h': 48,
+  '72h': 72,
+};
+const PERIOD_LABELS: Record<string, string> = {
+  '1h': 'Última 1 hora',
+  '6h': 'Últimas 6 horas',
+  '12h': 'Últimas 12 horas',
+  '24h': 'Últimas 24 horas',
+  '48h': 'Últimas 48 horas',
+  '72h': 'Últimas 72 horas',
 };
 
-type DnsFilterState = typeof DEFAULT_DNS_FILTERS;
+type DnsFilterState = {
+  instance: string;
+  qtype: string;
+  timeRange: string;
+};
 
-function normalizeHours(value: unknown): number {
-  const parsed = Number(value);
-  return Object.prototype.hasOwnProperty.call(PERIOD_LABELS, parsed) ? parsed : DEFAULT_DNS_FILTERS.hours;
+function normalizeTimeRange(value: unknown): string {
+  const raw = String(value || '').toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(TIME_RANGE_HOURS, raw)) return raw;
+  const legacyHours = `${Number(value)}h`;
+  return Object.prototype.hasOwnProperty.call(TIME_RANGE_HOURS, legacyHours) ? legacyHours : DEFAULT_DNS_FILTERS.timeRange;
 }
 
 function readStoredDnsFilters(): DnsFilterState {
@@ -105,10 +119,11 @@ function readStoredDnsFilters(): DnsFilterState {
     const raw = window.localStorage.getItem(DNS_FILTER_STORAGE_KEY);
     if (!raw) return DEFAULT_DNS_FILTERS;
     const parsed = JSON.parse(raw) as Partial<DnsFilterState>;
+    const storedQtype = String(parsed.qtype || DEFAULT_DNS_FILTERS.qtype);
     return {
-      hours: normalizeHours(parsed.hours),
-      selectedInstance: String(parsed.selectedInstance || ''),
-      qtype: String(parsed.qtype || '').toUpperCase(),
+      instance: String(parsed.instance ?? (parsed as any).selectedInstance ?? DEFAULT_DNS_FILTERS.instance) || DEFAULT_DNS_FILTERS.instance,
+      qtype: storedQtype.toLowerCase() === 'all' ? DEFAULT_DNS_FILTERS.qtype : storedQtype.toUpperCase(),
+      timeRange: normalizeTimeRange(parsed.timeRange ?? (parsed as any).hours),
     };
   } catch {
     return DEFAULT_DNS_FILTERS;
@@ -356,40 +371,44 @@ function ErrorsChart({ data, rangeLabel }: { data: any[]; rangeLabel?: string })
 export default function DnsPage() {
   const storedFilters = useMemo(() => readStoredDnsFilters(), []);
   const { data: telemetry, isLoading, error } = useTelemetry();
-  const { data: historyData } = useTelemetryHistory();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [hours, setHours] = useState(storedFilters.hours);
-  const [selectedInstance, setSelectedInstance] = useState(storedFilters.selectedInstance);
-  const [qtype, setQtype] = useState(storedFilters.qtype);
+  const [filters, setFilters] = useState<DnsFilterState>(storedFilters);
+  const selectedInstance = filters.instance === 'all' ? '' : filters.instance;
+  const qtype = filters.qtype === 'all' ? '' : filters.qtype;
+  const timeRange = filters.timeRange;
+  const hours = TIME_RANGE_HOURS[timeRange] ?? TIME_RANGE_HOURS[DEFAULT_DNS_FILTERS.timeRange];
+  const setFilter = (patch: Partial<DnsFilterState>) => setFilters(prev => ({ ...prev, ...patch }));
   const [showOnlyAlerts, setShowOnlyAlerts] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    window.localStorage.setItem(DNS_FILTER_STORAGE_KEY, JSON.stringify({ hours, selectedInstance, qtype }));
-  }, [hours, selectedInstance, qtype]);
+    window.localStorage.setItem(DNS_FILTER_STORAGE_KEY, JSON.stringify(filters));
+    console.log('FILTERS', filters);
+  }, [filters]);
 
   const resetFilters = () => {
-    setHours(DEFAULT_DNS_FILTERS.hours);
-    setSelectedInstance(DEFAULT_DNS_FILTERS.selectedInstance);
-    setQtype(DEFAULT_DNS_FILTERS.qtype);
+    setFilters(DEFAULT_DNS_FILTERS);
     setShowOnlyAlerts(false);
     window.localStorage.removeItem(DNS_FILTER_STORAGE_KEY);
-    qc.invalidateQueries({ queryKey: ['dns'] });
+    qc.invalidateQueries({ queryKey: ['dnsMetrics'] });
     qc.invalidateQueries({ queryKey: ['telemetry', 'recent-queries'] });
   };
 
-  const { data: filteredMetrics } = useQuery({
-    queryKey: ['dns', 'metrics', hours, selectedInstance],
-    queryFn: async () => { const r = await api.getDnsMetrics(hours, selectedInstance || undefined); if (!r.success) throw new Error(r.error!); return r.data; },
+  const { data: filteredMetrics, refetch: refetchDnsMetrics } = useQuery({
+    queryKey: ['dnsMetrics', filters.instance, filters.qtype, filters.timeRange],
+    queryFn: async () => {
+      const r = await api.getDnsMetrics({ instance: selectedInstance || undefined, qtype: qtype || undefined, range: timeRange });
+      if (!r.success) throw new Error(r.error!);
+      return r.data;
+    },
     refetchInterval: 30000,
-    placeholderData: previousData => previousData,
   });
 
   const { data: recentQueries } = useQuery({
-    queryKey: ['telemetry', 'recent-queries', selectedInstance, qtype],
+    queryKey: ['telemetry', 'recent-queries', filters.instance, filters.qtype, filters.timeRange],
     queryFn: async () => {
-      const r = await api.getRecentQueries({ qtype: qtype || undefined, limit: 1000 });
+      const r = await api.getRecentQueries({ instance: selectedInstance || undefined, qtype: qtype || undefined, range: timeRange, limit: 1000 });
       if (!r.success) throw new Error(r.error!);
       return r.data;
     },
@@ -397,11 +416,13 @@ export default function DnsPage() {
     placeholderData: previousData => previousData,
   });
 
-  useEffect(() => {/* warm-up */}, []);
+  useEffect(() => {
+    refetchDnsMetrics();
+  }, [filters.instance, filters.qtype, filters.timeRange, refetchDnsMetrics]);
 
   const chartData = useMemo(() => {
     const metricRows = Array.isArray(filteredMetrics) ? filteredMetrics : [];
-    const historyRows = Array.isArray(historyData) ? historyData : [];
+    const historyRows = metricRows;
     const telemetryBackends = Array.isArray(telemetry?.backends) ? telemetry.backends : [];
     const selectedBackend = selectedInstance
       ? telemetryBackends.find((b: any) => sameInstance(backendName(b), selectedInstance))
@@ -460,7 +481,7 @@ export default function DnsPage() {
       cacheHits: Math.round(firstNum(resolver.cache_hits) * countShare),
       cacheMisses: Math.round(firstNum(resolver.cache_misses) * countShare),
     }];
-  }, [filteredMetrics, historyData, hours, selectedInstance, qtype, telemetry]);
+  }, [filteredMetrics, hours, selectedInstance, qtype, telemetry]);
 
   const collectorOk = telemetry?.health?.collector === 'ok';
   const resolver = telemetry?.resolver ?? {};
@@ -584,20 +605,20 @@ export default function DnsPage() {
       count: firstNum(d.query_count, d.queryCount, d.count, d.queries),
     }));
   const maxDomain = Math.max(1, ...topDomains.map((d: any) => d.count));
-  const periodLabel = PERIOD_LABELS[hours] ?? PERIOD_LABELS[DEFAULT_DNS_FILTERS.hours];
+  const periodLabel = PERIOD_LABELS[timeRange] ?? PERIOD_LABELS[DEFAULT_DNS_FILTERS.timeRange];
   const activeFilters = [
     `Instância: ${selectedInstance || 'Todas'}`,
     `QType: ${qtype || 'Todos'}`,
     `Período: ${periodLabel}`,
   ];
-  const hasActiveFilters = selectedInstance !== DEFAULT_DNS_FILTERS.selectedInstance || qtype !== DEFAULT_DNS_FILTERS.qtype || hours !== DEFAULT_DNS_FILTERS.hours;
+  const hasActiveFilters = filters.instance !== DEFAULT_DNS_FILTERS.instance || filters.qtype !== DEFAULT_DNS_FILTERS.qtype || filters.timeRange !== DEFAULT_DNS_FILTERS.timeRange;
 
   const refreshAll = async () => {
     setRefreshing(true);
     try {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['telemetry'] }),
-        qc.invalidateQueries({ queryKey: ['dns'] }),
+        qc.invalidateQueries({ queryKey: ['dnsMetrics'] }),
       ]);
       await new Promise(r => setTimeout(r, 600));
     } finally {
@@ -627,24 +648,24 @@ export default function DnsPage() {
           <div className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <Calendar size={13} />
-            <Select value={String(hours)} onValueChange={(value) => setHours(Number(value))}>
+            <Select value={timeRange} onValueChange={(value) => setFilter({ timeRange: value })}>
               <SelectTrigger className="h-auto min-h-0 w-[132px] border-0 bg-transparent p-0 font-mono text-[11px] text-foreground ring-offset-0 focus:ring-0 focus:ring-offset-0">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className={SELECT_PANEL}>
-                <SelectItem className={SELECT_ITEM} value="1">Última 1 hora</SelectItem>
-                <SelectItem className={SELECT_ITEM} value="6">Últimas 6 horas</SelectItem>
-                <SelectItem className={SELECT_ITEM} value="12">Últimas 12 horas</SelectItem>
-                <SelectItem className={SELECT_ITEM} value="24">Últimas 24 horas</SelectItem>
-                <SelectItem className={SELECT_ITEM} value="48">Últimas 48 horas</SelectItem>
-                <SelectItem className={SELECT_ITEM} value="72">Últimas 72 horas</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="1h">Última 1 hora</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="6h">Últimas 6 horas</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="12h">Últimas 12 horas</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="24h">Últimas 24 horas</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="48h">Últimas 48 horas</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="72h">Últimas 72 horas</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <Layers size={13} />
-            <Select value={selectedInstance || 'all'} onValueChange={(value) => setSelectedInstance(value === 'all' ? '' : value)}>
+            <Select value={filters.instance} onValueChange={(value) => setFilter({ instance: value })}>
               <SelectTrigger className="h-auto min-h-0 w-[150px] border-0 bg-transparent p-0 font-mono text-[11px] text-foreground ring-offset-0 focus:ring-0 focus:ring-offset-0">
                 <SelectValue />
               </SelectTrigger>
@@ -660,7 +681,7 @@ export default function DnsPage() {
           <div className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <ChevronDown size={13} />
-            <Select value={qtype || 'all'} onValueChange={(value) => setQtype(value === 'all' ? '' : value)}>
+            <Select value={filters.qtype} onValueChange={(value) => setFilter({ qtype: value })}>
               <SelectTrigger className="h-auto min-h-0 w-[112px] border-0 bg-transparent p-0 font-mono text-[11px] text-foreground ring-offset-0 focus:ring-0 focus:ring-offset-0">
                 <SelectValue />
               </SelectTrigger>
