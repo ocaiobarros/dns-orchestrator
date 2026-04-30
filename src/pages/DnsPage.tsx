@@ -14,6 +14,30 @@ function safeNum(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
 
+function firstNum(...values: unknown[]): number {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return 0;
+}
+
+function toTs(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value > 1_000_000_000_000 ? value : value * 1000;
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function countWindow(rows: Array<Record<string, number>>, key: string): number {
+  const values = rows.map(r => safeNum(r[key])).filter(v => v > 0);
+  if (values.length === 0) return 0;
+  const monotonic = values.every((v, i) => i === 0 || v >= values[i - 1]);
+  if (monotonic && values.length > 1) return Math.max(0, values[values.length - 1] - values[0]);
+  return values.reduce((sum, v) => sum + v, 0);
+}
+
 /* ============================================================
    KPI CARD — large, with circular glowing icon + sparkline
    ============================================================ */
@@ -34,7 +58,8 @@ function KpiCardLarge({
 }) {
   const color = `hsl(${ACCENT_HSL[accent]})`;
   const colorAlpha = (a: number) => `hsl(${ACCENT_HSL[accent]} / ${a})`;
-  const data = sparkData.map((v, i) => ({ i, v }));
+  const cleanSpark = sparkData.length ? sparkData : [0, 0, 0, 0, 0, 0];
+  const data = cleanSpark.map((v, i) => ({ i, v }));
   const gradId = `kpi-grad-${accent}`;
 
   return (
@@ -79,8 +104,8 @@ function KpiCardLarge({
         </div>
 
         {/* sparkline */}
-        <div className="w-24 h-12 flex-shrink-0 self-end opacity-90">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="w-24 min-w-[96px] h-12 min-h-[48px] flex-shrink-0 self-end opacity-90">
+          <ResponsiveContainer width="100%" height={48} minWidth={96} minHeight={48}>
             <AreaChart data={data} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id={gradId} x1="0" x2="0" y1="0" y2="1">
@@ -108,7 +133,7 @@ function Panel({
 }) {
   const colorAlpha = (a: number) => `hsl(${ACCENT_HSL[accent]} / ${a})`;
   return (
-    <div className={`relative rounded-xl overflow-hidden ${className}`}
+    <div className={`relative rounded-xl overflow-hidden min-w-0 ${className}`}
       style={{
         background: 'linear-gradient(160deg, hsl(220 42% 8%), hsl(220 50% 4%))',
         border: `1px solid ${colorAlpha(0.28)}`,
@@ -146,15 +171,12 @@ function ChartPanel({
   const colorAlpha = (a: number) => `hsl(${ACCENT_HSL[accent]} / ${a})`;
   const gid = `chart-${title.replace(/\s+/g, '-')}`;
 
-  // Generate fallback data so chart looks like print even without backend
-  const series = data.length > 0 ? data : Array.from({ length: 60 }, (_, i) => ({
-    time: '', [dataKey]: Math.max(0, Math.sin(i / 3) * 10 + Math.random() * 18 + 8),
-  }));
+  const series = data.length > 0 ? data : Array.from({ length: 2 }, () => ({ time: '', [dataKey]: 0 }));
 
   return (
     <Panel title={title} accent={accent}>
-      <div style={{ height }}>
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="w-full min-w-0" style={{ height, minHeight: height }}>
+        <ResponsiveContainer width="100%" height={height} minWidth={1} minHeight={height}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <defs>
               <linearGradient id={gid} x1="0" x2="0" y1="0" y2="1">
@@ -192,13 +214,11 @@ function ChartPanel({
    ============================================================ */
 function CacheHitChart({ data }: { data: any[] }) {
   const color = 'hsl(290 80% 60%)';
-  const series = data.length > 0 ? data : Array.from({ length: 80 }, (_, i) => ({
-    time: '', hitRatio: 50 + Math.sin(i / 4) * 25 + Math.random() * 18,
-  }));
+  const series = data.length > 0 ? data : Array.from({ length: 2 }, () => ({ time: '', hitRatio: 0 }));
   return (
     <Panel title="Cache Hit Ratio (%)" accent="violet">
-      <div style={{ height: 200 }}>
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="w-full min-w-0" style={{ height: 200, minHeight: 200 }}>
+        <ResponsiveContainer width="100%" height={200} minWidth={1} minHeight={200}>
           <LineChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <CartesianGrid stroke="hsl(290 60% 40% / 0.15)" strokeDasharray="2 4" vertical={false} />
             <XAxis dataKey="time" stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
@@ -225,11 +245,11 @@ function ErrorsChart({ data }: { data: any[] }) {
   const colorA = (a: number) => `hsl(330 90% 60% / ${a})`;
   const series = data.length > 0
     ? data.map(d => ({ ...d, total: safeNum(d.servfail) + safeNum(d.nxdomain) }))
-    : Array.from({ length: 80 }, (_, i) => ({ time: '', total: Math.max(0, Math.sin(i / 2) * 8 + Math.random() * 14 + 2) }));
+    : Array.from({ length: 2 }, () => ({ time: '', total: 0 }));
   return (
     <Panel title="Erros. (SERVFAIL + NXDOMAIN)" accent="violet">
-      <div style={{ height: 200 }}>
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="w-full min-w-0" style={{ height: 200, minHeight: 200 }}>
+        <ResponsiveContainer width="100%" height={200} minWidth={1} minHeight={200}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <defs>
               <linearGradient id="err-grad" x1="0" x2="0" y1="0" y2="1">
@@ -271,28 +291,55 @@ export default function DnsPage() {
     queryKey: ['dns', 'metrics', hours, selectedInstance],
     queryFn: async () => { const r = await api.getDnsMetrics(hours, selectedInstance || undefined); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 30000,
+    placeholderData: previousData => previousData,
   });
 
   const { data: recentQueries } = useQuery({
     queryKey: ['telemetry', 'recent-queries', selectedInstance, qtype],
     queryFn: async () => { const r = await api.getRecentQueries({ instance: selectedInstance || undefined, qtype: qtype || undefined, limit: 100 }); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 15000,
+    placeholderData: previousData => previousData,
   });
 
   useEffect(() => {/* warm-up */}, []);
 
   const chartData = useMemo(() => {
     const metricRows = Array.isArray(filteredMetrics) ? filteredMetrics : [];
-    const history = metricRows.length > 0 ? metricRows : (Array.isArray(historyData) ? historyData : []);
-    return history.map((p: any) => ({
-      time: p.timestamp ? new Date(p.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
-      qps: safeNum(p.qps ?? p.queries_per_second),
-      latency: safeNum(p.latency_ms ?? p.latency_avg_ms),
-      servfail: safeNum(p.servfail ?? p.servfail_count),
-      nxdomain: safeNum(p.nxdomain ?? p.nxdomain_count),
-      hitRatio: safeNum(p.cache_hit_ratio),
-    }));
-  }, [filteredMetrics, historyData]);
+    const historyRows = Array.isArray(historyData) ? historyData : [];
+    const timedMetrics = metricRows.filter((p: any) => toTs(p.timestamp ?? p.epoch) > 0);
+    const history = timedMetrics.length > 0 ? timedMetrics : historyRows;
+    const minTs = Date.now() - hours * 60 * 60 * 1000;
+    const series = history
+      .filter((p: any) => {
+        const ts = toTs(p.timestamp ?? p.epoch);
+        return !ts || ts >= minTs;
+      })
+      .map((p: any) => ({
+        time: (p.timestamp || p.epoch) ? new Date(toTs(p.timestamp ?? p.epoch)).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
+        qps: firstNum(p.qps, p.queries_per_second),
+        latency: firstNum(p.latency_ms, p.latency_avg_ms, p.avgLatencyMs, p.avg_latency_ms),
+        servfail: firstNum(p.servfail, p.servfail_count),
+        nxdomain: firstNum(p.nxdomain, p.nxdomain_count),
+        hitRatio: firstNum(p.cache_hit_ratio, p.cacheHitRatio),
+        totalQueries: firstNum(p.total_queries, p.totalQueries, p.queries_total, p.queries),
+        cacheHits: firstNum(p.cache_hits, p.cacheHits),
+        cacheMisses: firstNum(p.cache_misses, p.cacheMisses),
+      }));
+
+    if (series.length > 0) return series;
+    const resolver = telemetry?.resolver ?? {};
+    return [{
+      time: telemetry?.timestamp ? new Date(telemetry.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
+      qps: firstNum(resolver.qps),
+      latency: firstNum(resolver.avg_latency_ms),
+      servfail: firstNum(resolver.servfail),
+      nxdomain: firstNum(resolver.nxdomain),
+      hitRatio: firstNum(resolver.cache_hit_ratio),
+      totalQueries: firstNum(resolver.total_queries),
+      cacheHits: firstNum(resolver.cache_hits),
+      cacheMisses: firstNum(resolver.cache_misses),
+    }];
+  }, [filteredMetrics, historyData, hours, telemetry]);
 
   if (isLoading) return <LoadingState />;
   if (error) return <ErrorState message={error.message} />;
@@ -315,45 +362,45 @@ export default function DnsPage() {
   const telemetryConnected = collectorOk || hasMetrics || hasBackends;
 
   // Aggregate window metrics (sum/avg over the selected range, not last point only)
-  const metricsArr: any[] = Array.isArray(filteredMetrics) ? filteredMetrics : [];
+  const metricsArr: any[] = chartData;
   const latestMetric = metricsArr.length > 0 ? metricsArr[metricsArr.length - 1] : null;
 
   // Fall back to backend-aggregated values from telemetry for instant display
   const totalQueries =
-    metricsArr.reduce((a, m) => a + safeNum(m.total_queries ?? m.queries), 0)
-    || safeNum(latestMetric?.total_queries)
+    countWindow(metricsArr, 'totalQueries')
+    || safeNum(latestMetric?.totalQueries)
     || backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.total_queries), 0)
     || safeNum(resolver.total_queries);
 
-  const cacheHitRatio = safeNum(latestMetric?.cache_hit_ratio)
+  const cacheHitRatio = safeNum(latestMetric?.hitRatio)
     || (backends.length
       ? Math.round(backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_hit_ratio), 0) / backends.length)
       : safeNum(resolver.cache_hit_ratio));
 
-  const avgLatency = safeNum(latestMetric?.latency_avg_ms ?? latestMetric?.latency_ms)
+  const avgLatency = safeNum(latestMetric?.latency)
     || (backends.length
       ? backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.recursion_avg_ms), 0) / backends.length
       : safeNum(resolver.avg_latency_ms));
 
   const totalServfail =
-    metricsArr.reduce((a, m) => a + safeNum(m.servfail_count ?? m.servfail), 0)
-    || safeNum(latestMetric?.servfail_count ?? latestMetric?.servfail)
+    countWindow(metricsArr, 'servfail')
+    || safeNum(latestMetric?.servfail)
     || backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.servfail), 0)
     || safeNum(resolver.servfail);
 
-  const qps = safeNum(latestMetric?.queries_per_second ?? latestMetric?.qps ?? resolver.qps);
+  const qps = safeNum(latestMetric?.qps) || safeNum(resolver.qps);
 
   // Sparkline data per KPI
-  const sparkQ = chartData.length > 0 ? chartData.slice(-30).map(d => d.qps) : Array.from({ length: 30 }, () => Math.random() * 20 + 5);
-  const sparkH = chartData.length > 0 ? chartData.slice(-30).map(d => d.hitRatio) : Array.from({ length: 30 }, () => Math.random() * 30 + 50);
-  const sparkL = chartData.length > 0 ? chartData.slice(-30).map(d => d.latency) : Array.from({ length: 30 }, () => Math.random() * 100 + 20);
-  const sparkE = chartData.length > 0 ? chartData.slice(-30).map(d => d.servfail + d.nxdomain) : Array.from({ length: 30 }, () => Math.random() * 5);
+  const sparkQ = chartData.slice(-30).map(d => d.qps);
+  const sparkH = chartData.slice(-30).map(d => d.hitRatio);
+  const sparkL = chartData.slice(-30).map(d => d.latency);
+  const sparkE = chartData.slice(-30).map(d => d.servfail + d.nxdomain);
 
   const topDomains = topDomainsRaw
-    .filter((d: any) => !qtype || d.query_type === qtype || d.type === qtype)
+    .filter((d: any) => !qtype || !('query_type' in d || 'queryType' in d || 'type' in d) || d.query_type === qtype || d.queryType === qtype || d.type === qtype)
     .slice(0, showOnlyAlerts ? 5 : 9).map((d: any) => ({
     domain: d.domain || d.name || '—',
-    count: safeNum(d.query_count || d.count || d.queries),
+    count: firstNum(d.query_count, d.queryCount, d.count, d.queries),
   }));
   const maxDomain = Math.max(1, ...topDomains.map((d: any) => d.count));
 
