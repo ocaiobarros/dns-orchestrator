@@ -55,6 +55,17 @@ function queryInstanceOf(row: any): string {
   return String(row?.instance ?? row?.backend ?? row?.backend_ip ?? row?.backendIp ?? '');
 }
 
+function queryDomainOf(row: any): string {
+  return String(row?.domain ?? row?.qname ?? row?.query ?? row?.name ?? '').replace(/\.$/, '');
+}
+
+function rowMatchesFilters(row: any, instance: string, type: string): boolean {
+  const rowInstance = queryInstanceOf(row);
+  const matchesInstance = !instance || !rowInstance || sameInstance(rowInstance, instance);
+  const matchesType = !type || queryTypeOf(row) === type;
+  return matchesInstance && matchesType;
+}
+
 const SELECT_PANEL = 'border-border bg-popover text-popover-foreground shadow-[0_0_28px_hsl(var(--background)/0.85)]';
 const SELECT_ITEM = 'font-mono text-[11px] text-popover-foreground focus:bg-primary/15 focus:text-primary data-[state=checked]:text-primary';
 
