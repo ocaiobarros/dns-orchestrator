@@ -119,9 +119,10 @@ function readStoredDnsFilters(): DnsFilterState {
     const raw = window.localStorage.getItem(DNS_FILTER_STORAGE_KEY);
     if (!raw) return DEFAULT_DNS_FILTERS;
     const parsed = JSON.parse(raw) as Partial<DnsFilterState>;
+    const storedQtype = String(parsed.qtype || DEFAULT_DNS_FILTERS.qtype);
     return {
       instance: String(parsed.instance ?? (parsed as any).selectedInstance ?? DEFAULT_DNS_FILTERS.instance) || DEFAULT_DNS_FILTERS.instance,
-      qtype: String(parsed.qtype || DEFAULT_DNS_FILTERS.qtype).toUpperCase(),
+      qtype: storedQtype.toLowerCase() === 'all' ? DEFAULT_DNS_FILTERS.qtype : storedQtype.toUpperCase(),
       timeRange: normalizeTimeRange(parsed.timeRange ?? (parsed as any).hours),
     };
   } catch {
