@@ -72,6 +72,12 @@ dns-control ALL=(root) NOPASSWD: \
     /usr/bin/systemctl is-enabled nginx, \
     /usr/bin/systemctl is-enabled networking, \
     /usr/bin/systemctl list-units --type=service *, \
+    /usr/bin/systemctl list-units --all --type=service --no-pager, \
+    /usr/bin/systemctl list-units --all --type=service, \
+    /usr/bin/systemctl list-units --type=service --no-pager, \
+    /usr/bin/systemctl --no-pager list-units --all --type=service, \
+    /usr/bin/systemctl list-unit-files --type=service --no-pager, \
+    /usr/bin/systemctl list-unit-files --type=service, \
     /usr/sbin/sysctl --load *, \
     /usr/sbin/sysctl --system, \
     /usr/sbin/ifreload -a, \
