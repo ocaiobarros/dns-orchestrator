@@ -249,6 +249,20 @@
     0% { transform: scale(1); opacity: 0.5; }
     75%, 100% { transform: scale(2.4); opacity: 0; }
   }
+  @keyframes noc-pulse {
+    0%, 100% { opacity: 0.55; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.25); }
+  }
+  @keyframes noc-bar-flicker {
+    0%, 100% { transform: scaleY(1); opacity: 0.85; }
+    50% { transform: scaleY(0.55); opacity: 1; }
+  }
+  @keyframes noc-spark-dash {
+    to { stroke-dashoffset: -200; }
+  }
+  @keyframes noc-rotate {
+    to { transform: rotate(360deg); }
+  }
 
   .noc-dot-live {
     @apply w-2 h-2 rounded-full bg-success flex-shrink-0;

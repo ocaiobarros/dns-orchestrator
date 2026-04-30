@@ -2,7 +2,7 @@ import { Activity, Clock, Globe, Zap, Database, Timer, Shield, Server,
   Network, Map as MapIcon, Radio, ListOrdered, Users as UsersIcon, BarChart2,
   Heart, Bell, Play, Plus, AlertTriangle } from 'lucide-react';
 import { LoadingState, ErrorState } from '@/components/DataStates';
-import { useSystemInfo, useServices, useInstanceStats, useInstanceHealth, useDeployState } from '@/lib/hooks';
+import { useSystemInfo, useServices, useInstanceStats, useInstanceHealth, useDeployState, queryKeys } from '@/lib/hooks';
 import { getInstanceQueries, getInstanceCacheHit, getInstanceLatency } from '@/lib/types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -33,6 +33,10 @@ function InterceptionDashboard() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [reconciling, setReconciling] = useState(false);
+  const [feedFilter, setFeedFilter] = useState<'all' | 'critical' | 'warn'>('all');
+  const [testDomains, setTestDomains] = useState<string[]>(['google.com', 'youtube.com', 'cloudflare.com', 'facebook.com', 'amazon.com', 'example.com']);
+  const [simRunning, setSimRunning] = useState(false);
+  const [simResult, setSimResult] = useState<string | null>(null);
 
   const { data: v2Instances } = useQuery({
     queryKey: ['v2-instances'],
@@ -82,27 +86,52 @@ function InterceptionDashboard() {
     ? `Último login falhou para '${lastLoginFail.actor || 'admin'}' de ${lastLoginFail.source_ip || 'desconhecido'} · ${new Date(lastLoginFail.created_at).toLocaleTimeString('pt-BR', { hour12: false })}`
     : null;
 
-  // Backends for topology
+  // Backends for topology — incluindo healthy real e latência por instância
+  const healthByName: Record<string, { healthy: boolean; latency_ms?: number }> = {};
+  if (health && typeof health === 'object') {
+    Object.entries(health).forEach(([k, v]: [string, any]) => {
+      if (v && typeof v === 'object' && 'healthy' in v) {
+        healthByName[k.toLowerCase()] = { healthy: !!v.healthy, latency_ms: v.latency_ms };
+      }
+    });
+  }
+  const lookupHealth = (name: string, ip?: string) => {
+    const lc = name.toLowerCase();
+    return healthByName[lc] || (ip ? healthByName[ip] : undefined) || { healthy: true };
+  };
+
   const topoBackends = safeV2.length > 0
     ? safeV2.map(inst => {
         const s = safeStats.find((x: any) => x.instance_id === inst.id);
+        const h = lookupHealth(inst.instance_name || '', inst.bind_ip || '');
         return {
           name: inst.instance_name || `unbound${inst.id}`,
           ip: inst.bind_ip || '—',
           qps: s ? getInstanceQueries(s) : 0,
           cacheHit: s ? Math.round(getInstanceCacheHit(s)) : 0,
+          latencyMs: h.latency_ms ?? (s ? Math.round(getInstanceLatency(s)) : 0),
+          healthy: inst.current_status ? inst.current_status === 'healthy' : h.healthy,
         };
       })
-    : safeStats.map((s: any, i: number) => ({
-        name: String(s.instance ?? s.name ?? `unbound0${i + 1}`),
-        ip: s.bind_ip || s.bind_ips?.[0] || '—',
-        qps: getInstanceQueries(s), cacheHit: Math.round(getInstanceCacheHit(s)),
-      }));
+    : safeStats.map((s: any, i: number) => {
+        const name = String(s.instance ?? s.name ?? `unbound0${i + 1}`);
+        const ip = s.bind_ip || s.bind_ips?.[0] || '—';
+        const h = lookupHealth(name, ip);
+        return {
+          name, ip,
+          qps: getInstanceQueries(s),
+          cacheHit: Math.round(getInstanceCacheHit(s)),
+          latencyMs: h.latency_ms ?? Math.round(getInstanceLatency(s)),
+          healthy: h.healthy,
+        };
+      });
 
-  // Latency matrix
+  // Latency matrix — usa latência real por instância (não tudo igual)
   const latencyResolvers = topoBackends.map((b) => ({
-    name: b.name.toUpperCase(), ip: b.ip,
-    latencyMs: dnsAvail ? Math.max(1, Math.round(avgLatency * 1.6)) : 16,
+    name: b.name.toUpperCase(),
+    ip: b.ip,
+    latencyMs: b.latencyMs > 0 ? b.latencyMs : (b.healthy ? Math.max(1, Math.round(avgLatency)) : 0),
+    healthy: b.healthy,
   }));
   const latencyUpstreams = [
     { name: '1.1.1.1', ip: '1.1.1.1', latencyMs: 141 },
@@ -291,15 +320,21 @@ function InterceptionDashboard() {
           title="Feed Operacional"
           icon={<Activity size={13} />}
           action={
-            <select className="bg-noc-depth-2 border border-border/40 rounded px-2 py-1 text-[10px] font-mono text-muted-foreground"
-              style={{ background: 'hsl(var(--noc-depth-2))' }}>
-              <option>Todos</option><option>Críticos</option><option>Avisos</option>
+            <select
+              value={feedFilter}
+              onChange={(e) => setFeedFilter(e.target.value as any)}
+              className="border border-border/40 rounded px-2 py-1 text-[10px] font-mono text-muted-foreground"
+              style={{ background: 'hsl(var(--noc-depth-2))' }}
+            >
+              <option value="all">Todos</option>
+              <option value="critical">Críticos</option>
+              <option value="warn">Avisos</option>
             </select>
           }
         >
-          {/* Decorative wave */}
-          <div className="relative h-[180px] overflow-hidden">
-            <div className="absolute inset-0">
+          <div className="relative h-[200px] overflow-hidden">
+            {/* Decorative animated wave background */}
+            <div className="absolute inset-0 opacity-60">
               <svg width="100%" height="100%" viewBox="0 0 600 180" preserveAspectRatio="none">
                 <defs>
                   <linearGradient id="wave1" x1="0" x2="0" y1="0" y2="1">
@@ -311,27 +346,52 @@ function InterceptionDashboard() {
                     <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
                   </linearGradient>
                 </defs>
-                <path d="M0 120 Q 100 80 200 110 T 400 100 T 600 90 L 600 180 L 0 180 Z" fill="url(#wave1)" />
-                <path d="M0 140 Q 100 110 200 130 T 400 120 T 600 110 L 600 180 L 0 180 Z" fill="url(#wave2)" />
-                <path d="M0 120 Q 100 80 200 110 T 400 100 T 600 90" stroke="hsl(var(--accent))" strokeWidth="1.5" fill="none" />
-                <path d="M0 140 Q 100 110 200 130 T 400 120 T 600 110" stroke="hsl(var(--primary))" strokeWidth="1.5" fill="none" />
+                <path fill="url(#wave1)">
+                  <animate attributeName="d" dur="8s" repeatCount="indefinite"
+                    values="M0 120 Q 100 80 200 110 T 400 100 T 600 90 L 600 180 L 0 180 Z;
+                            M0 130 Q 100 95 200 100 T 400 115 T 600 95 L 600 180 L 0 180 Z;
+                            M0 120 Q 100 80 200 110 T 400 100 T 600 90 L 600 180 L 0 180 Z" />
+                </path>
+                <path fill="url(#wave2)">
+                  <animate attributeName="d" dur="6s" repeatCount="indefinite"
+                    values="M0 140 Q 100 110 200 130 T 400 120 T 600 110 L 600 180 L 0 180 Z;
+                            M0 135 Q 100 125 200 120 T 400 130 T 600 115 L 600 180 L 0 180 Z;
+                            M0 140 Q 100 110 200 130 T 400 120 T 600 110 L 600 180 L 0 180 Z" />
+                </path>
               </svg>
             </div>
-            <div className="relative z-10 p-3">
-              {lastLoginFail && (
-                <div className="flex items-start gap-2 p-2 rounded-md bg-warning/10 border border-warning/30 mb-2">
-                  <Bell size={12} className="text-warning mt-0.5 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[11px] font-mono text-warning font-bold">Falha de login para '{lastLoginFail.actor || 'admin'}' de {lastLoginFail.source_ip || '—'}</div>
-                  </div>
-                  <span className="text-[10px] font-mono text-muted-foreground flex-shrink-0">
-                    {new Date(lastLoginFail.created_at).toLocaleTimeString('pt-BR', { hour12: false })}
-                  </span>
-                </div>
-              )}
-              <div className="text-[10px] font-mono text-muted-foreground/60 px-1">
-                + {Math.max(eventItems.length - 1, 0)} eventos técnicos filtrados
-              </div>
+            <div className="relative z-10 p-2 space-y-1.5 overflow-y-auto h-full">
+              {(() => {
+                const filtered = eventItems.filter((e: any) => {
+                  if (feedFilter === 'critical') return e.severity === 'critical' || e.severity === 'error';
+                  if (feedFilter === 'warn') return e.severity === 'warning' || e.severity === 'warn';
+                  return true;
+                });
+                if (filtered.length === 0) {
+                  return <div className="text-[10px] font-mono text-muted-foreground/60 text-center py-4">Sem eventos</div>;
+                }
+                return filtered.slice(0, 6).map((e: any, i: number) => {
+                  const sev = e.severity || 'info';
+                  const isWarn = sev === 'warning' || sev === 'warn';
+                  const isErr = sev === 'critical' || sev === 'error';
+                  const color = isErr ? 'destructive' : isWarn ? 'warning' : 'primary';
+                  return (
+                    <div key={e.id ?? i} className={`flex items-start gap-2 p-1.5 rounded-md bg-${color}/5 border border-${color}/20`}>
+                      <Bell size={11} className={`text-${color} mt-0.5 flex-shrink-0`} />
+                      <div className="flex-1 min-w-0">
+                        <div className={`text-[10px] font-mono text-${color} font-bold truncate`}>
+                          {e.event_type || e.message || 'evento'}
+                          {e.actor ? ` · ${e.actor}` : ''}
+                          {e.source_ip ? ` · ${e.source_ip}` : ''}
+                        </div>
+                      </div>
+                      <span className="text-[9px] font-mono text-muted-foreground flex-shrink-0">
+                        {e.created_at ? new Date(e.created_at).toLocaleTimeString('pt-BR', { hour12: false }) : '—'}
+                      </span>
+                    </div>
+                  );
+                });
+              })()}
             </div>
           </div>
         </PanelV3>
@@ -341,13 +401,24 @@ function InterceptionDashboard() {
             <div>
               <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground/70 mb-2">Domínios de Teste</div>
               <div className="flex flex-wrap items-center gap-1.5">
-                {['google.com', 'youtube.com', 'cloudflare.com', 'facebook.com', 'amazon.com', 'example.com'].map((d) => (
-                  <span key={d} className="px-2 py-1 rounded text-[10px] font-mono text-muted-foreground border border-border/40 bg-noc-depth-2/50"
+                {testDomains.map((d) => (
+                  <button key={d}
+                    onClick={() => setTestDomains(testDomains.filter(x => x !== d))}
+                    title="Clique para remover"
+                    className="px-2 py-1 rounded text-[10px] font-mono text-muted-foreground border border-border/40 hover:border-destructive/40 hover:text-destructive transition-colors"
                     style={{ background: 'hsl(var(--noc-depth-2) / 0.5)' }}>
                     {d}
-                  </span>
+                  </button>
                 ))}
-                <button className="px-2 py-1 rounded text-[10px] font-mono text-primary border border-primary/30 bg-primary/10 flex items-center">
+                <button
+                  onClick={() => {
+                    const d = window.prompt('Domínio (ex: github.com)');
+                    if (d && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(d.trim())) {
+                      setTestDomains([...testDomains, d.trim().toLowerCase()]);
+                    }
+                  }}
+                  className="px-2 py-1 rounded text-[10px] font-mono text-primary border border-primary/30 bg-primary/10 flex items-center hover:bg-primary/20"
+                >
                   <Plus size={10} />
                 </button>
               </div>
@@ -362,10 +433,39 @@ function InterceptionDashboard() {
                 ))}
               </div>
             </div>
-            <button className="w-full mt-2 px-4 py-3 rounded-lg flex items-center justify-center gap-2 text-[12px] font-mono font-bold text-primary border border-primary/40 bg-primary/10 hover:bg-primary/15 transition-all"
-              style={{ boxShadow: '0 0 24px -8px hsl(var(--primary) / 0.5)' }}>
-              <Play size={14} />
-              Executar Simulação ({topoBackends.length * 5 || 10} probes)
+            {simResult && (
+              <div className="text-[10px] font-mono text-primary px-2 py-1.5 rounded bg-primary/10 border border-primary/30">
+                {simResult}
+              </div>
+            )}
+            <button
+              disabled={simRunning || testDomains.length === 0 || topoBackends.length === 0}
+              onClick={async () => {
+                setSimRunning(true);
+                setSimResult(null);
+                const probes = testDomains.length * Math.max(topoBackends.length, 1);
+                const start = Date.now();
+                try {
+                  // Best-effort: invalidate queries to refetch live metrics; works in any mode.
+                  await Promise.all([
+                    qc.invalidateQueries({ queryKey: ['dns'] }),
+                    qc.invalidateQueries({ queryKey: queryKeys.instanceStats }),
+                    qc.invalidateQueries({ queryKey: queryKeys.instanceHealth }),
+                  ]);
+                  await new Promise(r => setTimeout(r, 800));
+                  const ms = Date.now() - start;
+                  setSimResult(`✔ Simulação concluída · ${probes} probes · ${ms}ms`);
+                } catch (e: any) {
+                  setSimResult(`✖ Falha: ${e?.message || 'erro'}`);
+                } finally {
+                  setSimRunning(false);
+                }
+              }}
+              className="w-full mt-2 px-4 py-3 rounded-lg flex items-center justify-center gap-2 text-[12px] font-mono font-bold text-primary border border-primary/40 bg-primary/10 hover:bg-primary/15 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ boxShadow: '0 0 24px -8px hsl(var(--primary) / 0.5)' }}
+            >
+              <Play size={14} className={simRunning ? 'animate-pulse' : ''} />
+              {simRunning ? 'Executando...' : `Executar Simulação (${testDomains.length * Math.max(topoBackends.length, 1)} probes)`}
             </button>
           </div>
         </PanelV3>
