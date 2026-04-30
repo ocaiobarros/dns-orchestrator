@@ -38,6 +38,22 @@ function countWindow(rows: Array<Record<string, number>>, key: string): number {
   return values.reduce((sum, v) => sum + v, 0);
 }
 
+function backendName(b: any): string {
+  return String(b?.name ?? b?.instance ?? b?.id ?? '');
+}
+
+function sameInstance(a: unknown, b: unknown): boolean {
+  return String(a ?? '').toLowerCase() === String(b ?? '').toLowerCase();
+}
+
+function queryTypeOf(row: any): string {
+  return String(row?.type ?? row?.qtype ?? row?.query_type ?? row?.queryType ?? '').toUpperCase();
+}
+
+function queryInstanceOf(row: any): string {
+  return String(row?.instance ?? row?.backend ?? row?.backend_ip ?? row?.backendIp ?? '');
+}
+
 /* ============================================================
    KPI CARD — large, with circular glowing icon + sparkline
    ============================================================ */
