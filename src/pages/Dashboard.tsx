@@ -224,7 +224,7 @@ function InterceptionDashboard() {
       </div>
 
       {/* 6 KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="noc-grid-kpi">
         <KpiCard label="Frontend DNS" value={frontendIp ? `${frontendIp}:53` : '—'} sub="Respondendo"
           accent="violet" visual={<MiniGlobe />} />
         <KpiCard label="Backends" value={`${healthyCount} / ${totalInstances}`} sub="Todos saudáveis"
