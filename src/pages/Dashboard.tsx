@@ -56,8 +56,8 @@ function InterceptionDashboard() {
     refetchInterval: 30000,
   });
   const { data: telemetry } = useQuery({
-    queryKey: ['telemetry'],
-    queryFn: async () => { const r = await api.getTelemetry(); if (!r.success) throw new Error(r.error!); return r.data; },
+    queryKey: ['telemetry', 'latest'],
+    queryFn: async () => { const r = await api.getTelemetryLatest(); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 15000,
   });
 
