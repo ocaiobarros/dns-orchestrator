@@ -51,9 +51,12 @@ export function MiniGlobe() {
         </radialGradient>
       </defs>
       <circle cx="28" cy="28" r="22" fill="url(#g1)" />
-      <ellipse cx="28" cy="28" rx="22" ry="8" fill="none" stroke="hsl(var(--primary) / 0.4)" strokeWidth="0.5" />
-      <ellipse cx="28" cy="28" rx="14" ry="22" fill="none" stroke="hsl(var(--primary) / 0.3)" strokeWidth="0.5" />
-      <circle cx="28" cy="28" r="22" fill="none" stroke="hsl(var(--primary) / 0.3)" strokeWidth="0.5" />
+      <g style={{ transformOrigin: '28px 28px', animation: 'noc-rotate 16s linear infinite' }}>
+        <ellipse cx="28" cy="28" rx="22" ry="8" fill="none" stroke="hsl(var(--primary) / 0.5)" strokeWidth="0.6" />
+        <ellipse cx="28" cy="28" rx="14" ry="22" fill="none" stroke="hsl(var(--primary) / 0.4)" strokeWidth="0.6" />
+        <ellipse cx="28" cy="28" rx="8" ry="22" fill="none" stroke="hsl(var(--primary) / 0.3)" strokeWidth="0.5" />
+      </g>
+      <circle cx="28" cy="28" r="22" fill="none" stroke="hsl(var(--primary) / 0.4)" strokeWidth="0.6" />
     </svg>
   );
 }
