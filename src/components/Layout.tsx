@@ -191,7 +191,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6 2xl:p-8 4k:p-10 w-full max-w-none">
           {children}
         </main>
       </div>
