@@ -297,8 +297,8 @@ export default function KioskDashboard() {
       .formatToParts(now).find(p => p.type === 'timeZoneName')?.value || '';
 
   return (
-    <div className="min-h-screen bg-background text-foreground p-5 lg:p-6 font-sans">
-      <div className="max-w-[1800px] mx-auto">
+    <div className="min-h-screen bg-background text-foreground font-sans" style={{ paddingBlock: 'clamp(0.75rem, 1.2vw, 1.75rem)' }}>
+      <div className="noc-page">
         {/* ═══ HEADER ═══ */}
         <header className="flex items-start justify-between mb-5">
           <div className="flex items-center gap-3">
