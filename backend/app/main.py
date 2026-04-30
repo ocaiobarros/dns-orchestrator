@@ -99,7 +99,10 @@ app.include_router(dns_errors.router, prefix="/api/metrics/dns/errors", tags=["D
 
 
 # ---- Prometheus endpoint (no auth) ----
-@app.get("/metrics", response_class=PlainTextResponse, tags=["Prometheus"])
+# Exposed under /api/prometheus to free the /metrics path for the SPA route.
+# A redirect from the legacy /metrics path is intentionally NOT provided so the
+# nginx SPA fallback can serve the React page at /metrics.
+@app.get("/api/prometheus", response_class=PlainTextResponse, tags=["Prometheus"])
 def prometheus_metrics():
     from app.services.prometheus_service import generate_prometheus_output
     db = SessionLocal()
