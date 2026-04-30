@@ -384,15 +384,15 @@ export default function DnsPage() {
   const resolver = telemetry?.resolver ?? {};
   const backends = Array.isArray(telemetry?.backends) ? telemetry.backends : [];
   const queryAnalytics = telemetry?.query_analytics ?? {};
+  const visibleBackends = selectedInstance
+    ? backends.filter((b: any) => sameInstance(backendName(b), selectedInstance))
+    : backends;
+  const selectedBackends = visibleBackends.length ? visibleBackends : backends;
   const allRecentItems = useMemo(() => {
     const apiItems = Array.isArray(recentQueries?.items) ? recentQueries.items : [];
     const telemetryItems = Array.isArray(telemetry?.recent_queries) ? telemetry.recent_queries : [];
     const src = apiItems.length ? apiItems : telemetryItems;
-    return src.filter((q: any) => {
-      const matchesInstance = !selectedInstance || !queryInstanceOf(q) || sameInstance(queryInstanceOf(q), selectedInstance);
-      const matchesType = !qtype || queryTypeOf(q) === qtype;
-      return matchesInstance && matchesType;
-    });
+    return src.filter((q: any) => rowMatchesFilters(q, selectedInstance, qtype));
   }, [recentQueries, telemetry, selectedInstance, qtype]);
   const availableQtypes = useMemo(() => {
     const fromApi = Array.isArray(recentQueries?.available_types) ? recentQueries.available_types : [];
@@ -405,10 +405,6 @@ export default function DnsPage() {
     ].map(queryTypeOf);
     return Array.from(new Set([...fromApi, ...fromTelemetry, ...fromRecent].filter(Boolean).map((t: string) => t.toUpperCase()))).sort();
   }, [recentQueries, telemetry]);
-  const visibleBackends = selectedInstance
-    ? backends.filter((b: any) => sameInstance(backendName(b), selectedInstance))
-    : backends;
-  const selectedBackends = visibleBackends.length ? visibleBackends : backends;
   const filteredRecentItems = allRecentItems;
   const querySeries = useMemo(() => {
     if (!qtype || filteredRecentItems.length === 0) return [];
