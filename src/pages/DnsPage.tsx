@@ -389,7 +389,7 @@ export default function DnsPage() {
   const { data: recentQueries } = useQuery({
     queryKey: ['telemetry', 'recent-queries', selectedInstance, qtype],
     queryFn: async () => {
-      const r = await api.getRecentQueries({ instance: selectedInstance || undefined, qtype: qtype || undefined, limit: 1000 });
+      const r = await api.getRecentQueries({ qtype: qtype || undefined, limit: 1000 });
       if (!r.success) throw new Error(r.error!);
       return r.data;
     },
@@ -457,7 +457,7 @@ export default function DnsPage() {
     const apiItems = Array.isArray(recentQueries?.items) ? recentQueries.items : [];
     const telemetryItems = Array.isArray(telemetry?.recent_queries) ? telemetry.recent_queries : [];
     const src = apiItems.length ? apiItems : telemetryItems;
-    return src.filter((q: any) => rowMatchesFilters(q, selectedInstance, qtype));
+    return src.filter((q: any) => rowMatchesFilters(q, selectedInstance, qtype, { allowMissingInstance: true }));
   }, [recentQueries, telemetry, selectedInstance, qtype]);
   const availableQtypes = useMemo(() => {
     const fromApi = Array.isArray(recentQueries?.available_types) ? recentQueries.available_types : [];
