@@ -409,7 +409,9 @@ export default function DnsPage() {
   const backendServfail = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.servfail), 0);
 
   const totalQueries = selectedInstance
-    ? backendQueries
+    ? (qtype ? filteredRecentItems.length : backendQueries)
+    : qtype
+      ? filteredRecentItems.length
     : countWindow(metricsArr, 'totalQueries')
       || safeNum(latestMetric?.totalQueries)
       || backendQueries
@@ -436,7 +438,7 @@ export default function DnsPage() {
       || backendServfail
       || safeNum(resolver.servfail);
 
-  const qps = safeNum(latestMetric?.qps) || safeNum(resolver.qps);
+  const qps = qtype ? filteredRecentItems.length : safeNum(latestMetric?.qps) || safeNum(resolver.qps);
 
   // Sparkline data per KPI
   const sparkQ = chartData.slice(-30).map(d => d.qps);
