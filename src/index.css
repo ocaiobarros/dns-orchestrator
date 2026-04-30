@@ -363,6 +363,40 @@
   .noc-table tbody tr:hover { background: hsl(var(--noc-depth-2) / 0.4); }
   .noc-table tbody td { @apply py-3 pr-3; }
 
+  .noc-data-table-wrap {
+    @apply w-full overflow-auto overscroll-contain;
+    scrollbar-gutter: stable both-edges;
+  }
+  .noc-data-table {
+    @apply w-full border-separate border-spacing-0 text-sm;
+    min-width: min(100%, 62rem);
+  }
+  .noc-data-table th {
+    @apply sticky top-0 z-10 bg-card text-left font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70;
+    padding: calc(var(--table-cell-y) * 0.85) var(--table-cell-x);
+    border-bottom: 1px solid hsl(var(--border) / 0.35);
+  }
+  .noc-data-table td {
+    padding: var(--table-cell-y) var(--table-cell-x);
+    border-top: 1px solid hsl(var(--border) / 0.22);
+    vertical-align: top;
+  }
+  .noc-data-table .cell-nowrap { @apply whitespace-nowrap tabular-nums; }
+  .noc-data-table .cell-wrap { @apply whitespace-normal break-words; }
+  .noc-data-table .cell-truncate { @apply min-w-0 truncate; }
+
+  .noc-overlay-panel {
+    @apply border-border bg-popover text-popover-foreground;
+    box-shadow: 0 0 28px hsl(var(--background) / 0.85), 0 16px 48px -18px hsl(var(--primary) / 0.28);
+  }
+
+  .noc-chart-frame {
+    width: 100%;
+    min-width: 0;
+    height: var(--chart-panel-height);
+    min-height: var(--chart-panel-height);
+  }
+
   /* ── Row ── */
   .noc-row {
     @apply flex items-center justify-between py-3 transition-colors duration-200;
