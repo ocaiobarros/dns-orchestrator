@@ -37,6 +37,8 @@ function InterceptionDashboard() {
   const [testDomains, setTestDomains] = useState<string[]>(['google.com', 'youtube.com', 'cloudflare.com', 'facebook.com', 'amazon.com', 'example.com']);
   const [simRunning, setSimRunning] = useState(false);
   const [simResult, setSimResult] = useState<string | null>(null);
+  type SimRow = { domain: string; backend: string; ms: number; status: 'ok' | 'fail'; rcode: string };
+  const [simRows, setSimRows] = useState<SimRow[]>([]);
 
   const { data: v2Instances } = useQuery({
     queryKey: ['v2-instances'],
