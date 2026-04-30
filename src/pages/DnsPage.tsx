@@ -444,12 +444,25 @@ export default function DnsPage() {
   const sparkL = chartData.slice(-30).map(d => d.latency);
   const sparkE = chartData.slice(-30).map(d => d.servfail + d.nxdomain);
 
-  const topDomains = topDomainsRaw
-    .filter((d: any) => !qtype || !('query_type' in d || 'queryType' in d || 'type' in d) || d.query_type === qtype || d.queryType === qtype || d.type === qtype)
+  const recentDomainCounts = allRecentItems.reduce((acc: Record<string, number>, q: any) => {
+    const domain = String(q?.domain ?? q?.qname ?? '').replace(/\.$/, '');
+    if (domain) acc[domain] = (acc[domain] ?? 0) + 1;
+    return acc;
+  }, {});
+  const topDomainsSource = (qtype || selectedInstance) && Object.keys(recentDomainCounts).length
+    ? Object.entries(recentDomainCounts)
+        .map(([domain, count]) => ({ domain, count }))
+        .sort((a, b) => b.count - a.count)
+    : topDomainsRaw.filter((d: any) => {
+        if (!qtype) return true;
+        const rowType = queryTypeOf(d);
+        return rowType ? rowType === qtype : false;
+      });
+  const topDomains = topDomainsSource
     .slice(0, showOnlyAlerts ? 5 : 9).map((d: any) => ({
-    domain: d.domain || d.name || '—',
-    count: firstNum(d.query_count, d.queryCount, d.count, d.queries),
-  }));
+      domain: d.domain || d.name || '—',
+      count: firstNum(d.query_count, d.queryCount, d.count, d.queries),
+    }));
   const maxDomain = Math.max(1, ...topDomains.map((d: any) => d.count));
 
   const refreshAll = async () => {
