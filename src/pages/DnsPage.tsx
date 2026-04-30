@@ -563,7 +563,7 @@ export default function DnsPage() {
       || backendServfail
       || safeNum(resolver.servfail);
 
-  const qps = hasQueryFilterData ? qtypeSelectedCount : safeNum(latestMetric?.qps) || safeNum(resolver.qps);
+  const qps = safeNum(latestMetric?.qps) || safeNum(resolver.qps);
 
   // Sparkline data per KPI
   const sparkQ = effectiveChartData.slice(-30).map(d => safeNum(d.qps));
@@ -580,17 +580,20 @@ export default function DnsPage() {
     ? Object.entries(recentDomainCounts)
         .map(([domain, count]) => ({ domain, count: Number(count) || 0 }))
         .sort((a, b) => b.count - a.count)
-    : topDomainsRaw.filter((d: any) => {
-        if (!qtype) return true;
-        const rowType = queryTypeOf(d);
-        return rowType ? rowType === qtype : false;
-      });
+    : topDomainsRaw;
   const topDomains = topDomainsSource
     .slice(0, showOnlyAlerts ? 5 : 9).map((d: any) => ({
       domain: d.domain || d.name || '—',
       count: firstNum(d.query_count, d.queryCount, d.count, d.queries),
     }));
   const maxDomain = Math.max(1, ...topDomains.map((d: any) => d.count));
+  const periodLabel = PERIOD_LABELS[hours] ?? PERIOD_LABELS[DEFAULT_DNS_FILTERS.hours];
+  const activeFilters = [
+    `Instância: ${selectedInstance || 'Todas'}`,
+    `QType: ${qtype || 'Todos'}`,
+    `Período: ${periodLabel}`,
+  ];
+  const hasActiveFilters = selectedInstance !== DEFAULT_DNS_FILTERS.selectedInstance || qtype !== DEFAULT_DNS_FILTERS.qtype || hours !== DEFAULT_DNS_FILTERS.hours;
 
   const refreshAll = async () => {
     setRefreshing(true);
