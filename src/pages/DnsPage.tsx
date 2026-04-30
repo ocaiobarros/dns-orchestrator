@@ -402,6 +402,23 @@ export default function DnsPage() {
   const chartData = useMemo(() => {
     const metricRows = Array.isArray(filteredMetrics) ? filteredMetrics : [];
     const historyRows = Array.isArray(historyData) ? historyData : [];
+    const telemetryBackends = Array.isArray(telemetry?.backends) ? telemetry.backends : [];
+    const selectedBackend = selectedInstance
+      ? telemetryBackends.find((b: any) => sameInstance(backendName(b), selectedInstance))
+      : null;
+    const allBackendQueries = telemetryBackends.reduce((sum: number, b: any) => sum + safeNum(b?.resolver?.total_queries), 0);
+    const instanceShare = selectedInstance && selectedBackend && allBackendQueries > 0
+      ? Math.max(0, Math.min(1, safeNum(selectedBackend?.resolver?.total_queries) / allBackendQueries))
+      : 1;
+    const queryTypeRows = Array.isArray(telemetry?.top_query_types) ? telemetry.top_query_types : [];
+    const allTypeQueries = queryTypeRows.reduce((sum: number, t: any) => sum + safeNum(t?.count), 0);
+    const selectedTypeQueries = qtype
+      ? safeNum(queryTypeRows.find((t: any) => queryTypeOf(t) === qtype)?.count)
+      : 0;
+    const typeShare = qtype && allTypeQueries > 0
+      ? Math.max(0, Math.min(1, selectedTypeQueries / allTypeQueries))
+      : 1;
+    const countShare = instanceShare * typeShare;
     const timedMetrics = metricRows
       .filter((p: any) => rowMatchesFilters(p, selectedInstance, ''))
       .filter((p: any) => toTs(p.timestamp ?? p.epoch) > 0);
@@ -410,7 +427,7 @@ export default function DnsPage() {
         .filter((p: any) => rowMatchesFilters(p, selectedInstance, ''))
         .map((p: any) => ({ ...p, timestamp: p.timestamp ?? telemetry?.timestamp ?? new Date().toISOString() }))
       : [];
-    const filteredHistoryRows = historyRows.filter((p: any) => rowMatchesFilters(p, selectedInstance, '', { allowMissingInstance: !selectedInstance }));
+    const filteredHistoryRows = historyRows.filter((p: any) => rowMatchesFilters(p, selectedInstance, '', { allowMissingInstance: true }));
     const history = timedMetrics.length > 0 ? timedMetrics : liveMetricRows.length > 0 ? liveMetricRows : filteredHistoryRows;
     const minTs = Date.now() - hours * 60 * 60 * 1000;
     const series = history
@@ -420,30 +437,30 @@ export default function DnsPage() {
       })
       .map((p: any) => ({
         time: (p.timestamp || p.epoch) ? new Date(toTs(p.timestamp ?? p.epoch)).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
-        qps: firstNum(p.qps, p.queries_per_second),
-        latency: firstNum(p.latency_ms, p.latency_avg_ms, p.avgLatencyMs, p.avg_latency_ms),
-        servfail: firstNum(p.servfail, p.servfail_count),
-        nxdomain: firstNum(p.nxdomain, p.nxdomain_count),
-        hitRatio: firstNum(p.cache_hit_ratio, p.cacheHitRatio),
-        totalQueries: firstNum(p.total_queries, p.totalQueries, p.queries_total, p.queries),
-        cacheHits: firstNum(p.cache_hits, p.cacheHits),
-        cacheMisses: firstNum(p.cache_misses, p.cacheMisses),
+        qps: Math.round(firstNum(p.qps, p.queries_per_second) * countShare * 100) / 100,
+        latency: selectedBackend ? safeNum(selectedBackend?.resolver?.recursion_avg_ms) : firstNum(p.latency_ms, p.latency_avg_ms, p.avgLatencyMs, p.avg_latency_ms),
+        servfail: Math.round(firstNum(p.servfail, p.servfail_count) * countShare),
+        nxdomain: Math.round(firstNum(p.nxdomain, p.nxdomain_count) * countShare),
+        hitRatio: selectedBackend ? safeNum(selectedBackend?.resolver?.cache_hit_ratio) : firstNum(p.cache_hit_ratio, p.cacheHitRatio),
+        totalQueries: Math.round(firstNum(p.total_queries, p.totalQueries, p.queries_total, p.queries) * countShare),
+        cacheHits: Math.round(firstNum(p.cache_hits, p.cacheHits) * countShare),
+        cacheMisses: Math.round(firstNum(p.cache_misses, p.cacheMisses) * countShare),
       }));
 
     if (series.length > 0) return series;
     const resolver = telemetry?.resolver ?? {};
     return [{
       time: telemetry?.timestamp ? new Date(telemetry.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
-      qps: firstNum(resolver.qps),
-      latency: firstNum(resolver.avg_latency_ms),
-      servfail: firstNum(resolver.servfail),
-      nxdomain: firstNum(resolver.nxdomain),
-      hitRatio: firstNum(resolver.cache_hit_ratio),
-      totalQueries: firstNum(resolver.total_queries),
-      cacheHits: firstNum(resolver.cache_hits),
-      cacheMisses: firstNum(resolver.cache_misses),
+      qps: Math.round(firstNum(resolver.qps) * countShare * 100) / 100,
+      latency: selectedBackend ? safeNum(selectedBackend?.resolver?.recursion_avg_ms) : firstNum(resolver.avg_latency_ms),
+      servfail: Math.round(firstNum(resolver.servfail) * countShare),
+      nxdomain: Math.round(firstNum(resolver.nxdomain) * countShare),
+      hitRatio: selectedBackend ? safeNum(selectedBackend?.resolver?.cache_hit_ratio) : firstNum(resolver.cache_hit_ratio),
+      totalQueries: Math.round(firstNum(resolver.total_queries) * countShare),
+      cacheHits: Math.round(firstNum(resolver.cache_hits) * countShare),
+      cacheMisses: Math.round(firstNum(resolver.cache_misses) * countShare),
     }];
-  }, [filteredMetrics, historyData, hours, selectedInstance, telemetry]);
+  }, [filteredMetrics, historyData, hours, selectedInstance, qtype, telemetry]);
 
   const collectorOk = telemetry?.health?.collector === 'ok';
   const resolver = telemetry?.resolver ?? {};
