@@ -481,7 +481,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 echo "  Dashboard:  http://<IP_DO_SERVIDOR>"
 echo "  API:        http://${BACKEND_HOST}:${BACKEND_PORT}/api/health"
-echo "  Métricas:   http://${BACKEND_HOST}:${BACKEND_PORT}/metrics"
+echo "  Prometheus: http://${BACKEND_HOST}:${BACKEND_PORT}/api/prometheus"
 echo "  Swagger:    http://${BACKEND_HOST}:${BACKEND_PORT}/docs"
 echo "  Config:     ${ENV_FILE}"
 echo "  Banco:      ${DB_PATH}"
