@@ -159,15 +159,23 @@ function InterceptionDashboard() {
   ];
   const geoEdges: MapEdge[] = topoBackends.map((_, i) => ({ from: 'vip', to: `r-${i}`, qps: Math.round(totalQps / Math.max(topoBackends.length, 1)) }));
 
-  // Top clients (mock from events sources)
-  const clientCounts = new Map<string, number>();
-  eventItems.forEach((e: any) => {
-    if (e.source_ip) clientCounts.set(e.source_ip, (clientCounts.get(e.source_ip) ?? 0) + 1);
-  });
-  const topClients = Array.from(clientCounts.entries())
-    .map(([ip, c]) => ({ label: ip, value: c }))
+  // Top clients — prefere telemetria real (top_clients) e cai para eventos
+  const telTopClients: any[] = Array.isArray((telemetry as any)?.top_clients) ? (telemetry as any).top_clients : [];
+  let topClients = telTopClients
+    .map((c: any) => ({ label: c.client || c.ip || c.label || '—', value: Number(c.queries ?? c.count ?? c.value ?? 0) }))
+    .filter(x => x.value > 0)
     .sort((a, b) => b.value - a.value)
     .slice(0, 5);
+  if (topClients.length === 0) {
+    const clientCounts = new Map<string, number>();
+    eventItems.forEach((e: any) => {
+      if (e.source_ip) clientCounts.set(e.source_ip, (clientCounts.get(e.source_ip) ?? 0) + 1);
+    });
+    topClients = Array.from(clientCounts.entries())
+      .map(([ip, c]) => ({ label: ip, value: c }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+  }
 
   return (
     <div className="space-y-4 max-w-[1800px] mx-auto">
