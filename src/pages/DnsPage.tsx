@@ -634,7 +634,9 @@ export default function DnsPage() {
       acc[time] = (acc[time] ?? 0) + 1;
       return acc;
     }, {});
+    const today = new Date();
     return Object.entries(buckets).sort(([a], [b]) => a.localeCompare(b)).map(([time, count]) => ({
+      ts: Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), Number(time.slice(0, 2)) || 0, Number(time.slice(3, 5)) || 0),
       time,
       qps: count,
       latency: 0,
