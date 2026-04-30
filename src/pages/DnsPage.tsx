@@ -366,6 +366,95 @@ function ErrorsChart({ data, rangeLabel }: { data: any[]; rangeLabel?: string })
 }
 
 /* ============================================================
+   Helpers — bytes formatter
+   ============================================================ */
+function formatBytes(n: number): string {
+  if (!n || !Number.isFinite(n)) return '0 B';
+  if (n < 1024) return `${n.toFixed(0)} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+/* ============================================================
+   Segmented control — section focus
+   ============================================================ */
+type SectionTab = 'overview' | 'domains' | 'clients' | 'backends' | 'traffic';
+
+function SectionTabs({ value, onChange }: { value: SectionTab; onChange: (v: SectionTab) => void }) {
+  const tabs: Array<{ id: SectionTab; label: string; icon: React.ReactNode }> = [
+    { id: 'overview', label: 'Visão Geral', icon: <Activity size={12} /> },
+    { id: 'domains', label: 'Domínios', icon: <Globe size={12} /> },
+    { id: 'clients', label: 'Clientes', icon: <Users size={12} /> },
+    { id: 'backends', label: 'Backends', icon: <Server size={12} /> },
+    { id: 'traffic', label: 'Tráfego', icon: <Activity size={12} /> },
+  ];
+  return (
+    <div className="inline-flex items-center gap-1 rounded-lg p-1 border border-border/60 bg-card/70">
+      {tabs.map(t => {
+        const active = t.id === value;
+        return (
+          <button
+            key={t.id}
+            onClick={() => onChange(t.id)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-mono font-bold uppercase tracking-wider transition-all ${
+              active
+                ? 'bg-primary/15 text-primary border border-primary/40'
+                : 'text-muted-foreground hover:text-foreground/90 border border-transparent'
+            }`}
+            style={active ? { boxShadow: '0 0 12px -4px hsl(var(--primary) / 0.6)' } : undefined}
+          >
+            <span>{t.icon}</span>
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ============================================================
+   Multi-line traffic chart (QPS + CacheHit + Latência)
+   ============================================================ */
+function TrafficEvolutionChart({ data, rangeLabel }: { data: any[]; rangeLabel?: string }) {
+  const series = data.length > 0 ? data : Array.from({ length: 2 }, () => ({ time: '', qps: 0, hitRatio: 0, latency: 0 }));
+  const cQps = 'hsl(200 90% 60%)';
+  const cHit = 'hsl(162 72% 51%)';
+  const cLat = 'hsl(270 75% 65%)';
+  return (
+    <Panel
+      title="Evolução do Tráfego"
+      accent="blue"
+      badge={rangeLabel ? <span className="ml-2 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : undefined}
+    >
+      <div className="noc-chart-frame">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={220}>
+          <LineChart data={series} margin={{ top: 6, right: 30, bottom: 4, left: -10 }}>
+            <CartesianGrid stroke="hsl(220 35% 18% / 0.6)" strokeDasharray="2 4" vertical={false} />
+            <XAxis dataKey="time" stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+            <YAxis yAxisId="left" stroke={cQps} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cQps }} tickLine={false} axisLine={false} width={36}
+              label={{ value: 'Queries (QPS)', angle: -90, position: 'insideLeft', style: { fill: cQps, fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: 40 }} />
+            <YAxis yAxisId="right" orientation="right" stroke={cLat} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cLat }} tickLine={false} axisLine={false} width={36}
+              label={{ value: 'Latência (ms)', angle: 90, position: 'insideRight', style: { fill: cLat, fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: -40 }} />
+            <Tooltip
+              contentStyle={{ background: 'hsl(220 50% 4%)', border: '1px solid hsl(220 35% 18%)', borderRadius: 6, fontFamily: 'JetBrains Mono', fontSize: 11 }}
+              labelStyle={{ color: 'hsl(215 15% 60%)' }}
+            />
+            <Legend wrapperStyle={{ fontSize: 10, fontFamily: 'JetBrains Mono' }} iconType="line" />
+            <Line yAxisId="left" type="monotone" dataKey="qps" name="Queries (QPS)" stroke={cQps} strokeWidth={1.6} dot={false} isAnimationActive={false}
+              style={{ filter: `drop-shadow(0 0 4px ${cQps})` }} />
+            <Line yAxisId="left" type="monotone" dataKey="hitRatio" name="Cache Hit (%)" stroke={cHit} strokeWidth={1.6} dot={false} isAnimationActive={false}
+              style={{ filter: `drop-shadow(0 0 4px ${cHit})` }} />
+            <Line yAxisId="right" type="monotone" dataKey="latency" name="Latência (ms)" stroke={cLat} strokeWidth={1.6} dot={false} isAnimationActive={false}
+              style={{ filter: `drop-shadow(0 0 4px ${cLat})` }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </Panel>
+  );
+}
+
+/* ============================================================
    MAIN PAGE
    ============================================================ */
 export default function DnsPage() {
