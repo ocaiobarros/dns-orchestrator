@@ -419,7 +419,7 @@ export default function DnsPage() {
   const telemetryConnected = collectorOk || hasMetrics || hasBackends;
 
   // Aggregate window metrics (sum/avg over the selected range, not last point only)
-  const metricsArr: any[] = chartData;
+  const metricsArr: any[] = effectiveChartData;
   const latestMetric = metricsArr.length > 0 ? metricsArr[metricsArr.length - 1] : null;
 
   // Fall back to backend-aggregated values from telemetry for instant display
@@ -461,10 +461,10 @@ export default function DnsPage() {
   const qps = qtype ? filteredRecentItems.length : safeNum(latestMetric?.qps) || safeNum(resolver.qps);
 
   // Sparkline data per KPI
-  const sparkQ = chartData.slice(-30).map(d => d.qps);
-  const sparkH = chartData.slice(-30).map(d => d.hitRatio);
-  const sparkL = chartData.slice(-30).map(d => d.latency);
-  const sparkE = chartData.slice(-30).map(d => d.servfail + d.nxdomain);
+  const sparkQ = effectiveChartData.slice(-30).map(d => d.qps);
+  const sparkH = effectiveChartData.slice(-30).map(d => d.hitRatio || cacheHitRatio);
+  const sparkL = effectiveChartData.slice(-30).map(d => d.latency || avgLatency);
+  const sparkE = effectiveChartData.slice(-30).map(d => d.servfail + d.nxdomain);
 
   const recentDomainCounts = allRecentItems.reduce((acc: Record<string, number>, q: any) => {
     const domain = String(q?.domain ?? q?.qname ?? '').replace(/\.$/, '');
