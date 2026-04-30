@@ -298,15 +298,21 @@ export default function DnsPage() {
   const resolver = telemetry?.resolver ?? {};
   const backends = Array.isArray(telemetry?.backends) ? telemetry.backends : [];
   const queryAnalytics = telemetry?.query_analytics ?? {};
+  const availableQtypes = recentQueries?.available_types ?? [];
+  const visibleBackends = selectedInstance
+    ? backends.filter((b: any) => b.name === selectedInstance || b.instance === selectedInstance || b.id === selectedInstance)
+    : backends;
+  const filteredRecentItems = recentQueries?.items ?? [];
   const topDomainsRaw = Array.isArray(telemetry?.top_domains) ? telemetry.top_domains
     : Array.isArray(queryAnalytics?.top_domains) ? queryAnalytics.top_domains : [];
   const telemetryConnected = collectorOk && safeNum(resolver.instances_live) > 0;
 
-  const totalQueries = safeNum(resolver.total_queries);
-  const cacheHitRatio = safeNum(resolver.cache_hit_ratio);
-  const avgLatency = safeNum(resolver.avg_latency_ms);
-  const totalServfail = safeNum(resolver.servfail);
-  const qps = safeNum(resolver.qps);
+  const latestMetric = Array.isArray(filteredMetrics) && filteredMetrics.length > 0 ? filteredMetrics[filteredMetrics.length - 1] as any : null;
+  const totalQueries = safeNum(latestMetric?.total_queries ?? resolver.total_queries);
+  const cacheHitRatio = safeNum(latestMetric?.cache_hit_ratio ?? resolver.cache_hit_ratio);
+  const avgLatency = safeNum(latestMetric?.latency_avg_ms ?? resolver.avg_latency_ms);
+  const totalServfail = safeNum(latestMetric?.servfail_count ?? latestMetric?.servfail ?? resolver.servfail);
+  const qps = safeNum(latestMetric?.queries_per_second ?? resolver.qps);
 
   // Sparkline data per KPI
   const sparkQ = chartData.length > 0 ? chartData.slice(-30).map(d => d.qps) : Array.from({ length: 30 }, () => Math.random() * 20 + 5);
@@ -314,7 +320,9 @@ export default function DnsPage() {
   const sparkL = chartData.length > 0 ? chartData.slice(-30).map(d => d.latency) : Array.from({ length: 30 }, () => Math.random() * 100 + 20);
   const sparkE = chartData.length > 0 ? chartData.slice(-30).map(d => d.servfail + d.nxdomain) : Array.from({ length: 30 }, () => Math.random() * 5);
 
-  const topDomains = topDomainsRaw.slice(0, 9).map((d: any) => ({
+  const topDomains = topDomainsRaw
+    .filter((d: any) => !qtype || d.query_type === qtype || d.type === qtype)
+    .slice(0, showOnlyAlerts ? 5 : 9).map((d: any) => ({
     domain: d.domain || d.name || '—',
     count: safeNum(d.query_count || d.count || d.queries),
   }));
