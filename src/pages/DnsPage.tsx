@@ -364,11 +364,32 @@ export default function DnsPage() {
   const resolver = telemetry?.resolver ?? {};
   const backends = Array.isArray(telemetry?.backends) ? telemetry.backends : [];
   const queryAnalytics = telemetry?.query_analytics ?? {};
-  const availableQtypes = recentQueries?.available_types ?? [];
+  const allRecentItems = useMemo(() => {
+    const apiItems = Array.isArray(recentQueries?.items) ? recentQueries.items : [];
+    const telemetryItems = Array.isArray(telemetry?.recent_queries) ? telemetry.recent_queries : [];
+    const src = apiItems.length ? apiItems : telemetryItems;
+    return src.filter((q: any) => {
+      const matchesInstance = !selectedInstance || !queryInstanceOf(q) || sameInstance(queryInstanceOf(q), selectedInstance);
+      const matchesType = !qtype || queryTypeOf(q) === qtype;
+      return matchesInstance && matchesType;
+    });
+  }, [recentQueries, telemetry, selectedInstance, qtype]);
+  const availableQtypes = useMemo(() => {
+    const fromApi = Array.isArray(recentQueries?.available_types) ? recentQueries.available_types : [];
+    const fromTelemetry = Array.isArray(telemetry?.top_query_types)
+      ? telemetry.top_query_types.map((t: any) => t.type)
+      : [];
+    const fromRecent = [
+      ...(Array.isArray(recentQueries?.items) ? recentQueries.items : []),
+      ...(Array.isArray(telemetry?.recent_queries) ? telemetry.recent_queries : []),
+    ].map(queryTypeOf);
+    return Array.from(new Set([...fromApi, ...fromTelemetry, ...fromRecent].filter(Boolean).map((t: string) => t.toUpperCase()))).sort();
+  }, [recentQueries, telemetry]);
   const visibleBackends = selectedInstance
-    ? backends.filter((b: any) => b.name === selectedInstance || b.instance === selectedInstance || b.id === selectedInstance)
+    ? backends.filter((b: any) => sameInstance(backendName(b), selectedInstance))
     : backends;
-  const filteredRecentItems = recentQueries?.items ?? [];
+  const selectedBackends = visibleBackends.length ? visibleBackends : backends;
+  const filteredRecentItems = allRecentItems;
   const topDomainsRaw = Array.isArray(telemetry?.top_domains) ? telemetry.top_domains
     : Array.isArray(queryAnalytics?.top_domains) ? queryAnalytics.top_domains : [];
 
