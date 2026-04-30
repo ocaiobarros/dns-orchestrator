@@ -407,7 +407,7 @@ export default function DnsPage() {
   }, [recentQueries, telemetry]);
   const filteredRecentItems = allRecentItems;
   const querySeries = useMemo(() => {
-    if (!qtype || filteredRecentItems.length === 0) return [];
+    if ((!qtype && !selectedInstance) || filteredRecentItems.length === 0) return [];
     const buckets = filteredRecentItems.reduce((acc: Record<string, number>, q: any) => {
       const time = String(q?.time ?? '').slice(0, 5) || '--:--';
       acc[time] = (acc[time] ?? 0) + 1;
@@ -424,7 +424,7 @@ export default function DnsPage() {
       cacheHits: 0,
       cacheMisses: 0,
     }));
-  }, [qtype, filteredRecentItems]);
+  }, [qtype, selectedInstance, filteredRecentItems]);
   const effectiveChartData = querySeries.length ? querySeries : chartData;
   const topDomainsRaw = Array.isArray(telemetry?.top_domains) ? telemetry.top_domains
     : Array.isArray(queryAnalytics?.top_domains) ? queryAnalytics.top_domains : [];
