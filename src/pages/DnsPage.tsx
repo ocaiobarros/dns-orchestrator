@@ -403,27 +403,38 @@ export default function DnsPage() {
   const latestMetric = metricsArr.length > 0 ? metricsArr[metricsArr.length - 1] : null;
 
   // Fall back to backend-aggregated values from telemetry for instant display
-  const totalQueries =
-    countWindow(metricsArr, 'totalQueries')
-    || safeNum(latestMetric?.totalQueries)
-    || backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.total_queries), 0)
-    || safeNum(resolver.total_queries);
+  const backendQueries = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.total_queries), 0);
+  const backendCacheHits = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_hits), 0);
+  const backendCacheMisses = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_misses), 0);
+  const backendServfail = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.servfail), 0);
 
-  const cacheHitRatio = safeNum(latestMetric?.hitRatio)
-    || (backends.length
-      ? Math.round(backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_hit_ratio), 0) / backends.length)
+  const totalQueries = selectedInstance
+    ? backendQueries
+    : countWindow(metricsArr, 'totalQueries')
+      || safeNum(latestMetric?.totalQueries)
+      || backendQueries
+      || safeNum(resolver.total_queries);
+
+  const cacheHitRatio = selectedInstance && (backendCacheHits + backendCacheMisses) > 0
+    ? Math.round((backendCacheHits / (backendCacheHits + backendCacheMisses)) * 1000) / 10
+    : safeNum(latestMetric?.hitRatio)
+    || (selectedBackends.length
+      ? Math.round(selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_hit_ratio), 0) / selectedBackends.length)
       : safeNum(resolver.cache_hit_ratio));
 
-  const avgLatency = safeNum(latestMetric?.latency)
-    || (backends.length
-      ? backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.recursion_avg_ms), 0) / backends.length
+  const avgLatency = selectedInstance
+    ? (selectedBackends.length ? selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.recursion_avg_ms), 0) / selectedBackends.length : 0)
+    : safeNum(latestMetric?.latency)
+    || (selectedBackends.length
+      ? selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.recursion_avg_ms), 0) / selectedBackends.length
       : safeNum(resolver.avg_latency_ms));
 
-  const totalServfail =
-    countWindow(metricsArr, 'servfail')
-    || safeNum(latestMetric?.servfail)
-    || backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.servfail), 0)
-    || safeNum(resolver.servfail);
+  const totalServfail = selectedInstance
+    ? backendServfail
+    : countWindow(metricsArr, 'servfail')
+      || safeNum(latestMetric?.servfail)
+      || backendServfail
+      || safeNum(resolver.servfail);
 
   const qps = safeNum(latestMetric?.qps) || safeNum(resolver.qps);
 
