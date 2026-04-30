@@ -337,11 +337,16 @@ export default function DnsPage() {
   const chartData = useMemo(() => {
     const metricRows = Array.isArray(filteredMetrics) ? filteredMetrics : [];
     const historyRows = Array.isArray(historyData) ? historyData : [];
-    const timedMetrics = metricRows.filter((p: any) => toTs(p.timestamp ?? p.epoch) > 0);
+    const timedMetrics = metricRows
+      .filter((p: any) => rowMatchesFilters(p, selectedInstance, qtype))
+      .filter((p: any) => toTs(p.timestamp ?? p.epoch) > 0);
     const liveMetricRows = selectedInstance && metricRows.length > 0
-      ? metricRows.map((p: any) => ({ ...p, timestamp: p.timestamp ?? telemetry?.timestamp ?? new Date().toISOString() }))
+      ? metricRows
+        .filter((p: any) => rowMatchesFilters(p, selectedInstance, qtype))
+        .map((p: any) => ({ ...p, timestamp: p.timestamp ?? telemetry?.timestamp ?? new Date().toISOString() }))
       : [];
-    const history = timedMetrics.length > 0 ? timedMetrics : liveMetricRows.length > 0 ? liveMetricRows : historyRows;
+    const filteredHistoryRows = historyRows.filter((p: any) => rowMatchesFilters(p, selectedInstance, qtype));
+    const history = timedMetrics.length > 0 ? timedMetrics : liveMetricRows.length > 0 ? liveMetricRows : filteredHistoryRows;
     const minTs = Date.now() - hours * 60 * 60 * 1000;
     const series = history
       .filter((p: any) => {
@@ -373,7 +378,7 @@ export default function DnsPage() {
       cacheHits: firstNum(resolver.cache_hits),
       cacheMisses: firstNum(resolver.cache_misses),
     }];
-  }, [filteredMetrics, historyData, hours, selectedInstance, telemetry]);
+  }, [filteredMetrics, historyData, hours, selectedInstance, qtype, telemetry]);
 
   const collectorOk = telemetry?.health?.collector === 'ok';
   const resolver = telemetry?.resolver ?? {};
