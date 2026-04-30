@@ -1,9 +1,9 @@
-import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Server, Network, Globe, Shield, Router,
   FileText, Wrench, Settings, History, FolderOpen, Menu, X, Wand2, Users, LogOut,
-  HeartPulse, BarChart3, Bell, Search, ChevronDown,
+  HeartPulse, BarChart3, Bell, Search, ChevronDown, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useNoc } from '@/lib/noc-context';
@@ -27,19 +27,26 @@ const navItems = [
   { path: '/users', label: 'Usuários', icon: Users, adminOnly: true },
 ];
 
+const SIDEBAR_COLLAPSED_KEY = 'dns-control:sidebar-collapsed';
+
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const navigate = useNavigate();
+  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
+  });
   const { user, logout } = useAuth();
   const { fullscreen } = useNoc();
   const isViewer = user?.role === 'viewer';
 
-  // Filter nav items based on role
-  const filteredNavItems = isViewer
-    ? navItems.filter(item => !item.adminOnly)
-    : navItems;
+  useEffect(() => {
+    try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch {}
+  }, [collapsed]);
 
-  // In fullscreen NOC mode on the dashboard, hide sidebar and header
+  const filteredNavItems = isViewer ? navItems.filter(item => !item.adminOnly) : navItems;
+
   const isDashboard = location.pathname === '/';
   const nocMode = fullscreen && isDashboard;
 
@@ -51,25 +58,28 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const sidebarWidth = collapsed ? 'w-16' : 'w-56';
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 bg-background/80 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Sidebar */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-50 w-56 flex flex-col
+        fixed lg:static inset-y-0 left-0 z-50 ${sidebarWidth} flex flex-col
         bg-sidebar border-r border-sidebar-border
-        transform transition-transform duration-200
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        transform transition-all duration-200 ease-out
+        ${sidebarOpen ? 'translate-x-0 w-56' : '-translate-x-full lg:translate-x-0'}
       `}>
-        <div className="flex items-center gap-2 px-4 h-14 border-b border-sidebar-border">
-          <div className="w-7 h-7 rounded bg-primary flex items-center justify-center">
+        <div className="flex items-center gap-2 px-3 h-14 border-b border-sidebar-border overflow-hidden">
+          <div className="w-7 h-7 rounded bg-primary flex items-center justify-center flex-shrink-0">
             <span className="text-primary-foreground font-bold text-sm font-mono">D</span>
           </div>
-          <span className="font-semibold text-sidebar-accent-foreground tracking-tight">DNS Control</span>
+          {(!collapsed || sidebarOpen) && (
+            <span className="font-semibold text-sidebar-accent-foreground tracking-tight whitespace-nowrap">DNS Control</span>
+          )}
           <button className="ml-auto lg:hidden text-sidebar-foreground" onClick={() => setSidebarOpen(false)}>
             <X size={18} />
           </button>
@@ -78,28 +88,31 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
           {filteredNavItems.map(item => {
             const active = location.pathname === item.path;
+            const showLabel = !collapsed || sidebarOpen;
             return (
               <Link
                 key={item.path}
                 to={item.path}
                 onClick={() => setSidebarOpen(false)}
+                title={collapsed && !sidebarOpen ? item.label : undefined}
                 className={`
                   flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors
+                  ${collapsed && !sidebarOpen ? 'justify-center' : ''}
                   ${active
                     ? 'bg-sidebar-accent text-sidebar-primary font-medium'
                     : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                   }
                 `}
               >
-                <item.icon size={16} />
-                {item.label}
+                <item.icon size={16} className="flex-shrink-0" />
+                {showLabel && <span className="truncate">{item.label}</span>}
               </Link>
             );
           })}
         </nav>
 
         <div className="px-3 py-3 border-t border-sidebar-border space-y-2">
-          {user && (
+          {user && (!collapsed || sidebarOpen) && (
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-1.5 min-w-0">
                 <span className="text-xs text-muted-foreground font-mono truncate">{user.username}</span>
@@ -116,15 +129,35 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </button>
             </div>
           )}
-          <p className="text-xs text-muted-foreground font-mono px-1">v2.0.0 · Carrier Edition</p>
+          {user && collapsed && !sidebarOpen && (
+            <button
+              onClick={logout}
+              className="w-full flex justify-center text-muted-foreground hover:text-destructive transition-colors"
+              title="Sair"
+            >
+              <LogOut size={14} />
+            </button>
+          )}
+          {(!collapsed || sidebarOpen) && (
+            <p className="text-xs text-muted-foreground font-mono px-1">v2.0.0 · Carrier Edition</p>
+          )}
         </div>
       </aside>
 
-      {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="h-16 flex items-center gap-3 px-5 border-b border-border bg-card/50 backdrop-blur">
-          <button className="lg:hidden text-foreground" onClick={() => setSidebarOpen(true)}>
+          {/* Mobile open */}
+          <button className="lg:hidden text-foreground" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu">
             <Menu size={20} />
+          </button>
+          {/* Desktop collapse toggle — visible on all pages */}
+          <button
+            className="hidden lg:flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:text-primary hover:bg-secondary transition-colors"
+            onClick={() => setCollapsed(v => !v)}
+            title={collapsed ? 'Expandir menu (Ctrl+B)' : 'Recolher menu (Ctrl+B)'}
+            aria-label="Alternar menu lateral"
+          >
+            {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
           </button>
           <h1 className="text-sm font-bold uppercase tracking-[0.16em] text-foreground/90">
             {navItems.find(n => n.path === location.pathname)?.label || 'Dashboard'}
@@ -138,7 +171,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 className="bg-transparent outline-none flex-1 text-foreground placeholder:text-muted-foreground/50"
               />
             </label>
-            <button className="relative p-2 rounded-md hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground">
+            <button
+              onClick={() => navigate('/events')}
+              className="relative p-2 rounded-md hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
+              title="Ver eventos"
+            >
               <Bell size={16} />
               <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-accent text-accent-foreground text-[9px] font-bold flex items-center justify-center">2</span>
             </button>
@@ -157,4 +194,25 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </div>
     </div>
   );
+}
+
+// Global Ctrl+B shortcut for collapse
+if (typeof window !== 'undefined') {
+  let installed = (window as any).__sidebarShortcutInstalled;
+  if (!installed) {
+    (window as any).__sidebarShortcutInstalled = true;
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        try {
+          const cur = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
+          localStorage.setItem(SIDEBAR_COLLAPSED_KEY, cur ? '0' : '1');
+          window.dispatchEvent(new Event('storage'));
+          // soft reload of sidebar via location change is not needed; React state reads on mount.
+          // For instant feedback, dispatch a custom event some other layout could listen to.
+          window.dispatchEvent(new CustomEvent('dns-control:toggle-sidebar'));
+        } catch {}
+      }
+    });
+  }
 }
