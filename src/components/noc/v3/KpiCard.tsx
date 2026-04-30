@@ -10,13 +10,19 @@ interface Props {
 }
 
 export default function KpiCard({ label, value, sub, visual, accent = 'mint', glow }: Props) {
+  const valueLength = typeof value === 'string' ? value.length : 4;
+  const sizeClass =
+    valueLength > 12 ? 'text-[15px]'
+    : valueLength > 8 ? 'text-[18px]'
+    : 'text-[28px]';
+
   return (
     <div className="noc-kpi-card" data-accent={accent}>
       <div className="flex items-start justify-between gap-3 h-full">
         <div className="flex flex-col justify-between min-w-0 flex-1">
           <div className="noc-kpi-label">{label}</div>
-          <div>
-            <div className={`noc-kpi-value ${glow ? (accent === 'violet' ? 'noc-glow-violet' : 'noc-glow-mint') : ''} truncate`}>
+          <div className="min-w-0">
+            <div className={`font-bold font-mono leading-none tracking-tight text-foreground mt-2 ${sizeClass} ${glow ? (accent === 'violet' ? 'noc-glow-violet' : 'noc-glow-mint') : ''}`}>
               {value}
             </div>
             {sub && <div className="noc-kpi-sub">{sub}</div>}
