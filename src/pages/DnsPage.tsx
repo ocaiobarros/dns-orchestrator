@@ -1166,7 +1166,7 @@ export default function DnsPage() {
       {/* ───── Bottom: Evolução do Tráfego (full-width multi-line) + Resumo do Ambiente ───── */}
       <div className="grid gap-3" style={{ gridTemplateColumns: 'minmax(0, 3fr) minmax(0, 1fr)' }}>
         <div className={`min-w-0 ${focusRing('traffic')} rounded-xl`}>
-          <TrafficEvolutionChart data={effectiveChartData} rangeLabel={periodLabel} />
+          <TrafficEvolutionChart data={effectiveChartData} rangeLabel={periodLabel} timeMeta={timeMeta} timeRange={timeRange} />
         </div>
         <div className="min-w-0">
           <Panel title="Resumo do Ambiente" accent="mint">
@@ -1185,12 +1185,12 @@ export default function DnsPage() {
 
       {/* ───── Secondary charts (preserved — were tab "Tráfego") ───── */}
       <div className={`grid grid-cols-1 lg:grid-cols-2 gap-3 ${focusRing('traffic')} rounded-xl`}>
-        <ChartPanel title="QPS ao longo do tempo" data={effectiveChartData} dataKey="qps" accent="blue" rangeLabel={periodLabel} />
-        <ChartPanel title="Latência (ms)" data={effectiveChartData} dataKey="latency" accent="violet" rangeLabel={periodLabel} />
+        <ChartPanel title="QPS ao longo do tempo" data={effectiveChartData} dataKey="qps" accent="blue" rangeLabel={periodLabel} timeMeta={timeMeta} timeRange={timeRange} />
+        <ChartPanel title="Latência (ms)" data={effectiveChartData} dataKey="latency" accent="violet" rangeLabel={periodLabel} timeMeta={timeMeta} timeRange={timeRange} />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <CacheHitChart data={effectiveChartData} rangeLabel={periodLabel} />
-        <ErrorsChart data={effectiveChartData} rangeLabel={periodLabel} />
+        <CacheHitChart data={effectiveChartData} rangeLabel={periodLabel} timeMeta={timeMeta} timeRange={timeRange} />
+        <ErrorsChart data={effectiveChartData} rangeLabel={periodLabel} timeMeta={timeMeta} timeRange={timeRange} />
       </div>
     </div>
   );
