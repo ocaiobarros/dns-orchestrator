@@ -240,7 +240,7 @@ function InterceptionDashboard() {
       </div>
 
       {/* Triple panel: Topologia + Mapa Mundi + Mapa de Latência */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      <div className="noc-grid-triple">
         <PanelV3 title="Topologia do Serviço" icon={<Network size={13} />}>
           <TopologyMini frontendIp={frontendIp} frontendQps={totalQps} backends={topoBackends.slice(0, 2)} />
         </PanelV3>
