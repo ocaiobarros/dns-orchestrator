@@ -67,15 +67,53 @@ function queryDomainOf(row: any): string {
   return String(row?.domain ?? row?.qname ?? row?.query ?? row?.name ?? '').replace(/\.$/, '');
 }
 
-function rowMatchesFilters(row: any, instance: string, type: string): boolean {
+function rowMatchesFilters(
+  row: any,
+  instance: string,
+  type: string,
+  options: { allowMissingInstance?: boolean; allowMissingType?: boolean } = {},
+): boolean {
   const rowInstance = queryInstanceOf(row);
-  const matchesInstance = !instance || !rowHasInstance(row) || sameInstance(rowInstance, instance);
-  const matchesType = !type || !rowHasQueryType(row) || queryTypeOf(row) === type;
+  const matchesInstance = !instance || (rowHasInstance(row) ? sameInstance(rowInstance, instance) : Boolean(options.allowMissingInstance));
+  const matchesType = !type || (rowHasQueryType(row) ? queryTypeOf(row) === type : Boolean(options.allowMissingType));
   return matchesInstance && matchesType;
 }
 
 const SELECT_PANEL = 'noc-overlay-panel z-[120]';
 const SELECT_ITEM = 'font-mono text-[11px] text-popover-foreground focus:bg-primary/15 focus:text-primary data-[state=checked]:text-primary';
+const DNS_FILTER_STORAGE_KEY = 'dns-control:dns-page-filters:v1';
+const DEFAULT_DNS_FILTERS = { hours: 1, selectedInstance: '', qtype: '' };
+const PERIOD_LABELS: Record<number, string> = {
+  1: 'Última 1 hora',
+  6: 'Últimas 6 horas',
+  12: 'Últimas 12 horas',
+  24: 'Últimas 24 horas',
+  48: 'Últimas 48 horas',
+  72: 'Últimas 72 horas',
+};
+
+type DnsFilterState = typeof DEFAULT_DNS_FILTERS;
+
+function normalizeHours(value: unknown): number {
+  const parsed = Number(value);
+  return Object.prototype.hasOwnProperty.call(PERIOD_LABELS, parsed) ? parsed : DEFAULT_DNS_FILTERS.hours;
+}
+
+function readStoredDnsFilters(): DnsFilterState {
+  if (typeof window === 'undefined') return DEFAULT_DNS_FILTERS;
+  try {
+    const raw = window.localStorage.getItem(DNS_FILTER_STORAGE_KEY);
+    if (!raw) return DEFAULT_DNS_FILTERS;
+    const parsed = JSON.parse(raw) as Partial<DnsFilterState>;
+    return {
+      hours: normalizeHours(parsed.hours),
+      selectedInstance: String(parsed.selectedInstance || ''),
+      qtype: String(parsed.qtype || '').toUpperCase(),
+    };
+  } catch {
+    return DEFAULT_DNS_FILTERS;
+  }
+}
 
 /* ============================================================
    KPI CARD — large, with circular glowing icon + sparkline
