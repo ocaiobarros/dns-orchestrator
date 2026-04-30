@@ -540,30 +540,48 @@ export default function DnsPage() {
           <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <Calendar size={13} />
-            <select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="bg-transparent outline-none text-foreground cursor-pointer">
-              <option value={1}>Última 1 hora</option>
-              <option value={6}>Últimas 6 horas</option>
-              <option value={12}>Últimas 12 horas</option>
-              <option value={24}>Últimas 24 horas</option>
-              <option value={48}>Últimas 48 horas</option>
-              <option value={72}>Últimas 72 horas</option>
-            </select>
+            <Select value={String(hours)} onValueChange={(value) => setHours(Number(value))}>
+              <SelectTrigger className="h-auto min-h-0 w-[132px] border-0 bg-transparent p-0 font-mono text-[11px] text-foreground ring-offset-0 focus:ring-0 focus:ring-offset-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className={SELECT_PANEL}>
+                <SelectItem className={SELECT_ITEM} value="1">Última 1 hora</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="6">Últimas 6 horas</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="12">Últimas 12 horas</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="24">Últimas 24 horas</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="48">Últimas 48 horas</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="72">Últimas 72 horas</SelectItem>
+              </SelectContent>
+            </Select>
           </label>
           <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <Layers size={13} />
-            <select value={selectedInstance} onChange={(e) => setSelectedInstance(e.target.value)} className="bg-transparent outline-none text-foreground min-w-[112px] cursor-pointer">
-              <option value="">Todas instâncias</option>
-              {backends.map((b: any) => <option key={b.name || b.instance || b.id} value={b.name || b.instance || b.id}>{b.name || b.instance || b.id}</option>)}
-            </select>
+            <Select value={selectedInstance || 'all'} onValueChange={(value) => setSelectedInstance(value === 'all' ? '' : value)}>
+              <SelectTrigger className="h-auto min-h-0 w-[150px] border-0 bg-transparent p-0 font-mono text-[11px] text-foreground ring-offset-0 focus:ring-0 focus:ring-offset-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className={SELECT_PANEL}>
+                <SelectItem className={SELECT_ITEM} value="all">Todas instâncias</SelectItem>
+                {backends.map((b: any) => {
+                  const id = String(b.name || b.instance || b.id || '');
+                  return id ? <SelectItem className={SELECT_ITEM} key={id} value={id}>{id}</SelectItem> : null;
+                })}
+              </SelectContent>
+            </Select>
           </label>
           <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <ChevronDown size={13} />
-            <select value={qtype} onChange={(e) => setQtype(e.target.value)} className="bg-transparent outline-none text-foreground min-w-[72px] cursor-pointer">
-              <option value="">Todos tipos</option>
-              {availableQtypes.map((t: string) => <option key={t} value={t}>{t}</option>)}
-            </select>
+            <Select value={qtype || 'all'} onValueChange={(value) => setQtype(value === 'all' ? '' : value)}>
+              <SelectTrigger className="h-auto min-h-0 w-[112px] border-0 bg-transparent p-0 font-mono text-[11px] text-foreground ring-offset-0 focus:ring-0 focus:ring-offset-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className={SELECT_PANEL}>
+                <SelectItem className={SELECT_ITEM} value="all">Todos tipos</SelectItem>
+                {availableQtypes.map((t: string) => <SelectItem className={SELECT_ITEM} key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </label>
           <button
             onClick={refreshAll}
