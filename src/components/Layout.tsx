@@ -3,8 +3,10 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Server, Network, Globe, Shield, Router,
   FileText, Wrench, Settings, History, FolderOpen, Menu, X, Wand2, Users, LogOut,
-  HeartPulse, BarChart3, Bell,
+  HeartPulse, BarChart3, Bell, Search, ChevronDown,
 } from 'lucide-react';
+import { useAuth } from '@/lib/auth';
+import { useNoc } from '@/lib/noc-context';
 import { useAuth } from '@/lib/auth';
 import { useNoc } from '@/lib/noc-context';
 
