@@ -508,7 +508,7 @@ export default function DnsPage() {
       cacheMisses: 0,
     }));
   }, [qtype, selectedInstance, filteredRecentItems]);
-  const effectiveChartData = querySeries.length ? querySeries : chartData;
+  const effectiveChartData = chartData.length ? chartData : querySeries;
   const topDomainsRaw = Array.isArray(telemetry?.top_domains) ? telemetry.top_domains
     : Array.isArray(queryAnalytics?.top_domains) ? queryAnalytics.top_domains : [];
 
@@ -533,12 +533,10 @@ export default function DnsPage() {
   const backendCacheMisses = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_misses), 0);
   const backendServfail = selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.servfail), 0);
 
-  const totalQueries = hasQueryFilterData
-    ? qtypeSelectedCount
-    : selectedInstance
-      ? backendQueries
-    : countWindow(metricsArr, 'totalQueries')
+  const totalQueries = countWindow(metricsArr, 'totalQueries')
       || safeNum(latestMetric?.totalQueries)
+      || (hasQueryFilterData ? qtypeSelectedCount : 0)
+      || (selectedInstance ? backendQueries : 0)
       || backendQueries
       || safeNum(resolver.total_queries);
 
@@ -556,10 +554,9 @@ export default function DnsPage() {
       ? selectedBackends.reduce((a: number, b: any) => a + safeNum(b.resolver?.recursion_avg_ms), 0) / selectedBackends.length
       : safeNum(resolver.avg_latency_ms));
 
-  const totalServfail = selectedInstance
-    ? backendServfail
-    : countWindow(metricsArr, 'servfail')
+  const totalServfail = countWindow(metricsArr, 'servfail')
       || safeNum(latestMetric?.servfail)
+      || (selectedInstance ? backendServfail : 0)
       || backendServfail
       || safeNum(resolver.servfail);
 
