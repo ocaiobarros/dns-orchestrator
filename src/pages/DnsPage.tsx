@@ -323,7 +323,10 @@ export default function DnsPage() {
     const metricRows = Array.isArray(filteredMetrics) ? filteredMetrics : [];
     const historyRows = Array.isArray(historyData) ? historyData : [];
     const timedMetrics = metricRows.filter((p: any) => toTs(p.timestamp ?? p.epoch) > 0);
-    const history = timedMetrics.length > 0 ? timedMetrics : historyRows;
+    const liveMetricRows = selectedInstance && metricRows.length > 0
+      ? metricRows.map((p: any) => ({ ...p, timestamp: p.timestamp ?? telemetry?.timestamp ?? new Date().toISOString() }))
+      : [];
+    const history = timedMetrics.length > 0 ? timedMetrics : liveMetricRows.length > 0 ? liveMetricRows : historyRows;
     const minTs = Date.now() - hours * 60 * 60 * 1000;
     const series = history
       .filter((p: any) => {
@@ -355,7 +358,7 @@ export default function DnsPage() {
       cacheHits: firstNum(resolver.cache_hits),
       cacheMisses: firstNum(resolver.cache_misses),
     }];
-  }, [filteredMetrics, historyData, hours, telemetry]);
+  }, [filteredMetrics, historyData, hours, selectedInstance, telemetry]);
 
   if (isLoading) return <LoadingState />;
   if (error) return <ErrorState message={error.message} />;
