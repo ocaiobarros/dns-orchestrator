@@ -469,6 +469,7 @@ export default function DnsPage() {
   const hours = TIME_RANGE_HOURS[timeRange] ?? TIME_RANGE_HOURS[DEFAULT_DNS_FILTERS.timeRange];
   const setFilter = (patch: Partial<DnsFilterState>) => setFilters(prev => ({ ...prev, ...patch }));
   const [showOnlyAlerts, setShowOnlyAlerts] = useState(false);
+  const [activeSection, setActiveSection] = useState<SectionTab>('overview');
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
