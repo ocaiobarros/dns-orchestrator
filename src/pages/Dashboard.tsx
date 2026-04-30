@@ -178,7 +178,7 @@ function InterceptionDashboard() {
   }
 
   return (
-    <div className="space-y-4 max-w-[1800px] mx-auto">
+    <div className="space-y-4 noc-page">
       {/* Status chip bar */}
       <StatusChipBar
         allHealthy={allRunning && healthyCount === totalInstances}
