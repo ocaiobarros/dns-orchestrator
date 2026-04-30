@@ -26,6 +26,17 @@ ALLOWED_EXECUTABLES = frozenset({
     "/etc/network/post-up.d/dns-control",
 })
 
+PRIVILEGED_EXECUTABLE_PATHS = {
+    "systemctl": "/usr/bin/systemctl",
+    "journalctl": "/usr/bin/journalctl",
+    "vtysh": "/usr/bin/vtysh",
+    "nft": "/usr/sbin/nft",
+    "unbound-control": "/usr/sbin/unbound-control",
+    "sysctl": "/usr/sbin/sysctl",
+    "ifreload": "/usr/sbin/ifreload",
+    "ip": "/usr/sbin/ip",
+}
+
 # Strict allowlist: only these exact (executable, args_prefix) combos may use sudo
 _SUDO_ALLOWED_COMMANDS: list[tuple[str, list[str]]] = [
     # Diagnostics
@@ -226,8 +237,10 @@ def run_command(
         and sudo_allowed
     )
 
+    sudo_executable = PRIVILEGED_EXECUTABLE_PATHS.get(executable, executable)
+
     if should_sudo:
-        cmd = ["sudo", "-n", executable] + sanitized_args
+        cmd = ["sudo", "-n", sudo_executable] + sanitized_args
         logger.info(f"Executing (privileged): {' '.join(cmd)}")
     else:
         cmd = [executable] + sanitized_args
