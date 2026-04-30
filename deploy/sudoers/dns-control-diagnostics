@@ -73,8 +73,11 @@ dns-control ALL=(root) NOPASSWD: \
     /usr/bin/systemctl is-enabled networking, \
     /usr/bin/systemctl list-units --type=service *, \
     /usr/bin/systemctl list-units --all --type=service --no-pager, \
+    /usr/bin/systemctl list-units --all --type=service --no-pager --plain, \
     /usr/bin/systemctl list-units --all --type=service, \
     /usr/bin/systemctl list-units --type=service --no-pager, \
+    /usr/bin/systemctl list-units --type=service --all --no-pager --plain, \
+    /usr/bin/systemctl list-units --type=service --state=running --no-pager --plain, \
     /usr/bin/systemctl --no-pager list-units --all --type=service, \
     /usr/bin/systemctl list-unit-files --type=service --no-pager, \
     /usr/bin/systemctl list-unit-files --type=service, \
