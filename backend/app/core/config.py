@@ -16,10 +16,11 @@ class Settings(BaseSettings):
     SECRET_KEY: str = os.environ.get("DNS_CONTROL_SECRET_KEY", "change-me-in-production-use-openssl-rand-hex-32")
     ALGORITHM: str = "HS256"
 
-    # Sessions
-    SESSION_TIMEOUT_MINUTES: int = int(os.environ.get("DNS_CONTROL_SESSION_TIMEOUT_MINUTES", "30"))
-    SESSION_WARNING_SECONDS: int = int(os.environ.get("DNS_CONTROL_SESSION_WARNING_SECONDS", "120"))
-    KIOSK_SESSION_TIMEOUT_MINUTES: int = int(os.environ.get("DNS_CONTROL_KIOSK_SESSION_TIMEOUT_MINUTES", "1440"))  # 24h
+    # Sessions — sessões eternas (persistentes) para admin e viewer.
+    # Timeout default: ~10 anos (5.256.000 minutos). Warning desativado (0).
+    SESSION_TIMEOUT_MINUTES: int = int(os.environ.get("DNS_CONTROL_SESSION_TIMEOUT_MINUTES", "5256000"))
+    SESSION_WARNING_SECONDS: int = int(os.environ.get("DNS_CONTROL_SESSION_WARNING_SECONDS", "0"))
+    KIOSK_SESSION_TIMEOUT_MINUTES: int = int(os.environ.get("DNS_CONTROL_KIOSK_SESSION_TIMEOUT_MINUTES", "5256000"))
 
     # Server
     HOST: str = os.environ.get("DNS_CONTROL_HOST", "127.0.0.1")
