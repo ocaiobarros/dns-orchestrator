@@ -134,7 +134,7 @@ export default function UsersPage() {
   const canChangePass = changePassword.length >= 6 && changePassword === changePasswordConfirm;
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Users size={20} className="text-primary" />
