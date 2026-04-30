@@ -5,6 +5,16 @@ import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useTelemetry } from '@/lib/hooks';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import type { ServerTimeMetadata } from '@/lib/api';
+import {
+  DEFAULT_SERVER_TIME_META,
+  buildServerTimeTicks,
+  formatServerAxisTime,
+  formatServerDateTime,
+  formatServerTooltipTime,
+  parseUtcTimestamp,
+  timezoneBadgeText,
+} from '@/lib/server-time';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, XAxis, YAxis,
@@ -23,12 +33,7 @@ function firstNum(...values: unknown[]): number {
 }
 
 function toTs(value: unknown): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value > 1_000_000_000_000 ? value : value * 1000;
-  if (typeof value === 'string') {
-    const parsed = Date.parse(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
+  return parseUtcTimestamp(value);
 }
 
 function countWindow(rows: Array<Record<string, number>>, key: string): number {
