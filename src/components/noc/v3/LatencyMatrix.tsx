@@ -59,14 +59,25 @@ export default function LatencyMatrix({ frontend, resolvers, upstreams }: Props)
           );
         })}
 
-        {/* Resolvers → Upstreams (parallel lines, simplified) */}
+        {/* Resolvers → Upstreams (animated, same treatment as FE→Resolvers) */}
         {resolverPositions.map((rp, i) =>
           upstreamPositions.map((up, j) => {
             const u = upstreams[j];
             const c = colorFor(u.latencyMs, u.healthy);
+            const isOk = u.healthy !== false && u.latencyMs > 0;
+            const dur = `${1.8 + ((i + j) * 0.35)}s`;
             return (
-              <line key={`l-u-${i}-${j}`} x1={rp.x} y1={rp.y} x2={up.x} y2={up.y}
-                stroke={c} strokeWidth="0.25" strokeOpacity="0.35" strokeDasharray="1 1.5" />
+              <g key={`l-u-${i}-${j}`}>
+                <line x1={rp.x} y1={rp.y} x2={up.x} y2={up.y}
+                  stroke={c} strokeWidth="0.3" strokeOpacity="0.55" strokeDasharray="1.5 1" />
+                {isOk && (
+                  <circle r="0.6" fill={c}>
+                    <animateMotion dur={dur} repeatCount="indefinite"
+                      path={`M ${rp.x} ${rp.y} L ${up.x} ${up.y}`} />
+                    <animate attributeName="opacity" values="0;1;1;0" dur={dur} repeatCount="indefinite" />
+                  </circle>
+                )}
+              </g>
             );
           })
         )}
