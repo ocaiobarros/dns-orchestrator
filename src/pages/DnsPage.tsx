@@ -360,9 +360,6 @@ export default function DnsPage() {
     }];
   }, [filteredMetrics, historyData, hours, selectedInstance, telemetry]);
 
-  if (isLoading) return <LoadingState />;
-  if (error) return <ErrorState message={error.message} />;
-
   const collectorOk = telemetry?.health?.collector === 'ok';
   const resolver = telemetry?.resolver ?? {};
   const backends = Array.isArray(telemetry?.backends) ? telemetry.backends : [];
@@ -480,6 +477,9 @@ export default function DnsPage() {
       setRefreshing(false);
     }
   };
+
+  if (isLoading) return <LoadingState />;
+  if (error) return <ErrorState message={error.message} />;
 
   return (
     <div className="space-y-4 -mx-1">
