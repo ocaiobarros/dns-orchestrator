@@ -63,13 +63,15 @@ export function buildServerTimeTicks(rows: Array<{ ts?: number }>, range: string
   const stepMs = (TICK_MINUTES_BY_RANGE[range] ?? 60) * 60 * 1000;
   const ticks: number[] = [];
 
+  if (first === last) return [first];
+
   let cursor = Math.ceil(first / stepMs) * stepMs;
   while (cursor <= last) {
     ticks.push(cursor);
     cursor += stepMs;
   }
 
-  if (ticks.length < 2 && first !== last) return [first, last];
+  if (ticks.length < 2) return [first, last];
   return ticks;
 }
 
