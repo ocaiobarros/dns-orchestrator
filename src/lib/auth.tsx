@@ -111,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       if (IS_PREVIEW) {
-        const stored = sessionStorage.getItem(SESSION_KEY);
+        const stored = localStorage.getItem(SESSION_KEY);
         if (stored) {
           const parsed = JSON.parse(stored);
           const u = parsed.user || parsed;
@@ -198,7 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           sessionTimeoutMinutes: isViewer ? 1440 : DEFAULT_SESSION_TIMEOUT_MINUTES,
           sessionWarningSeconds: DEFAULT_SESSION_WARNING_SECONDS,
         };
-        sessionStorage.setItem(SESSION_KEY, JSON.stringify({ user: mockUser, sessionInfo: si }));
+        localStorage.setItem(SESSION_KEY, JSON.stringify({ user: mockUser, sessionInfo: si }));
         setUser(mockUser);
         setSessionInfo(si);
         startSessionTimers(expiresAt, si.sessionWarningSeconds, mockUser.role);
@@ -254,7 +254,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         localStorage.removeItem(TOKEN_KEY);
       }
-      sessionStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(SESSION_KEY);
       setUser(null);
       setSessionInfo(null);
       setShowSessionWarning(false);
@@ -272,10 +272,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           sessionTimeoutMinutes: DEFAULT_SESSION_TIMEOUT_MINUTES,
           sessionWarningSeconds: DEFAULT_SESSION_WARNING_SECONDS,
         };
-        const stored = sessionStorage.getItem(SESSION_KEY);
+        const stored = localStorage.getItem(SESSION_KEY);
         if (stored) {
           const parsed = JSON.parse(stored);
-          sessionStorage.setItem(SESSION_KEY, JSON.stringify({ ...parsed, sessionInfo: si }));
+          localStorage.setItem(SESSION_KEY, JSON.stringify({ ...parsed, sessionInfo: si }));
         }
         setSessionInfo(si);
         setShowSessionWarning(false);
@@ -320,10 +320,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         const updatedUser = { ...user!, mustChangePassword: false };
         setUser(updatedUser);
-        const stored = sessionStorage.getItem(SESSION_KEY);
+        const stored = localStorage.getItem(SESSION_KEY);
         if (stored) {
           const parsed = JSON.parse(stored);
-          sessionStorage.setItem(SESSION_KEY, JSON.stringify({ ...parsed, user: updatedUser }));
+          localStorage.setItem(SESSION_KEY, JSON.stringify({ ...parsed, user: updatedUser }));
         }
         return { success: true };
       }
