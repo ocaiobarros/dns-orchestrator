@@ -461,10 +461,10 @@ export default function DnsPage() {
   const qps = qtype ? filteredRecentItems.length : safeNum(latestMetric?.qps) || safeNum(resolver.qps);
 
   // Sparkline data per KPI
-  const sparkQ = effectiveChartData.slice(-30).map(d => d.qps);
-  const sparkH = effectiveChartData.slice(-30).map(d => d.hitRatio || cacheHitRatio);
-  const sparkL = effectiveChartData.slice(-30).map(d => d.latency || avgLatency);
-  const sparkE = effectiveChartData.slice(-30).map(d => d.servfail + d.nxdomain);
+  const sparkQ = effectiveChartData.slice(-30).map(d => safeNum(d.qps));
+  const sparkH = effectiveChartData.slice(-30).map(d => safeNum(d.hitRatio) || cacheHitRatio);
+  const sparkL = effectiveChartData.slice(-30).map(d => safeNum(d.latency) || avgLatency);
+  const sparkE = effectiveChartData.slice(-30).map(d => safeNum(d.servfail) + safeNum(d.nxdomain));
 
   const recentDomainCounts = allRecentItems.reduce((acc: Record<string, number>, q: any) => {
     const domain = String(q?.domain ?? q?.qname ?? '').replace(/\.$/, '');
