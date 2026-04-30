@@ -391,6 +391,8 @@ export interface ReachabilityResult {
 
 export interface DnsMetrics {
   timestamp: string;
+  timestamp_utc?: string;
+  epoch?: number;
   qps: number;
   cacheHits: number;
   cacheMisses: number;
