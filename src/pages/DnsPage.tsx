@@ -432,10 +432,10 @@ export default function DnsPage() {
               </tr>
             </thead>
             <tbody className="font-mono text-[12px]">
-              {backends.length === 0 && (
+              {visibleBackends.length === 0 && (
                 <tr><td colSpan={7} className="py-6 text-center text-muted-foreground text-[11px]">Sem dados</td></tr>
               )}
-              {backends.map((b: any) => (
+              {visibleBackends.map((b: any) => (
                 <tr key={b.name} className="border-t border-border/30">
                   <td className="py-3.5 align-top">
                     <div className="flex items-center gap-2">
@@ -481,7 +481,7 @@ export default function DnsPage() {
         <Panel title="Top Domínios Consultados" accent="mint">
           <div className="space-y-2">
             {topDomains.length === 0 && (
-              <div className="text-center text-muted-foreground text-[11px] py-8">Sem dados</div>
+              <div className="text-center text-muted-foreground text-[11px] py-8">{filteredRecentItems.length ? `${filteredRecentItems.length} consultas filtradas` : 'Sem dados'}</div>
             )}
             {topDomains.map((d: any) => {
               const pct = (d.count / maxDomain) * 100;
