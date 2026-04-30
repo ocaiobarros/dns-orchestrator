@@ -695,6 +695,38 @@ export default function DnsPage() {
       count: firstNum(d.query_count, d.queryCount, d.count, d.queries),
     }));
   const maxDomain = Math.max(1, ...topDomains.map((d: any) => d.count));
+
+  // ─── nftables traffic totals (PRESERVED — same telemetry source) ───
+  const traffic = (telemetry as any)?.traffic ?? {};
+  const trafficTotalPackets = safeNum(traffic.total_packets);
+  const trafficTotalBytes = safeNum(traffic.total_bytes);
+  const trafficQpsNft = safeNum(traffic.qps);
+  const trafficDeltaPackets = safeNum(traffic.delta_packets ?? traffic.deltaPackets);
+
+  // ─── per-backend nftables traffic distribution ───
+  const backendTraffic = backends.map((b: any) => {
+    const t = b?.traffic ?? {};
+    return {
+      name: backendName(b),
+      packets: safeNum(t.packets),
+      bytes: safeNum(t.bytes),
+      share: safeNum(t.share),
+    };
+  });
+  const totalBackendPackets = backendTraffic.reduce((a, b) => a + b.packets, 0);
+
+  // ─── top clients (PRESERVED — telemetry.top_clients) ───
+  const topClientsRaw: any[] = Array.isArray((telemetry as any)?.top_clients) ? (telemetry as any).top_clients : [];
+  const topClients = topClientsRaw
+    .map((c: any) => ({
+      ip: c.client || c.ip || c.address || '—',
+      count: firstNum(c.queries, c.query_count, c.count, c.value),
+    }))
+    .filter(c => c.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+  const maxClient = Math.max(1, ...topClients.map(c => c.count));
+
   const periodLabel = PERIOD_LABELS[timeRange] ?? PERIOD_LABELS[DEFAULT_DNS_FILTERS.timeRange];
   const activeFilters = [
     `Instância: ${selectedInstance || 'Todas'}`,
@@ -702,6 +734,11 @@ export default function DnsPage() {
     `Período: ${periodLabel}`,
   ];
   const hasActiveFilters = filters.instance !== DEFAULT_DNS_FILTERS.instance || filters.qtype !== DEFAULT_DNS_FILTERS.qtype || filters.timeRange !== DEFAULT_DNS_FILTERS.timeRange;
+
+  // Environment summary
+  const lastCollect = telemetry?.timestamp ? new Date(telemetry.timestamp).toLocaleTimeString('pt-BR', { hour12: false }) : '—';
+  const uniqueClients = topClientsRaw.length || safeNum((telemetry as any)?.top_clients_count);
+  const uniqueDomains = topDomainsRaw.length || safeNum((telemetry as any)?.top_domains_count);
 
   const refreshAll = async () => {
     setRefreshing(true);
