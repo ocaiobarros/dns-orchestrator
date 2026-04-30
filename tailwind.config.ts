@@ -10,6 +10,17 @@ export default {
       padding: "2rem",
       screens: { "2xl": "1400px" },
     },
+    screens: {
+      sm: "640px",
+      md: "768px",
+      lg: "1024px",
+      xl: "1280px",
+      "2xl": "1536px",
+      "3xl": "1920px",   // Full HD
+      "4k": "2560px",    // QHD / 2K
+      "5k": "3840px",    // 4K UHD
+      wall: "5120px",    // 5K+ NOC video walls
+    },
     extend: {
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],

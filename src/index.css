@@ -86,6 +86,22 @@
     @apply border-border;
   }
 
+  /* ────────────────────────────────────────────────────────────
+     Fluid root font-size — scales the ENTIRE UI (rem-based
+     paddings, gaps, font sizes from Tailwind tokens) for large
+     NOC displays: Full HD, 2K, 4K, and 72" video walls.
+     Default browser root = 16px. We bump it on big screens.
+     ──────────────────────────────────────────────────────────── */
+  html {
+    font-size: 16px;
+  }
+  @media (min-width: 1600px) { html { font-size: 17px; } }
+  @media (min-width: 1920px) { html { font-size: 18px; } }   /* Full HD */
+  @media (min-width: 2560px) { html { font-size: 21px; } }   /* 2K / QHD */
+  @media (min-width: 3200px) { html { font-size: 24px; } }
+  @media (min-width: 3840px) { html { font-size: 28px; } }   /* 4K UHD */
+  @media (min-width: 5120px) { html { font-size: 32px; } }   /* 5K+ video wall */
+
   body {
     @apply bg-background text-foreground font-sans antialiased;
     text-rendering: optimizeLegibility;

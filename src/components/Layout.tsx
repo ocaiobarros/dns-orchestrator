@@ -58,7 +58,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const sidebarWidth = collapsed ? 'w-16' : 'w-56';
+  // Sidebar scales with breakpoints so it stays proportional on 4K / 72" walls
+  const sidebarWidth = collapsed
+    ? 'w-16 2xl:w-20 4k:w-24'
+    : 'w-56 2xl:w-64 4k:w-72';
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -188,7 +191,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6 2xl:p-8 4k:p-10 w-full max-w-none">
           {children}
         </main>
       </div>
