@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, RefreshCw, Bell, SlidersHorizontal, Layers, Database, Timer, Shield, ChevronDown, Search, Package, HardDrive, Zap, Globe, Users, Server, Activity } from 'lucide-react';
 import { LoadingState, ErrorState } from '@/components/DataStates';
@@ -270,6 +270,43 @@ function ChartTooltip({ active, payload, label, meta }: { active?: boolean; payl
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function MeasuredChartFrame({
+  minHeight = 180,
+  children,
+}: {
+  minHeight?: number;
+  children: (size: { width: number; height: number }) => React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      const width = Math.floor(rect.width);
+      const height = Math.floor(rect.height || minHeight);
+      setSize(prev => {
+        const next = { width: Math.max(1, width), height: Math.max(minHeight, height) };
+        return prev.width === next.width && prev.height === next.height ? prev : next;
+      });
+    };
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [minHeight]);
+
+  return (
+    <div ref={ref} className="noc-chart-frame" style={{ minHeight }}>
+      {size.width > 0 && size.height > 0 ? children(size) : null}
     </div>
   );
 }
