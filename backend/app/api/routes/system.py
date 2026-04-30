@@ -5,8 +5,10 @@ On-demand self-test for post-install and post-upgrade verification.
 
 from __future__ import annotations
 
+from datetime import datetime
 from time import monotonic
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import APIRouter, Body, Depends
@@ -19,6 +21,20 @@ from app.executors.command_runner import run_command
 from app.models.user import User
 
 router = APIRouter()
+SERVER_TIMEZONE = "America/Campo_Grande"
+SERVER_TIMEZONE_LABEL = "Campo Grande/MS"
+
+
+@router.get("/time")
+def system_time(_: User = Depends(get_current_user)):
+    tz = ZoneInfo(SERVER_TIMEZONE)
+    now = datetime.now(tz)
+    return {
+        "server_time": now.isoformat(timespec="seconds"),
+        "timezone": SERVER_TIMEZONE,
+        "timezone_label": SERVER_TIMEZONE_LABEL,
+        "utc_offset": now.strftime("%z")[:3] + ":" + now.strftime("%z")[3:],
+    }
 
 
 def _check_systemd_api() -> dict[str, Any]:
