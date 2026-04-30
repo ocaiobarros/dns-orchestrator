@@ -18,14 +18,9 @@ import RankList from '@/components/noc/v3/RankList';
 import NocGeoMap from '@/components/noc/NocGeoMap';
 import type { MapNode, MapEdge } from '@/components/noc/NocNetworkMap';
 
-import SimpleDashboard from '@/pages/SimpleDashboard';
-
 export default function Dashboard() {
   const { data: sysInfo, isLoading: sysLoading } = useSystemInfo();
-  const { data: deployState } = useDeployState();
-  const operationMode = sysInfo?.operation_mode || deployState?.operationMode || '';
   if (sysLoading && !sysInfo) return <LoadingState />;
-  if (operationMode === 'simple') return <SimpleDashboard />;
   return <InterceptionDashboard />;
 }
 
@@ -80,8 +75,7 @@ function InterceptionDashboard() {
   const allRunning = safeServices.length > 0 && safeServices.every(s => s.status === 'running' || s.status === 'active' || s.active);
   const eventItems = recentEvents?.items ?? (Array.isArray(recentEvents) ? recentEvents : []);
   const vipAddress = sysInfo?.vip_anycast ?? null;
-  // Fallback display IP for preview/mock when backend has not provisioned a VIP yet
-  const frontendIp = vipAddress || '172.250.40.3';
+  const frontendIp = vipAddress || sysInfo?.frontend_dns_ip || deployState?.frontendDnsIp || '172.250.40.3';
 
   const lastLoginFail = eventItems.find((e: any) => e.event_type?.includes('login_fail'));
   const lastLoginFailMsg = lastLoginFail

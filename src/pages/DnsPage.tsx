@@ -1,8 +1,9 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Calendar, RefreshCw, Bell, SlidersHorizontal, Layers, Database, Timer, Shield, ChevronDown } from 'lucide-react';
 import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useTelemetry, useTelemetryHistory } from '@/lib/hooks';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip,
@@ -258,20 +259,37 @@ export default function DnsPage() {
   const { data: telemetry, isLoading, error } = useTelemetry();
   const { data: historyData } = useTelemetryHistory();
   const qc = useQueryClient();
+  const [hours, setHours] = useState(1);
+  const [selectedInstance, setSelectedInstance] = useState('');
+  const [qtype, setQtype] = useState('');
+  const [showOnlyAlerts, setShowOnlyAlerts] = useState(false);
+
+  const { data: filteredMetrics } = useQuery({
+    queryKey: ['dns', 'metrics', hours, selectedInstance],
+    queryFn: async () => { const r = await api.getDnsMetrics(hours, selectedInstance || undefined); if (!r.success) throw new Error(r.error!); return r.data; },
+    refetchInterval: 60000,
+  });
+
+  const { data: recentQueries } = useQuery({
+    queryKey: ['telemetry', 'recent-queries', selectedInstance, qtype],
+    queryFn: async () => { const r = await api.getRecentQueries({ instance: selectedInstance || undefined, qtype: qtype || undefined, limit: 100 }); if (!r.success) throw new Error(r.error!); return r.data; },
+    refetchInterval: 15000,
+  });
 
   useEffect(() => {/* warm-up */}, []);
 
   const chartData = useMemo(() => {
-    const history = Array.isArray(historyData) ? historyData : [];
+    const metricRows = Array.isArray(filteredMetrics) ? filteredMetrics : [];
+    const history = metricRows.length > 0 ? metricRows : (Array.isArray(historyData) ? historyData : []);
     return history.map((p: any) => ({
       time: p.timestamp ? new Date(p.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
-      qps: safeNum(p.qps),
-      latency: safeNum(p.latency_ms),
+      qps: safeNum(p.qps ?? p.queries_per_second),
+      latency: safeNum(p.latency_ms ?? p.latency_avg_ms),
       servfail: safeNum(p.servfail),
       nxdomain: safeNum(p.nxdomain),
       hitRatio: safeNum(p.cache_hit_ratio),
     }));
-  }, [historyData]);
+  }, [filteredMetrics, historyData]);
 
   if (isLoading) return <LoadingState />;
   if (error) return <ErrorState message={error.message} />;
@@ -280,15 +298,21 @@ export default function DnsPage() {
   const resolver = telemetry?.resolver ?? {};
   const backends = Array.isArray(telemetry?.backends) ? telemetry.backends : [];
   const queryAnalytics = telemetry?.query_analytics ?? {};
+  const availableQtypes = recentQueries?.available_types ?? [];
+  const visibleBackends = selectedInstance
+    ? backends.filter((b: any) => b.name === selectedInstance || b.instance === selectedInstance || b.id === selectedInstance)
+    : backends;
+  const filteredRecentItems = recentQueries?.items ?? [];
   const topDomainsRaw = Array.isArray(telemetry?.top_domains) ? telemetry.top_domains
     : Array.isArray(queryAnalytics?.top_domains) ? queryAnalytics.top_domains : [];
   const telemetryConnected = collectorOk && safeNum(resolver.instances_live) > 0;
 
-  const totalQueries = safeNum(resolver.total_queries);
-  const cacheHitRatio = safeNum(resolver.cache_hit_ratio);
-  const avgLatency = safeNum(resolver.avg_latency_ms);
-  const totalServfail = safeNum(resolver.servfail);
-  const qps = safeNum(resolver.qps);
+  const latestMetric = Array.isArray(filteredMetrics) && filteredMetrics.length > 0 ? filteredMetrics[filteredMetrics.length - 1] as any : null;
+  const totalQueries = safeNum(latestMetric?.total_queries ?? resolver.total_queries);
+  const cacheHitRatio = safeNum(latestMetric?.cache_hit_ratio ?? resolver.cache_hit_ratio);
+  const avgLatency = safeNum(latestMetric?.latency_avg_ms ?? resolver.avg_latency_ms);
+  const totalServfail = safeNum(latestMetric?.servfail_count ?? latestMetric?.servfail ?? resolver.servfail);
+  const qps = safeNum(latestMetric?.queries_per_second ?? resolver.qps);
 
   // Sparkline data per KPI
   const sparkQ = chartData.length > 0 ? chartData.slice(-30).map(d => d.qps) : Array.from({ length: 30 }, () => Math.random() * 20 + 5);
@@ -296,7 +320,9 @@ export default function DnsPage() {
   const sparkL = chartData.length > 0 ? chartData.slice(-30).map(d => d.latency) : Array.from({ length: 30 }, () => Math.random() * 100 + 20);
   const sparkE = chartData.length > 0 ? chartData.slice(-30).map(d => d.servfail + d.nxdomain) : Array.from({ length: 30 }, () => Math.random() * 5);
 
-  const topDomains = topDomainsRaw.slice(0, 9).map((d: any) => ({
+  const topDomains = topDomainsRaw
+    .filter((d: any) => !qtype || d.query_type === qtype || d.type === qtype)
+    .slice(0, showOnlyAlerts ? 5 : 9).map((d: any) => ({
     domain: d.domain || d.name || '—',
     count: safeNum(d.query_count || d.count || d.queries),
   }));
@@ -318,20 +344,42 @@ export default function DnsPage() {
             <span className="w-1.5 h-1.5 rounded-full bg-primary" style={{ boxShadow: '0 0 6px hsl(var(--primary))' }} />
             <span className="text-primary">Operacional</span>
           </div>
-          <button className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:text-foreground transition-colors"
+          <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
-            <Calendar size={13} /> Últimos 1 hora <ChevronDown size={11} />
-          </button>
+            <Calendar size={13} />
+            <select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="bg-transparent outline-none text-foreground">
+              <option value={1}>Últimos 1 hora</option>
+              <option value={6}>Últimas 6 horas</option>
+              <option value={24}>Últimas 24 horas</option>
+              <option value={72}>Últimas 72 horas</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground"
+            style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
+            <Layers size={13} />
+            <select value={selectedInstance} onChange={(e) => setSelectedInstance(e.target.value)} className="bg-transparent outline-none text-foreground min-w-[112px]">
+              <option value="">Todas instâncias</option>
+              {backends.map((b: any) => <option key={b.name || b.instance || b.id} value={b.name || b.instance || b.id}>{b.name || b.instance || b.id}</option>)}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground"
+            style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
+            <ChevronDown size={13} />
+            <select value={qtype} onChange={(e) => setQtype(e.target.value)} className="bg-transparent outline-none text-foreground min-w-[72px]">
+              <option value="">Todos tipos</option>
+              {availableQtypes.map((t: string) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
           <button onClick={() => qc.invalidateQueries({ queryKey: ['telemetry', 'history'] })}
             className="p-2 rounded-md text-muted-foreground hover:text-primary transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <RefreshCw size={14} />
           </button>
-          <button className="p-2 rounded-md text-muted-foreground hover:text-foreground transition-colors"
+          <button onClick={() => setShowOnlyAlerts((v) => !v)} className={`p-2 rounded-md transition-colors ${showOnlyAlerts ? 'text-warning' : 'text-muted-foreground hover:text-foreground'}`}
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <Bell size={14} />
           </button>
-          <button className="p-2 rounded-md text-muted-foreground hover:text-foreground transition-colors"
+          <button onClick={() => { setSelectedInstance(''); setQtype(''); setShowOnlyAlerts(false); setHours(1); }} className="p-2 rounded-md text-muted-foreground hover:text-foreground transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <SlidersHorizontal size={14} />
           </button>
@@ -384,10 +432,10 @@ export default function DnsPage() {
               </tr>
             </thead>
             <tbody className="font-mono text-[12px]">
-              {backends.length === 0 && (
+              {visibleBackends.length === 0 && (
                 <tr><td colSpan={7} className="py-6 text-center text-muted-foreground text-[11px]">Sem dados</td></tr>
               )}
-              {backends.map((b: any) => (
+              {visibleBackends.map((b: any) => (
                 <tr key={b.name} className="border-t border-border/30">
                   <td className="py-3.5 align-top">
                     <div className="flex items-center gap-2">
@@ -433,7 +481,7 @@ export default function DnsPage() {
         <Panel title="Top Domínios Consultados" accent="mint">
           <div className="space-y-2">
             {topDomains.length === 0 && (
-              <div className="text-center text-muted-foreground text-[11px] py-8">Sem dados</div>
+              <div className="text-center text-muted-foreground text-[11px] py-8">{filteredRecentItems.length ? `${filteredRecentItems.length} consultas filtradas` : 'Sem dados'}</div>
             )}
             {topDomains.map((d: any) => {
               const pct = (d.count / maxDomain) * 100;

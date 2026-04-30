@@ -10,9 +10,11 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { Link } from 'react-router-dom';
 import {
   Cpu, MemoryStick, HardDrive, Clock, Activity, Database, Timer,
   Globe, Shield, Server, Wifi, Bell, Eye, CheckCircle2, ChevronDown,
+  ArrowLeft,
 } from 'lucide-react';
 
 // ── Auto-refresh interval (15s)
@@ -326,6 +328,10 @@ export default function KioskDashboard() {
               </div>
             </div>
             <div className="flex items-center gap-2 mt-2">
+              <Link to="/" className="h-9 px-3 rounded-lg bg-noc-depth-2 border border-border/40 flex items-center gap-2 text-[11px] font-mono text-muted-foreground hover:text-foreground transition-colors"
+                style={{ background: 'hsl(var(--noc-depth-2))' }}>
+                <ArrowLeft size={14} /> Dashboard
+              </Link>
               <button className="w-9 h-9 rounded-lg bg-noc-depth-2 border border-border/40 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
                 style={{ background: 'hsl(var(--noc-depth-2))' }}>
                 <Bell size={15} />
