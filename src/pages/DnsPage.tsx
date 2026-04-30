@@ -760,6 +760,9 @@ export default function DnsPage() {
       ? 'ring-1 ring-primary/50 shadow-[0_0_24px_-6px_hsl(var(--primary)/0.55)]'
       : '';
 
+  if (isLoading) return <LoadingState />;
+  if (error) return <ErrorState message={error.message} />;
+
   return (
     <div className="space-y-4 noc-page">
       {/* ───── HEADER (search + status badges + collector) ───── */}
