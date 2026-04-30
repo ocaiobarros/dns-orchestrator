@@ -240,9 +240,9 @@ function Panel({
    Time-series chart panel
    ============================================================ */
 function ChartPanel({
-  title, data, dataKey, accent,
+  title, data, dataKey, accent, rangeLabel,
 }: {
-  title: string; data: any[]; dataKey: string; accent: Accent;
+  title: string; data: any[]; dataKey: string; accent: Accent; rangeLabel?: string;
 }) {
   const color = `hsl(${ACCENT_HSL[accent]})`;
   const colorAlpha = (a: number) => `hsl(${ACCENT_HSL[accent]} / ${a})`;
@@ -251,7 +251,7 @@ function ChartPanel({
   const series = data.length > 0 ? data : Array.from({ length: 2 }, () => ({ time: '', [dataKey]: 0 }));
 
   return (
-    <Panel title={title} accent={accent}>
+    <Panel title={title} accent={accent} badge={rangeLabel ? <span className="ml-2 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : undefined}>
       <div className="noc-chart-frame">
         <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={180}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
@@ -289,11 +289,11 @@ function ChartPanel({
 /* ============================================================
    Cache Hit chart — line only, magenta/violet
    ============================================================ */
-function CacheHitChart({ data }: { data: any[] }) {
+function CacheHitChart({ data, rangeLabel }: { data: any[]; rangeLabel?: string }) {
   const color = 'hsl(290 80% 60%)';
   const series = data.length > 0 ? data : Array.from({ length: 2 }, () => ({ time: '', hitRatio: 0 }));
   return (
-    <Panel title="Cache Hit Ratio (%)" accent="violet">
+    <Panel title="Cache Hit Ratio (%)" accent="violet" badge={rangeLabel ? <span className="ml-2 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : undefined}>
       <div className="noc-chart-frame">
         <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={180}>
           <LineChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
@@ -317,14 +317,14 @@ function CacheHitChart({ data }: { data: any[] }) {
 /* ============================================================
    Errors chart — area, pink/magenta
    ============================================================ */
-function ErrorsChart({ data }: { data: any[] }) {
+function ErrorsChart({ data, rangeLabel }: { data: any[]; rangeLabel?: string }) {
   const color = 'hsl(330 90% 60%)';
   const colorA = (a: number) => `hsl(330 90% 60% / ${a})`;
   const series = data.length > 0
     ? data.map(d => ({ ...d, total: safeNum(d.servfail) + safeNum(d.nxdomain) }))
     : Array.from({ length: 2 }, () => ({ time: '', total: 0 }));
   return (
-    <Panel title="Erros. (SERVFAIL + NXDOMAIN)" accent="violet">
+    <Panel title="Erros. (SERVFAIL + NXDOMAIN)" accent="violet" badge={rangeLabel ? <span className="ml-2 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : undefined}>
       <div className="noc-chart-frame">
         <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={180}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
