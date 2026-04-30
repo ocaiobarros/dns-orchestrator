@@ -386,42 +386,59 @@ export default function DnsPage() {
             <span className="w-1.5 h-1.5 rounded-full bg-primary" style={{ boxShadow: '0 0 6px hsl(var(--primary))' }} />
             <span className="text-primary">Operacional</span>
           </div>
-          <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground"
+          <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <Calendar size={13} />
-            <select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="bg-transparent outline-none text-foreground">
-              <option value={1}>Últimos 1 hora</option>
+            <select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="bg-transparent outline-none text-foreground cursor-pointer">
+              <option value={1}>Última 1 hora</option>
               <option value={6}>Últimas 6 horas</option>
+              <option value={12}>Últimas 12 horas</option>
               <option value={24}>Últimas 24 horas</option>
+              <option value={48}>Últimas 48 horas</option>
               <option value={72}>Últimas 72 horas</option>
             </select>
           </label>
-          <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground"
+          <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <Layers size={13} />
-            <select value={selectedInstance} onChange={(e) => setSelectedInstance(e.target.value)} className="bg-transparent outline-none text-foreground min-w-[112px]">
+            <select value={selectedInstance} onChange={(e) => setSelectedInstance(e.target.value)} className="bg-transparent outline-none text-foreground min-w-[112px] cursor-pointer">
               <option value="">Todas instâncias</option>
               {backends.map((b: any) => <option key={b.name || b.instance || b.id} value={b.name || b.instance || b.id}>{b.name || b.instance || b.id}</option>)}
             </select>
           </label>
-          <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground"
+          <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <ChevronDown size={13} />
-            <select value={qtype} onChange={(e) => setQtype(e.target.value)} className="bg-transparent outline-none text-foreground min-w-[72px]">
+            <select value={qtype} onChange={(e) => setQtype(e.target.value)} className="bg-transparent outline-none text-foreground min-w-[72px] cursor-pointer">
               <option value="">Todos tipos</option>
+              {availableQtypes.length === 0 && ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'PTR', 'SRV'].map(t => <option key={t} value={t}>{t}</option>)}
               {availableQtypes.map((t: string) => <option key={t} value={t}>{t}</option>)}
             </select>
           </label>
-          <button onClick={() => qc.invalidateQueries({ queryKey: ['telemetry', 'history'] })}
-            className="p-2 rounded-md text-muted-foreground hover:text-primary transition-colors"
+          <button
+            onClick={refreshAll}
+            disabled={refreshing}
+            title="Atualizar agora"
+            className="p-2 rounded-md text-muted-foreground hover:text-primary hover:border-primary/50 transition-all disabled:opacity-60"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
-            <RefreshCw size={14} />
+            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
           </button>
-          <button onClick={() => setShowOnlyAlerts((v) => !v)} className={`p-2 rounded-md transition-colors ${showOnlyAlerts ? 'text-warning' : 'text-muted-foreground hover:text-foreground'}`}
+          <button
+            onClick={() => navigate('/events?severity=warning,critical')}
+            title="Ver alertas operacionais"
+            className="relative p-2 rounded-md text-muted-foreground hover:text-warning hover:border-warning/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <Bell size={14} />
+            {totalServfail > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] rounded-full bg-warning text-warning-foreground text-[8px] font-bold flex items-center justify-center px-1">
+                {totalServfail > 99 ? '99+' : totalServfail}
+              </span>
+            )}
           </button>
-          <button onClick={() => { setSelectedInstance(''); setQtype(''); setShowOnlyAlerts(false); setHours(1); }} className="p-2 rounded-md text-muted-foreground hover:text-foreground transition-colors"
+          <button
+            onClick={() => { setSelectedInstance(''); setQtype(''); setShowOnlyAlerts(false); setHours(1); }}
+            title="Limpar filtros"
+            className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <SlidersHorizontal size={14} />
           </button>
