@@ -344,20 +344,42 @@ export default function DnsPage() {
             <span className="w-1.5 h-1.5 rounded-full bg-primary" style={{ boxShadow: '0 0 6px hsl(var(--primary))' }} />
             <span className="text-primary">Operacional</span>
           </div>
-          <button className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:text-foreground transition-colors"
+          <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
-            <Calendar size={13} /> Últimos 1 hora <ChevronDown size={11} />
-          </button>
+            <Calendar size={13} />
+            <select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="bg-transparent outline-none text-foreground">
+              <option value={1}>Últimos 1 hora</option>
+              <option value={6}>Últimas 6 horas</option>
+              <option value={24}>Últimas 24 horas</option>
+              <option value={72}>Últimas 72 horas</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground"
+            style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
+            <Layers size={13} />
+            <select value={selectedInstance} onChange={(e) => setSelectedInstance(e.target.value)} className="bg-transparent outline-none text-foreground min-w-[112px]">
+              <option value="">Todas instâncias</option>
+              {backends.map((b: any) => <option key={b.name || b.instance || b.id} value={b.name || b.instance || b.id}>{b.name || b.instance || b.id}</option>)}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground"
+            style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
+            <ChevronDown size={13} />
+            <select value={qtype} onChange={(e) => setQtype(e.target.value)} className="bg-transparent outline-none text-foreground min-w-[72px]">
+              <option value="">Todos tipos</option>
+              {availableQtypes.map((t: string) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
           <button onClick={() => qc.invalidateQueries({ queryKey: ['telemetry', 'history'] })}
             className="p-2 rounded-md text-muted-foreground hover:text-primary transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <RefreshCw size={14} />
           </button>
-          <button className="p-2 rounded-md text-muted-foreground hover:text-foreground transition-colors"
+          <button onClick={() => setShowOnlyAlerts((v) => !v)} className={`p-2 rounded-md transition-colors ${showOnlyAlerts ? 'text-warning' : 'text-muted-foreground hover:text-foreground'}`}
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <Bell size={14} />
           </button>
-          <button className="p-2 rounded-md text-muted-foreground hover:text-foreground transition-colors"
+          <button onClick={() => { setSelectedInstance(''); setQtype(''); setShowOnlyAlerts(false); setHours(1); }} className="p-2 rounded-md text-muted-foreground hover:text-foreground transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <SlidersHorizontal size={14} />
           </button>
