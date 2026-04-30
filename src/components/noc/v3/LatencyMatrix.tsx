@@ -27,15 +27,15 @@ export default function LatencyMatrix({ frontend, resolvers, upstreams }: Props)
       </div>
 
       {/* Resolvers column */}
-      <div className="flex flex-col gap-6 z-10">
+      <div className="flex flex-col gap-3 z-10">
         {resolvers.map((r, i) => (
-          <div key={i} className="flex flex-col items-center gap-1.5">
+          <div key={i} className="flex flex-col items-center gap-1">
             <div className="text-[10px] font-bold" style={{ color: colorFor(r.latencyMs) }}>
               {r.latencyMs}ms
             </div>
-            <div className="w-14 h-14 rounded-full bg-card border-2 flex items-center justify-center"
-              style={{ borderColor: colorFor(r.latencyMs), boxShadow: `0 0 20px -4px ${colorFor(r.latencyMs)}` }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={colorFor(r.latencyMs)} strokeWidth="2">
+            <div className="w-12 h-12 rounded-full bg-card border-2 flex items-center justify-center"
+              style={{ borderColor: colorFor(r.latencyMs), boxShadow: `0 0 16px -4px ${colorFor(r.latencyMs)}` }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={colorFor(r.latencyMs)} strokeWidth="2">
                 <circle cx="12" cy="12" r="5" /><path d="M12 2 V6 M12 18 V22 M2 12 H6 M18 12 H22" />
               </svg>
             </div>
