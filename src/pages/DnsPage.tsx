@@ -256,22 +256,41 @@ function Panel({
   );
 }
 
+function ChartTooltip({ active, payload, label, meta }: { active?: boolean; payload?: any[]; label?: unknown; meta: ServerTimeMetadata }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-md border border-primary/30 bg-card/95 px-3 py-2 font-mono text-[11px] shadow-[0_0_24px_-8px_hsl(var(--primary)/0.65)]">
+      <div className="font-bold text-foreground">{formatServerTooltipTime(label, meta)}</div>
+      <div className="mt-0.5 text-muted-foreground">{meta.timezone_label} ({meta.timezone})</div>
+      <div className="mt-2 space-y-1">
+        {payload.filter(item => item?.value !== undefined && item?.value !== null).map(item => (
+          <div key={item.dataKey || item.name} className="flex items-center justify-between gap-5">
+            <span style={{ color: item.color }}>{item.name || item.dataKey}</span>
+            <span className="font-bold text-foreground tabular-nums">{typeof item.value === 'number' ? item.value.toFixed(item.value % 1 === 0 ? 0 : 2) : item.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ============================================================
    Time-series chart panel
    ============================================================ */
 function ChartPanel({
-  title, data, dataKey, accent, rangeLabel,
+  title, data, dataKey, accent, rangeLabel, timeMeta, timeRange,
 }: {
-  title: string; data: any[]; dataKey: string; accent: Accent; rangeLabel?: string;
+  title: string; data: any[]; dataKey: string; accent: Accent; rangeLabel?: string; timeMeta: ServerTimeMetadata; timeRange: string;
 }) {
   const color = `hsl(${ACCENT_HSL[accent]})`;
   const colorAlpha = (a: number) => `hsl(${ACCENT_HSL[accent]} / ${a})`;
   const gid = `chart-${title.replace(/\s+/g, '-')}`;
 
-  const series = data.length > 0 ? data : Array.from({ length: 2 }, () => ({ time: '', [dataKey]: 0 }));
+  const series = data.length > 0 ? data : Array.from({ length: 2 }, (_, i) => ({ ts: Date.now() + i, [dataKey]: 0 }));
+  const ticks = buildServerTimeTicks(series, timeRange);
 
   return (
-    <Panel title={title} accent={accent} badge={rangeLabel ? <span className="ml-2 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : undefined}>
+    <Panel title={title} accent={accent} badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}>
       <div className="noc-chart-frame">
         <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={180}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
@@ -282,17 +301,9 @@ function ChartPanel({
               </linearGradient>
             </defs>
             <CartesianGrid stroke={colorAlpha(0.12)} strokeDasharray="2 4" vertical={false} />
-            <XAxis dataKey="time" stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
             <YAxis stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={40} />
-            <Tooltip
-              contentStyle={{
-                background: 'hsl(220 50% 4%)', border: `1px solid ${colorAlpha(0.4)}`,
-                borderRadius: 6, fontFamily: 'JetBrains Mono', fontSize: 11,
-                boxShadow: `0 0 24px -4px ${colorAlpha(0.4)}`,
-              }}
-              labelStyle={{ color: 'hsl(215 15% 60%)' }}
-              itemStyle={{ color }}
-            />
+            <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Area
               type="monotone" dataKey={dataKey} stroke={color} strokeWidth={1.5}
               fill={`url(#${gid})`} isAnimationActive={false}
