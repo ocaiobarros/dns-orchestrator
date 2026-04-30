@@ -260,15 +260,17 @@ export default function DnsPage() {
   const { data: telemetry, isLoading, error } = useTelemetry();
   const { data: historyData } = useTelemetryHistory();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [hours, setHours] = useState(1);
   const [selectedInstance, setSelectedInstance] = useState('');
   const [qtype, setQtype] = useState('');
   const [showOnlyAlerts, setShowOnlyAlerts] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const { data: filteredMetrics } = useQuery({
     queryKey: ['dns', 'metrics', hours, selectedInstance],
     queryFn: async () => { const r = await api.getDnsMetrics(hours, selectedInstance || undefined); if (!r.success) throw new Error(r.error!); return r.data; },
-    refetchInterval: 60000,
+    refetchInterval: 30000,
   });
 
   const { data: recentQueries } = useQuery({
@@ -286,8 +288,8 @@ export default function DnsPage() {
       time: p.timestamp ? new Date(p.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
       qps: safeNum(p.qps ?? p.queries_per_second),
       latency: safeNum(p.latency_ms ?? p.latency_avg_ms),
-      servfail: safeNum(p.servfail),
-      nxdomain: safeNum(p.nxdomain),
+      servfail: safeNum(p.servfail ?? p.servfail_count),
+      nxdomain: safeNum(p.nxdomain ?? p.nxdomain_count),
       hitRatio: safeNum(p.cache_hit_ratio),
     }));
   }, [filteredMetrics, historyData]);
@@ -306,14 +308,40 @@ export default function DnsPage() {
   const filteredRecentItems = recentQueries?.items ?? [];
   const topDomainsRaw = Array.isArray(telemetry?.top_domains) ? telemetry.top_domains
     : Array.isArray(queryAnalytics?.top_domains) ? queryAnalytics.top_domains : [];
-  const telemetryConnected = collectorOk && safeNum(resolver.instances_live) > 0;
 
-  const latestMetric = Array.isArray(filteredMetrics) && filteredMetrics.length > 0 ? filteredMetrics[filteredMetrics.length - 1] as any : null;
-  const totalQueries = safeNum(latestMetric?.total_queries ?? resolver.total_queries);
-  const cacheHitRatio = safeNum(latestMetric?.cache_hit_ratio ?? resolver.cache_hit_ratio);
-  const avgLatency = safeNum(latestMetric?.latency_avg_ms ?? resolver.avg_latency_ms);
-  const totalServfail = safeNum(latestMetric?.servfail_count ?? latestMetric?.servfail ?? resolver.servfail);
-  const qps = safeNum(latestMetric?.queries_per_second ?? resolver.qps);
+  // Live state: any signal of data → connected (don't gate KPIs on collector flag alone)
+  const hasMetrics = Array.isArray(filteredMetrics) && filteredMetrics.length > 0;
+  const hasBackends = backends.length > 0;
+  const telemetryConnected = collectorOk || hasMetrics || hasBackends;
+
+  // Aggregate window metrics (sum/avg over the selected range, not last point only)
+  const metricsArr: any[] = Array.isArray(filteredMetrics) ? filteredMetrics : [];
+  const latestMetric = metricsArr.length > 0 ? metricsArr[metricsArr.length - 1] : null;
+
+  // Fall back to backend-aggregated values from telemetry for instant display
+  const totalQueries =
+    metricsArr.reduce((a, m) => a + safeNum(m.total_queries ?? m.queries), 0)
+    || safeNum(latestMetric?.total_queries)
+    || backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.total_queries), 0)
+    || safeNum(resolver.total_queries);
+
+  const cacheHitRatio = safeNum(latestMetric?.cache_hit_ratio)
+    || (backends.length
+      ? Math.round(backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_hit_ratio), 0) / backends.length)
+      : safeNum(resolver.cache_hit_ratio));
+
+  const avgLatency = safeNum(latestMetric?.latency_avg_ms ?? latestMetric?.latency_ms)
+    || (backends.length
+      ? backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.recursion_avg_ms), 0) / backends.length
+      : safeNum(resolver.avg_latency_ms));
+
+  const totalServfail =
+    metricsArr.reduce((a, m) => a + safeNum(m.servfail_count ?? m.servfail), 0)
+    || safeNum(latestMetric?.servfail_count ?? latestMetric?.servfail)
+    || backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.servfail), 0)
+    || safeNum(resolver.servfail);
+
+  const qps = safeNum(latestMetric?.queries_per_second ?? latestMetric?.qps ?? resolver.qps);
 
   // Sparkline data per KPI
   const sparkQ = chartData.length > 0 ? chartData.slice(-30).map(d => d.qps) : Array.from({ length: 30 }, () => Math.random() * 20 + 5);
@@ -328,6 +356,19 @@ export default function DnsPage() {
     count: safeNum(d.query_count || d.count || d.queries),
   }));
   const maxDomain = Math.max(1, ...topDomains.map((d: any) => d.count));
+
+  const refreshAll = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['telemetry'] }),
+        qc.invalidateQueries({ queryKey: ['dns'] }),
+      ]);
+      await new Promise(r => setTimeout(r, 600));
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <div className="space-y-4 -mx-1">
