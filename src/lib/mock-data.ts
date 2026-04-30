@@ -120,6 +120,7 @@ export function generateDnsMetrics(hours: number = 24): DnsMetrics[] {
       const base = (800 + Math.random() * 400) * trafficMultiplier;
       metrics.push({
         timestamp: ts,
+        timestamp_utc: ts,
         qps: Math.round(base + Math.sin(i / 30) * 200),
         cacheHits: Math.round(base * 0.85 + Math.random() * 50),
         cacheMisses: Math.round(base * 0.15 + Math.random() * 20),
