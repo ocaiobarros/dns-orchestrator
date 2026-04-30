@@ -80,7 +80,8 @@ function InterceptionDashboard() {
   const allRunning = safeServices.length > 0 && safeServices.every(s => s.status === 'running' || s.status === 'active' || s.active);
   const eventItems = recentEvents?.items ?? (Array.isArray(recentEvents) ? recentEvents : []);
   const vipAddress = sysInfo?.vip_anycast ?? null;
-  const frontendIp = vipAddress;
+  // Fallback display IP for preview/mock when backend has not provisioned a VIP yet
+  const frontendIp = vipAddress || '172.250.40.3';
 
   const lastLoginFail = eventItems.find((e: any) => e.event_type?.includes('login_fail'));
   const lastLoginFailMsg = lastLoginFail
