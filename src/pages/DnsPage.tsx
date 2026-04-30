@@ -171,15 +171,12 @@ function ChartPanel({
   const colorAlpha = (a: number) => `hsl(${ACCENT_HSL[accent]} / ${a})`;
   const gid = `chart-${title.replace(/\s+/g, '-')}`;
 
-  // Generate fallback data so chart looks like print even without backend
-  const series = data.length > 0 ? data : Array.from({ length: 60 }, (_, i) => ({
-    time: '', [dataKey]: Math.max(0, Math.sin(i / 3) * 10 + Math.random() * 18 + 8),
-  }));
+  const series = data.length > 0 ? data : Array.from({ length: 2 }, () => ({ time: '', [dataKey]: 0 }));
 
   return (
     <Panel title={title} accent={accent}>
-      <div style={{ height }}>
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="w-full min-w-0" style={{ height, minHeight: height }}>
+        <ResponsiveContainer width="100%" height={height} minWidth={0}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <defs>
               <linearGradient id={gid} x1="0" x2="0" y1="0" y2="1">
