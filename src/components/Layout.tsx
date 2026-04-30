@@ -196,23 +196,3 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Global Ctrl+B shortcut for collapse
-if (typeof window !== 'undefined') {
-  let installed = (window as any).__sidebarShortcutInstalled;
-  if (!installed) {
-    (window as any).__sidebarShortcutInstalled = true;
-    window.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
-        e.preventDefault();
-        try {
-          const cur = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
-          localStorage.setItem(SIDEBAR_COLLAPSED_KEY, cur ? '0' : '1');
-          window.dispatchEvent(new Event('storage'));
-          // soft reload of sidebar via location change is not needed; React state reads on mount.
-          // For instant feedback, dispatch a custom event some other layout could listen to.
-          window.dispatchEvent(new CustomEvent('dns-control:toggle-sidebar'));
-        } catch {}
-      }
-    });
-  }
-}
