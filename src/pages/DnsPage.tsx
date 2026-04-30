@@ -328,8 +328,8 @@ function ChartPanel({
 
   return (
     <Panel title={title} accent={accent} badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}>
-      <div className="noc-chart-frame">
-        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={180}>
+      <MeasuredChartFrame minHeight={180}>{({ width, height }) => (
+        <ResponsiveContainer width={width} height={height}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <defs>
               <linearGradient id={gid} x1="0" x2="0" y1="0" y2="1">
@@ -349,7 +349,7 @@ function ChartPanel({
             />
           </AreaChart>
         </ResponsiveContainer>
-      </div>
+      )}</MeasuredChartFrame>
     </Panel>
   );
 }
@@ -363,8 +363,8 @@ function CacheHitChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[];
   const ticks = buildServerTimeTicks(series, timeRange);
   return (
     <Panel title="Cache Hit Ratio (%)" accent="violet" badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}>
-      <div className="noc-chart-frame">
-        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={180}>
+      <MeasuredChartFrame minHeight={180}>{({ width, height }) => (
+        <ResponsiveContainer width={width} height={height}>
           <LineChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <CartesianGrid stroke="hsl(290 60% 40% / 0.15)" strokeDasharray="2 4" vertical={false} />
             <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
@@ -375,7 +375,7 @@ function CacheHitChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[];
               style={{ filter: `drop-shadow(0 0 4px ${color})` }} />
           </LineChart>
         </ResponsiveContainer>
-      </div>
+      )}</MeasuredChartFrame>
     </Panel>
   );
 }
@@ -392,8 +392,8 @@ function ErrorsChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; r
   const ticks = buildServerTimeTicks(series, timeRange);
   return (
     <Panel title="Erros. (SERVFAIL + NXDOMAIN)" accent="violet" badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}>
-      <div className="noc-chart-frame">
-        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={180}>
+      <MeasuredChartFrame minHeight={180}>{({ width, height }) => (
+        <ResponsiveContainer width={width} height={height}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <defs>
               <linearGradient id="err-grad" x1="0" x2="0" y1="0" y2="1">
@@ -409,7 +409,7 @@ function ErrorsChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; r
               style={{ filter: `drop-shadow(0 0 4px ${color})` }} />
           </AreaChart>
         </ResponsiveContainer>
-      </div>
+      )}</MeasuredChartFrame>
     </Panel>
   );
 }
@@ -477,8 +477,8 @@ function TrafficEvolutionChart({ data, rangeLabel, timeMeta, timeRange }: { data
       accent="blue"
       badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}
     >
-      <div className="noc-chart-frame">
-        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={220}>
+      <MeasuredChartFrame minHeight={220}>{({ width, height }) => (
+        <ResponsiveContainer width={width} height={height}>
           <LineChart data={series} margin={{ top: 6, right: 30, bottom: 4, left: -10 }}>
             <CartesianGrid stroke="hsl(220 35% 18% / 0.6)" strokeDasharray="2 4" vertical={false} />
             <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
@@ -496,7 +496,7 @@ function TrafficEvolutionChart({ data, rangeLabel, timeMeta, timeRange }: { data
               style={{ filter: `drop-shadow(0 0 4px ${cLat})` }} />
           </LineChart>
         </ResponsiveContainer>
-      </div>
+      )}</MeasuredChartFrame>
     </Panel>
   );
 }
