@@ -511,6 +511,17 @@ export default function DnsPage() {
     refetchInterval: 30000,
   });
 
+  const { data: serverTimeMeta } = useQuery({
+    queryKey: ['system', 'time'],
+    queryFn: async () => {
+      const r = await api.getSystemTime();
+      if (!r.success) throw new Error(r.error!);
+      return r.data;
+    },
+    refetchInterval: 60000,
+  });
+  const timeMeta = serverTimeMeta ?? DEFAULT_SERVER_TIME_META;
+
   const { data: recentQueries } = useQuery({
     queryKey: ['telemetry', 'recent-queries', filters.instance, filters.qtype, filters.timeRange],
     queryFn: async () => {
@@ -559,11 +570,14 @@ export default function DnsPage() {
     const minTs = Date.now() - hours * 60 * 60 * 1000;
     const series = history
       .filter((p: any) => {
-        const ts = toTs(p.timestamp ?? p.epoch);
+        const ts = toTs(p.timestamp_utc ?? p.timestamp ?? p.epoch);
         return !ts || ts >= minTs;
       })
-      .map((p: any) => ({
-        time: (p.timestamp || p.epoch) ? new Date(toTs(p.timestamp ?? p.epoch)).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
+      .map((p: any) => {
+        const ts = toTs(p.timestamp_utc ?? p.timestamp ?? p.epoch);
+        return {
+        ts,
+        time: ts ? formatServerAxisTime(ts, timeMeta) : '',
         qps: Math.round(firstNum(p.qps, p.queries_per_second) * countShare * 100) / 100,
         latency: selectedBackend ? safeNum(selectedBackend?.resolver?.recursion_avg_ms) : firstNum(p.latency_ms, p.latency_avg_ms, p.avgLatencyMs, p.avg_latency_ms),
         servfail: Math.round(firstNum(p.servfail, p.servfail_count) * countShare),
@@ -572,12 +586,15 @@ export default function DnsPage() {
         totalQueries: Math.round(firstNum(p.total_queries, p.totalQueries, p.queries_total, p.queries) * countShare),
         cacheHits: Math.round(firstNum(p.cache_hits, p.cacheHits) * countShare),
         cacheMisses: Math.round(firstNum(p.cache_misses, p.cacheMisses) * countShare),
-      }));
+      };
+      });
 
     if (series.length > 0) return series;
     const resolver = telemetry?.resolver ?? {};
+    const fallbackTs = toTs(telemetry?.timestamp ?? Date.now());
     return [{
-      time: telemetry?.timestamp ? new Date(telemetry.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
+      ts: fallbackTs,
+      time: fallbackTs ? formatServerAxisTime(fallbackTs, timeMeta) : '',
       qps: Math.round(firstNum(resolver.qps) * countShare * 100) / 100,
       latency: selectedBackend ? safeNum(selectedBackend?.resolver?.recursion_avg_ms) : firstNum(resolver.avg_latency_ms),
       servfail: Math.round(firstNum(resolver.servfail) * countShare),
@@ -587,7 +604,7 @@ export default function DnsPage() {
       cacheHits: Math.round(firstNum(resolver.cache_hits) * countShare),
       cacheMisses: Math.round(firstNum(resolver.cache_misses) * countShare),
     }];
-  }, [filteredMetrics, hours, selectedInstance, qtype, telemetry]);
+  }, [filteredMetrics, hours, selectedInstance, qtype, telemetry, timeMeta]);
 
   const collectorOk = telemetry?.health?.collector === 'ok';
   const resolver = telemetry?.resolver ?? {};
