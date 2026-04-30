@@ -320,21 +320,19 @@ function ChartPanel({
 /* ============================================================
    Cache Hit chart — line only, magenta/violet
    ============================================================ */
-function CacheHitChart({ data, rangeLabel }: { data: any[]; rangeLabel?: string }) {
+function CacheHitChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; rangeLabel?: string; timeMeta: ServerTimeMetadata; timeRange: string }) {
   const color = 'hsl(290 80% 60%)';
-  const series = data.length > 0 ? data : Array.from({ length: 2 }, () => ({ time: '', hitRatio: 0 }));
+  const series = data.length > 0 ? data : Array.from({ length: 2 }, (_, i) => ({ ts: Date.now() + i, hitRatio: 0 }));
+  const ticks = buildServerTimeTicks(series, timeRange);
   return (
-    <Panel title="Cache Hit Ratio (%)" accent="violet" badge={rangeLabel ? <span className="ml-2 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : undefined}>
+    <Panel title="Cache Hit Ratio (%)" accent="violet" badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}>
       <div className="noc-chart-frame">
         <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={180}>
           <LineChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <CartesianGrid stroke="hsl(290 60% 40% / 0.15)" strokeDasharray="2 4" vertical={false} />
-            <XAxis dataKey="time" stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
             <YAxis domain={[0, 100]} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={40} />
-            <Tooltip
-              contentStyle={{ background: 'hsl(220 50% 4%)', border: `1px solid ${color}`, borderRadius: 6, fontFamily: 'JetBrains Mono', fontSize: 11 }}
-              labelStyle={{ color: 'hsl(215 15% 60%)' }} itemStyle={{ color }}
-            />
+            <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Line type="monotone" dataKey="hitRatio" stroke={color} strokeWidth={1.5} dot={false}
               isAnimationActive={false}
               style={{ filter: `drop-shadow(0 0 4px ${color})` }} />
