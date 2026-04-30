@@ -451,7 +451,7 @@ export default function DnsPage() {
   }, {});
   const topDomainsSource = (qtype || selectedInstance) && Object.keys(recentDomainCounts).length
     ? Object.entries(recentDomainCounts)
-        .map(([domain, count]) => ({ domain, count }))
+        .map(([domain, count]) => ({ domain, count: Number(count) || 0 }))
         .sort((a, b) => b.count - a.count)
     : topDomainsRaw.filter((d: any) => {
         if (!qtype) return true;
