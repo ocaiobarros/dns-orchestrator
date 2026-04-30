@@ -105,7 +105,7 @@ function KpiCardLarge({
 
         {/* sparkline */}
         <div className="w-24 min-w-[96px] h-12 min-h-[48px] flex-shrink-0 self-end opacity-90">
-          <ResponsiveContainer width="100%" height={48} minWidth={96}>
+          <ResponsiveContainer width="100%" height={48} minWidth={96} minHeight={48}>
             <AreaChart data={data} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id={gradId} x1="0" x2="0" y1="0" y2="1">
@@ -133,7 +133,7 @@ function Panel({
 }) {
   const colorAlpha = (a: number) => `hsl(${ACCENT_HSL[accent]} / ${a})`;
   return (
-    <div className={`relative rounded-xl overflow-hidden ${className}`}
+    <div className={`relative rounded-xl overflow-hidden min-w-0 ${className}`}
       style={{
         background: 'linear-gradient(160deg, hsl(220 42% 8%), hsl(220 50% 4%))',
         border: `1px solid ${colorAlpha(0.28)}`,
@@ -176,7 +176,7 @@ function ChartPanel({
   return (
     <Panel title={title} accent={accent}>
       <div className="w-full min-w-0" style={{ height, minHeight: height }}>
-        <ResponsiveContainer width="100%" height={height} minWidth={0}>
+        <ResponsiveContainer width="100%" height={height} minWidth={1} minHeight={height}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <defs>
               <linearGradient id={gid} x1="0" x2="0" y1="0" y2="1">
