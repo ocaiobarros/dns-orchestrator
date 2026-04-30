@@ -55,6 +55,11 @@ function InterceptionDashboard() {
     queryFn: async () => { const r = await api.getTopDomains(5); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 30000,
   });
+  const { data: telemetry } = useQuery({
+    queryKey: ['telemetry'],
+    queryFn: async () => { const r = await api.getTelemetry(); if (!r.success) throw new Error(r.error!); return r.data; },
+    refetchInterval: 15000,
+  });
 
   const reconcileMutation = useMutation({
     mutationFn: async () => { setReconciling(true); const r = await api.reconcileNow(); if (!r.success) throw new Error(r.error!); return r.data; },
