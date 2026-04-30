@@ -41,7 +41,11 @@ dns-control ALL=(root) NOPASSWD: \
     /usr/bin/systemctl stop unbound*, \
     /usr/bin/systemctl restart frr, \
     /usr/bin/systemctl restart nftables, \
-    /usr/bin/systemctl restart nginx, \
+   /usr/bin/systemctl restart nginx, \
+   /usr/bin/systemctl restart networking, \
+   /usr/bin/systemctl reload networking, \
+   /usr/bin/systemctl start networking, \
+   /usr/bin/systemctl stop networking, \
     /usr/bin/systemctl restart dns-control-collector.service, \
     /usr/bin/systemctl start nftables, \
     /usr/bin/systemctl start nginx, \
