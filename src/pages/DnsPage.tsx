@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, RefreshCw, Bell, SlidersHorizontal, Layers, Database, Timer, Shield, ChevronDown } from 'lucide-react';
+import { Calendar, RefreshCw, Bell, SlidersHorizontal, Layers, Database, Timer, Shield, ChevronDown, Search, Package, HardDrive, Zap, Globe, Users, Server, Activity } from 'lucide-react';
 import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useTelemetry } from '@/lib/hooks';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -8,7 +8,7 @@ import { api } from '@/lib/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, XAxis, YAxis,
-  CartesianGrid, Tooltip,
+  CartesianGrid, Tooltip, Legend,
 } from 'recharts';
 
 function safeNum(v: unknown): number {
@@ -366,6 +366,95 @@ function ErrorsChart({ data, rangeLabel }: { data: any[]; rangeLabel?: string })
 }
 
 /* ============================================================
+   Helpers — bytes formatter
+   ============================================================ */
+function formatBytes(n: number): string {
+  if (!n || !Number.isFinite(n)) return '0 B';
+  if (n < 1024) return `${n.toFixed(0)} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+/* ============================================================
+   Segmented control — section focus
+   ============================================================ */
+type SectionTab = 'overview' | 'domains' | 'clients' | 'backends' | 'traffic';
+
+function SectionTabs({ value, onChange }: { value: SectionTab; onChange: (v: SectionTab) => void }) {
+  const tabs: Array<{ id: SectionTab; label: string; icon: React.ReactNode }> = [
+    { id: 'overview', label: 'Visão Geral', icon: <Activity size={12} /> },
+    { id: 'domains', label: 'Domínios', icon: <Globe size={12} /> },
+    { id: 'clients', label: 'Clientes', icon: <Users size={12} /> },
+    { id: 'backends', label: 'Backends', icon: <Server size={12} /> },
+    { id: 'traffic', label: 'Tráfego', icon: <Activity size={12} /> },
+  ];
+  return (
+    <div className="inline-flex items-center gap-1 rounded-lg p-1 border border-border/60 bg-card/70">
+      {tabs.map(t => {
+        const active = t.id === value;
+        return (
+          <button
+            key={t.id}
+            onClick={() => onChange(t.id)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-mono font-bold uppercase tracking-wider transition-all ${
+              active
+                ? 'bg-primary/15 text-primary border border-primary/40'
+                : 'text-muted-foreground hover:text-foreground/90 border border-transparent'
+            }`}
+            style={active ? { boxShadow: '0 0 12px -4px hsl(var(--primary) / 0.6)' } : undefined}
+          >
+            <span>{t.icon}</span>
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ============================================================
+   Multi-line traffic chart (QPS + CacheHit + Latência)
+   ============================================================ */
+function TrafficEvolutionChart({ data, rangeLabel }: { data: any[]; rangeLabel?: string }) {
+  const series = data.length > 0 ? data : Array.from({ length: 2 }, () => ({ time: '', qps: 0, hitRatio: 0, latency: 0 }));
+  const cQps = 'hsl(200 90% 60%)';
+  const cHit = 'hsl(162 72% 51%)';
+  const cLat = 'hsl(270 75% 65%)';
+  return (
+    <Panel
+      title="Evolução do Tráfego"
+      accent="blue"
+      badge={rangeLabel ? <span className="ml-2 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : undefined}
+    >
+      <div className="noc-chart-frame">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={220}>
+          <LineChart data={series} margin={{ top: 6, right: 30, bottom: 4, left: -10 }}>
+            <CartesianGrid stroke="hsl(220 35% 18% / 0.6)" strokeDasharray="2 4" vertical={false} />
+            <XAxis dataKey="time" stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+            <YAxis yAxisId="left" stroke={cQps} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cQps }} tickLine={false} axisLine={false} width={36}
+              label={{ value: 'Queries (QPS)', angle: -90, position: 'insideLeft', style: { fill: cQps, fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: 40 }} />
+            <YAxis yAxisId="right" orientation="right" stroke={cLat} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cLat }} tickLine={false} axisLine={false} width={36}
+              label={{ value: 'Latência (ms)', angle: 90, position: 'insideRight', style: { fill: cLat, fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: -40 }} />
+            <Tooltip
+              contentStyle={{ background: 'hsl(220 50% 4%)', border: '1px solid hsl(220 35% 18%)', borderRadius: 6, fontFamily: 'JetBrains Mono', fontSize: 11 }}
+              labelStyle={{ color: 'hsl(215 15% 60%)' }}
+            />
+            <Legend wrapperStyle={{ fontSize: 10, fontFamily: 'JetBrains Mono' }} iconType="line" />
+            <Line yAxisId="left" type="monotone" dataKey="qps" name="Queries (QPS)" stroke={cQps} strokeWidth={1.6} dot={false} isAnimationActive={false}
+              style={{ filter: `drop-shadow(0 0 4px ${cQps})` }} />
+            <Line yAxisId="left" type="monotone" dataKey="hitRatio" name="Cache Hit (%)" stroke={cHit} strokeWidth={1.6} dot={false} isAnimationActive={false}
+              style={{ filter: `drop-shadow(0 0 4px ${cHit})` }} />
+            <Line yAxisId="right" type="monotone" dataKey="latency" name="Latência (ms)" stroke={cLat} strokeWidth={1.6} dot={false} isAnimationActive={false}
+              style={{ filter: `drop-shadow(0 0 4px ${cLat})` }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </Panel>
+  );
+}
+
+/* ============================================================
    MAIN PAGE
    ============================================================ */
 export default function DnsPage() {
@@ -380,6 +469,7 @@ export default function DnsPage() {
   const hours = TIME_RANGE_HOURS[timeRange] ?? TIME_RANGE_HOURS[DEFAULT_DNS_FILTERS.timeRange];
   const setFilter = (patch: Partial<DnsFilterState>) => setFilters(prev => ({ ...prev, ...patch }));
   const [showOnlyAlerts, setShowOnlyAlerts] = useState(false);
+  const [activeSection, setActiveSection] = useState<SectionTab>('overview');
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
@@ -605,6 +695,38 @@ export default function DnsPage() {
       count: firstNum(d.query_count, d.queryCount, d.count, d.queries),
     }));
   const maxDomain = Math.max(1, ...topDomains.map((d: any) => d.count));
+
+  // ─── nftables traffic totals (PRESERVED — same telemetry source) ───
+  const traffic = (telemetry as any)?.traffic ?? {};
+  const trafficTotalPackets = safeNum(traffic.total_packets);
+  const trafficTotalBytes = safeNum(traffic.total_bytes);
+  const trafficQpsNft = safeNum(traffic.qps);
+  const trafficDeltaPackets = safeNum(traffic.delta_packets ?? traffic.deltaPackets);
+
+  // ─── per-backend nftables traffic distribution ───
+  const backendTraffic = backends.map((b: any) => {
+    const t = b?.traffic ?? {};
+    return {
+      name: backendName(b),
+      packets: safeNum(t.packets),
+      bytes: safeNum(t.bytes),
+      share: safeNum(t.share),
+    };
+  });
+  const totalBackendPackets = backendTraffic.reduce((a, b) => a + b.packets, 0);
+
+  // ─── top clients (PRESERVED — telemetry.top_clients) ───
+  const topClientsRaw: any[] = Array.isArray((telemetry as any)?.top_clients) ? (telemetry as any).top_clients : [];
+  const topClients = topClientsRaw
+    .map((c: any) => ({
+      ip: c.client || c.ip || c.address || '—',
+      count: firstNum(c.queries, c.query_count, c.count, c.value),
+    }))
+    .filter(c => c.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+  const maxClient = Math.max(1, ...topClients.map(c => c.count));
+
   const periodLabel = PERIOD_LABELS[timeRange] ?? PERIOD_LABELS[DEFAULT_DNS_FILTERS.timeRange];
   const activeFilters = [
     `Instância: ${selectedInstance || 'Todas'}`,
@@ -612,6 +734,11 @@ export default function DnsPage() {
     `Período: ${periodLabel}`,
   ];
   const hasActiveFilters = filters.instance !== DEFAULT_DNS_FILTERS.instance || filters.qtype !== DEFAULT_DNS_FILTERS.qtype || filters.timeRange !== DEFAULT_DNS_FILTERS.timeRange;
+
+  // Environment summary
+  const lastCollect = telemetry?.timestamp ? new Date(telemetry.timestamp).toLocaleTimeString('pt-BR', { hour12: false }) : '—';
+  const uniqueClients = topClientsRaw.length || safeNum((telemetry as any)?.top_clients_count);
+  const uniqueDomains = topDomainsRaw.length || safeNum((telemetry as any)?.top_domains_count);
 
   const refreshAll = async () => {
     setRefreshing(true);
@@ -626,43 +753,137 @@ export default function DnsPage() {
     }
   };
 
+  // Highlight which sections to emphasize based on segmented control (none are hidden — focus only)
+  const isOverview = activeSection === 'overview';
+  const focusRing = (key: SectionTab): string =>
+    activeSection === key && !isOverview
+      ? 'ring-1 ring-primary/50 shadow-[0_0_24px_-6px_hsl(var(--primary)/0.55)]'
+      : '';
+
   if (isLoading) return <LoadingState />;
   if (error) return <ErrorState message={error.message} />;
 
   return (
-    <div className="space-y-4 -mx-1">
-      {/* HEADER */}
-      <div className="flex items-center justify-between flex-wrap gap-3 px-1 pt-1 pb-2">
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-5xl font-bold tracking-tight text-foreground">DNS</h1>
-          <p className="text-xs font-mono text-muted-foreground/80">
-            Métricas reais via collector (unbound-control + nftables)
+    <div className="space-y-4 noc-page">
+      {/* ───── HEADER (search + status badges + collector) ───── */}
+      <div className="flex items-center justify-between flex-wrap gap-3 px-1 pt-1 pb-1">
+        <div className="flex items-baseline gap-3 min-w-0">
+          <h1 className="text-3xl xl:text-4xl font-bold tracking-tight text-foreground">Métricas DNS</h1>
+          <p className="text-[11px] font-mono text-muted-foreground/80 truncate">
+            Dados reais via collector (unbound-control + nftables)
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-3 py-2 rounded-md text-[11px] font-mono"
-            style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(162 72% 51% / 0.3)' }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-primary" style={{ boxShadow: '0 0 6px hsl(var(--primary))' }} />
-            <span className="text-primary">Operacional</span>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-md text-[11px] font-mono text-muted-foreground/80 min-w-[260px]"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
-            <Calendar size={13} />
-            <Select value={timeRange} onValueChange={(value) => setFilter({ timeRange: value })}>
-              <SelectTrigger className="h-auto min-h-0 w-[132px] border-0 bg-transparent p-0 font-mono text-[11px] text-foreground ring-offset-0 focus:ring-0 focus:ring-offset-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className={SELECT_PANEL}>
-                <SelectItem className={SELECT_ITEM} value="1h">Última 1 hora</SelectItem>
-                <SelectItem className={SELECT_ITEM} value="6h">Últimas 6 horas</SelectItem>
-                <SelectItem className={SELECT_ITEM} value="12h">Últimas 12 horas</SelectItem>
-                <SelectItem className={SELECT_ITEM} value="24h">Últimas 24 horas</SelectItem>
-                <SelectItem className={SELECT_ITEM} value="48h">Últimas 48 horas</SelectItem>
-                <SelectItem className={SELECT_ITEM} value="72h">Últimas 72 horas</SelectItem>
-              </SelectContent>
-            </Select>
+            <Search size={12} />
+            <input
+              placeholder="Buscar métricas (Ctrl+K)"
+              className="bg-transparent border-0 outline-none w-full text-foreground/85 placeholder:text-muted-foreground/50"
+            />
           </div>
-          <div className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
+          <button
+            onClick={() => navigate('/events?severity=warning,critical')}
+            title="Ver alertas operacionais"
+            className="relative p-2 rounded-md text-muted-foreground hover:text-warning transition-colors"
+            style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
+            <Bell size={14} />
+            {totalServfail > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] rounded-full bg-warning text-warning-foreground text-[8px] font-bold flex items-center justify-center px-1">
+                {totalServfail > 99 ? '99+' : totalServfail}
+              </span>
+            )}
+          </button>
+          <button
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-[11px] font-mono text-foreground/85"
+            style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
+            <SlidersHorizontal size={12} /> Padrão
+          </button>
+          <div className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-[11px] font-mono"
+            style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(162 72% 51% / 0.4)' }}>
+            <span className="w-1.5 h-1.5 rounded-full bg-primary" style={{ boxShadow: '0 0 6px hsl(var(--primary))' }} />
+            <span className="text-primary font-bold uppercase tracking-wider">Operacional</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ───── Active filter strip + collector status ───── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/80 px-4 py-2.5 font-mono text-[11px]">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-muted-foreground uppercase tracking-[0.18em]">Filtro ativo</span>
+          {activeFilters.map(filter => (
+            <span key={filter} className="rounded border border-primary/25 bg-primary/10 px-2.5 py-1 text-primary">
+              {filter}
+            </span>
+          ))}
+          <button
+            onClick={resetFilters}
+            disabled={!hasActiveFilters}
+            className="rounded-md border border-border bg-secondary px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-secondary-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            Reset
+          </button>
+        </div>
+        <div className="flex items-center gap-3 text-muted-foreground/80">
+          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded ${collectorOk ? 'border border-primary/40 bg-primary/10 text-primary' : 'border border-warning/40 bg-warning/10 text-warning'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${collectorOk ? 'bg-primary' : 'bg-warning'}`} />
+            Collector: {collectorOk ? 'OK' : 'DEGRADADO'}
+          </span>
+          <span>Última coleta: <span className="text-foreground/90">{lastCollect}</span></span>
+        </div>
+      </div>
+
+      {/* ───── 6 KPI cards (single horizontal row, auto-fit) ───── */}
+      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))' }}>
+        <KpiCardLarge
+          label="Total Queries"
+          value={telemetryConnected ? totalQueries.toLocaleString() : '0'}
+          sub={`QPS: ${qps}`}
+          accent="blue" sparkData={sparkQ}
+          icon={<Layers size={24} strokeWidth={1.6} />}
+        />
+        <KpiCardLarge
+          label="Cache Hit"
+          value={`${telemetryConnected ? cacheHitRatio : 0}%`}
+          sub={backendCacheHits > 0 ? `${backendCacheHits.toLocaleString()} hits` : 'Eficiente'}
+          accent="mint" sparkData={sparkH}
+          icon={<Database size={24} strokeWidth={1.6} />}
+        />
+        <KpiCardLarge
+          label="Latência"
+          value={`${telemetryConnected ? avgLatency.toFixed(0) : '0'}ms`}
+          sub="Recursion avg"
+          accent="violet" sparkData={sparkL}
+          icon={<Timer size={24} strokeWidth={1.6} />}
+        />
+        <KpiCardLarge
+          label="Total Packets"
+          value={trafficTotalPackets > 0 ? trafficTotalPackets.toLocaleString('de-DE') : '0'}
+          sub="nftables counters"
+          accent="blue" sparkData={sparkQ}
+          icon={<Package size={24} strokeWidth={1.6} />}
+        />
+        <KpiCardLarge
+          label="Total Bytes"
+          value={formatBytes(trafficTotalBytes)}
+          sub="nftables"
+          accent="violet" sparkData={sparkQ}
+          icon={<HardDrive size={24} strokeWidth={1.6} />}
+        />
+        <KpiCardLarge
+          label="QPS (NFT)"
+          value={trafficQpsNft > 0 ? trafficQpsNft.toFixed(1) : qps.toFixed(1)}
+          sub={trafficDeltaPackets > 0 ? `Δ ${trafficDeltaPackets.toLocaleString()} pkts` : 'Delta de pacotes'}
+          accent="orange" sparkData={sparkE}
+          icon={<Zap size={24} strokeWidth={1.6} />}
+        />
+      </div>
+
+      {/* ───── Segmented control + time/instance/qtype filters ───── */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <SectionTabs value={activeSection} onChange={setActiveSection} />
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <Layers size={13} />
             <Select value={filters.instance} onValueChange={(value) => setFilter({ instance: value })}>
@@ -678,7 +899,7 @@ export default function DnsPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:border-primary/40 transition-colors"
+          <div className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <ChevronDown size={13} />
             <Select value={filters.qtype} onValueChange={(value) => setFilter({ qtype: value })}>
@@ -691,188 +912,266 @@ export default function DnsPage() {
               </SelectContent>
             </Select>
           </div>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground"
+            style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
+            <Calendar size={13} />
+            <Select value={timeRange} onValueChange={(value) => setFilter({ timeRange: value })}>
+              <SelectTrigger className="h-auto min-h-0 w-[150px] border-0 bg-transparent p-0 font-mono text-[11px] text-foreground ring-offset-0 focus:ring-0 focus:ring-offset-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className={SELECT_PANEL}>
+                <SelectItem className={SELECT_ITEM} value="1h">Última 1 hora</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="6h">Últimas 6 horas</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="12h">Últimas 12 horas</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="24h">Últimas 24 horas</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="48h">Últimas 48 horas</SelectItem>
+                <SelectItem className={SELECT_ITEM} value="72h">Últimas 72 horas</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <button
             onClick={refreshAll}
             disabled={refreshing}
             title="Atualizar agora"
-            className="p-2 rounded-md text-muted-foreground hover:text-primary hover:border-primary/50 transition-all disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-[11px] font-mono text-muted-foreground hover:text-primary transition-all disabled:opacity-60"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
-            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+            <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+            Auto
           </button>
-          <button
-            onClick={() => navigate('/events?severity=warning,critical')}
-            title="Ver alertas operacionais"
-            className="relative p-2 rounded-md text-muted-foreground hover:text-warning hover:border-warning/40 transition-colors"
-            style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
-            <Bell size={14} />
-            {totalServfail > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] rounded-full bg-warning text-warning-foreground text-[8px] font-bold flex items-center justify-center px-1">
-                {totalServfail > 99 ? '99+' : totalServfail}
+        </div>
+      </div>
+
+      {/* ───── Main grid: Top Domínios | Top Clientes | (Distribuição nft + Métricas backend) ───── */}
+      <div
+        className="grid gap-3"
+        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))' }}
+      >
+        {/* LEFT — Top Domínios */}
+        <div className={`min-w-0 ${focusRing('domains')} rounded-xl`}>
+          <Panel
+            title="Top Domínios Consultados"
+            accent="mint"
+            badge={
+              <span className="ml-2 inline-flex items-center gap-1 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">
+                Fonte: journalctl · {filteredRecentItems.length} queries parsed
               </span>
-            )}
-          </button>
-          <button
-            onClick={resetFilters}
-            title="Resetar filtros"
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono font-bold text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
-            style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
-            <SlidersHorizontal size={14} />
-            Reset
-          </button>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/80 px-4 py-3 font-mono text-[11px] shadow-[0_0_24px_hsl(var(--background)/0.35)]">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-muted-foreground uppercase tracking-[0.18em]">Filtro ativo</span>
-          {activeFilters.map(filter => (
-            <span key={filter} className="rounded border border-primary/25 bg-primary/10 px-2.5 py-1 text-primary">
-              {filter}
-            </span>
-          ))}
-        </div>
-        <button
-          onClick={resetFilters}
-          disabled={!hasActiveFilters}
-          className="rounded-md border border-border bg-secondary px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-secondary-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:cursor-not-allowed disabled:opacity-45"
-        >
-          Resetar estado inicial
-        </button>
-      </div>
-
-      {/* 4 KPI cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCardLarge
-          label="Total Queries"
-          value={telemetryConnected ? totalQueries.toLocaleString() : '0'}
-          sub={`QPS: ${qps}`}
-          accent="mint" sparkData={sparkQ}
-          icon={<Layers size={28} strokeWidth={1.6} />}
-        />
-        <KpiCardLarge
-          label="Cache Hit Ratio"
-          value={`${telemetryConnected ? cacheHitRatio : 0}%`}
-          accent="violet" sparkData={sparkH}
-          icon={<Database size={28} strokeWidth={1.6} />}
-        />
-        <KpiCardLarge
-          label="Latência Média"
-          value={`${telemetryConnected ? avgLatency.toFixed(2) : '0.00'}ms`}
-          accent="orange" sparkData={sparkL}
-          icon={<Timer size={28} strokeWidth={1.6} />}
-        />
-        <KpiCardLarge
-          label="SERVFAIL Total"
-          value={telemetryConnected ? totalServfail.toLocaleString() : '0'}
-          accent="blue" sparkData={sparkE}
-          icon={<Shield size={28} strokeWidth={1.6} />}
-        />
-      </div>
-
-      {/* INSTÂNCIAS + TOP DOMÍNIOS */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Instances 2/3 */}
-        <Panel title="Instâncias (Fonte: unbound-control)" accent="mint" className="lg:col-span-2">
-          <div className="noc-data-table-wrap">
-          <table className="noc-data-table">
-            <thead>
-              <tr className="text-left">
-                <th>Instância</th>
-                <th>Status</th>
-                <th className="text-right">Queries</th>
-                <th className="text-right">Cache Hit</th>
-                <th className="text-right">Latência</th>
-                <th className="text-right">SERVFAIL</th>
-                <th>Fonte</th>
-              </tr>
-            </thead>
-            <tbody className="font-mono text-[12px]">
-              {visibleBackends.length === 0 && (
-                <tr><td colSpan={7} className="py-6 text-center text-muted-foreground text-[11px]">Sem dados</td></tr>
+            }
+          >
+            <div className="space-y-1.5">
+              {topDomains.length === 0 && (
+                <div className="text-center text-muted-foreground text-[11px] py-8">Sem dados</div>
               )}
-              {visibleBackends.map((b: any) => (
-                <tr key={b.name} className="border-t border-border/30">
-                  <td className="cell-wrap min-w-[14rem]">
-                    <div className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary" style={{ boxShadow: '0 0 6px hsl(var(--primary))' }} />
-                      <span className="text-primary font-bold">{b.name}</span>
+              {topDomains.slice(0, 15).map((d: any, i: number) => {
+                const pct = (d.count / maxDomain) * 100;
+                return (
+                  <div key={d.domain} className="grid grid-cols-[18px_1fr_auto] gap-2 items-center text-[11px] font-mono py-0.5">
+                    <span className="text-muted-foreground/60 tabular-nums text-right">{i + 1}.</span>
+                    <div className="min-w-0">
+                      <div className="text-foreground/90 truncate mb-1">{d.domain}</div>
+                      <div className="h-1 rounded-full overflow-hidden" style={{ background: 'hsl(220 42% 9%)' }}>
+                        <div className="h-full rounded-full"
+                          style={{
+                            width: `${pct}%`,
+                            background: 'linear-gradient(90deg, hsl(162 72% 51%), hsl(162 90% 60%))',
+                            boxShadow: '0 0 6px hsl(162 72% 51% / 0.7)',
+                          }} />
+                      </div>
                     </div>
-                    <div className="mt-1 ml-3.5 flex items-center gap-1.5">
-                      <span className="px-1 py-px text-[8px] rounded bg-muted/60 text-muted-foreground/80 font-bold">IPv4</span>
-                      <span className="text-foreground/85 text-[11px]">{b.ipv4 || b.ip || '—'}</span>
-                    </div>
-                  </td>
-                  <td className="cell-nowrap">
-                    <div className="flex items-center gap-1.5">
-                      <span className={`w-1.5 h-1.5 rounded-full ${b.healthy ? 'bg-primary' : 'bg-destructive'}`}
-                        style={{ boxShadow: b.healthy ? '0 0 6px hsl(var(--primary))' : '0 0 6px hsl(var(--destructive))' }} />
-                      <span className={`text-[11px] font-bold uppercase ${b.healthy ? 'text-primary' : 'text-destructive'}`}>
-                        {b.healthy ? 'LIVE' : 'DOWN'}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="cell-nowrap text-right text-foreground/90">{safeNum(b.resolver?.total_queries).toLocaleString()}</td>
-                  <td className="cell-nowrap text-right">
-                    <span className={safeNum(b.resolver?.cache_hit_ratio) >= 90 ? 'text-primary' : 'text-warning'}>
-                      {safeNum(b.resolver?.cache_hit_ratio)}%
-                    </span>
-                  </td>
-                  <td className="cell-nowrap text-right text-foreground/90">{safeNum(b.resolver?.recursion_avg_ms).toFixed(2)}ms</td>
-                  <td className="cell-nowrap text-right text-foreground/90">{safeNum(b.resolver?.servfail)}</td>
-                  <td className="cell-nowrap">
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground/80"
-                      style={{ background: 'hsl(220 42% 9%)', border: '1px solid hsl(220 35% 14%)' }}>
-                      <Shield size={9} />
-                      {b.resolver?.source ?? 'unbound-control'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-        </Panel>
-
-        {/* Top Domains 1/3 */}
-        <Panel title="Top Domínios Consultados" accent="mint">
-          <div className="space-y-2">
-            {topDomains.length === 0 && (
-              <div className="text-center text-muted-foreground text-[11px] py-8">{filteredRecentItems.length ? `${filteredRecentItems.length} consultas filtradas` : 'Sem dados'}</div>
-            )}
-            {topDomains.map((d: any) => {
-              const pct = (d.count / maxDomain) * 100;
-              return (
-                <div key={d.domain} className="grid grid-cols-[1fr_auto] gap-3 items-center text-[11px] font-mono py-1">
-                  <div className="min-w-0">
-                    <div className="text-foreground/90 truncate mb-1">{d.domain}</div>
-                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'hsl(220 42% 9%)' }}>
-                      <div className="h-full rounded-full"
-                        style={{
-                          width: `${pct}%`,
-                          background: 'linear-gradient(90deg, hsl(162 72% 51%), hsl(162 90% 60%))',
-                          boxShadow: '0 0 6px hsl(162 72% 51% / 0.7)',
-                        }} />
-                    </div>
+                    <span className="text-foreground/85 tabular-nums whitespace-nowrap">{d.count.toLocaleString('de-DE')}</span>
                   </div>
-                  <span className="text-foreground/85 tabular-nums whitespace-nowrap">{d.count.toLocaleString('de-DE')}</span>
-                </div>
-              );
-            })}
-          </div>
-        </Panel>
+                );
+              })}
+              {topDomains.length > 0 && (
+                <button
+                  onClick={() => setActiveSection('domains')}
+                  className="mt-3 w-full text-[10px] font-mono text-muted-foreground/70 hover:text-primary px-2 py-2 rounded border border-border/40 hover:border-primary/40 transition-colors"
+                >
+                  Ver todos os domínios →
+                </button>
+              )}
+            </div>
+          </Panel>
+        </div>
+
+        {/* CENTER — Top Clientes */}
+        <div className={`min-w-0 ${focusRing('clients')} rounded-xl`}>
+          <Panel title="Top Clientes DNS" accent="violet">
+            <div className="space-y-1.5">
+              {topClients.length === 0 && (
+                <div className="text-center text-muted-foreground text-[11px] py-8">Sem dados</div>
+              )}
+              {topClients.map((c, i) => {
+                const pct = (c.count / maxClient) * 100;
+                return (
+                  <div key={c.ip} className="grid grid-cols-[18px_1fr_auto] gap-2 items-center text-[11px] font-mono py-0.5">
+                    <span className="text-muted-foreground/60 tabular-nums text-right">{i + 1}.</span>
+                    <div className="min-w-0">
+                      <div className="text-foreground/90 truncate mb-1">{c.ip}</div>
+                      <div className="h-1 rounded-full overflow-hidden" style={{ background: 'hsl(220 42% 9%)' }}>
+                        <div className="h-full rounded-full"
+                          style={{
+                            width: `${pct}%`,
+                            background: 'linear-gradient(90deg, hsl(270 75% 65%), hsl(290 80% 70%))',
+                            boxShadow: '0 0 6px hsl(270 75% 65% / 0.7)',
+                          }} />
+                      </div>
+                    </div>
+                    <span className="text-foreground/85 tabular-nums whitespace-nowrap">{c.count.toLocaleString('de-DE')}</span>
+                  </div>
+                );
+              })}
+              {topClients.length > 0 && (
+                <button
+                  onClick={() => setActiveSection('clients')}
+                  className="mt-3 w-full text-[10px] font-mono text-muted-foreground/70 hover:text-primary px-2 py-2 rounded border border-border/40 hover:border-primary/40 transition-colors"
+                >
+                  Ver todos os clientes →
+                </button>
+              )}
+            </div>
+          </Panel>
+        </div>
+
+        {/* RIGHT — stacked: Distribuição nftables + Métricas backend Unbound */}
+        <div className={`min-w-0 flex flex-col gap-3 ${focusRing('backends')}`}>
+          <Panel title="Distribuição por Backend (nftables)" accent="mint">
+            <div className="noc-data-table-wrap">
+              <table className="noc-data-table">
+                <thead>
+                  <tr className="text-left">
+                    <th>Backend</th>
+                    <th className="text-right">Packets</th>
+                    <th className="text-right">Bytes</th>
+                    <th className="text-right">Share</th>
+                    <th>Distribuição</th>
+                  </tr>
+                </thead>
+                <tbody className="font-mono text-[11px]">
+                  {backendTraffic.length === 0 && (
+                    <tr><td colSpan={5} className="py-4 text-center text-muted-foreground text-[10px]">Sem dados nftables</td></tr>
+                  )}
+                  {backendTraffic.map((bt) => {
+                    const sharePct = bt.share > 0 ? bt.share : (totalBackendPackets > 0 ? (bt.packets / totalBackendPackets) * 100 : 0);
+                    return (
+                      <tr key={bt.name} className="border-t border-border/30">
+                        <td className="cell-nowrap text-primary font-bold">{bt.name}</td>
+                        <td className="cell-nowrap text-right text-foreground/90">{bt.packets.toLocaleString('de-DE')}</td>
+                        <td className="cell-nowrap text-right text-foreground/90">{formatBytes(bt.bytes)}</td>
+                        <td className="cell-nowrap text-right text-primary">{sharePct.toFixed(0)}%</td>
+                        <td className="min-w-[120px]">
+                          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'hsl(220 42% 9%)' }}>
+                            <div className="h-full rounded-full"
+                              style={{
+                                width: `${Math.min(100, sharePct)}%`,
+                                background: 'linear-gradient(90deg, hsl(162 72% 51%), hsl(162 90% 60%))',
+                                boxShadow: '0 0 6px hsl(162 72% 51% / 0.6)',
+                              }} />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+
+          <Panel title="Métricas por Backend (Fonte: Unbound-Control)" accent="mint">
+            <div className="noc-data-table-wrap">
+              <table className="noc-data-table">
+                <thead>
+                  <tr className="text-left">
+                    <th>Backend</th>
+                    <th className="text-right">Queries</th>
+                    <th className="text-right">Cache Hit</th>
+                    <th className="text-right">Latência</th>
+                    <th className="text-right">SERVFAIL</th>
+                    <th className="text-right">NXDOMAIN</th>
+                    <th className="text-right">NOERROR</th>
+                    <th>Fonte</th>
+                  </tr>
+                </thead>
+                <tbody className="font-mono text-[11px]">
+                  {visibleBackends.length === 0 && (
+                    <tr><td colSpan={8} className="py-4 text-center text-muted-foreground text-[10px]">Sem dados</td></tr>
+                  )}
+                  {visibleBackends.map((b: any) => (
+                    <tr key={b.name} className="border-t border-border/30">
+                      <td className="cell-wrap min-w-[10rem]">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-1.5 h-1.5 rounded-full ${b.healthy !== false ? 'bg-primary' : 'bg-destructive'}`}
+                            style={{ boxShadow: b.healthy !== false ? '0 0 6px hsl(var(--primary))' : '0 0 6px hsl(var(--destructive))' }} />
+                          <span className="text-primary font-bold">{b.name}</span>
+                        </div>
+                        <div className="mt-1 ml-3.5 flex items-center gap-1.5">
+                          <span className="px-1 py-px text-[8px] rounded bg-muted/60 text-muted-foreground/80 font-bold">IPv4</span>
+                          <span className="text-foreground/85 text-[10px]">{b.ipv4 || b.ip || '—'}</span>
+                        </div>
+                      </td>
+                      <td className="cell-nowrap text-right text-foreground/90">{safeNum(b.resolver?.total_queries).toLocaleString()}</td>
+                      <td className="cell-nowrap text-right">
+                        <span className={safeNum(b.resolver?.cache_hit_ratio) >= 90 ? 'text-primary' : 'text-warning'}>
+                          {safeNum(b.resolver?.cache_hit_ratio)}%
+                        </span>
+                      </td>
+                      <td className="cell-nowrap text-right text-foreground/90">{safeNum(b.resolver?.recursion_avg_ms).toFixed(0)}ms</td>
+                      <td className="cell-nowrap text-right text-foreground/90">{safeNum(b.resolver?.servfail)}</td>
+                      <td className="cell-nowrap text-right text-foreground/90">{safeNum(b.resolver?.nxdomain)}</td>
+                      <td className="cell-nowrap text-right text-foreground/90">{safeNum(b.resolver?.noerror)}</td>
+                      <td className="cell-nowrap">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] text-muted-foreground/80"
+                          style={{ background: 'hsl(220 42% 9%)', border: '1px solid hsl(220 35% 14%)' }}>
+                          <Shield size={8} />
+                          {b.resolver?.source ?? 'unbound-control'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+        </div>
       </div>
 
-      {/* QPS + Latência */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartPanel title="QPS ao longo do tempo" data={effectiveChartData} dataKey="qps" accent="mint" rangeLabel={periodLabel} />
-        <ChartPanel title="Latência (ms)" data={effectiveChartData} dataKey="latency" accent="orange" rangeLabel={periodLabel} />
+      {/* ───── Bottom: Evolução do Tráfego (full-width multi-line) + Resumo do Ambiente ───── */}
+      <div className="grid gap-3" style={{ gridTemplateColumns: 'minmax(0, 3fr) minmax(0, 1fr)' }}>
+        <div className={`min-w-0 ${focusRing('traffic')} rounded-xl`}>
+          <TrafficEvolutionChart data={effectiveChartData} rangeLabel={periodLabel} />
+        </div>
+        <div className="min-w-0">
+          <Panel title="Resumo do Ambiente" accent="mint">
+            <div className="space-y-2 font-mono text-[11px]">
+              <SummaryRow label="Fonte de Dados" value="Unbound-Control + nftables" />
+              <SummaryRow label="Collector" value={collectorOk ? 'OK' : 'DEGRADADO'} valueColor={collectorOk ? 'text-primary' : 'text-warning'} />
+              <SummaryRow label="Última Coleta" value={lastCollect} />
+              <SummaryRow label="Período" value={periodLabel} />
+              <SummaryRow label="Backends Ativos" value={String(backends.filter((b: any) => b.healthy !== false).length)} />
+              <SummaryRow label="Clientes Únicos" value={uniqueClients ? uniqueClients.toLocaleString('de-DE') : '—'} />
+              <SummaryRow label="Domínios Únicos" value={uniqueDomains ? uniqueDomains.toLocaleString('de-DE') : '—'} />
+            </div>
+          </Panel>
+        </div>
       </div>
 
-      {/* Cache Hit + Errors (full width each) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* ───── Secondary charts (preserved — were tab "Tráfego") ───── */}
+      <div className={`grid grid-cols-1 lg:grid-cols-2 gap-3 ${focusRing('traffic')} rounded-xl`}>
+        <ChartPanel title="QPS ao longo do tempo" data={effectiveChartData} dataKey="qps" accent="blue" rangeLabel={periodLabel} />
+        <ChartPanel title="Latência (ms)" data={effectiveChartData} dataKey="latency" accent="violet" rangeLabel={periodLabel} />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <CacheHitChart data={effectiveChartData} rangeLabel={periodLabel} />
         <ErrorsChart data={effectiveChartData} rangeLabel={periodLabel} />
       </div>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value, valueColor = 'text-foreground/90' }: { label: string; value: string; valueColor?: string }) {
+  return (
+    <div className="flex items-center justify-between py-1.5 border-b border-border/30 last:border-0">
+      <span className="text-muted-foreground/80">{label}</span>
+      <span className={`${valueColor} font-bold tabular-nums text-right`}>{value}</span>
     </div>
   );
 }
