@@ -141,8 +141,13 @@ export const api = {
   checkReachability: () => apiCall<ReachabilityResult[]>('GET', '/network/reachability'),
 
   // DNS
-  getDnsMetrics: (hours: number = 6, instance?: string) =>
-    apiCall<DnsMetrics[]>('GET', `/dns/metrics?hours=${hours}${instance ? `&instance=${instance}` : ''}`),
+  getDnsMetrics: (params: { instance?: string; qtype?: string; range?: string; hours?: number } = {}) => {
+    const q = new URLSearchParams();
+    q.set('range', params.range ?? `${params.hours ?? 6}h`);
+    if (params.instance) q.set('instance', params.instance);
+    if (params.qtype) q.set('qtype', params.qtype);
+    return apiCall<DnsMetrics[]>('GET', `/dns/metrics?${q.toString()}`);
+  },
   getTopDomains: (limit: number = 20) =>
     apiCall<DnsTopDomain[]>('GET', `/dns/top-domains?limit=${limit}`),
   getInstanceStats: () => apiCall<DnsInstanceStats[]>('GET', '/dns/instances'),
@@ -307,10 +312,11 @@ export const api = {
     }>;
     diag: Record<string, unknown>;
   }>('GET', '/telemetry/log-validation'),
-  getRecentQueries: (params?: { instance?: string; qtype?: string; limit?: number }) => {
+  getRecentQueries: (params?: { instance?: string; qtype?: string; range?: string; limit?: number }) => {
     const q = new URLSearchParams();
     if (params?.instance) q.set('instance', params.instance);
     if (params?.qtype) q.set('qtype', params.qtype);
+    if (params?.range) q.set('range', params.range);
     if (params?.limit) q.set('limit', String(params.limit));
     const qs = q.toString();
     return apiCall<{
