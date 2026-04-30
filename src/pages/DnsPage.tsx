@@ -428,7 +428,7 @@ export default function DnsPage() {
         .map((p: any) => ({ ...p, timestamp: p.timestamp ?? telemetry?.timestamp ?? new Date().toISOString() }))
       : [];
     const filteredHistoryRows = historyRows.filter((p: any) => rowMatchesFilters(p, selectedInstance, '', { allowMissingInstance: true }));
-    const history = timedMetrics.length > 0 ? timedMetrics : liveMetricRows.length > 0 ? liveMetricRows : filteredHistoryRows;
+    const history = timedMetrics.length > 0 ? timedMetrics : filteredHistoryRows.length > 0 ? filteredHistoryRows : liveMetricRows;
     const minTs = Date.now() - hours * 60 * 60 * 1000;
     const series = history
       .filter((p: any) => {
