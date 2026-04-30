@@ -175,6 +175,44 @@
   .metric-label { @apply text-xs text-muted-foreground uppercase tracking-wider; }
 
   /* ================================================================
+     Responsive container + auto-fit grids (mobile → 4K/72")
+     ================================================================ */
+  .noc-page {
+    width: 100%;
+    max-width: min(100%, 2400px);
+    margin-inline: auto;
+    padding-inline: clamp(0.75rem, 1.6vw, 2.5rem);
+  }
+  @media (min-width: 1920px) {
+    .noc-page { max-width: min(100%, 2800px); }
+  }
+  @media (min-width: 2560px) {
+    .noc-page { max-width: 100%; padding-inline: clamp(1.5rem, 2vw, 3.5rem); }
+  }
+
+  /* Auto-fit grids: colunas se reorganizam dinamicamente conforme a largura */
+  .noc-grid-kpi {
+    display: grid;
+    gap: clamp(0.5rem, 0.8vw, 1rem);
+    grid-template-columns: repeat(auto-fit, minmax(clamp(150px, 14vw, 240px), 1fr));
+  }
+  .noc-grid-triple {
+    display: grid;
+    gap: clamp(0.5rem, 0.8vw, 1rem);
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  }
+  .noc-grid-quad {
+    display: grid;
+    gap: clamp(0.5rem, 0.8vw, 1rem);
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  }
+  .noc-grid-duo {
+    display: grid;
+    gap: clamp(0.5rem, 0.8vw, 1rem);
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  }
+
+  /* ================================================================
      NOC PREMIUM — Cinematic Operations Design System
      ================================================================ */
 
