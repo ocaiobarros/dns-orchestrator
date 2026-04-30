@@ -326,8 +326,8 @@ export default function DnsPage() {
   });
 
   const { data: recentQueries } = useQuery({
-    queryKey: ['telemetry', 'recent-queries', selectedInstance, qtype],
-    queryFn: async () => { const r = await api.getRecentQueries({ instance: selectedInstance || undefined, qtype: qtype || undefined, limit: 100 }); if (!r.success) throw new Error(r.error!); return r.data; },
+    queryKey: ['telemetry', 'recent-queries'],
+    queryFn: async () => { const r = await api.getRecentQueries({ limit: 1000 }); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 15000,
     placeholderData: previousData => previousData,
   });
