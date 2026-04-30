@@ -691,13 +691,32 @@ export default function DnsPage() {
             )}
           </button>
           <button
-            onClick={() => { setSelectedInstance(''); setQtype(''); setShowOnlyAlerts(false); setHours(1); }}
-            title="Limpar filtros"
-            className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+            onClick={resetFilters}
+            title="Resetar filtros"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-[11px] font-mono font-bold text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
             style={{ background: 'hsl(220 42% 7%)', border: '1px solid hsl(220 35% 14%)' }}>
             <SlidersHorizontal size={14} />
+            Reset
           </button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/80 px-4 py-3 font-mono text-[11px] shadow-[0_0_24px_hsl(var(--background)/0.35)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-muted-foreground uppercase tracking-[0.18em]">Filtro ativo</span>
+          {activeFilters.map(filter => (
+            <span key={filter} className="rounded border border-primary/25 bg-primary/10 px-2.5 py-1 text-primary">
+              {filter}
+            </span>
+          ))}
+        </div>
+        <button
+          onClick={resetFilters}
+          disabled={!hasActiveFilters}
+          className="rounded-md border border-border bg-secondary px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-secondary-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          Resetar estado inicial
+        </button>
       </div>
 
       {/* 4 KPI cards */}
