@@ -843,14 +843,14 @@ export default function DnsPage() {
 
       {/* QPS + Latência */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartPanel title="QPS ao longo do tempo" data={effectiveChartData} dataKey="qps" accent="mint" />
-        <ChartPanel title="Latência (ms)" data={effectiveChartData} dataKey="latency" accent="orange" />
+        <ChartPanel title="QPS ao longo do tempo" data={effectiveChartData} dataKey="qps" accent="mint" rangeLabel={periodLabel} />
+        <ChartPanel title="Latência (ms)" data={effectiveChartData} dataKey="latency" accent="orange" rangeLabel={periodLabel} />
       </div>
 
       {/* Cache Hit + Errors (full width each) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <CacheHitChart data={effectiveChartData} />
-        <ErrorsChart data={effectiveChartData} />
+        <CacheHitChart data={effectiveChartData} rangeLabel={periodLabel} />
+        <ErrorsChart data={effectiveChartData} rangeLabel={periodLabel} />
       </div>
     </div>
   );
