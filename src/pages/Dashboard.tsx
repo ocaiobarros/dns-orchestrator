@@ -266,7 +266,7 @@ function InterceptionDashboard() {
       </div>
 
       {/* Quad: Top Domínios / Top Clientes / Métricas por Backend / Status dos Serviços */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="noc-grid-quad">
         <PanelV3 title="Top Domínios" icon={<ListOrdered size={13} />}>
           <RankList
             items={(topDomains || []).slice(0, 5).map((d: any) => ({ label: d.domain, value: d.query_count || d.count || 0 }))}
