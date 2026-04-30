@@ -291,28 +291,55 @@ export default function DnsPage() {
     queryKey: ['dns', 'metrics', hours, selectedInstance],
     queryFn: async () => { const r = await api.getDnsMetrics(hours, selectedInstance || undefined); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 30000,
+    placeholderData: previousData => previousData,
   });
 
   const { data: recentQueries } = useQuery({
     queryKey: ['telemetry', 'recent-queries', selectedInstance, qtype],
     queryFn: async () => { const r = await api.getRecentQueries({ instance: selectedInstance || undefined, qtype: qtype || undefined, limit: 100 }); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 15000,
+    placeholderData: previousData => previousData,
   });
 
   useEffect(() => {/* warm-up */}, []);
 
   const chartData = useMemo(() => {
     const metricRows = Array.isArray(filteredMetrics) ? filteredMetrics : [];
-    const history = metricRows.length > 0 ? metricRows : (Array.isArray(historyData) ? historyData : []);
-    return history.map((p: any) => ({
-      time: p.timestamp ? new Date(p.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
-      qps: safeNum(p.qps ?? p.queries_per_second),
-      latency: safeNum(p.latency_ms ?? p.latency_avg_ms),
-      servfail: safeNum(p.servfail ?? p.servfail_count),
-      nxdomain: safeNum(p.nxdomain ?? p.nxdomain_count),
-      hitRatio: safeNum(p.cache_hit_ratio),
-    }));
-  }, [filteredMetrics, historyData]);
+    const historyRows = Array.isArray(historyData) ? historyData : [];
+    const timedMetrics = metricRows.filter((p: any) => toTs(p.timestamp ?? p.epoch) > 0);
+    const history = timedMetrics.length > 0 ? timedMetrics : historyRows;
+    const minTs = Date.now() - hours * 60 * 60 * 1000;
+    const series = history
+      .filter((p: any) => {
+        const ts = toTs(p.timestamp ?? p.epoch);
+        return !ts || ts >= minTs;
+      })
+      .map((p: any) => ({
+        time: (p.timestamp || p.epoch) ? new Date(toTs(p.timestamp ?? p.epoch)).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
+        qps: firstNum(p.qps, p.queries_per_second),
+        latency: firstNum(p.latency_ms, p.latency_avg_ms, p.avgLatencyMs, p.avg_latency_ms),
+        servfail: firstNum(p.servfail, p.servfail_count),
+        nxdomain: firstNum(p.nxdomain, p.nxdomain_count),
+        hitRatio: firstNum(p.cache_hit_ratio, p.cacheHitRatio),
+        totalQueries: firstNum(p.total_queries, p.totalQueries, p.queries_total, p.queries),
+        cacheHits: firstNum(p.cache_hits, p.cacheHits),
+        cacheMisses: firstNum(p.cache_misses, p.cacheMisses),
+      }));
+
+    if (series.length > 0) return series;
+    const resolver = telemetry?.resolver ?? {};
+    return [{
+      time: telemetry?.timestamp ? new Date(telemetry.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
+      qps: firstNum(resolver.qps),
+      latency: firstNum(resolver.avg_latency_ms),
+      servfail: firstNum(resolver.servfail),
+      nxdomain: firstNum(resolver.nxdomain),
+      hitRatio: firstNum(resolver.cache_hit_ratio),
+      totalQueries: firstNum(resolver.total_queries),
+      cacheHits: firstNum(resolver.cache_hits),
+      cacheMisses: firstNum(resolver.cache_misses),
+    }];
+  }, [filteredMetrics, historyData, hours, telemetry]);
 
   if (isLoading) return <LoadingState />;
   if (error) return <ErrorState message={error.message} />;
