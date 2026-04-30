@@ -71,7 +71,13 @@ export function MiniBars() {
   return (
     <svg width="64" height="44" viewBox="0 0 64 44" fill="none">
       {bars.map((h, i) => (
-        <rect key={i} x={i * 7 + 1} y={44 - h} width="5" height={h} rx="1" fill="hsl(var(--primary) / 0.85)" />
+        <rect key={i} x={i * 7 + 1} y={44 - h} width="5" height={h} rx="1"
+          fill="hsl(var(--primary) / 0.85)"
+          style={{
+            transformOrigin: `${i * 7 + 3.5}px 44px`,
+            animation: `noc-bar-flicker ${1.4 + (i % 4) * 0.25}s ease-in-out ${i * 0.08}s infinite`,
+          }}
+        />
       ))}
     </svg>
   );
@@ -94,6 +100,8 @@ export function MiniDonut({ pct = 81 }: { pct?: number }) {
         transform="rotate(-90 28 28)"
         style={{ filter: 'drop-shadow(0 0 4px hsl(var(--primary) / 0.6))' }}
       />
+      <circle cx="28" cy="28" r="3" fill="hsl(var(--primary))"
+        style={{ animation: 'noc-pulse 1.8s ease-in-out infinite', transformOrigin: '28px 28px' }} />
     </svg>
   );
 }
@@ -102,11 +110,16 @@ export function MiniSpark({ accent = 'violet' }: { accent?: 'mint' | 'violet' })
   const color = accent === 'violet' ? 'hsl(var(--accent))' : 'hsl(var(--primary))';
   return (
     <svg width="64" height="44" viewBox="0 0 64 44" fill="none">
-      <path d="M2 32 L10 28 L18 30 L26 18 L34 22 L42 10 L50 14 L62 6"
-        stroke={color} strokeWidth="1.8" fill="none"
-        style={{ filter: `drop-shadow(0 0 4px ${color})` }} />
       <path d="M2 32 L10 28 L18 30 L26 18 L34 22 L42 10 L50 14 L62 6 L62 44 L2 44 Z"
         fill={color} fillOpacity="0.12" />
+      <path d="M2 32 L10 28 L18 30 L26 18 L34 22 L42 10 L50 14 L62 6"
+        stroke={color} strokeWidth="1.8" fill="none"
+        strokeDasharray="4 3"
+        style={{ filter: `drop-shadow(0 0 4px ${color})`, animation: 'noc-spark-dash 4s linear infinite' }} />
+      <circle r="2" fill={color} style={{ filter: `drop-shadow(0 0 4px ${color})` }}>
+        <animateMotion dur="3s" repeatCount="indefinite"
+          path="M2 32 L10 28 L18 30 L26 18 L34 22 L42 10 L50 14 L62 6" />
+      </circle>
     </svg>
   );
 }
