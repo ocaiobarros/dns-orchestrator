@@ -387,8 +387,12 @@ export default function DnsPage() {
   });
 
   const { data: recentQueries } = useQuery({
-    queryKey: ['telemetry', 'recent-queries', qtype],
-    queryFn: async () => { const r = await api.getRecentQueries({ qtype: qtype || undefined, limit: 1000 }); if (!r.success) throw new Error(r.error!); return r.data; },
+    queryKey: ['telemetry', 'recent-queries', selectedInstance, qtype],
+    queryFn: async () => {
+      const r = await api.getRecentQueries({ instance: selectedInstance || undefined, qtype: qtype || undefined, limit: 1000 });
+      if (!r.success) throw new Error(r.error!);
+      return r.data;
+    },
     refetchInterval: 15000,
     placeholderData: previousData => previousData,
   });
@@ -399,14 +403,14 @@ export default function DnsPage() {
     const metricRows = Array.isArray(filteredMetrics) ? filteredMetrics : [];
     const historyRows = Array.isArray(historyData) ? historyData : [];
     const timedMetrics = metricRows
-      .filter((p: any) => rowMatchesFilters(p, selectedInstance, qtype))
+      .filter((p: any) => rowMatchesFilters(p, selectedInstance, ''))
       .filter((p: any) => toTs(p.timestamp ?? p.epoch) > 0);
     const liveMetricRows = selectedInstance && metricRows.length > 0
       ? metricRows
-        .filter((p: any) => rowMatchesFilters(p, selectedInstance, qtype))
+        .filter((p: any) => rowMatchesFilters(p, selectedInstance, ''))
         .map((p: any) => ({ ...p, timestamp: p.timestamp ?? telemetry?.timestamp ?? new Date().toISOString() }))
       : [];
-    const filteredHistoryRows = historyRows.filter((p: any) => rowMatchesFilters(p, selectedInstance, qtype));
+    const filteredHistoryRows = historyRows.filter((p: any) => rowMatchesFilters(p, selectedInstance, '', { allowMissingInstance: !selectedInstance }));
     const history = timedMetrics.length > 0 ? timedMetrics : liveMetricRows.length > 0 ? liveMetricRows : filteredHistoryRows;
     const minTs = Date.now() - hours * 60 * 60 * 1000;
     const series = history
@@ -439,7 +443,7 @@ export default function DnsPage() {
       cacheHits: firstNum(resolver.cache_hits),
       cacheMisses: firstNum(resolver.cache_misses),
     }];
-  }, [filteredMetrics, historyData, hours, selectedInstance, qtype, telemetry]);
+  }, [filteredMetrics, historyData, hours, selectedInstance, telemetry]);
 
   const collectorOk = telemetry?.health?.collector === 'ok';
   const resolver = telemetry?.resolver ?? {};
