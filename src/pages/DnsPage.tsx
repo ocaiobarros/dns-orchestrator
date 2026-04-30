@@ -5,6 +5,7 @@ import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useTelemetry, useTelemetryHistory } from '@/lib/hooks';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip,
@@ -53,6 +54,9 @@ function queryTypeOf(row: any): string {
 function queryInstanceOf(row: any): string {
   return String(row?.instance ?? row?.backend ?? row?.backend_ip ?? row?.backendIp ?? '');
 }
+
+const SELECT_PANEL = 'border-border bg-popover text-popover-foreground shadow-[0_0_28px_hsl(var(--background)/0.85)]';
+const SELECT_ITEM = 'font-mono text-[11px] text-popover-foreground focus:bg-primary/15 focus:text-primary data-[state=checked]:text-primary';
 
 /* ============================================================
    KPI CARD — large, with circular glowing icon + sparkline
