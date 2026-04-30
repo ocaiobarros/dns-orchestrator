@@ -7,8 +7,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useNoc } from '@/lib/noc-context';
-import { useAuth } from '@/lib/auth';
-import { useNoc } from '@/lib/noc-context';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard, adminOnly: false },
