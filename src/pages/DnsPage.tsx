@@ -362,45 +362,45 @@ export default function DnsPage() {
   const telemetryConnected = collectorOk || hasMetrics || hasBackends;
 
   // Aggregate window metrics (sum/avg over the selected range, not last point only)
-  const metricsArr: any[] = Array.isArray(filteredMetrics) ? filteredMetrics : [];
+  const metricsArr: any[] = chartData;
   const latestMetric = metricsArr.length > 0 ? metricsArr[metricsArr.length - 1] : null;
 
   // Fall back to backend-aggregated values from telemetry for instant display
   const totalQueries =
-    metricsArr.reduce((a, m) => a + safeNum(m.total_queries ?? m.queries), 0)
-    || safeNum(latestMetric?.total_queries)
+    countWindow(metricsArr, 'totalQueries')
+    || safeNum(latestMetric?.totalQueries)
     || backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.total_queries), 0)
     || safeNum(resolver.total_queries);
 
-  const cacheHitRatio = safeNum(latestMetric?.cache_hit_ratio)
+  const cacheHitRatio = safeNum(latestMetric?.hitRatio)
     || (backends.length
       ? Math.round(backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.cache_hit_ratio), 0) / backends.length)
       : safeNum(resolver.cache_hit_ratio));
 
-  const avgLatency = safeNum(latestMetric?.latency_avg_ms ?? latestMetric?.latency_ms)
+  const avgLatency = safeNum(latestMetric?.latency)
     || (backends.length
       ? backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.recursion_avg_ms), 0) / backends.length
       : safeNum(resolver.avg_latency_ms));
 
   const totalServfail =
-    metricsArr.reduce((a, m) => a + safeNum(m.servfail_count ?? m.servfail), 0)
-    || safeNum(latestMetric?.servfail_count ?? latestMetric?.servfail)
+    countWindow(metricsArr, 'servfail')
+    || safeNum(latestMetric?.servfail)
     || backends.reduce((a: number, b: any) => a + safeNum(b.resolver?.servfail), 0)
     || safeNum(resolver.servfail);
 
-  const qps = safeNum(latestMetric?.queries_per_second ?? latestMetric?.qps ?? resolver.qps);
+  const qps = safeNum(latestMetric?.qps) || safeNum(resolver.qps);
 
   // Sparkline data per KPI
-  const sparkQ = chartData.length > 0 ? chartData.slice(-30).map(d => d.qps) : Array.from({ length: 30 }, () => Math.random() * 20 + 5);
-  const sparkH = chartData.length > 0 ? chartData.slice(-30).map(d => d.hitRatio) : Array.from({ length: 30 }, () => Math.random() * 30 + 50);
-  const sparkL = chartData.length > 0 ? chartData.slice(-30).map(d => d.latency) : Array.from({ length: 30 }, () => Math.random() * 100 + 20);
-  const sparkE = chartData.length > 0 ? chartData.slice(-30).map(d => d.servfail + d.nxdomain) : Array.from({ length: 30 }, () => Math.random() * 5);
+  const sparkQ = chartData.slice(-30).map(d => d.qps);
+  const sparkH = chartData.slice(-30).map(d => d.hitRatio);
+  const sparkL = chartData.slice(-30).map(d => d.latency);
+  const sparkE = chartData.slice(-30).map(d => d.servfail + d.nxdomain);
 
   const topDomains = topDomainsRaw
-    .filter((d: any) => !qtype || d.query_type === qtype || d.type === qtype)
+    .filter((d: any) => !qtype || !('query_type' in d || 'queryType' in d || 'type' in d) || d.query_type === qtype || d.queryType === qtype || d.type === qtype)
     .slice(0, showOnlyAlerts ? 5 : 9).map((d: any) => ({
     domain: d.domain || d.name || '—',
-    count: safeNum(d.query_count || d.count || d.queries),
+    count: firstNum(d.query_count, d.queryCount, d.count, d.queries),
   }));
   const maxDomain = Math.max(1, ...topDomains.map((d: any) => d.count));
 
