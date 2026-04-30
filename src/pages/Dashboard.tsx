@@ -205,10 +205,10 @@ function InterceptionDashboard() {
         </PanelV3>
 
         <PanelV3 title="Mapa de Rede DNS" icon={<MapIcon size={13} />}>
-          <div className="h-[260px] -m-4 rounded-b-lg overflow-hidden">
+          <div className="h-[220px] -mx-4 overflow-hidden">
             <NocGeoMap nodes={geoNodes} edges={geoEdges} />
           </div>
-          <div className="flex items-center gap-4 text-[10px] font-mono mt-2 text-muted-foreground/70">
+          <div className="flex items-center gap-4 text-[10px] font-mono mt-3 text-muted-foreground/70">
             <span>Nodos: <span className="text-primary font-bold">{geoNodes.length}</span></span>
             <span>Regiões: <span className="text-primary font-bold">10</span></span>
             <span>QPS Total: <span className="text-primary font-bold">{totalQps}</span></span>
