@@ -259,20 +259,37 @@ export default function DnsPage() {
   const { data: telemetry, isLoading, error } = useTelemetry();
   const { data: historyData } = useTelemetryHistory();
   const qc = useQueryClient();
+  const [hours, setHours] = useState(1);
+  const [selectedInstance, setSelectedInstance] = useState('');
+  const [qtype, setQtype] = useState('');
+  const [showOnlyAlerts, setShowOnlyAlerts] = useState(false);
+
+  const { data: filteredMetrics } = useQuery({
+    queryKey: ['dns', 'metrics', hours, selectedInstance],
+    queryFn: async () => { const r = await api.getDnsMetrics(hours, selectedInstance || undefined); if (!r.success) throw new Error(r.error!); return r.data; },
+    refetchInterval: 60000,
+  });
+
+  const { data: recentQueries } = useQuery({
+    queryKey: ['telemetry', 'recent-queries', selectedInstance, qtype],
+    queryFn: async () => { const r = await api.getRecentQueries({ instance: selectedInstance || undefined, qtype: qtype || undefined, limit: 100 }); if (!r.success) throw new Error(r.error!); return r.data; },
+    refetchInterval: 15000,
+  });
 
   useEffect(() => {/* warm-up */}, []);
 
   const chartData = useMemo(() => {
-    const history = Array.isArray(historyData) ? historyData : [];
+    const metricRows = Array.isArray(filteredMetrics) ? filteredMetrics : [];
+    const history = metricRows.length > 0 ? metricRows : (Array.isArray(historyData) ? historyData : []);
     return history.map((p: any) => ({
       time: p.timestamp ? new Date(p.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
-      qps: safeNum(p.qps),
-      latency: safeNum(p.latency_ms),
+      qps: safeNum(p.qps ?? p.queries_per_second),
+      latency: safeNum(p.latency_ms ?? p.latency_avg_ms),
       servfail: safeNum(p.servfail),
       nxdomain: safeNum(p.nxdomain),
       hitRatio: safeNum(p.cache_hit_ratio),
     }));
-  }, [historyData]);
+  }, [filteredMetrics, historyData]);
 
   if (isLoading) return <LoadingState />;
   if (error) return <ErrorState message={error.message} />;
