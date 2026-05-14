@@ -338,7 +338,7 @@ function ChartPanel({
               </linearGradient>
             </defs>
             <CartesianGrid stroke={colorAlpha(0.12)} strokeDasharray="2 4" vertical={false} />
-            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
+            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta, timeRange)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
             <YAxis stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={40} />
             <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Area
@@ -367,7 +367,7 @@ function CacheHitChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[];
         <ResponsiveContainer width={width} height={height}>
           <LineChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <CartesianGrid stroke="hsl(290 60% 40% / 0.15)" strokeDasharray="2 4" vertical={false} />
-            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
+            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta, timeRange)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
             <YAxis domain={[0, 100]} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={40} />
             <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Line type="monotone" dataKey="hitRatio" stroke={color} strokeWidth={1.5} dot={false}
@@ -402,7 +402,7 @@ function ErrorsChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; r
               </linearGradient>
             </defs>
             <CartesianGrid stroke={colorA(0.1)} strokeDasharray="2 4" vertical={false} />
-            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
+            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta, timeRange)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
             <YAxis stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={40} />
             <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Area type="monotone" dataKey="total" stroke={color} strokeWidth={1.5} fill="url(#err-grad)" isAnimationActive={false}
@@ -481,7 +481,7 @@ function TrafficEvolutionChart({ data, rangeLabel, timeMeta, timeRange }: { data
         <ResponsiveContainer width={width} height={height}>
           <LineChart data={series} margin={{ top: 6, right: 30, bottom: 4, left: -10 }}>
             <CartesianGrid stroke="hsl(220 35% 18% / 0.6)" strokeDasharray="2 4" vertical={false} />
-            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
+            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta, timeRange)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
             <YAxis yAxisId="left" stroke={cQps} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cQps }} tickLine={false} axisLine={false} width={36}
               label={{ value: 'Queries (QPS)', angle: -90, position: 'insideLeft', style: { fill: cQps, fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: 40 }} />
             <YAxis yAxisId="right" orientation="right" stroke={cLat} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cLat }} tickLine={false} axisLine={false} width={36}
