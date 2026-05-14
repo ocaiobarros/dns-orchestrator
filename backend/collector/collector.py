@@ -471,11 +471,11 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
     query_types: Counter = Counter()
     recent: deque = deque(maxlen=MAX_RECENT_QUERIES)
 
-    # Load existing history for accumulation
+    # Load existing history (sliding window of per-minute buckets)
     history = load_query_history()
-    hist_domains = Counter(history.get("domains", {}))
-    hist_clients = Counter(history.get("clients", {}))
-    hist_types = Counter(history.get("query_types", {}))
+    buckets = history.get("buckets", []) if isinstance(history, dict) else []
+    if not isinstance(buckets, list):
+        buckets = []
 
     unit_args = []
     for inst in instances:
