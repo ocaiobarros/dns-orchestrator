@@ -640,7 +640,7 @@ export default function DnsPage() {
       cacheHits: Math.round(firstNum(resolver.cache_hits) * countShare),
       cacheMisses: Math.round(firstNum(resolver.cache_misses) * countShare),
     }];
-  }, [filteredMetrics, hours, selectedInstance, qtype, telemetry, timeMeta]);
+  }, [filteredMetrics, telemetryHistory, hours, selectedInstance, qtype, telemetry, timeMeta]);
 
   const collectorOk = telemetry?.health?.collector === 'ok';
   const resolver = telemetry?.resolver ?? {};
