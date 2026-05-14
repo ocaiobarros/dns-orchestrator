@@ -790,7 +790,7 @@ export default function DnsPage() {
     }))
     .filter(c => c.count > 0)
     .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
+    .slice(0, 30);
   const maxClient = Math.max(1, ...topClients.map(c => c.count));
 
   const periodLabel = PERIOD_LABELS[timeRange] ?? PERIOD_LABELS[DEFAULT_DNS_FILTERS.timeRange];
