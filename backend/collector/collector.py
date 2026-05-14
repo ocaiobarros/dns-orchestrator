@@ -566,11 +566,15 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
     query_patterns = [
         # Primary: info: <client> <domain> <qtype> <qclass>
         re.compile(
-            r'info:\s+(\S+?)(?:#\d+)?\s+(\S+)\s+([A-Z0-9]+)\s+([A-Z0-9]+)'
+            r'info:\s+(\S+?)(?:[#@]\d+)?\s+(\S+)\s+([A-Z0-9]+)\s+([A-Z0-9]+)'
+        ),
+        # Tagged query logging: info: query[...]: <client> <domain> <qtype> <qclass>
+        re.compile(
+            r'info:\s+query[^:]*:\s+(\S+?)(?:[#@]\d+)?\s+(\S+)\s+([A-Z0-9]+)\s+([A-Z0-9]+)'
         ),
         # Fallback: query: <domain> <class> <type> from <client>
         re.compile(
-            r'query:\s+(\S+)\s+(\w+)\s+(\w+)\s+from\s+(\d+\.\d+\.\d+\.\d+)'
+            r'query:\s+(\S+)\s+(\w+)\s+(\w+)\s+from\s+(\S+?)(?:[#@]\d+)?'
         ),
     ]
 
@@ -590,10 +594,10 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
             if not m:
                 continue
 
-            if i == 0:
+            if i in (0, 1):
                 # info: <client> <domain> <qtype> <qclass>
                 raw_client, domain, qtype, _qclass = m.groups()
-                client = raw_client.split("#")[0]
+                client = raw_client.split("#")[0].split("@")[0]
             else:
                 # query: <domain> <class> <type> from <client>
                 domain, _qclass, qtype, client = m.groups()
@@ -678,6 +682,7 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
             "info_lines": len(info_lines),
             "sample_lines": sample_lines,
             "unit_args": unit_args,
+            "log_detection": log_detection or {},
             **diag_info,
         },
     }
