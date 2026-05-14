@@ -192,17 +192,30 @@ def run_self_test(
     body: dict[str, Any] = Body(default={}),
     _: User = Depends(get_current_user),
 ):
-    username = (body or {}).get("username") or settings.INITIAL_ADMIN_USERNAME
-    password = (body or {}).get("password") or settings.INITIAL_ADMIN_PASSWORD
+    username = (body or {}).get("username")
+    password = (body or {}).get("password")
+
+    # Não cair em credenciais padrão (admin/admin) — exigir explícito ou pular o teste.
+    login_check_enabled = bool(username and password)
 
     checks = [
         _check_systemd_api(),
         _check_api_health(),
         _check_database(),
-        _check_login(username=username, password=password),
+    ]
+    if login_check_enabled:
+        checks.append(_check_login(username=username, password=password))
+    else:
+        checks.append({
+            "name": "login_functional",
+            "status": "warn",
+            "detail": "skip — username/password não fornecidos no payload (não usar credencial padrão)",
+            "duration_ms": 0,
+        })
+    checks.extend([
         _check_nft_access(),
         _check_sudoers(),
-    ]
+    ])
 
     passed = sum(1 for c in checks if c["status"] == "pass")
     warned = sum(1 for c in checks if c["status"] == "warn")
