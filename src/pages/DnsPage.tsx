@@ -1027,7 +1027,8 @@ export default function DnsPage() {
               {topDomains.length === 0 && (
                 <div className="text-center text-muted-foreground text-[11px] py-8">Sem dados</div>
               )}
-              {topDomains.slice(0, 15).map((d: any, i: number) => {
+              <div className="max-h-[520px] overflow-y-auto pr-1 space-y-1.5">
+              {topDomains.slice(0, 30).map((d: any, i: number) => {
                 const pct = (d.count / maxDomain) * 100;
                 return (
                   <div key={d.domain} className="grid grid-cols-[18px_1fr_auto] gap-2 items-center text-[11px] font-mono py-0.5">
