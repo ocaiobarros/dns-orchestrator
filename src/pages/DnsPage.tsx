@@ -507,6 +507,7 @@ function TrafficEvolutionChart({ data, rangeLabel, timeMeta, timeRange }: { data
 export default function DnsPage() {
   const storedFilters = useMemo(() => readStoredDnsFilters(), []);
   const { data: telemetry, isLoading, error } = useTelemetry();
+  const { data: telemetryHistory } = useTelemetryHistory();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [filters, setFilters] = useState<DnsFilterState>(storedFilters);
