@@ -567,7 +567,6 @@ export default function DnsPage() {
 
   useEffect(() => {
     window.localStorage.setItem(DNS_FILTER_STORAGE_KEY, JSON.stringify(filters));
-    console.log('FILTERS', filters);
   }, [filters]);
 
   const resetFilters = () => {
@@ -603,6 +602,17 @@ export default function DnsPage() {
     queryKey: ['telemetry', 'recent-queries', filters.instance, filters.qtype, filters.timeRange],
     queryFn: async () => {
       const r = await api.getRecentQueries({ instance: selectedInstance || undefined, qtype: qtype || undefined, range: timeRange, limit: 1000 });
+      if (!r.success) throw new Error(r.error!);
+      return r.data;
+    },
+    refetchInterval: 15000,
+    placeholderData: previousData => previousData,
+  });
+
+  const { data: queryRankings } = useQuery({
+    queryKey: ['telemetry', 'query-rankings', filters.timeRange],
+    queryFn: async () => {
+      const r = await api.getQueryRankings({ range: timeRange, limit: 30 });
       if (!r.success) throw new Error(r.error!);
       return r.data;
     },
@@ -736,7 +746,8 @@ export default function DnsPage() {
     }));
   }, [qtype, selectedInstance, filteredRecentItems]);
   const effectiveChartData = chartData.length ? chartData : querySeries;
-  const topDomainsRaw = Array.isArray(telemetry?.top_domains) ? telemetry.top_domains
+  const topDomainsRaw = Array.isArray(queryRankings?.top_domains) ? queryRankings.top_domains
+    : Array.isArray(telemetry?.top_domains) ? telemetry.top_domains
     : Array.isArray(queryAnalytics?.top_domains) ? queryAnalytics.top_domains : [];
 
   // Live state: any signal of data → connected (don't gate KPIs on collector flag alone)
