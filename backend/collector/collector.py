@@ -24,10 +24,12 @@ CONFIG_PATH = os.environ.get("COLLECTOR_CONFIG", "/opt/dns-control/collector/con
 OUTPUT_DIR = Path(os.environ.get("COLLECTOR_OUTPUT_DIR", "/var/lib/dns-control/telemetry"))
 STATE_FILE = OUTPUT_DIR / ".collector_state.json"
 MAX_RECENT_QUERIES = 200
-MAX_TOP_ENTRIES = 20
+MAX_TOP_ENTRIES = 30
 HISTORY_FILE = OUTPUT_DIR / ".query_history.json"
 METRICS_HISTORY_FILE = OUTPUT_DIR / "history.json"
 MAX_HISTORY_POINTS = 300
+# Sliding window for live Top Domains/Clients ranking (in minutes)
+QUERY_WINDOW_MINUTES = int(os.environ.get("QUERY_WINDOW_MINUTES", "30"))
 
 
 def load_config() -> dict:
