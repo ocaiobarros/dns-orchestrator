@@ -735,6 +735,15 @@ def aggregate_query_windows(buckets: list[dict], now_min: int | None = None) -> 
     return windows
 
 
+def extract_instance_from_log_line(line: str, instances: list[dict]) -> str:
+    lowered = line.lower()
+    for inst in instances:
+        name = str(inst.get("name", ""))
+        if name and name.lower() in lowered:
+            return name
+    return ""
+
+
 def load_query_history() -> dict:
     try:
         with open(HISTORY_FILE) as f:
