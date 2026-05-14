@@ -9,6 +9,7 @@ Supports two modes: recursive_simple and recursive_interception.
 """
 
 import json
+import hashlib
 import os
 import re
 import subprocess
@@ -30,6 +31,15 @@ METRICS_HISTORY_FILE = OUTPUT_DIR / "history.json"
 MAX_HISTORY_POINTS = 300
 # Sliding window for live Top Domains/Clients ranking (in minutes)
 QUERY_WINDOW_MINUTES = int(os.environ.get("QUERY_WINDOW_MINUTES", "30"))
+QUERY_RETENTION_MINUTES = int(os.environ.get("QUERY_RETENTION_MINUTES", str(72 * 60)))
+QUERY_RANGE_MINUTES = {
+    "1h": 60,
+    "6h": 6 * 60,
+    "12h": 12 * 60,
+    "24h": 24 * 60,
+    "48h": 48 * 60,
+    "72h": 72 * 60,
+}
 
 
 def load_config() -> dict:
