@@ -369,8 +369,8 @@ def detect_log_availability(instances: list[dict]) -> dict:
     for inst in instances:
         name = inst["name"]
         conf_path = f"/etc/unbound/{name}.conf"
-        inst_has_log = False
-        inst_has_syslog = False
+        effective_log_queries = "no"
+        effective_use_syslog = "no"
         inst_logfile = ""
 
         try:
@@ -379,17 +379,19 @@ def detect_log_availability(instances: list[dict]) -> dict:
                     s = line.strip()
                     if s.startswith("#"):
                         continue
-                    if s.startswith("log-queries:") and "yes" in s.lower():
-                        inst_has_log = True
-                    if s.startswith("use-syslog:") and "yes" in s.lower():
-                        inst_has_syslog = True
+                    if s.startswith("log-queries:"):
+                        effective_log_queries = s.split(":", 1)[1].strip().split()[0].lower()
+                    if s.startswith("use-syslog:"):
+                        effective_use_syslog = s.split(":", 1)[1].strip().split()[0].lower()
                     if s.startswith("logfile:"):
                         val = s.split(":", 1)[1].strip().strip('"').strip("'")
                         if val and val != '""' and val != "''":
-                            inst_has_log = True
                             inst_logfile = val
         except FileNotFoundError:
             pass
+
+        inst_has_log = effective_log_queries == "yes" or bool(inst_logfile)
+        inst_has_syslog = effective_use_syslog == "yes"
 
         if inst_has_log:
             has_log_config = True
@@ -402,6 +404,8 @@ def detect_log_availability(instances: list[dict]) -> dict:
             "log_queries": inst_has_log,
             "use_syslog": inst_has_syslog,
             "logfile": inst_logfile,
+            "effective_log_queries": effective_log_queries,
+            "effective_use_syslog": effective_use_syslog,
         })
 
     # Quick journal check — look for any unbound query entries in last 60s
