@@ -621,32 +621,54 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
             parsed_count += 1
             break
 
-    # Merge with history
-    hist_domains.update(domains)
-    hist_clients.update(clients)
-    hist_types.update(query_types)
+    # Append current sample to per-minute bucket (sliding window)
+    now_min = int(time.time() // 60)
+    cutoff = now_min - QUERY_WINDOW_MINUTES
+    # Drop expired buckets
+    buckets = [b for b in buckets if isinstance(b, dict) and int(b.get("t", 0)) > cutoff]
+    # Find/create current minute bucket
+    cur = None
+    for b in buckets:
+        if int(b.get("t", 0)) == now_min:
+            cur = b
+            break
+    if cur is None:
+        cur = {"t": now_min, "domains": {}, "clients": {}, "query_types": {}}
+        buckets.append(cur)
+    for d, c in domains.items():
+        cur["domains"][d] = cur["domains"].get(d, 0) + c
+    for ip, c in clients.items():
+        cur["clients"][ip] = cur["clients"].get(ip, 0) + c
+    for t, c in query_types.items():
+        cur["query_types"][t] = cur["query_types"].get(t, 0) + c
 
-    # Save updated history
-    save_query_history({
-        "domains": dict(hist_domains.most_common(500)),
-        "clients": dict(hist_clients.most_common(200)),
-        "query_types": dict(hist_types.most_common(50)),
-    })
+    # Aggregate window for ranking
+    win_domains: Counter = Counter()
+    win_clients: Counter = Counter()
+    win_types: Counter = Counter()
+    for b in buckets:
+        win_domains.update(b.get("domains", {}))
+        win_clients.update(b.get("clients", {}))
+        win_types.update(b.get("query_types", {}))
+
+    # Persist sliding window
+    save_query_history({"buckets": buckets, "window_minutes": QUERY_WINDOW_MINUTES})
 
     # Determine if we actually got any data
-    has_data = parsed_count > 0 or len(hist_domains) > 0
+    has_data = parsed_count > 0 or len(win_domains) > 0
     telemetry_mode = "log" if has_data else "logless"
 
     return {
-        "top_domains": [{"domain": d, "count": c} for d, c in hist_domains.most_common(MAX_TOP_ENTRIES)],
-        "top_clients": [{"ip": ip, "queries": c} for ip, c in hist_clients.most_common(MAX_TOP_ENTRIES)],
-        "top_query_types": [{"type": t, "count": c} for t, c in hist_types.most_common(10)],
+        "top_domains": [{"domain": d, "count": c} for d, c in win_domains.most_common(MAX_TOP_ENTRIES)],
+        "top_clients": [{"ip": ip, "queries": c} for ip, c in win_clients.most_common(MAX_TOP_ENTRIES)],
+        "top_query_types": [{"type": t, "count": c} for t, c in win_types.most_common(10)],
         "recent_queries": list(recent),
         "log_source": log_source,
         "queries_parsed": parsed_count,
         "telemetry_mode": telemetry_mode,
         "domains_available": has_data,
         "clients_available": has_data,
+        "window_minutes": QUERY_WINDOW_MINUTES,
         "diag": {
             "total_lines": len(all_lines),
             "info_lines": len(info_lines),
