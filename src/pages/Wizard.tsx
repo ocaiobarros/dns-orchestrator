@@ -160,6 +160,7 @@ export default function Wizard() {
   const navigate = useNavigate();
 
   const isInterception = config.operationMode === 'interception';
+  const isSimple = config.operationMode === 'simple';
   const hasOwnVip = config.vipDeliverySubmode === 'interception-plus-own-vip';
   const { names: STEPS, icons: STEP_ICONS } = getSteps(config.operationMode, config.vipDeliverySubmode);
   const LAST_STEP = STEPS.length - 1;
