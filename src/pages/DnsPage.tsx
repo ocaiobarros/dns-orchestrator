@@ -1048,6 +1048,7 @@ export default function DnsPage() {
                   </div>
                 );
               })}
+              </div>
               {topDomains.length > 0 && (
                 <button
                   onClick={() => setActiveSection('domains')}
