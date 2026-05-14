@@ -1030,7 +1030,14 @@ export default function DnsPage() {
           >
             <div className="space-y-1.5">
               {topDomains.length === 0 && (
-                <div className="text-center text-muted-foreground text-[11px] py-8">Sem dados</div>
+                <div className="text-center text-muted-foreground text-[11px] py-8 px-3 leading-relaxed">
+                  Sem dados na janela de {safeNum((telemetry as any)?.window_minutes) || 30} min.
+                  <div className="mt-1 text-muted-foreground/60">
+                    {queryAnalytics?.log_source && queryAnalytics.log_source !== 'none'
+                      ? `Coletor ativo (${queryAnalytics.log_source}). Aguardando consultas.`
+                      : 'Coletor sem fonte de log (verifique log-queries: yes ou use-syslog).'}
+                  </div>
+                </div>
               )}
               <div className="max-h-[520px] overflow-y-auto pr-1 space-y-1.5">
               {topDomains.slice(0, 30).map((d: any, i: number) => {
