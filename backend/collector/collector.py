@@ -748,10 +748,13 @@ def extract_instance_from_log_line(line: str, instances: list[dict]) -> str:
 
 
 def parse_log_minute(line: str) -> int:
-    iso = re.match(r'(\d{4}-\d{2}-\d{2}T[\d:]+)', line)
+    iso = re.match(r'(\d{4}-\d{2}-\d{2}T[\d:]+)(Z|[+-]\d{2}:?\d{2})?', line)
     if iso:
         try:
-            dt = datetime.fromisoformat(iso.group(1).replace("Z", "+00:00"))
+            stamp = iso.group(1) + (iso.group(2) or "")
+            if re.search(r'[+-]\d{4}$', stamp):
+                stamp = f"{stamp[:-2]}:{stamp[-2:]}"
+            dt = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             return int(dt.timestamp() // 60)
