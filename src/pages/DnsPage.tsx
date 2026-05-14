@@ -1068,6 +1068,7 @@ export default function DnsPage() {
               {topClients.length === 0 && (
                 <div className="text-center text-muted-foreground text-[11px] py-8">Sem dados</div>
               )}
+              <div className="max-h-[520px] overflow-y-auto pr-1 space-y-1.5">
               {topClients.map((c, i) => {
                 const pct = (c.count / maxClient) * 100;
                 return (
@@ -1088,6 +1089,7 @@ export default function DnsPage() {
                   </div>
                 );
               })}
+              </div>
               {topClients.length > 0 && (
                 <button
                   onClick={() => setActiveSection('clients')}
