@@ -709,6 +709,30 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
     }
 
 
+def _counter_items(counter: Counter, label_key: str, count_key: str, limit: int) -> list[dict]:
+    return [{label_key: label, count_key: count} for label, count in counter.most_common(limit)]
+
+
+def aggregate_query_windows(buckets: list[dict], now_min: int | None = None) -> dict[str, dict[str, Counter]]:
+    if now_min is None:
+        now_min = int(time.time() // 60)
+
+    windows: dict[str, dict[str, Counter]] = {}
+    for range_key, minutes in QUERY_RANGE_MINUTES.items():
+        cutoff = now_min - minutes
+        win_domains: Counter = Counter()
+        win_clients: Counter = Counter()
+        win_types: Counter = Counter()
+        for b in buckets:
+            if not isinstance(b, dict) or int(b.get("t", 0)) <= cutoff:
+                continue
+            win_domains.update(b.get("domains", {}))
+            win_clients.update(b.get("clients", {}))
+            win_types.update(b.get("query_types", {}))
+        windows[range_key] = {"domains": win_domains, "clients": win_clients, "query_types": win_types}
+    return windows
+
+
 def load_query_history() -> dict:
     try:
         with open(HISTORY_FILE) as f:
