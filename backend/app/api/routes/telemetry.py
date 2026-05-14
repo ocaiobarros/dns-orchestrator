@@ -18,6 +18,7 @@ router = APIRouter()
 logger = logging.getLogger("dns-control.telemetry")
 
 TELEMETRY_DIR = Path(os.environ.get("COLLECTOR_OUTPUT_DIR", "/var/lib/dns-control/telemetry"))
+RANGE_MINUTES = {"1h": 60, "6h": 360, "12h": 720, "24h": 1440, "48h": 2880, "72h": 4320}
 
 
 def _read_telemetry(filename: str = "latest.json") -> dict:
@@ -333,4 +334,30 @@ def telemetry_recent_queries(
         "log_source": data.get("query_analytics", {}).get("log_source"),
         "available_types": sorted({q.get("type", "?") for q in data.get("recent_queries", []) if q.get("type")}),
         "available_instances": [i.get("name") for i in data.get("backends", []) if i.get("name")],
+    }
+
+
+@router.get("/query-rankings")
+def telemetry_query_rankings(
+    range: str | None = None,
+    limit: int = 30,
+    _: User = Depends(get_current_user),
+):
+    """Return Top Domains/Clients aggregated by the collector for the selected interval."""
+    range_key = range if range in RANGE_MINUTES else "6h"
+    data = _read_telemetry("latest.json")
+    domains_by_range = data.get("top_domains_by_range", {}) or {}
+    clients_by_range = data.get("top_clients_by_range", {}) or {}
+    types_by_range = data.get("top_query_types_by_range", {}) or {}
+    bounded = max(1, min(limit, 30))
+
+    return {
+        "range": range_key,
+        "window_minutes": RANGE_MINUTES[range_key],
+        "top_domains": (domains_by_range.get(range_key) or data.get("top_domains", []) or [])[:bounded],
+        "top_clients": (clients_by_range.get(range_key) or data.get("top_clients", []) or [])[:bounded],
+        "top_query_types": (types_by_range.get(range_key) or data.get("top_query_types", []) or [])[:bounded],
+        "telemetry_mode": data.get("telemetry_mode"),
+        "log_source": data.get("query_analytics", {}).get("log_source"),
+        "queries_parsed_last_cycle": data.get("query_analytics", {}).get("queries_parsed", 0),
     }

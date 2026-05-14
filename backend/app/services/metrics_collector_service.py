@@ -54,7 +54,7 @@ def collect_instance_metrics(db: Session, instance: DnsInstance) -> dict:
     total_q = float(raw_stats.get("total.num.queries", 0))
     cache_hits = float(raw_stats.get("total.num.cachehits", 0))
     if total_q > 0:
-        hit_ratio = cache_hits / total_q
+        hit_ratio = (cache_hits / total_q) * 100
         db.add(MetricSample(instance_id=instance.id, metric_name="dns_cache_hit_ratio", metric_value=hit_ratio, collected_at=now))
         samples.append({"metric": "dns_cache_hit_ratio", "value": hit_ratio})
 
