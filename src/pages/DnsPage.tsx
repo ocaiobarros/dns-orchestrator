@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, RefreshCw, Bell, SlidersHorizontal, Layers, Database, Timer, Shield, ChevronDown, Search, Package, HardDrive, Zap, Globe, Users, Server, Activity } from 'lucide-react';
 import { LoadingState, ErrorState } from '@/components/DataStates';
-import { useTelemetry } from '@/lib/hooks';
+import { useTelemetry, useTelemetryHistory } from '@/lib/hooks';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { ServerTimeMetadata } from '@/lib/api';
@@ -507,6 +507,7 @@ function TrafficEvolutionChart({ data, rangeLabel, timeMeta, timeRange }: { data
 export default function DnsPage() {
   const storedFilters = useMemo(() => readStoredDnsFilters(), []);
   const { data: telemetry, isLoading, error } = useTelemetry();
+  const { data: telemetryHistory } = useTelemetryHistory();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [filters, setFilters] = useState<DnsFilterState>(storedFilters);
@@ -569,7 +570,11 @@ export default function DnsPage() {
   }, [filters.instance, filters.qtype, filters.timeRange, refetchDnsMetrics]);
 
   const chartData = useMemo(() => {
-    const metricRows = Array.isArray(filteredMetrics) ? filteredMetrics : [];
+    const dbRows = Array.isArray(filteredMetrics) ? filteredMetrics : [];
+    const histRows = Array.isArray(telemetryHistory) ? telemetryHistory : [];
+    // Fall back to collector circular history when DB-backed metrics are empty
+    // (covers Cache Hit Ratio + Latency widgets when DnsEvent/MetricSample tables are empty).
+    const metricRows = dbRows.length > 0 ? dbRows : histRows;
     const historyRows = metricRows;
     const telemetryBackends = Array.isArray(telemetry?.backends) ? telemetry.backends : [];
     const selectedBackend = selectedInstance
@@ -635,7 +640,7 @@ export default function DnsPage() {
       cacheHits: Math.round(firstNum(resolver.cache_hits) * countShare),
       cacheMisses: Math.round(firstNum(resolver.cache_misses) * countShare),
     }];
-  }, [filteredMetrics, hours, selectedInstance, qtype, telemetry, timeMeta]);
+  }, [filteredMetrics, telemetryHistory, hours, selectedInstance, qtype, telemetry, timeMeta]);
 
   const collectorOk = telemetry?.health?.collector === 'ok';
   const resolver = telemetry?.resolver ?? {};
@@ -1025,7 +1030,14 @@ export default function DnsPage() {
           >
             <div className="space-y-1.5">
               {topDomains.length === 0 && (
-                <div className="text-center text-muted-foreground text-[11px] py-8">Sem dados</div>
+                <div className="text-center text-muted-foreground text-[11px] py-8 px-3 leading-relaxed">
+                  Sem dados na janela de {safeNum((telemetry as any)?.window_minutes) || 30} min.
+                  <div className="mt-1 text-muted-foreground/60">
+                    {queryAnalytics?.log_source && queryAnalytics.log_source !== 'none'
+                      ? `Coletor ativo (${queryAnalytics.log_source}). Aguardando consultas.`
+                      : 'Coletor sem fonte de log (verifique log-queries: yes ou use-syslog).'}
+                  </div>
+                </div>
               )}
               <div className="max-h-[520px] overflow-y-auto pr-1 space-y-1.5">
               {topDomains.slice(0, 30).map((d: any, i: number) => {
@@ -1066,7 +1078,14 @@ export default function DnsPage() {
           <Panel title="Top Clientes DNS" accent="violet">
             <div className="space-y-1.5">
               {topClients.length === 0 && (
-                <div className="text-center text-muted-foreground text-[11px] py-8">Sem dados</div>
+                <div className="text-center text-muted-foreground text-[11px] py-8 px-3 leading-relaxed">
+                  Sem dados na janela de {safeNum((telemetry as any)?.window_minutes) || 30} min.
+                  <div className="mt-1 text-muted-foreground/60">
+                    {queryAnalytics?.log_source && queryAnalytics.log_source !== 'none'
+                      ? `Coletor ativo (${queryAnalytics.log_source}). Aguardando consultas.`
+                      : 'Coletor sem fonte de log (verifique log-queries: yes ou use-syslog).'}
+                  </div>
+                </div>
               )}
               <div className="max-h-[520px] overflow-y-auto pr-1 space-y-1.5">
               {topClients.map((c, i) => {
