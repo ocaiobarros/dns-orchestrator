@@ -602,9 +602,16 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
                 # query: <domain> <class> <type> from <client>
                 domain, _qclass, qtype, client = m.groups()
 
-            domain = domain.rstrip(".")
-            if not domain or domain == "." or domain == "localhost":
+            client = client.strip("[]")
+            if not re.match(r'^(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9a-fA-F:]{2,})$', client):
                 continue
+
+            domain = domain.strip("<>").rstrip(".")
+            if not domain or domain == "." or domain == "localhost" or domain.startswith("<"):
+                continue
+            if not re.match(r'^(?:[A-Z0-9]{1,16})$', qtype.upper()):
+                continue
+            qtype = qtype.upper()
 
             domains[domain] += 1
             clients[client] += 1
