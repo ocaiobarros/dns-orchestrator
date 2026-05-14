@@ -1507,7 +1507,13 @@ export default function Wizard() {
       {/* ═══ Query Logging Toggle ═══ */}
       <div className="space-y-3">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Logging de Consultas DNS</div>
-        <Toggle checked={config.observability.enableQueryLogging} onChange={v => updateObs('enableQueryLogging', v)} label="Habilitar logging de consultas (Top Domains, Top Clients)" />
+        <Toggle checked={isSimple || config.observability.enableQueryLogging} onChange={v => updateObs('enableQueryLogging', v)} disabled={isSimple} label="Habilitar logging de consultas (Top Domains, Top Clients)" />
+        {isSimple && (
+          <div className="flex gap-2 p-3 rounded bg-primary/10 border border-primary/30 text-xs text-primary">
+            <Info size={14} className="shrink-0 mt-0.5" />
+            <div>No modo recursivo simples, este logging é obrigatório para popular Top Domains e Top Clients.</div>
+          </div>
+        )}
         {config.observability.enableQueryLogging && (
           <div className="flex gap-2 p-3 rounded bg-chart-4/10 border border-chart-4/30 text-xs text-chart-4">
             <AlertTriangle size={14} className="shrink-0 mt-0.5" />
