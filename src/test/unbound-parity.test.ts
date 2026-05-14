@@ -71,9 +71,9 @@ describe('Frontend/Backend Parity Contract', () => {
     expect(content).toContain('serve-expired: yes');
     expect(content).toContain('serve-expired-ttl: 86400');
     expect(content).toContain('num-queries-per-thread: 3200');
-    expect(content).toContain('outgoing-range: 8192');
-    expect(content).toContain('so-rcvbuf: 8m');
-    expect(content).toContain('so-sndbuf: 8m');
+    expect(content).toContain('outgoing-range: 65535');
+    expect(content).toContain('so-rcvbuf: 128m');
+    expect(content).toContain('so-sndbuf: 128m');
     expect(content).toContain('so-reuseport: yes');
   });
 
@@ -194,14 +194,14 @@ describe('Frontend/Backend Parity Contract', () => {
     expect(content).not.toContain('use-syslog: no');
   });
 
-  it('query logging disabled: use-syslog=no, log-queries=no', () => {
+  it('simple mode keeps query logging enabled for Top Domains/Clients', () => {
     const noLogConfig = makePayload({
       observability: { ...DEFAULT_CONFIG.observability, enableQueryLogging: false },
     });
     const content = generateUnboundConf(noLogConfig, 0);
-    expect(content).toContain('use-syslog: no');
-    expect(content).toContain('log-queries: no');
+    expect(content).toContain('use-syslog: yes');
+    expect(content).toContain('log-queries: yes');
     expect(content).toContain('log-replies: no');
-    expect(content).not.toContain('log-queries: yes');
+    expect(content).not.toContain('log-queries: no');
   });
 });
