@@ -569,11 +569,11 @@ export default function KioskDashboard() {
                 <div className="flex items-center gap-2 text-[10.5px] font-mono font-bold uppercase tracking-[0.2em] text-muted-foreground/75 mb-3">
                   <Globe size={12} className="text-primary" /> Top Domains
                 </div>
-                <div className="flex-1 space-y-1.5">
-                  {topDomains.length > 0 ? topDomains.slice(0, 10).map((d: any, i: number) => (
+                <div className="flex-1 space-y-1.5 overflow-y-auto max-h-[420px] pr-1">
+                  {topDomains.length > 0 ? topDomains.slice(0, 30).map((d: any, i: number) => (
                     <div key={d.domain + i} className="flex items-center justify-between gap-2 font-mono text-[12px]">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <span className="text-muted-foreground/55 w-5 text-right">{i + 1}.</span>
+                        <span className="text-muted-foreground/55 w-6 text-right">{i + 1}.</span>
                         <span className="text-foreground/90 truncate">{d.domain}</span>
                       </div>
                       <span className="text-foreground/85 tabular-nums">{(d.count ?? 0).toLocaleString()}</span>
