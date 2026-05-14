@@ -426,6 +426,51 @@ function formatBytes(n: number): string {
 }
 
 /* ============================================================
+   Empty-state diagnostic for Top Domains/Clients
+   ============================================================ */
+function EmptyTopState({ analytics, windowMin }: { analytics: any; windowMin: number }) {
+  const src = analytics?.log_source || 'none';
+  const parsed = Number(analytics?.queries_parsed || 0);
+  const infoLines = Number(analytics?.diag?.info_lines || 0);
+  const totalLines = Number(analytics?.diag?.total_lines || 0);
+
+  let hint: React.ReactNode;
+  if (src === 'none') {
+    hint = (
+      <>
+        Coletor <b>sem fonte de log</b>. Habilite <code className="px-1 rounded bg-muted/40">log-queries: yes</code>{' '}
+        e <code className="px-1 rounded bg-muted/40">use-syslog: yes</code> em todos os
+        <code className="px-1 rounded bg-muted/40">/etc/unbound/unbound*.conf</code> e reinicie o serviço.
+      </>
+    );
+  } else if (parsed === 0 && infoLines > 0) {
+    hint = (
+      <>
+        Fonte ativa (<code className="px-1 rounded bg-muted/40">{src}</code>) com {infoLines} linhas <i>info:</i>, mas
+        <b> 0 queries reconhecidas</b>. Provável: <code className="px-1 rounded bg-muted/40">log-queries: yes</code> ausente
+        nos <i>unbound*.conf</i> (apenas estatísticas estão sendo logadas).
+      </>
+    );
+  } else if (parsed === 0 && totalLines === 0) {
+    hint = (
+      <>
+        Fonte <code className="px-1 rounded bg-muted/40">{src}</code> não retornou nenhuma linha. Verifique se o
+        serviço unbound está logando no <i>journal</i> e se o coletor tem permissão (<code className="px-1 rounded bg-muted/40">sudo journalctl</code>).
+      </>
+    );
+  } else {
+    hint = <>Coletor ativo (<code className="px-1 rounded bg-muted/40">{src}</code>). Aguardando próxima janela.</>;
+  }
+
+  return (
+    <div className="text-center text-muted-foreground text-[11px] py-8 px-3 leading-relaxed">
+      Sem dados na janela de {windowMin} min.
+      <div className="mt-2 text-muted-foreground/70 text-left max-w-md mx-auto">{hint}</div>
+    </div>
+  );
+}
+
+/* ============================================================
    Segmented control — section focus
    ============================================================ */
 type SectionTab = 'overview' | 'domains' | 'clients' | 'backends' | 'traffic';
