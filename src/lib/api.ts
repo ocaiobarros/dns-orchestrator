@@ -336,6 +336,22 @@ export const api = {
       available_instances: string[];
     }>('GET', `/telemetry/recent-queries${qs ? `?${qs}` : ''}`);
   },
+  getQueryRankings: (params?: { range?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.range) q.set('range', params.range);
+    if (params?.limit) q.set('limit', String(params.limit));
+    const qs = q.toString();
+    return apiCall<{
+      range: string;
+      window_minutes: number;
+      top_domains: Array<{ domain: string; count: number }>;
+      top_clients: Array<{ ip: string; queries: number; count?: number }>;
+      top_query_types: Array<{ type: string; count: number }>;
+      telemetry_mode?: string;
+      log_source?: string;
+      queries_parsed_last_cycle?: number;
+    }>('GET', `/telemetry/query-rankings${qs ? `?${qs}` : ''}`);
+  },
 
   // Kiosk (NOC TV)
   getKioskSummary: () => apiCall<any>('GET', '/kiosk/summary'),
