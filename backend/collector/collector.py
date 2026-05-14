@@ -936,8 +936,10 @@ def collect_all() -> dict:
             "telemetry_mode": telemetry_mode,
             "domains_available": query_analytics.get("domains_available", False),
             "clients_available": query_analytics.get("clients_available", False),
+            "window_minutes": query_analytics.get("window_minutes", QUERY_WINDOW_MINUTES),
             "diag": query_analytics.get("diag", {}),
         },
+        "window_minutes": query_analytics.get("window_minutes", QUERY_WINDOW_MINUTES),
 
         "log_detection": log_detection,
 
