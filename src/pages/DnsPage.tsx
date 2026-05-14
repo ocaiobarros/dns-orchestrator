@@ -338,7 +338,7 @@ function ChartPanel({
               </linearGradient>
             </defs>
             <CartesianGrid stroke={colorAlpha(0.12)} strokeDasharray="2 4" vertical={false} />
-            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
+            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta, timeRange)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
             <YAxis stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={40} />
             <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Area
@@ -367,7 +367,7 @@ function CacheHitChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[];
         <ResponsiveContainer width={width} height={height}>
           <LineChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
             <CartesianGrid stroke="hsl(290 60% 40% / 0.15)" strokeDasharray="2 4" vertical={false} />
-            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
+            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta, timeRange)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
             <YAxis domain={[0, 100]} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={40} />
             <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Line type="monotone" dataKey="hitRatio" stroke={color} strokeWidth={1.5} dot={false}
@@ -402,7 +402,7 @@ function ErrorsChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; r
               </linearGradient>
             </defs>
             <CartesianGrid stroke={colorA(0.1)} strokeDasharray="2 4" vertical={false} />
-            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
+            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta, timeRange)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
             <YAxis stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={40} />
             <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Area type="monotone" dataKey="total" stroke={color} strokeWidth={1.5} fill="url(#err-grad)" isAnimationActive={false}
@@ -481,7 +481,7 @@ function TrafficEvolutionChart({ data, rangeLabel, timeMeta, timeRange }: { data
         <ResponsiveContainer width={width} height={height}>
           <LineChart data={series} margin={{ top: 6, right: 30, bottom: 4, left: -10 }}>
             <CartesianGrid stroke="hsl(220 35% 18% / 0.6)" strokeDasharray="2 4" vertical={false} />
-            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
+            <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta, timeRange)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
             <YAxis yAxisId="left" stroke={cQps} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cQps }} tickLine={false} axisLine={false} width={36}
               label={{ value: 'Queries (QPS)', angle: -90, position: 'insideLeft', style: { fill: cQps, fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: 40 }} />
             <YAxis yAxisId="right" orientation="right" stroke={cLat} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cLat }} tickLine={false} axisLine={false} width={36}
@@ -756,7 +756,7 @@ export default function DnsPage() {
         .sort((a, b) => b.count - a.count)
     : topDomainsRaw;
   const topDomains = topDomainsSource
-    .slice(0, showOnlyAlerts ? 5 : 9).map((d: any) => ({
+    .slice(0, showOnlyAlerts ? 5 : 30).map((d: any) => ({
       domain: d.domain || d.name || '—',
       count: firstNum(d.query_count, d.queryCount, d.count, d.queries),
     }));
@@ -790,7 +790,7 @@ export default function DnsPage() {
     }))
     .filter(c => c.count > 0)
     .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
+    .slice(0, 30);
   const maxClient = Math.max(1, ...topClients.map(c => c.count));
 
   const periodLabel = PERIOD_LABELS[timeRange] ?? PERIOD_LABELS[DEFAULT_DNS_FILTERS.timeRange];
@@ -1027,7 +1027,8 @@ export default function DnsPage() {
               {topDomains.length === 0 && (
                 <div className="text-center text-muted-foreground text-[11px] py-8">Sem dados</div>
               )}
-              {topDomains.slice(0, 15).map((d: any, i: number) => {
+              <div className="max-h-[520px] overflow-y-auto pr-1 space-y-1.5">
+              {topDomains.slice(0, 30).map((d: any, i: number) => {
                 const pct = (d.count / maxDomain) * 100;
                 return (
                   <div key={d.domain} className="grid grid-cols-[18px_1fr_auto] gap-2 items-center text-[11px] font-mono py-0.5">
@@ -1047,6 +1048,7 @@ export default function DnsPage() {
                   </div>
                 );
               })}
+              </div>
               {topDomains.length > 0 && (
                 <button
                   onClick={() => setActiveSection('domains')}
@@ -1066,6 +1068,7 @@ export default function DnsPage() {
               {topClients.length === 0 && (
                 <div className="text-center text-muted-foreground text-[11px] py-8">Sem dados</div>
               )}
+              <div className="max-h-[520px] overflow-y-auto pr-1 space-y-1.5">
               {topClients.map((c, i) => {
                 const pct = (c.count / maxClient) * 100;
                 return (
@@ -1086,6 +1089,7 @@ export default function DnsPage() {
                   </div>
                 );
               })}
+              </div>
               {topClients.length > 0 && (
                 <button
                   onClick={() => setActiveSection('clients')}

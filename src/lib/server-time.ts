@@ -39,8 +39,13 @@ export function formatServerDateTime(
   }).format(new Date(ts));
 }
 
-export function formatServerAxisTime(value: unknown, meta: ServerTimeMetadata): string {
-  return formatServerDateTime(value, meta, { hour: '2-digit', minute: '2-digit' });
+export function formatServerAxisTime(value: unknown, meta: ServerTimeMetadata, range?: string): string {
+  // For ranges spanning more than one day, include the date alongside the time
+  const longRange = range === '24h' || range === '48h' || range === '72h';
+  const opts: Intl.DateTimeFormatOptions = longRange
+    ? { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }
+    : { hour: '2-digit', minute: '2-digit' };
+  return formatServerDateTime(value, meta, opts);
 }
 
 export function formatServerTooltipTime(value: unknown, meta: ServerTimeMetadata): string {
