@@ -29,6 +29,9 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
   if (!inst) return '# Error: Instance not found';
 
   const isSimple = config.operationMode === 'simple';
+  const queryLoggingEnabled = isSimple || config.observability?.enableQueryLogging !== false;
+  const outgoingRange = isSimple ? 65535 : 8192;
+  const socketBuffer = isSimple ? '128m' : '8m';
 
   // Collect all interface: directives (listeners ONLY)
   const interfaces: string[] = [`    interface: ${inst.bindIp}`];
@@ -105,13 +108,13 @@ ${interfaceBlock}
 
 ${egressBlock}
 
-    outgoing-range: 8192
+    outgoing-range: ${outgoingRange}
     outgoing-port-avoid: 0-1024
     outgoing-port-permit: 1025-65535
     num-queries-per-thread: ${numQueriesPerThread}
 
-    so-rcvbuf: 8m
-    so-sndbuf: 8m
+    so-rcvbuf: ${socketBuffer}
+    so-sndbuf: ${socketBuffer}
     so-reuseport: yes
 
     msg-cache-size: ${msgCacheSize}
@@ -146,7 +149,7 @@ ${accessControlBlock}
     username: "unbound"
     directory: "/etc/unbound"
     logfile: ""
-${config.observability?.enableQueryLogging !== false ? `    use-syslog: yes
+${queryLoggingEnabled ? `    use-syslog: yes
     log-queries: yes
     log-replies: no
     log-servfail: yes
