@@ -994,6 +994,9 @@ def collect_all() -> dict:
         "top_domains": query_analytics.get("top_domains", []),
         "top_clients": query_analytics.get("top_clients", []),
         "top_query_types": query_analytics.get("top_query_types", []),
+        "top_domains_by_range": query_analytics.get("top_domains_by_range", {}),
+        "top_clients_by_range": query_analytics.get("top_clients_by_range", {}),
+        "top_query_types_by_range": query_analytics.get("top_query_types_by_range", {}),
         "recent_queries": query_analytics.get("recent_queries", []),
         "query_analytics": {
             "log_source": query_analytics.get("log_source", "none"),
@@ -1005,6 +1008,7 @@ def collect_all() -> dict:
             "diag": query_analytics.get("diag", {}),
         },
         "window_minutes": query_analytics.get("window_minutes", QUERY_WINDOW_MINUTES),
+        "retention_minutes": query_analytics.get("retention_minutes", QUERY_RETENTION_MINUTES),
 
         "log_detection": log_detection,
 
