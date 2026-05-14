@@ -570,7 +570,11 @@ export default function DnsPage() {
   }, [filters.instance, filters.qtype, filters.timeRange, refetchDnsMetrics]);
 
   const chartData = useMemo(() => {
-    const metricRows = Array.isArray(filteredMetrics) ? filteredMetrics : [];
+    const dbRows = Array.isArray(filteredMetrics) ? filteredMetrics : [];
+    const histRows = Array.isArray(telemetryHistory) ? telemetryHistory : [];
+    // Fall back to collector circular history when DB-backed metrics are empty
+    // (covers Cache Hit Ratio + Latency widgets when DnsEvent/MetricSample tables are empty).
+    const metricRows = dbRows.length > 0 ? dbRows : histRows;
     const historyRows = metricRows;
     const telemetryBackends = Array.isArray(telemetry?.backends) ? telemetry.backends : [];
     const selectedBackend = selectedInstance
