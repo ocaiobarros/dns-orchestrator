@@ -1071,14 +1071,7 @@ export default function DnsPage() {
           <Panel title="Top Clientes DNS" accent="violet">
             <div className="space-y-1.5">
               {topClients.length === 0 && (
-                <div className="text-center text-muted-foreground text-[11px] py-8 px-3 leading-relaxed">
-                  Sem dados na janela de {safeNum((telemetry as any)?.window_minutes) || 30} min.
-                  <div className="mt-1 text-muted-foreground/60">
-                    {queryAnalytics?.log_source && queryAnalytics.log_source !== 'none'
-                      ? `Coletor ativo (${queryAnalytics.log_source}). Aguardando consultas.`
-                      : 'Coletor sem fonte de log (verifique log-queries: yes ou use-syslog).'}
-                  </div>
-                </div>
+                <EmptyTopState analytics={queryAnalytics} windowMin={safeNum((telemetry as any)?.window_minutes) || 30} />
               )}
               <div className="max-h-[520px] overflow-y-auto pr-1 space-y-1.5">
               {topClients.map((c, i) => {
