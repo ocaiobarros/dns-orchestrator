@@ -747,6 +747,19 @@ def extract_instance_from_log_line(line: str, instances: list[dict]) -> str:
     return ""
 
 
+def parse_log_minute(line: str) -> int:
+    iso = re.match(r'(\d{4}-\d{2}-\d{2}T[\d:]+)', line)
+    if iso:
+        try:
+            dt = datetime.fromisoformat(iso.group(1).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return int(dt.timestamp() // 60)
+        except ValueError:
+            pass
+    return int(time.time() // 60)
+
+
 def load_query_history() -> dict:
     try:
         with open(HISTORY_FILE) as f:
