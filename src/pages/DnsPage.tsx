@@ -843,7 +843,8 @@ export default function DnsPage() {
   const totalBackendPackets = backendTraffic.reduce((a, b) => a + b.packets, 0);
 
   // ─── top clients (PRESERVED — telemetry.top_clients) ───
-  const topClientsRaw: any[] = Array.isArray((telemetry as any)?.top_clients) ? (telemetry as any).top_clients : [];
+  const topClientsRaw: any[] = Array.isArray(queryRankings?.top_clients) ? queryRankings.top_clients
+    : Array.isArray((telemetry as any)?.top_clients) ? (telemetry as any).top_clients : [];
   const topClients = topClientsRaw
     .map((c: any) => ({
       ip: c.client || c.ip || c.address || '—',
