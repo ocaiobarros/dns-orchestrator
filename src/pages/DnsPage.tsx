@@ -756,7 +756,7 @@ export default function DnsPage() {
         .sort((a, b) => b.count - a.count)
     : topDomainsRaw;
   const topDomains = topDomainsSource
-    .slice(0, showOnlyAlerts ? 5 : 9).map((d: any) => ({
+    .slice(0, showOnlyAlerts ? 5 : 30).map((d: any) => ({
       domain: d.domain || d.name || '—',
       count: firstNum(d.query_count, d.queryCount, d.count, d.queries),
     }));
