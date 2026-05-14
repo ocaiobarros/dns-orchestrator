@@ -646,9 +646,10 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
             parsed_count += 1
             break
 
-    # Append current sample to per-minute bucket (sliding window)
+    # Append current sample to per-minute bucket. Keep a 72h rolling base so
+    # rankings can follow the interval selected in the UI.
     now_min = int(time.time() // 60)
-    cutoff = now_min - QUERY_WINDOW_MINUTES
+    cutoff = now_min - QUERY_RETENTION_MINUTES
     # Drop expired buckets
     buckets = [b for b in buckets if isinstance(b, dict) and int(b.get("t", 0)) > cutoff]
     # Find/create current minute bucket
@@ -667,26 +668,28 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
     for t, c in query_types.items():
         cur["query_types"][t] = cur["query_types"].get(t, 0) + c
 
-    # Aggregate window for ranking
-    win_domains: Counter = Counter()
-    win_clients: Counter = Counter()
-    win_types: Counter = Counter()
-    for b in buckets:
-        win_domains.update(b.get("domains", {}))
-        win_clients.update(b.get("clients", {}))
-        win_types.update(b.get("query_types", {}))
+    window_rankings = aggregate_query_windows(buckets, now_min=now_min)
+    default_window = f"{max(1, QUERY_WINDOW_MINUTES // 60)}h" if QUERY_WINDOW_MINUTES >= 60 else "1h"
+    if default_window not in window_rankings:
+        default_window = "1h"
+    win_domains: Counter = window_rankings[default_window]["domains"]
+    win_clients: Counter = window_rankings[default_window]["clients"]
+    win_types: Counter = window_rankings[default_window]["query_types"]
 
-    # Persist sliding window
-    save_query_history({"buckets": buckets, "window_minutes": QUERY_WINDOW_MINUTES})
+    # Persist rolling query history
+    save_query_history({"buckets": buckets, "retention_minutes": QUERY_RETENTION_MINUTES})
 
     # Determine if we actually got any data
     has_data = parsed_count > 0 or len(win_domains) > 0
     telemetry_mode = "log" if has_data else "logless"
 
     return {
-        "top_domains": [{"domain": d, "count": c} for d, c in win_domains.most_common(MAX_TOP_ENTRIES)],
-        "top_clients": [{"ip": ip, "queries": c} for ip, c in win_clients.most_common(MAX_TOP_ENTRIES)],
-        "top_query_types": [{"type": t, "count": c} for t, c in win_types.most_common(10)],
+        "top_domains": _counter_items(win_domains, "domain", "count", MAX_TOP_ENTRIES),
+        "top_clients": _counter_items(win_clients, "ip", "queries", MAX_TOP_ENTRIES),
+        "top_query_types": _counter_items(win_types, "type", "count", 30),
+        "top_domains_by_range": {rng: _counter_items(counters["domains"], "domain", "count", MAX_TOP_ENTRIES) for rng, counters in window_rankings.items()},
+        "top_clients_by_range": {rng: _counter_items(counters["clients"], "ip", "queries", MAX_TOP_ENTRIES) for rng, counters in window_rankings.items()},
+        "top_query_types_by_range": {rng: _counter_items(counters["query_types"], "type", "count", 30) for rng, counters in window_rankings.items()},
         "recent_queries": list(recent),
         "log_source": log_source,
         "queries_parsed": parsed_count,
@@ -694,6 +697,7 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
         "domains_available": has_data,
         "clients_available": has_data,
         "window_minutes": QUERY_WINDOW_MINUTES,
+        "retention_minutes": QUERY_RETENTION_MINUTES,
         "diag": {
             "total_lines": len(all_lines),
             "info_lines": len(info_lines),
