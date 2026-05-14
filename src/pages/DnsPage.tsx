@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, RefreshCw, Bell, SlidersHorizontal, Layers, Database, Timer, Shield, ChevronDown, Search, Package, HardDrive, Zap, Globe, Users, Server, Activity } from 'lucide-react';
 import { LoadingState, ErrorState } from '@/components/DataStates';
-import { useTelemetry } from '@/lib/hooks';
+import { useTelemetry, useTelemetryHistory } from '@/lib/hooks';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { ServerTimeMetadata } from '@/lib/api';
