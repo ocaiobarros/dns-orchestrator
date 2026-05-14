@@ -637,11 +637,13 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
                 if tm2:
                     time_str = tm2.group(1)
 
+            instance = extract_instance_from_log_line(line, instances)
             recent.append({
                 "time": time_str or "??:??:??",
                 "client": client,
                 "domain": domain,
                 "type": qtype,
+                "instance": instance,
             })
             parsed_count += 1
             break
