@@ -483,6 +483,7 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
     domains: Counter = Counter()
     clients: Counter = Counter()
     query_types: Counter = Counter()
+    parsed_events: list[tuple[str, str, str, str]] = []
     recent: deque = deque(maxlen=MAX_RECENT_QUERIES)
 
     # Load existing history (sliding window of per-minute buckets)
@@ -623,6 +624,8 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
                 continue
             qtype = qtype.upper()
 
+            event_id = hashlib.sha1(line.strip().encode("utf-8", errors="ignore")).hexdigest()[:20]
+            parsed_events.append((event_id, domain, client, qtype))
             domains[domain] += 1
             clients[client] += 1
             query_types[qtype] += 1
@@ -661,14 +664,17 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
             cur = b
             break
     if cur is None:
-        cur = {"t": now_min, "domains": {}, "clients": {}, "query_types": {}}
+        cur = {"t": now_min, "domains": {}, "clients": {}, "query_types": {}, "seen": []}
         buckets.append(cur)
-    for d, c in domains.items():
-        cur["domains"][d] = cur["domains"].get(d, 0) + c
-    for ip, c in clients.items():
-        cur["clients"][ip] = cur["clients"].get(ip, 0) + c
-    for t, c in query_types.items():
-        cur["query_types"][t] = cur["query_types"].get(t, 0) + c
+    seen = set(cur.get("seen", []))
+    for event_id, d, ip, t in parsed_events:
+        if event_id in seen:
+            continue
+        seen.add(event_id)
+        cur["domains"][d] = cur["domains"].get(d, 0) + 1
+        cur["clients"][ip] = cur["clients"].get(ip, 0) + 1
+        cur["query_types"][t] = cur["query_types"].get(t, 0) + 1
+    cur["seen"] = list(seen)[-10000:]
 
     window_rankings = aggregate_query_windows(buckets, now_min=now_min)
     default_window = f"{max(1, QUERY_WINDOW_MINUTES // 60)}h" if QUERY_WINDOW_MINUTES >= 60 else "1h"
