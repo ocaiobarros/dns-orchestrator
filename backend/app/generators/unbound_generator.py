@@ -206,6 +206,9 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     # Advanced hardening options
     harden_dnssec = payload.get("hardenDnssecStripped") if payload.get("hardenDnssecStripped") is not None else wizard_cfg.get("hardenDnssecStripped", True)
     use_caps_for_id = payload.get("useCapsForId") if payload.get("useCapsForId") is not None else wizard_cfg.get("useCapsForId", False)
+    query_logging_enabled = is_simple or (payload.get("observability") or wizard_cfg.get("observability") or {}).get("enableQueryLogging", True)
+    outgoing_range = 65535 if is_simple else 8192
+    socket_buffer = "128m" if is_simple else "8m"
 
     # Smart access-control
     access_control_block = _generate_access_control(payload, wizard_cfg)
@@ -253,13 +256,13 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
             config += f"    outgoing-interface: {exit_ipv6}\n"
 
         config += f"""
-    outgoing-range: 8192
+    outgoing-range: {outgoing_range}
     outgoing-port-avoid: 0-1024
     outgoing-port-permit: 1025-65535
     num-queries-per-thread: {num_queries_per_thread}
 
-    so-rcvbuf: 8m
-    so-sndbuf: 8m
+    so-rcvbuf: {socket_buffer}
+    so-sndbuf: {socket_buffer}
     so-reuseport: yes
 
     msg-cache-size: {msg_cache_size}
@@ -296,11 +299,8 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     logfile: ""
 """
 
-        # ═══ Query Logging — driven by observability.enableQueryLogging ═══
-        obs = payload.get("observability") or wizard_cfg.get("observability") or {}
-        enable_query_logging = obs.get("enableQueryLogging", True)
-
-        if enable_query_logging:
+        # ═══ Query Logging — mandatory in simple mode for Top Domains/Clients ═══
+        if query_logging_enabled:
             config += """    use-syslog: yes
     log-queries: yes
     log-replies: no
