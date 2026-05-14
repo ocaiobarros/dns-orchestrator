@@ -483,7 +483,7 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
     domains: Counter = Counter()
     clients: Counter = Counter()
     query_types: Counter = Counter()
-    parsed_events: list[tuple[str, str, str, str]] = []
+    parsed_events: list[tuple[int, str, str, str, str]] = []
     recent: deque = deque(maxlen=MAX_RECENT_QUERIES)
 
     # Load existing history (sliding window of per-minute buckets)
@@ -625,7 +625,7 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
             qtype = qtype.upper()
 
             event_id = hashlib.sha1(line.strip().encode("utf-8", errors="ignore")).hexdigest()[:20]
-            parsed_events.append((event_id, domain, client, qtype))
+            parsed_events.append((parse_log_minute(line), event_id, domain, client, qtype))
             domains[domain] += 1
             clients[client] += 1
             query_types[qtype] += 1
@@ -657,24 +657,21 @@ def collect_query_logs(instances: list[dict], since_seconds: int = 60, log_detec
     cutoff = now_min - QUERY_RETENTION_MINUTES
     # Drop expired buckets
     buckets = [b for b in buckets if isinstance(b, dict) and int(b.get("t", 0)) > cutoff]
-    # Find/create current minute bucket
-    cur = None
-    for b in buckets:
-        if int(b.get("t", 0)) == now_min:
-            cur = b
-            break
-    if cur is None:
-        cur = {"t": now_min, "domains": {}, "clients": {}, "query_types": {}, "seen": []}
-        buckets.append(cur)
-    seen = set(cur.get("seen", []))
-    for event_id, d, ip, t in parsed_events:
+    buckets_by_minute = {int(b.get("t", 0)): b for b in buckets if isinstance(b, dict)}
+    for event_min, event_id, d, ip, t in parsed_events:
+        cur = buckets_by_minute.get(event_min)
+        if cur is None:
+            cur = {"t": event_min, "domains": {}, "clients": {}, "query_types": {}, "seen": []}
+            buckets_by_minute[event_min] = cur
+            buckets.append(cur)
+        seen = set(cur.get("seen", []))
         if event_id in seen:
             continue
         seen.add(event_id)
         cur["domains"][d] = cur["domains"].get(d, 0) + 1
         cur["clients"][ip] = cur["clients"].get(ip, 0) + 1
         cur["query_types"][t] = cur["query_types"].get(t, 0) + 1
-    cur["seen"] = list(seen)[-10000:]
+        cur["seen"] = list(seen)[-10000:]
 
     window_rankings = aggregate_query_windows(buckets, now_min=now_min)
     default_window = f"{max(1, QUERY_WINDOW_MINUTES // 60)}h" if QUERY_WINDOW_MINUTES >= 60 else "1h"
