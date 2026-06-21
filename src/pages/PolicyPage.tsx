@@ -161,8 +161,32 @@ export default function PolicyPage() {
             banco; <strong>geração de config chega no POL-2b</strong>.
           </p>
         </div>
-        {isAdmin && <CreateBlockButton onCreate={(b) => createMut.mutate(b)} pending={createMut.isPending} />}
+        {isAdmin && (
+          <div className="flex gap-2">
+            <CreateBlockButton onCreate={(b) => createMut.mutate(b)} pending={createMut.isPending} />
+            <CreateAllowButton onCreate={(b) => createAllowMut.mutate(b)} pending={createAllowMut.isPending} />
+          </div>
+        )}
       </div>
+
+      {/* POL-3a — honest limitation note. The DB validator only rejects
+          allow_exception that collides with a layer-100 rule KNOWN in the DB.
+          Until the AnaBlock mirror lands (POL-4), judicial domains pulled at
+          runtime into anablock.conf are NOT in the DB and the validator
+          cannot see them. The real backstop is the include-order at
+          resolution time (POL-2b/POL-3b). Be explicit in the UI. */}
+      {isAdmin && (
+        <div className="noc-panel border-l-2 border-l-amber-500/60 text-xs px-3 py-2 text-muted-foreground">
+          <strong className="text-amber-500">Limitação do validador:</strong>{' '}
+          A rejeição automática de allowlist só cobre regras judiciais
+          presentes no banco (layer 100). O conjunto judicial baixado em
+          runtime (<code>anablock.conf</code>) ainda não é espelhado no DB —
+          o backstop definitivo é a ordem de include na resolução
+          (<code>anablock.conf</code> vence por last-wins).
+        </div>
+      )}
+      <div className="hidden">
+
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
