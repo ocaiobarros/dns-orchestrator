@@ -194,7 +194,9 @@ export default function HistoryPage() {
                         <RotateCcw size={10} /> Rollback
                       </button>
                     )}
-                    <button className="px-2.5 py-1 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80 flex items-center gap-1">
+                    <button
+                      onClick={() => navigate('/files')}
+                      className="px-2.5 py-1 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80 flex items-center gap-1">
                       <FileText size={10} /> Ver Arquivos
                     </button>
                   </div>
