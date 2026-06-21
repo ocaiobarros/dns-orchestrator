@@ -396,7 +396,9 @@ export default function KioskDashboard() {
                 <div className="text-[10.5px] font-mono font-bold uppercase tracking-[0.2em] text-muted-foreground/75">
                   Serviços Online
                 </div>
-                <button className="ml-auto px-3 py-1 text-[10.5px] font-mono text-muted-foreground/80 hover:text-foreground border border-border/40 rounded-md flex items-center gap-1"
+                <button
+                  onClick={() => navigate('/services')}
+                  className="ml-auto px-3 py-1 text-[10.5px] font-mono text-muted-foreground/80 hover:text-foreground border border-border/40 rounded-md flex items-center gap-1"
                   style={{ background: 'hsl(var(--noc-depth-2))' }}>
                   Ver todos <ChevronDown size={11} />
                 </button>
