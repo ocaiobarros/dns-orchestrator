@@ -187,7 +187,7 @@ export const api = {
   getInstanceStats: () => apiCall<DnsInstanceStats[]>('GET', '/dns/instances'),
 
   // NAT / nftables
-  getNftCounters: () => apiCall<any>('GET', '/nat/summary'),
+  getNftCounters: () => apiCall<NatSummary>('GET', '/nat/summary'),
   getStickyTable: () => apiCall<NftStickyEntry[]>('GET', '/nat/sticky'),
   getNftRuleset: () => apiCall<{ ruleset: string }>('GET', '/nat/ruleset'),
   getSystemDrift: () => apiCall<{
