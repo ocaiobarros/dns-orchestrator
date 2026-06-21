@@ -37,6 +37,25 @@ def system_time(_: User = Depends(get_current_user)):
     }
 
 
+@router.get("/drift")
+def system_drift(_: User = Depends(get_current_user)):
+    """
+    Read-only exposure of drift_service.detect_drift() for the operator UI.
+    Compares the deployed version manifest with the live files on disk.
+    No state mutation — pure read; safe for viewer role.
+    """
+    try:
+        from app.services.drift_service import detect_drift
+        return detect_drift()
+    except Exception as exc:  # noqa: BLE001 — degrade honestly
+        return {
+            "status": "unavailable",
+            "message": f"Drift detection unavailable: {exc!s}",
+            "drifted_files": [],
+            "missing_files": [],
+        }
+
+
 def _check_systemd_api() -> dict[str, Any]:
     start = monotonic()
     result = run_command("systemctl", ["is-active", "dns-control-api"], timeout=5, use_privilege=False)
