@@ -366,8 +366,16 @@ export const api = {
     apiCall<{ success: boolean }>('POST', `/actions/restore-backend/${instanceId}`),
   reconcileNow: () =>
     apiCall<ReconcileSummary>('POST', '/actions/reconcile-now'),
+  // Status do scheduler vem aninhado na resposta de GET /api/health
+  // (backend/app/main.py → health_check → campo "scheduler" populado por
+  // app.workers.scheduler.get_scheduler_status). Não há rota dedicada.
   getSchedulerStatus: () =>
-    apiCall<{ running: boolean; jobs: Array<{ id: string; name: string; next_run: string | null }> }>('GET', '/health'),
+    apiCall<{
+      status: string;
+      version: string;
+      database: string;
+      scheduler: { running: boolean; jobs: Array<{ id: string; name: string; next_run: string | null }> };
+    }>('GET', '/health'),
   importHostState: () =>
     apiCall<any>('GET', '/config/import-host'),
 
