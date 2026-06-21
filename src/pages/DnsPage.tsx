@@ -543,8 +543,9 @@ function SectionTabs({ value, onChange }: { value: SectionTab; onChange: (v: Sec
    Multi-line traffic chart (QPS + CacheHit + Latência)
    ============================================================ */
 function TrafficEvolutionChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; rangeLabel?: string; timeMeta: ServerTimeMetadata; timeRange: string }) {
-  const series = data.length > 0 ? data : Array.from({ length: 2 }, (_, i) => ({ ts: Date.now() + i, qps: 0, hitRatio: 0, latency: 0 }));
-  const ticks = buildServerTimeTicks(series, timeRange);
+  const hasData = data.length > 0;
+  const series = hasData ? data : [];
+  const ticks = hasData ? buildServerTimeTicks(series, timeRange) : [];
   const cQps = 'hsl(200 90% 60%)';
   const cHit = 'hsl(162 72% 51%)';
   const cLat = 'hsl(270 75% 65%)';
@@ -554,6 +555,7 @@ function TrafficEvolutionChart({ data, rangeLabel, timeMeta, timeRange }: { data
       accent="blue"
       badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}
     >
+      {!hasData ? <NoDataPlaceholder minHeight={220} /> : (
       <MeasuredChartFrame minHeight={220}>{({ width, height }) => (
         <ResponsiveContainer width={width} height={height}>
           <LineChart data={series} margin={{ top: 6, right: 30, bottom: 4, left: -10 }}>
@@ -574,9 +576,11 @@ function TrafficEvolutionChart({ data, rangeLabel, timeMeta, timeRange }: { data
           </LineChart>
         </ResponsiveContainer>
       )}</MeasuredChartFrame>
+      )}
     </Panel>
   );
 }
+
 
 /* ============================================================
    MAIN PAGE
