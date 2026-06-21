@@ -347,6 +347,25 @@ export function planOpenResolverMigration(
       label: e.label || undefined,
     });
   }
+  // Caller-supplied known networks (e.g., runtime inventory, settings).
+  for (const extra of options.additionalKnownNetworks || []) {
+    const parsed = parseCidr(extra.cidr);
+    if (!parsed) {
+      // Surface invalid additional CIDRs through the invalid-CIDRs channel
+      // so the state classifier reports them and blocks.
+      invalidCidrs.push(extra.cidr);
+      continue;
+    }
+    known.push({
+      origin: (extra.origin as KnownNetwork['origin']),
+      cidr: extra.cidr,
+      family: parsed.family,
+      covered: false,
+      label: extra.label,
+    });
+  }
+
+
 
   // ── 7. Coverage evaluation: for each known network, look for an allowed
   //       supernet in the EFFECTIVE allow set (operator + auto-injected
