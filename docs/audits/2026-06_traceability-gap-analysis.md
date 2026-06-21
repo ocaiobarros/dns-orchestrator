@@ -112,7 +112,21 @@ Arquivo `backend/collector/dnstap_collector.py` (660 linhas):
 |---|---|---|---|
 | GO-1 | Sem coluna `actor_user_id` / `actor_username` em `log_entries`, `events`, `actions`. Autor só em texto. | **Alta** | `models/log_entry.py:14-19`, `models/operational.py:69-93` |
 | GO-2 | Sem `session_id` em nenhum log. Correlação sessão↔ação impossível. | **Alta** | `models/session.py` × tabelas de log |
-| GO-3 | `require_admin` não é aplicado em nenhuma rota mutadora. `viewer` pode disparar restart, reconcile, delete user, deploy. | **Crítica** | `deps.py:56-61` definido, não consumido. |
+| GO-3 | ~~`require_admin` não é aplicado em nenhuma rota mutadora. `viewer` pode disparar restart, reconcile, delete user, deploy.~~ **[FALSO-POSITIVO — ver correção abaixo]** | ~~**Crítica**~~ **Resolvido (não-issue)** | `deps.py:56-61` definido, **e consumido em todas as 34 rotas mutadoras** (ver bloco de correção). |
+
+> **CORREÇÃO 2026-06-21 — GO-3 marcado como FALSO-POSITIVO**
+>
+> O achado original citou apenas a *definição* de `require_admin` em `backend/app/api/deps.py:56-61` e inferiu, sem evidência direta, que a dependency nunca era consumida. Verificação estrutural posterior (varredura AST sobre `backend/app/api/routes/*.py`) demonstrou que **as 34 rotas mutadoras (POST/PUT/PATCH/DELETE) já estão guardadas por `Depends(require_admin)`**, com as únicas exceções legítimas sendo os endpoints self-service em `AUTH_SELF_SERVICE` (login/logout/refresh/change-password) e os endpoints públicos de leitura (`/api/prometheus`, `/api/kiosk/*`).
+>
+> **Spot-check confirmatório em 3 rotas de alto risco** (citações literais arquivo:linha):
+>
+> - `backend/app/api/routes/deploy.py:120` — `def deploy_apply(body: DeployRequest, db: Session = Depends(get_db), user: User = Depends(require_admin)):`
+> - `backend/app/api/routes/actions.py:49` — `def reconcile_now(db: Session = Depends(get_db), user: User = Depends(require_admin)):`
+> - `backend/app/api/routes/instances.py:68` — `def delete_instance(instance_id: str, db: Session = Depends(get_db), _: User = Depends(require_admin)):`
+>
+> **Teste de regressão estrutural** que trava o invariante para sempre: `backend/tests/test_rbac_enforcement.py` (varre AST de todas as rotas, falha o build se qualquer mutadora não-self-service perder o `Depends(require_admin)`; trava `/api/prometheus` como anônimo e `/api/kiosk/*` como viewer).
+>
+> **Conclusão:** viewer **não** consegue disparar restart/reconcile/delete/deploy. A afirmação original do GO-3 era incorreta. O histórico do achado é preservado acima (riscado) para rastreabilidade; a severidade efetiva é **nenhuma**.
 | GO-4 | `routes/network.py`, `ospf.py`, `nat.py`, `files.py`, `settings.py`, `import_config.py` não chamam `log_event`. Mutações silenciosas. | **Alta** | `rg "log_event" backend/app/api/routes/{network,ospf,nat,files,settings,import_config}.py` → vazio. |
 | GO-5 | `client_ip`/`user_agent` capturados em `sessions` mas não copiados para o log da ação. | **Média** | `models/session.py:21-22` |
 | GO-6 | Falhas de autorização (401/403) não geram `log_entries` — só sucessos de login. | **Média** | `routes/auth.py:82-84` |
