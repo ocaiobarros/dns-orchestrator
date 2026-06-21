@@ -112,27 +112,22 @@ describe('open-resolver-migration — IPv6 (adendo §2)', () => {
       enableIpv6: true,
       ipv4Address: '203.0.113.10/24',
       ipv6Address: '2001:db8:1::1/64',
+      // Operador só listou uma rede v6 não relacionada à subscriber range
       accessControlIpv6: [
-        { network: '2001:db8:1::/64', action: 'allow' as const, label: 'host-ipv6' },
-        { network: '2001:db8:abcd::/48', action: 'allow' as const, label: 'subscriber-v6' },
-      ],
-    };
-    // Sem extras IPv6 a ACL prévia se autocobertura → verified. Para forçar
-    // incomplete, removemos a ACL v6 do operador mas mantemos host-ipv6 NÃO
-    // alcançável: passamos um host v6 com /64 fora do allow set v6.
-    const cfg2 = {
-      ...cfg,
-      accessControlIpv6: [
-        // operador removeu a ACL que cobre 2001:db8:1::/64 e listou apenas outra rede
         { network: '2001:db8:9999::/48', action: 'allow' as const, label: 'unrelated' },
       ],
     };
-    const plan = planOpenResolverMigration(cfg2, []);
+    // Runtime/settings injeta uma rede IPv6 real de assinante que NÃO está
+    // coberta nem pelo host nem pela ACL prévia.
+    const plan = planOpenResolverMigration(cfg, [], {
+      additionalKnownNetworks: [
+        { origin: 'runtime-inventory-ipv6', cidr: '2001:db8:5555::/48', label: 'assinante' },
+      ],
+    });
     expect(plan.state).toBe('incomplete');
     expect(plan.sufficient).toBe(false);
-    const v6Uncovered = plan.uncovered.find((u) => u.family === 6);
+    const v6Uncovered = plan.uncovered.find((u) => u.family === 6 && u.cidr === '2001:db8:5555::/48');
     expect(v6Uncovered).toBeDefined();
-    expect(v6Uncovered!.cidr.startsWith('2001:db8:1')).toBe(true);
   });
 
   it('T12: rede IPv6 coberta por super-rede IPv6 válida → verified', () => {
@@ -141,14 +136,20 @@ describe('open-resolver-migration — IPv6 (adendo §2)', () => {
       enableIpv6: true,
       ipv4Address: '203.0.113.10/24',
       ipv6Address: '2001:db8:abcd:1::1/64',
-      accessControlIpv6: [
-        { network: '2001:db8:abcd:1::/64', action: 'allow' as const, label: 'subscriber-v6' },
-      ],
     };
-    // Super-rede /48 cobre o /64 do host
-    const plan = planOpenResolverMigration(cfg, ['2001:db8:abcd::/48']);
+    // Caller declara rede de assinante /64; extras IPv6 incluem o /48 que
+    // a contém — cobertura por super-rede válida.
+    const plan = planOpenResolverMigration(
+      cfg,
+      ['2001:db8:abcd::/48'],
+      {
+        additionalKnownNetworks: [
+          { origin: 'runtime-inventory-ipv6', cidr: '2001:db8:abcd:9::/64', label: 'sub' },
+        ],
+      },
+    );
     expect(plan.state).toBe('verified');
-    const known = plan.knownNetworks.find((k) => k.family === 6 && k.cidr.startsWith('2001:db8:abcd:1'));
+    const known = plan.knownNetworks.find((k) => k.cidr === '2001:db8:abcd:9::/64');
     expect(known?.covered).toBe(true);
     expect(known?.coveredBy).toBe('2001:db8:abcd::/48');
   });
