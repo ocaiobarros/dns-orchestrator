@@ -234,7 +234,9 @@ export default function NetworkPage() {
         icon={<Radio size={14} />}
         accentHsl="162 72% 51%"
         action={
-          <button className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-secondary/60 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors">
+          <button
+            onClick={() => navigate('/logs')}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-secondary/60 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors">
             <FileText size={11} /> Ver logs DNS
           </button>
         }
