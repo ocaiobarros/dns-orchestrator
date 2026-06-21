@@ -251,7 +251,11 @@ export const api = {
     apiCall<SystemSelfTestResult>('POST', '/system/self-test', credentials || {}),
 
   // Reports
-  generateReport: () => apiCall<{ downloadUrl: string; html: string }>('POST', '/dashboard/summary'),
+  // NOTE: removido `generateReport` (POST /dashboard/summary). A rota não existe
+  // como POST (apenas GET /api/dashboard/summary, consumida por getSystemInfo) e
+  // o backend não expõe geração de relatório com downloadUrl/html. Função estava
+  // sem consumidor — feature ausente. Reintroduzir só após decisão de produto
+  // criar o endpoint correspondente.
 
   // Users (admin)
   getUsers: () => apiCall<AuthUserRecord[]>('GET', '/users'),
