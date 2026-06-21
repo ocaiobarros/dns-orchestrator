@@ -10,7 +10,10 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
-from app.services.metrics_service import get_dns_metrics, get_dns_instances, get_top_domains, get_rcode_breakdown
+from app.services.metrics_service import (
+    get_dns_metrics, get_dns_metrics_with_source,
+    get_dns_instances, get_top_domains, get_rcode_breakdown,
+)
 
 router = APIRouter()
 logger = logging.getLogger("dns-control.dns")
@@ -30,8 +33,22 @@ def dns_metrics(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
+    """Return DNS chart rows with an explicit source/availability envelope.
+
+    Empty `rows` + ``source_available=False`` means "neither persisted
+    history nor live unbound-control stats are reachable" — the UI MUST
+    render a "sem dados / fonte indisponível" state instead of a chart
+    flattened to zero (see audit P1-03).
+    """
     logger.info("DNS metrics request: instance=%s qtype=%s range=%s hours=%s", instance, qtype, range, hours)
-    return get_dns_metrics(hours=hours, instance=instance, qtype=qtype, range_value=range, db=db)
+    rows, source = get_dns_metrics_with_source(hours=hours, instance=instance, qtype=qtype, range_value=range, db=db)
+    return {
+        "rows": rows,
+        "source": source,                       # 'persisted' | 'live' | 'none'
+        "source_available": source != "none",
+        "degraded": source == "none",
+    }
+
 
 
 @router.get("/instances")
