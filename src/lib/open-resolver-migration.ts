@@ -220,7 +220,7 @@ function extractHostNetwork(addr: string | undefined): string | null {
   // IPv6: emit groups (no compression — clarity over brevity for audit).
   const groups: string[] = [];
   for (let i = 7; i >= 0; i--) {
-    groups.unshift(Number((parsed.base >> BigInt(i * 16)) & 0xffffn).toString(16));
+    groups.push(Number((parsed.base >> BigInt(i * 16)) & 0xffffn).toString(16));
   }
   return `${groups.join(':')}/${parsed.prefix}`;
 }
