@@ -194,6 +194,36 @@ class ReadEndpointsTest(unittest.TestCase):
         glob = self.routes.list_rules(layer=None, scope_view="global", enabled_only=False, limit=100, db=s, _=None)
         self.assertEqual(glob["total"], 1)
 
+    def test_feed_sources_never_leak_auth_header(self):
+        """SECURITY: auth_header is a feed credential and MUST NEVER appear
+        in viewer-accessible read endpoints. Only has_auth (bool) is exposed."""
+        from app.models.policy import PolicyFeedSource
+        s = self.Session()
+        secret = "Bearer super-secret-token-do-not-leak"
+        s.add(PolicyFeedSource(
+            id=str(uuid.uuid4()), name="spamhaus_drop", kind="domain_blocklist",
+            url="https://example.com/drop", auth_header=secret,
+            integrity="sha256_sidecar", cadence_sec=3600, enabled=True,
+        ))
+        s.add(PolicyFeedSource(
+            id=str(uuid.uuid4()), name="public_feed", kind="domain_blocklist",
+            url="https://example.com/public", auth_header=None,
+            integrity="sha256_sidecar", cadence_sec=3600, enabled=True,
+        ))
+        s.commit()
+        out = self.routes.list_feed_sources(db=s, _=None)
+        self.assertEqual(out["total"], 2)
+        payload_json = repr(out)
+        # The secret string must NOT appear anywhere in the payload
+        self.assertNotIn(secret, payload_json)
+        self.assertNotIn("super-secret-token-do-not-leak", payload_json)
+        for item in out["items"]:
+            self.assertNotIn("auth_header", item, "auth_header key must be redacted")
+            self.assertIn("has_auth", item, "has_auth presence flag must be exposed")
+        by_name = {i["name"]: i for i in out["items"]}
+        self.assertTrue(by_name["spamhaus_drop"]["has_auth"])
+        self.assertFalse(by_name["public_feed"]["has_auth"])
+
 
 if __name__ == "__main__":
     unittest.main()
