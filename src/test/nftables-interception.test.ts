@@ -747,12 +747,16 @@ describe('Filter table non-regression', () => {
 
   it('simple mode filter table is structurally identical to interception filter table', () => {
     const sharedAcl = [{ network: '172.16.0.0/12', action: 'allow' as const, label: 'Test' }];
+    // Host network CIDR is a legitimate input to the filter generator (regra "Rede do host"),
+    // portanto deve ser idêntico nas duas configs para validar a paridade do gerador.
+    const sharedHostIpv4 = '172.250.40.100/23';
 
     const interceptConfig = makeInterceptionConfig({
       securityProfile: 'isp-hardened',
       enableDnsProtection: true,
       enableAntiAmplification: true,
       accessControlIpv4: sharedAcl,
+      ipv4Address: sharedHostIpv4,
     });
 
     const simpleConfig: WizardConfig = {
@@ -760,7 +764,7 @@ describe('Filter table non-regression', () => {
       operationMode: 'simple',
       hostname: 'simple-01',
       mainInterface: 'ens192',
-      ipv4Address: '172.250.40.100/23',
+      ipv4Address: sharedHostIpv4,
       frontendDnsIp: '172.250.40.100',
       instances: [makeInstance('unbound01', '100.127.255.101')],
       securityProfile: 'isp-hardened',
@@ -768,6 +772,7 @@ describe('Filter table non-regression', () => {
       enableAntiAmplification: true,
       accessControlIpv4: sharedAcl,
     };
+
 
     const interceptFilter = generateNftablesFilterTable(interceptConfig);
     const simpleFilter = generateNftablesFilterTable(simpleConfig);
