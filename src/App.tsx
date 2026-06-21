@@ -32,6 +32,7 @@ const MetricsPage = lazy(() => import("@/pages/MetricsPage"));
 const KioskDashboard = lazy(() => import("@/pages/KioskDashboard"));
 const ObservedQueriesPage = lazy(() => import("@/pages/ObservedQueriesPage"));
 const LogValidationPage = lazy(() => import("@/pages/LogValidationPage"));
+const PolicyPage = lazy(() => import("@/pages/PolicyPage"));
 
 const queryClient = new QueryClient();
 
@@ -84,6 +85,7 @@ const App = () => (
               <Route path="/users" element={<ProtectedApp><UsersPage /></ProtectedApp>} />
               <Route path="/observed/queries" element={<ProtectedApp><ObservedQueriesPage /></ProtectedApp>} />
               <Route path="/observed/log-validation" element={<ProtectedApp><LogValidationPage /></ProtectedApp>} />
+              <Route path="/policy" element={<ProtectedApp><PolicyPage /></ProtectedApp>} />
               <Route path="/kiosk" element={
                 <ProtectedRoute>
                   <ErrorBoundary>
