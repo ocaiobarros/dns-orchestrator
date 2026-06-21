@@ -487,7 +487,9 @@ export interface PolicyTenantRecord {
   id: string; name: string; description: string | null; created_at: string | null;
 }
 export interface PolicyFeedSourceRecord {
-  id: string; name: string; kind: string; url: string; integrity: string;
+  id: string; name: string; kind: string; url: string;
+  has_auth: boolean;  // presence flag — auth_header value is NEVER returned
+  integrity: string;
   cadence_sec: number; enabled: boolean; is_judicial: boolean;
   last_version: string | null; last_status: string | null;
   last_sync_at: string | null; created_at: string | null;
