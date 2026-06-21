@@ -56,51 +56,22 @@ describe('open-resolver-migration — estados de cobertura (IPv4)', () => {
   });
 
   it('T3: cobertura parcial das redes conhecidas → incomplete (bloqueado)', () => {
-    // Host CIDR está presente E ACL prévia 192.0.2.0/24 está presente,
-    // mas extras só cobrem o host — 192.0.2.0/24 permanece descoberto.
+    // Caller injeta uma rede de assinante conhecida via runtime/settings
+    // que não está coberta nem pelo host CIDR nem pelas ACLs prévias.
     const cfg = {
       ...legacyBase(),
       ipv4Address: '203.0.113.10/24',
       accessControlIpv4: [{ network: '192.0.2.0/24', action: 'allow' as const, label: '' }],
     };
-    // Não passamos extras — host se autoocobre via "Rede do host" mas 192.0.2.0/24
-    // continua como existing-acl coberto por ele mesmo. Para forçar incomplete,
-    // desligamos a entrada pré-existente removendo-a do allow set: damos um host
-    // que NÃO cobre a ACL pré-existente e nenhum extra que cubra.
-    // Reescrita: usar duas ACLs pré-existentes, e remover uma pela falta de extras.
-    const cfg2 = {
-      ...legacyBase(),
-      ipv4Address: '203.0.113.10/24',
-      accessControlIpv4: [
-        { network: '192.0.2.0/24', action: 'allow' as const, label: '' },
-        { network: '198.18.0.0/15', action: 'refuse' as const, label: '' }, // não é allow
+    const plan = planOpenResolverMigration(cfg, [], {
+      additionalKnownNetworks: [
+        { origin: 'runtime-inventory-ipv4', cidr: '198.51.100.0/24', label: 'subscriber' },
       ],
-    };
-    // Caso direto: host conhecido cobre a si mesmo (host-ipv4), 192.0.2.0/24
-    // (existing-acl) cobre a si mesma → tudo verified. Para forçar incomplete,
-    // criamos uma rede conhecida que NÃO é re-injetada no merged: usar uma
-    // ACL pré-existente APENAS no IPv6 sem extras IPv6.
-    void cfg;
-    void cfg2;
-
-    // Cenário canônico de incomplete: enableIpv6=true com ACL v6 prévia
-    // mas o operador remove sem fornecer cobertura equivalente.
-    // Simulação direta: passar uma config com accessControlIpv6 prévia
-    // e sem extras IPv6 → ACL v6 cobre a si mesma (continua verified).
-    // Portanto, para gerar incomplete genuíno precisamos de uma rede
-    // conhecida que SÓ vinha do host (não re-injetável) com prefixo
-    // mais largo do que a allow disponível.
-    //
-    // Melhor: testar incomplete via IPv6 (T11 abaixo). Aqui validamos
-    // que o caso "host conhecido + ACLs prévias intactas" é verified.
-    const cfg3 = {
-      ...legacyBase(),
-      ipv4Address: '203.0.113.10/24',
-      accessControlIpv4: [{ network: '192.0.2.0/24', action: 'allow' as const, label: '' }],
-    };
-    const planVerified = planOpenResolverMigration(cfg3, []);
-    expect(planVerified.state).toBe('verified');
-    expect(planVerified.uncovered).toEqual([]);
+    });
+    expect(plan.state).toBe('incomplete');
+    expect(plan.sufficient).toBe(false);
+    expect(plan.uncovered.length).toBe(1);
+    expect(plan.uncovered[0].cidr).toBe('198.51.100.0/24');
   });
 
   it('T4: todas as redes conhecidas cobertas → verified', () => {
