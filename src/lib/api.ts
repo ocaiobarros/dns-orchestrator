@@ -693,6 +693,36 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
       '999': 'Resolução padrão',
     },
   };
+  // POL-2a: in preview, simulate optimistic local-only mutation (no persistence)
+  if (path === '/api/policy/rules/block' && method === 'POST') {
+    const b = (body || {}) as Record<string, unknown>;
+    return {
+      id: `mock-${Date.now()}`,
+      scope_view: (b.scope_view ?? null) as string | null,
+      kind: 'block_name', target: String(b.target ?? ''),
+      action: String(b.action ?? 'always_nxdomain'),
+      payload: null, source: 'operator', source_ref: null,
+      layer: 200, enabled: b.enabled !== false,
+      created_by: 'preview-admin',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }
+  if (path.match(/^\/api\/policy\/rules\/[^/]+$/) && method === 'PATCH') {
+    const b = (body || {}) as Record<string, unknown>;
+    return { id: path.split('/').pop(), enabled: b.enabled !== false, action: b.action ?? 'always_nxdomain', layer: 200, kind: 'block_name', source: 'operator', target: 'preview', scope_view: null, payload: null, source_ref: null, created_by: null, created_at: null, updated_at: new Date().toISOString() };
+  }
+  if (path.match(/^\/api\/policy\/rules\/[^/]+$/) && method === 'DELETE') return undefined;
+    by_layer: {}, by_scope: { global: 0, view: 0 },
+    tenants: 0, views: 0, feed_sources: 0,
+    layers_legend: {
+      '100': 'AnaBlock judicial (não-sobreponível)',
+      '200': 'Bloqueio nativo do operador',
+      '300': 'Feeds de reputação',
+      '400': 'Allowlist / exceção (não sobrepõe layer 100)',
+      '999': 'Resolução padrão',
+    },
+  };
 
   // Telemetry mock
   if (path === '/api/telemetry/latest') return mockTelemetryLatest();
