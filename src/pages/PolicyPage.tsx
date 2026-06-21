@@ -1,16 +1,24 @@
 /**
- * POL-1 — Policy Plane (read-only)
+ * POL-1 (read) + POL-2a (operator block CRUD, admin-only).
  *
- * Read-only view of the native policy plane: lists rules grouped by layer
- * (100/200/300/400), shows scope (global vs. view), feed sources and tenants.
- * NO mutations — CRUD lands in POL-2/POL-3 (admin-only). Viewer-accessible.
+ * Admin actions: create/toggle/delete layer-200 operator block rules. Backend
+ * is the authority on RBAC — the UI gate is complementary. NO config
+ * generation; rules exist only in DB until POL-2b lands.
  */
 
 import { useState } from 'react';
-import { Shield, ShieldCheck, ShieldAlert, ShieldOff, Layers, Eye, Rss, Building2 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { Shield, ShieldCheck, ShieldAlert, ShieldOff, Layers, Eye, Rss, Building2, Plus, Trash2 } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { LoadingState } from '@/components/DataStates';
 import { api, type PolicyRuleRecord } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+} from '@/components/ui/dialog';
+import { toast } from 'sonner';
 
 type LayerKey = '100' | '200' | '300' | '400';
 
