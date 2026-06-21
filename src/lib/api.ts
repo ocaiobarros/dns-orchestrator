@@ -764,6 +764,27 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
       finished_at: new Date().toISOString(),
     };
   }
+  // POL-3a: allow_exception mocks (preview mode — optimistic, no persistence).
+  if (path === '/api/policy/rules/allow' && method === 'POST') {
+    const b = (body || {}) as Record<string, unknown>;
+    return {
+      id: `mock-allow-${Date.now()}`,
+      scope_view: (b.scope_view ?? null) as string | null,
+      kind: 'allow_exception', target: String(b.target ?? ''),
+      action: 'allow',
+      payload: b.note ? { note: String(b.note) } : null,
+      source: 'operator', source_ref: null,
+      layer: 400, enabled: b.enabled !== false,
+      created_by: 'preview-admin',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }
+  if (path.match(/^\/api\/policy\/rules\/allow\/[^/]+$/) && method === 'PATCH') {
+    const b = (body || {}) as Record<string, unknown>;
+    return { id: path.split('/').pop(), enabled: b.enabled !== false, action: 'allow', layer: 400, kind: 'allow_exception', source: 'operator', target: 'preview', scope_view: null, payload: b.note ? { note: String(b.note) } : null, source_ref: null, created_by: null, created_at: null, updated_at: new Date().toISOString() };
+  }
+  if (path.match(/^\/api\/policy\/rules\/allow\/[^/]+$/) && method === 'DELETE') return undefined;
 
   // Telemetry mock
   if (path === '/api/telemetry/latest') return mockTelemetryLatest();
