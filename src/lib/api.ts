@@ -159,6 +159,29 @@ export const api = {
     return apiCall<{ rows: DnsMetrics[]; source: 'persisted' | 'live' | 'none'; source_available: boolean; degraded: boolean }>('GET', `/dns/metrics?${q.toString()}`);
   },
 
+  // GATE-RETENÇÃO opção (c): long-window history (6h..72h) is served from
+  // an external TSDB via a server-side proxy. Same envelope shape as
+  // /api/dns/metrics. `metric=dns_chart_bundle` returns rows mergeable
+  // with the existing DnsPage chartData.
+  getTelemetryRange: (params: { metric: string; window: string; instance?: string }) => {
+    const q = new URLSearchParams();
+    q.set('metric', params.metric);
+    q.set('window', params.window);
+    if (params.instance) q.set('instance', params.instance);
+    return apiCall<{
+      rows: Array<Record<string, any>>;
+      source: 'tsdb' | 'none';
+      source_available: boolean;
+      degraded: boolean;
+      reason?: string;
+      error?: string;
+      metric: string;
+      window: string;
+      range_seconds: number;
+      step_seconds: number;
+    }>('GET', `/telemetry/range?${q.toString()}`);
+  },
+
   getTopDomains: (limit: number = 20) =>
     apiCall<DnsTopDomain[]>('GET', `/dns/top-domains?limit=${limit}`),
   getInstanceStats: () => apiCall<DnsInstanceStats[]>('GET', '/dns/instances'),
