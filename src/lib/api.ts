@@ -164,9 +164,16 @@ export const api = {
   getInstanceStats: () => apiCall<DnsInstanceStats[]>('GET', '/dns/instances'),
 
   // NAT / nftables
-  getNftCounters: () => apiCall<NftCounter[]>('GET', '/nat/summary'),
+  getNftCounters: () => apiCall<any>('GET', '/nat/summary'),
   getStickyTable: () => apiCall<NftStickyEntry[]>('GET', '/nat/sticky'),
   getNftRuleset: () => apiCall<{ ruleset: string }>('GET', '/nat/ruleset'),
+  getSystemDrift: () => apiCall<{
+    status: string;
+    message?: string;
+    drifted_files?: Array<{ path: string; reason?: string }>;
+    missing_files?: string[];
+    extra_files?: string[];
+  }>('GET', '/system/drift'),
 
   // OSPF / FRR
   getOspfNeighbors: () => apiCall<OspfNeighbor[]>('GET', '/ospf/neighbors'),

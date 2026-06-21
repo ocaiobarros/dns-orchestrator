@@ -17,6 +17,7 @@ import LatencyMatrix from '@/components/noc/v3/LatencyMatrix';
 import RankList from '@/components/noc/v3/RankList';
 import NocGeoMap from '@/components/noc/NocGeoMap';
 import TelemetryHealthStrip from '@/components/noc/TelemetryHealthStrip';
+import NocPoolOperationalState from '@/components/noc/NocPoolOperationalState';
 import type { MapNode, MapEdge } from '@/components/noc/NocNetworkMap';
 
 export default function Dashboard() {
@@ -256,6 +257,9 @@ function InterceptionDashboard() {
           />
         </PanelV3>
       </div>
+
+      {/* Operational pool truth: drift + per-instance state + DNAT counters */}
+      <NocPoolOperationalState />
 
       {/* Quad: Top Domínios / Top Clientes / Métricas por Backend / Status dos Serviços */}
       <div className="noc-grid-quad">
