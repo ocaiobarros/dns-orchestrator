@@ -253,3 +253,14 @@ sqlite3 /var/lib/dns-control/dns-control.db \
 # Portas em uso
 ss -lntup | grep -E ':80|:443|:8000|:53'
 ```
+
+## Nota de migração — Prometheus cache hit (GATE-PROM)
+
+A métrica `dns_cache_hit_ratio` foi alinhada ao seu HELP e agora é exposta na escala
+canônica **0-1** (`ratio`). Para consumidores (dashboards Grafana/VictoriaMetrics) que
+historicamente liam essa métrica como **0-100**, foi adicionada a métrica
+`dns_cache_hit_percent` com a escala **0-100** (`gauge`). Ambas coexistem em
+`/api/prometheus` para permitir migração sem quebra:
+
+- `dns_cache_hit_ratio` — 0-1 (alinhado ao HELP); use para novas consultas.
+- `dns_cache_hit_percent` — 0-100; use enquanto migra dashboards legados.
