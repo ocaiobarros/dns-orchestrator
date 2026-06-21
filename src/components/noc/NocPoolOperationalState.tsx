@@ -17,8 +17,21 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, FileWarning, GitCompareArrows, Network } from 'lucide-react';
 import { api } from '@/lib/api';
 import NocInstanceTable from '@/components/noc/NocInstanceTable';
-import { NoDataPlaceholder } from '@/components/DataStates';
+
 import type { V2Instance } from '@/lib/types';
+
+// Inline honest empty-state — mirrors the look/feel of the DnsPage NoDataPlaceholder.
+function NoDataPlaceholder({ minHeight = 120, reason }: { minHeight?: number; reason?: string }) {
+  return (
+    <div
+      className="flex flex-col items-center justify-center rounded border border-border/40 bg-card/40 text-muted-foreground/70 font-mono text-[10.5px] gap-1"
+      style={{ minHeight }}
+    >
+      <span className="uppercase tracking-wider">sem dados</span>
+      {reason ? <span className="text-[10px] text-muted-foreground/60">{reason}</span> : null}
+    </div>
+  );
+}
 
 function formatNumber(n: number | undefined | null): string {
   if (!n || !Number.isFinite(n)) return '0';
