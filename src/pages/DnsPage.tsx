@@ -312,6 +312,27 @@ function MeasuredChartFrame({
 }
 
 /* ============================================================
+   Honest empty state for charts when no data point exists.
+   Used by P1-03 fix — never fabricate a [0,0] synthetic series.
+   ============================================================ */
+function NoDataPlaceholder({ minHeight = 180, reason }: { minHeight?: number; reason?: string }) {
+  return (
+    <div
+      className="noc-chart-frame flex flex-col items-center justify-center gap-1 text-center"
+      style={{ minHeight }}
+    >
+      <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+        sem dados
+      </span>
+      <span className="font-mono text-[9px] text-muted-foreground/70">
+        {reason ?? 'fonte de telemetria indisponível'}
+      </span>
+    </div>
+  );
+}
+
+
+/* ============================================================
    Time-series chart panel
    ============================================================ */
 function ChartPanel({
@@ -323,11 +344,14 @@ function ChartPanel({
   const colorAlpha = (a: number) => `hsl(${ACCENT_HSL[accent]} / ${a})`;
   const gid = `chart-${title.replace(/\s+/g, '-')}`;
 
-  const series = data.length > 0 ? data : Array.from({ length: 2 }, (_, i) => ({ ts: Date.now() + i, [dataKey]: 0 }));
-  const ticks = buildServerTimeTicks(series, timeRange);
+  const hasData = data.length > 0;
+  const series = hasData ? data : [];
+  const ticks = hasData ? buildServerTimeTicks(series, timeRange) : [];
+
 
   return (
     <Panel title={title} accent={accent} badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}>
+      {!hasData ? <NoDataPlaceholder minHeight={180} /> : (
       <MeasuredChartFrame minHeight={180}>{({ width, height }) => (
         <ResponsiveContainer width={width} height={height}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
@@ -350,19 +374,23 @@ function ChartPanel({
           </AreaChart>
         </ResponsiveContainer>
       )}</MeasuredChartFrame>
+      )}
     </Panel>
   );
 }
+
 
 /* ============================================================
    Cache Hit chart — line only, magenta/violet
    ============================================================ */
 function CacheHitChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; rangeLabel?: string; timeMeta: ServerTimeMetadata; timeRange: string }) {
   const color = 'hsl(290 80% 60%)';
-  const series = data.length > 0 ? data : Array.from({ length: 2 }, (_, i) => ({ ts: Date.now() + i, hitRatio: 0 }));
-  const ticks = buildServerTimeTicks(series, timeRange);
+  const hasData = data.length > 0;
+  const series = hasData ? data : [];
+  const ticks = hasData ? buildServerTimeTicks(series, timeRange) : [];
   return (
     <Panel title="Cache Hit Ratio (%)" accent="violet" badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}>
+      {!hasData ? <NoDataPlaceholder minHeight={180} /> : (
       <MeasuredChartFrame minHeight={180}>{({ width, height }) => (
         <ResponsiveContainer width={width} height={height}>
           <LineChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
@@ -376,9 +404,11 @@ function CacheHitChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[];
           </LineChart>
         </ResponsiveContainer>
       )}</MeasuredChartFrame>
+      )}
     </Panel>
   );
 }
+
 
 /* ============================================================
    Errors chart — area, pink/magenta
@@ -386,12 +416,12 @@ function CacheHitChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[];
 function ErrorsChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; rangeLabel?: string; timeMeta: ServerTimeMetadata; timeRange: string }) {
   const color = 'hsl(330 90% 60%)';
   const colorA = (a: number) => `hsl(330 90% 60% / ${a})`;
-  const series = data.length > 0
-    ? data.map(d => ({ ...d, total: safeNum(d.servfail) + safeNum(d.nxdomain) }))
-    : Array.from({ length: 2 }, (_, i) => ({ ts: Date.now() + i, total: 0 }));
-  const ticks = buildServerTimeTicks(series, timeRange);
+  const hasData = data.length > 0;
+  const series = hasData ? data.map(d => ({ ...d, total: safeNum(d.servfail) + safeNum(d.nxdomain) })) : [];
+  const ticks = hasData ? buildServerTimeTicks(series, timeRange) : [];
   return (
     <Panel title="Erros. (SERVFAIL + NXDOMAIN)" accent="violet" badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}>
+      {!hasData ? <NoDataPlaceholder minHeight={180} /> : (
       <MeasuredChartFrame minHeight={180}>{({ width, height }) => (
         <ResponsiveContainer width={width} height={height}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
@@ -410,9 +440,11 @@ function ErrorsChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; r
           </AreaChart>
         </ResponsiveContainer>
       )}</MeasuredChartFrame>
+      )}
     </Panel>
   );
 }
+
 
 /* ============================================================
    Helpers — bytes formatter
@@ -511,8 +543,9 @@ function SectionTabs({ value, onChange }: { value: SectionTab; onChange: (v: Sec
    Multi-line traffic chart (QPS + CacheHit + Latência)
    ============================================================ */
 function TrafficEvolutionChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; rangeLabel?: string; timeMeta: ServerTimeMetadata; timeRange: string }) {
-  const series = data.length > 0 ? data : Array.from({ length: 2 }, (_, i) => ({ ts: Date.now() + i, qps: 0, hitRatio: 0, latency: 0 }));
-  const ticks = buildServerTimeTicks(series, timeRange);
+  const hasData = data.length > 0;
+  const series = hasData ? data : [];
+  const ticks = hasData ? buildServerTimeTicks(series, timeRange) : [];
   const cQps = 'hsl(200 90% 60%)';
   const cHit = 'hsl(162 72% 51%)';
   const cLat = 'hsl(270 75% 65%)';
@@ -522,6 +555,7 @@ function TrafficEvolutionChart({ data, rangeLabel, timeMeta, timeRange }: { data
       accent="blue"
       badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}
     >
+      {!hasData ? <NoDataPlaceholder minHeight={220} /> : (
       <MeasuredChartFrame minHeight={220}>{({ width, height }) => (
         <ResponsiveContainer width={width} height={height}>
           <LineChart data={series} margin={{ top: 6, right: 30, bottom: 4, left: -10 }}>
@@ -542,9 +576,11 @@ function TrafficEvolutionChart({ data, rangeLabel, timeMeta, timeRange }: { data
           </LineChart>
         </ResponsiveContainer>
       )}</MeasuredChartFrame>
+      )}
     </Panel>
   );
 }
+
 
 /* ============================================================
    MAIN PAGE
@@ -577,7 +613,7 @@ export default function DnsPage() {
     qc.invalidateQueries({ queryKey: ['telemetry', 'recent-queries'] });
   };
 
-  const { data: filteredMetrics, refetch: refetchDnsMetrics } = useQuery({
+  const { data: dnsMetricsPayload, refetch: refetchDnsMetrics } = useQuery({
     queryKey: ['dnsMetrics', filters.instance, filters.qtype, filters.timeRange],
     queryFn: async () => {
       const r = await api.getDnsMetrics({ instance: selectedInstance || undefined, qtype: qtype || undefined, range: timeRange });
@@ -586,6 +622,10 @@ export default function DnsPage() {
     },
     refetchInterval: 30000,
   });
+  // P1-03: unwrap the explicit envelope; never invent a [0,0] point.
+  const filteredMetrics = Array.isArray(dnsMetricsPayload?.rows) ? dnsMetricsPayload!.rows : [];
+  const dnsMetricsSourceAvailable = dnsMetricsPayload?.source_available !== false;
+
 
   const { data: serverTimeMeta } = useQuery({
     queryKey: ['system', 'time'],
@@ -625,11 +665,19 @@ export default function DnsPage() {
   }, [filters.instance, filters.qtype, filters.timeRange, refetchDnsMetrics]);
 
   const chartData = useMemo(() => {
+    // ── P1-04 canonical unit for chartData ────────────────────────────────
+    // `hitRatio` MUST be expressed as a percentage in the 0-100 scale.
+    // Sources we accept here (collector live snapshot, MetricSample history,
+    // unbound-control resolver block) are ALL already 0-100. The Prometheus
+    // exposition is 0-1 by convention and is NEVER read into this chart —
+    // it lives at /api/prometheus and is converted at that border only.
+    // ─────────────────────────────────────────────────────────────────────
     const dbRows = Array.isArray(filteredMetrics) ? filteredMetrics : [];
     const histRows = Array.isArray(telemetryHistory) ? telemetryHistory : [];
     // Fall back to collector circular history when DB-backed metrics are empty
     // (covers Cache Hit Ratio + Latency widgets when DnsEvent/MetricSample tables are empty).
     const metricRows = dbRows.length > 0 ? dbRows : histRows;
+
     const historyRows = metricRows;
     const telemetryBackends = Array.isArray(telemetry?.backends) ? telemetry.backends : [];
     const selectedBackend = selectedInstance
@@ -683,6 +731,16 @@ export default function DnsPage() {
     if (series.length > 0) return series;
     const resolver = telemetry?.resolver ?? {};
     const fallbackTs = toTs(telemetry?.timestamp ?? Date.now());
+    // P1-03: only synthesize a single fallback point if the live resolver
+    // actually reports activity — otherwise return [] and let the chart
+    // render the honest empty-state placeholder instead of [0,0].
+    const liveHasSignal =
+      firstNum(resolver.total_queries) > 0 ||
+      firstNum(resolver.qps) > 0 ||
+      firstNum(resolver.cache_hit_ratio) > 0 ||
+      (selectedBackend && safeNum(selectedBackend?.resolver?.total_queries) > 0);
+    if (!liveHasSignal && !dnsMetricsSourceAvailable) return [];
+    if (!liveHasSignal) return [];
     return [{
       ts: fallbackTs,
       time: fallbackTs ? formatServerAxisTime(fallbackTs, timeMeta) : '',
@@ -695,7 +753,8 @@ export default function DnsPage() {
       cacheHits: Math.round(firstNum(resolver.cache_hits) * countShare),
       cacheMisses: Math.round(firstNum(resolver.cache_misses) * countShare),
     }];
-  }, [filteredMetrics, telemetryHistory, hours, selectedInstance, qtype, telemetry, timeMeta]);
+
+  }, [filteredMetrics, telemetryHistory, hours, selectedInstance, qtype, telemetry, timeMeta, dnsMetricsSourceAvailable]);
 
   const collectorOk = telemetry?.health?.collector === 'ok';
   const resolver = telemetry?.resolver ?? {};

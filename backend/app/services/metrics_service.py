@@ -25,14 +25,22 @@ def _hours_from_range(hours: int, range_value: str | None) -> int:
     return allowed.get((range_value or "").lower(), hours)
 
 
-def get_dns_metrics(
+def get_dns_metrics_with_source(
     hours: int = 6,
     instance: str | None = None,
     qtype: str | None = None,
     range_value: str | None = None,
     db: Session | None = None,
-) -> list[dict]:
-    """Get DNS metrics with real backend-side filters for instance, qtype and time range."""
+) -> tuple[list[dict], str]:
+    """Get DNS metrics rows AND the source they came from.
+
+    Returns (rows, source) where source is one of:
+      - 'persisted': rows came from DnsEvent / MetricSample (real history)
+      - 'live':      rows are a single live snapshot from unbound-control
+      - 'none':      neither persisted history nor live stats are available
+                     — callers MUST surface this as an honest empty state
+                     and never fabricate a synthetic [0,0] point.
+    """
     effective_hours = _hours_from_range(hours, range_value)
     since = datetime.now(timezone.utc) - timedelta(hours=effective_hours)
     logger.info("get_dns_metrics filters instance=%s qtype=%s range=%s since=%s", instance, qtype, range_value, since.isoformat())
@@ -40,13 +48,34 @@ def get_dns_metrics(
     if db is not None:
         rows = _get_persisted_dns_metrics(db, since=since, instance=instance, qtype=qtype)
         if rows:
-            return rows
+            return rows, "persisted"
 
     stats = get_instance_real_stats()
     if instance:
         stats = [s for s in stats if s.get("instance") == instance]
+    if not stats:
+        return [], "none"
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    return [{**s, "timestamp": now, "timestamp_utc": now, "range": range_value or f"{effective_hours}h", "qtype": qtype or "all"} for s in stats]
+    rows = [{**s, "timestamp": now, "timestamp_utc": now, "range": range_value or f"{effective_hours}h", "qtype": qtype or "all"} for s in stats]
+    return rows, "live"
+
+
+def get_dns_metrics(
+    hours: int = 6,
+    instance: str | None = None,
+    qtype: str | None = None,
+    range_value: str | None = None,
+    db: Session | None = None,
+) -> list[dict]:
+    """Back-compat wrapper that returns only the rows.
+
+    Prefer ``get_dns_metrics_with_source`` for new callers so empty states
+    can be surfaced honestly instead of degrading to a synthetic [0,0]
+    point (see audit P1-03).
+    """
+    rows, _source = get_dns_metrics_with_source(hours=hours, instance=instance, qtype=qtype, range_value=range_value, db=db)
+    return rows
+
 
 
 def _get_persisted_dns_metrics(db: Session, since: datetime, instance: str | None, qtype: str | None) -> list[dict]:

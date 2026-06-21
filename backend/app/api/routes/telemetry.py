@@ -304,7 +304,36 @@ def telemetry_log_validation(_: User = Depends(get_current_user)):
 # ──────────────────────────────────────────────────────────────────────
 # Recent queries — exposes the collector's recent_queries buffer with
 # basic filtering for the observation page.
+#
+# The collector emits a small "last cycle" buffer; we honestly apply the
+# requested `range` window against the items' HH:MM:SS timestamps (today
+# UTC) and report `partial: true` whenever the buffer does NOT cover the
+# whole requested window — never fake coverage.
 # ──────────────────────────────────────────────────────────────────────
+
+def _parse_recent_query_epoch(item: dict, now_epoch: int) -> int | None:
+    """Best-effort parse of the collector's HH:MM:SS `time` field to today's epoch.
+
+    Falls back to None when the field is missing/unparseable. Items in the
+    future relative to `now_epoch` are clamped to `now_epoch` (clock skew).
+    """
+    raw = str(item.get("time") or "").strip()
+    if not raw or raw == "??:??:??":
+        return None
+    try:
+        from datetime import datetime, timezone
+        h, m, s = (int(x) for x in raw.split(":")[:3])
+    except (ValueError, TypeError):
+        return None
+    now_dt = datetime.fromtimestamp(now_epoch, tz=timezone.utc)
+    candidate = now_dt.replace(hour=h, minute=m, second=s, microsecond=0)
+    ts = int(candidate.timestamp())
+    # If the parsed time is later than now (e.g. local-tz log), assume it
+    # crossed midnight and belongs to the previous day.
+    if ts > now_epoch + 60:
+        ts -= 86400
+    return ts
+
 
 @router.get("/recent-queries")
 def telemetry_recent_queries(
@@ -314,7 +343,14 @@ def telemetry_recent_queries(
     limit: int = 200,
     _: User = Depends(get_current_user),
 ):
-    """Return the most recent DNS queries collected by the telemetry agent."""
+    """Return the most recent DNS queries collected by the telemetry agent.
+
+    Applies the requested `range` window honestly: items whose parseable
+    HH:MM:SS timestamp falls outside `now - window` are dropped, and the
+    response exposes `requested_window_seconds`, `buffer_span_seconds`
+    and `partial` so the UI never confuses "buffer too short" with
+    "no activity".
+    """
     logger.info("Recent queries request: instance=%s qtype=%s range=%s limit=%s", instance, qtype, range, limit)
     data = _read_telemetry("latest.json")
     queries = data.get("recent_queries", []) or []
@@ -326,6 +362,32 @@ def telemetry_recent_queries(
     if qtype:
         queries = [q for q in queries if (q.get("type") or "").upper() == qtype.upper()]
 
+    # Apply requested range window against parsed timestamps.
+    now_epoch = int(time.time())
+    range_key = range if range in RANGE_MINUTES else None
+    requested_window_seconds = RANGE_MINUTES[range_key] * 60 if range_key else None
+
+    parsed: list[tuple[int | None, dict]] = [
+        (_parse_recent_query_epoch(q, now_epoch), q) for q in queries
+    ]
+    timestamped = [(ts, q) for ts, q in parsed if ts is not None]
+
+    if requested_window_seconds is not None and timestamped:
+        cutoff = now_epoch - requested_window_seconds
+        timestamped = [(ts, q) for ts, q in timestamped if ts >= cutoff]
+        queries = [q for ts, q in timestamped] + [q for ts, q in parsed if ts is None]
+    elif requested_window_seconds is not None:
+        # No parseable timestamps at all — keep items but report no coverage.
+        queries = [q for _ts, q in parsed]
+
+    # Coverage diagnostics — derived from items we actually kept.
+    kept_ts = [ts for ts, _q in timestamped]
+    buffer_span_seconds = (max(kept_ts) - min(kept_ts)) if len(kept_ts) >= 2 else 0
+    partial = bool(
+        requested_window_seconds is not None
+        and (not kept_ts or buffer_span_seconds < requested_window_seconds)
+    )
+
     queries = queries[-max(1, min(limit, 1000)) :]
     return {
         "items": list(reversed(queries)),
@@ -334,7 +396,12 @@ def telemetry_recent_queries(
         "log_source": data.get("query_analytics", {}).get("log_source"),
         "available_types": sorted({q.get("type", "?") for q in data.get("recent_queries", []) if q.get("type")}),
         "available_instances": [i.get("name") for i in data.get("backends", []) if i.get("name")],
+        "range": range_key,
+        "requested_window_seconds": requested_window_seconds,
+        "buffer_span_seconds": buffer_span_seconds,
+        "partial": partial,
     }
+
 
 
 @router.get("/query-rankings")

@@ -148,13 +148,17 @@ export const api = {
   checkReachability: () => apiCall<ReachabilityResult[]>('GET', '/network/reachability'),
 
   // DNS
+  // Response envelope is { rows, source, source_available, degraded } since the
+  // P1-03 fix — callers MUST honor `source_available=false` as an honest empty
+  // state instead of synthesizing a zero-filled chart.
   getDnsMetrics: (params: { instance?: string; qtype?: string; range?: string; hours?: number } = {}) => {
     const q = new URLSearchParams();
     q.set('range', params.range ?? `${params.hours ?? 6}h`);
     if (params.instance) q.set('instance', params.instance);
     if (params.qtype) q.set('qtype', params.qtype);
-    return apiCall<DnsMetrics[]>('GET', `/dns/metrics?${q.toString()}`);
+    return apiCall<{ rows: DnsMetrics[]; source: 'persisted' | 'live' | 'none'; source_available: boolean; degraded: boolean }>('GET', `/dns/metrics?${q.toString()}`);
   },
+
   getTopDomains: (limit: number = 20) =>
     apiCall<DnsTopDomain[]>('GET', `/dns/top-domains?limit=${limit}`),
   getInstanceStats: () => apiCall<DnsInstanceStats[]>('GET', '/dns/instances'),
@@ -457,10 +461,12 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
     const instance = params.get('instance');
     const qtype = params.get('qtype');
     const typeFactor = qtype === 'AAAA' ? 0.32 : qtype && qtype !== 'A' ? 0.18 : 1;
-    return generateDnsMetrics(rangeHours)
+    const rows = generateDnsMetrics(rangeHours)
       .filter(row => !instance || row.instance === instance)
       .map(row => ({ ...row, qps: Math.round(row.qps * typeFactor), noerror: Math.round(row.noerror * typeFactor) }));
+    return { rows, source: 'persisted', source_available: true, degraded: false };
   }
+
   if (path.startsWith('/api/dns/top-domains')) return mockTopDomains;
   if (path === '/api/dns/instances') return mockInstanceStats;
 
