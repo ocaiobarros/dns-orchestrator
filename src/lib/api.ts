@@ -462,6 +462,14 @@ export const api = {
     apiCall<{ items: PolicyFeedSourceRecord[]; total: number }>('GET', '/policy/feed-sources'),
   getPolicySummary: () =>
     apiCall<PolicySummary>('GET', '/policy/summary'),
+
+  // POL-2a: operator block CRUD (admin-only). Backend is the authority on RBAC.
+  createOperatorBlock: (body: { target: string; action?: 'always_nxdomain' | 'always_refuse'; enabled?: boolean; scope_view?: string | null }) =>
+    apiCall<PolicyRuleRecord>('POST', '/policy/rules/block', body),
+  updatePolicyRule: (id: string, body: { enabled?: boolean; action?: 'always_nxdomain' | 'always_refuse' }) =>
+    apiCall<PolicyRuleRecord>('PATCH', `/policy/rules/${id}`, body),
+  deletePolicyRule: (id: string) =>
+    apiCall<void>('DELETE', `/policy/rules/${id}`),
 };
 
 export interface PolicyRuleRecord {
