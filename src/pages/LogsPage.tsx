@@ -35,7 +35,11 @@ export default function LogsPage() {
     setExporting(true);
     try {
       const res = await api.exportLogs(activeSource);
-      const blob = new Blob([res.content], { type: 'text/plain' });
+      const payload = res.data;
+      if (!res.success || !payload) {
+        throw new Error(res.error ?? 'Resposta vazia');
+      }
+      const blob = new Blob([payload.content], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -43,7 +47,7 @@ export default function LogsPage() {
       a.download = `dns-control-logs-${activeSource ?? 'all'}-${stamp}.log`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success(`${res.count} registros exportados`);
+      toast.success(`${payload.count} registros exportados`);
     } catch (e: any) {
       toast.error(`Falha ao exportar: ${e?.message ?? 'erro'}`);
     } finally {
