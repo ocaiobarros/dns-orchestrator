@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.models.user import User
 from app.services.event_service import get_actions
 from app.services.decision_service import manual_remove_backend, manual_restore_backend, reconcile
@@ -26,7 +26,7 @@ def list_actions(db: Session = Depends(get_db), _: User = Depends(get_current_us
 
 
 @router.post("/remove-backend/{instance_id}")
-def remove_backend(instance_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def remove_backend(instance_id: str, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     require_managed_mode(db)
     result = manual_remove_backend(db, instance_id)
     if not result["success"]:
@@ -36,7 +36,7 @@ def remove_backend(instance_id: str, db: Session = Depends(get_db), user: User =
 
 
 @router.post("/restore-backend/{instance_id}")
-def restore_backend(instance_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def restore_backend(instance_id: str, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     require_managed_mode(db)
     result = manual_restore_backend(db, instance_id)
     if not result["success"]:
@@ -46,7 +46,7 @@ def restore_backend(instance_id: str, db: Session = Depends(get_db), user: User 
 
 
 @router.post("/reconcile-now")
-def reconcile_now(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def reconcile_now(db: Session = Depends(get_db), user: User = Depends(require_admin)):
     require_managed_mode(db)
     """
     Manual reconciliation: run health checks immediately for all instances,

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.models.user import User
 from app.models.apply_job import ApplyJob
 from app.models.config_profile import ConfigProfile
@@ -55,32 +55,32 @@ def _run_apply(scope: str, dry_run: bool, body: ApplyRequest, db: Session, user:
 
 
 @router.post("/dry-run")
-def dry_run(body: ApplyRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def dry_run(body: ApplyRequest, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     return _run_apply(body.scope, True, body, db, user)
 
 
 @router.post("/full")
-def apply_full(body: ApplyRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def apply_full(body: ApplyRequest, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     return _run_apply("full", False, body, db, user)
 
 
 @router.post("/dns")
-def apply_dns(body: ApplyRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def apply_dns(body: ApplyRequest, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     return _run_apply("dns", body.dry_run, body, db, user)
 
 
 @router.post("/network")
-def apply_network(body: ApplyRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def apply_network(body: ApplyRequest, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     return _run_apply("network", body.dry_run, body, db, user)
 
 
 @router.post("/frr")
-def apply_frr(body: ApplyRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def apply_frr(body: ApplyRequest, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     return _run_apply("frr", body.dry_run, body, db, user)
 
 
 @router.post("/nftables")
-def apply_nftables(body: ApplyRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def apply_nftables(body: ApplyRequest, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     return _run_apply("nftables", body.dry_run, body, db, user)
 
 

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.models.user import User
 from app.models.apply_job import ApplyJob
 from app.models.config_profile import ConfigProfile
@@ -100,7 +100,7 @@ def deploy_preflight_public(scope: str = Query("full")):
 
 
 @router.post("/dry-run")
-def deploy_dry_run(body: DeployRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def deploy_dry_run(body: DeployRequest, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     """Execute dry-run: validate, generate, check — no changes applied."""
     require_managed_mode(db)
     payload = _resolve_payload(body, db)
@@ -117,7 +117,7 @@ def deploy_dry_run(body: DeployRequest, db: Session = Depends(get_db), user: Use
 
 
 @router.post("/apply")
-def deploy_apply(body: DeployRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def deploy_apply(body: DeployRequest, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     """Execute full deployment pipeline with mandatory preflight gate."""
     require_managed_mode(db)
 
@@ -161,7 +161,7 @@ def deploy_apply(body: DeployRequest, db: Session = Depends(get_db), user: User 
 
 
 @router.post("/rollback")
-def deploy_rollback(body: RollbackRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def deploy_rollback(body: RollbackRequest, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     """Rollback to a previous backup snapshot."""
     require_managed_mode(db)
     result = execute_rollback(backup_id=body.backup_id, operator=user.username)

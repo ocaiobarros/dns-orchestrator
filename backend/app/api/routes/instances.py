@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.core.database import get_db
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.models.user import User
 from app.models.operational import DnsInstance, InstanceState
 
@@ -40,7 +40,7 @@ def list_instances(db: Session = Depends(get_db), _: User = Depends(get_current_
 
 
 @router.post("")
-def create_instance(body: InstanceCreate, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def create_instance(body: InstanceCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     existing = db.query(DnsInstance).filter(DnsInstance.instance_name == body.instance_name).first()
     if existing:
         raise HTTPException(400, f"Instance {body.instance_name} already exists")
@@ -65,7 +65,7 @@ def create_instance(body: InstanceCreate, db: Session = Depends(get_db), _: User
 
 
 @router.delete("/{instance_id}")
-def delete_instance(instance_id: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def delete_instance(instance_id: str, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     inst = db.query(DnsInstance).filter(DnsInstance.id == instance_id).first()
     if not inst:
         raise HTTPException(404, "Instance not found")

@@ -14,7 +14,7 @@ import httpx
 from fastapi import APIRouter, Body, Depends
 from sqlalchemy import text
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.executors.command_runner import run_command
@@ -190,7 +190,7 @@ def _check_sudoers() -> dict[str, Any]:
 @router.post("/self-test")
 def run_self_test(
     body: dict[str, Any] = Body(default={}),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
 ):
     username = (body or {}).get("username")
     password = (body or {}).get("password")
