@@ -666,6 +666,24 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path.startsWith('/api/metrics/dns/errors/dnstap/events')) return [];
   if (path.startsWith('/api/metrics/dns/errors/dnstap/summary')) return { status: 'not_configured', source: 'dnstap', fidelity: 'unavailable' };
 
+  // POL-1: Policy plane (empty in preview — honest empty-state)
+  if (path.startsWith('/api/policy/rules')) return { items: [], total: 0 };
+  if (path === '/api/policy/views') return { items: [], total: 0 };
+  if (path === '/api/policy/tenants') return { items: [], total: 0 };
+  if (path === '/api/policy/feed-sources') return { items: [], total: 0 };
+  if (path === '/api/policy/summary') return {
+    total_rules: 0, enabled_rules: 0,
+    by_layer: {}, by_scope: { global: 0, view: 0 },
+    tenants: 0, views: 0, feed_sources: 0,
+    layers_legend: {
+      '100': 'AnaBlock judicial (não-sobreponível)',
+      '200': 'Bloqueio nativo do operador',
+      '300': 'Feeds de reputação',
+      '400': 'Allowlist / exceção (não sobrepõe layer 100)',
+      '999': 'Resolução padrão',
+    },
+  };
+
   // Telemetry mock
   if (path === '/api/telemetry/latest') return mockTelemetryLatest();
   if (path === '/api/telemetry/status') return { collector_status: 'ok', last_update: new Date().toISOString(), file_age_seconds: 5, stale: false, mode: 'recursive_simple' };
