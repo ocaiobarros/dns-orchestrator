@@ -334,14 +334,24 @@ export function planOpenResolverMigration(
     });
   }
 
-  // ── 7. Coverage evaluation: for each known network, find an allowed
-  //       supernet in the merged set (same family). ──
-  const allowedV4Parsed = mergedV4
+  // ── 7. Coverage evaluation: for each known network, look for an allowed
+  //       supernet in the EFFECTIVE allow set (operator + auto-injected
+  //       host CIDR + loopback + CGNAT). Prefer the broadest supernet
+  //       (smallest prefix) so `coveredBy` is meaningful for audit.
+  const sortByPrefixAsc = (
+    a: { parsed: ParsedCidr },
+    b: { parsed: ParsedCidr },
+  ) => a.parsed.prefix - b.parsed.prefix;
+  const allowedV4Parsed = effectiveAclsIpv4
+    .filter((e) => e.action === 'allow')
     .map((e) => ({ raw: e.network, parsed: parseCidr(e.network) }))
-    .filter((x): x is { raw: string; parsed: ParsedCidr } => x.parsed !== null);
-  const allowedV6Parsed = mergedV6
+    .filter((x): x is { raw: string; parsed: ParsedCidr } => x.parsed !== null)
+    .sort(sortByPrefixAsc);
+  const allowedV6Parsed = effectiveAclsIpv6
+    .filter((e) => e.action === 'allow')
     .map((e) => ({ raw: e.network, parsed: parseCidr(e.network) }))
-    .filter((x): x is { raw: string; parsed: ParsedCidr } => x.parsed !== null);
+    .filter((x): x is { raw: string; parsed: ParsedCidr } => x.parsed !== null)
+    .sort(sortByPrefixAsc);
 
   for (const k of known) {
     const subnet = parseCidr(k.cidr);
