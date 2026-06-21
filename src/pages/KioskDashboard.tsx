@@ -212,6 +212,7 @@ function CardLabel({ icon, children }: { icon: React.ReactNode; children: React.
 
 export default function KioskDashboard() {
   const { user, refreshSession } = useAuth();
+  const navigate = useNavigate();
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
