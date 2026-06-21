@@ -154,6 +154,7 @@ function ListenerCard({ l, timeMeta }: { l: any; timeMeta: ServerTimeMetadata })
    Page
    ============================================================ */
 export default function NetworkPage() {
+  const navigate = useNavigate();
   const { data: interfaces, isLoading: ifLoading, error: ifError } = useInterfaces();
   const { data: routes, isLoading: rtLoading } = useRoutes();
   const reachability = useReachability();
