@@ -281,3 +281,57 @@ function SummaryCard({ icon: Icon, label, value, sub }: { icon: React.ElementTyp
     </div>
   );
 }
+
+function CreateBlockButton({ onCreate, pending }: { onCreate: (b: { target: string; action: 'always_nxdomain' | 'always_refuse' }) => void; pending: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [target, setTarget] = useState('');
+  const [action, setAction] = useState<'always_nxdomain' | 'always_refuse'>('always_nxdomain');
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm"><Plus size={14} className="mr-1" /> Adicionar bloqueio</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Adicionar bloqueio do operador</DialogTitle>
+          <DialogDescription>
+            Layer 200 (sobreponível por allowlist). NÃO afeta resolução até o POL-2b
+            materializar a configuração.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div>
+            <label className="text-xs text-muted-foreground">FQDN alvo</label>
+            <Input value={target} onChange={(e) => setTarget(e.target.value)} placeholder="ads.example.com" />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Ação</label>
+            <div className="flex gap-2 mt-1">
+              {(['always_nxdomain', 'always_refuse'] as const).map(a => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => setAction(a)}
+                  className={`px-2 py-1 text-xs rounded border ${action === a ? 'bg-primary/10 border-primary text-primary' : 'border-border text-muted-foreground'}`}
+                >
+                  {a}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
+          <Button
+            disabled={pending || !target.trim()}
+            onClick={() => {
+              onCreate({ target: target.trim(), action });
+              setOpen(false);
+              setTarget('');
+            }}
+          >Criar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
