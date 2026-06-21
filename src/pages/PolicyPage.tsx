@@ -67,6 +67,35 @@ export default function PolicyPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // POL-3a: allow_exception mutations (separate hooks — different routes
+  // and the create call surfaces a 409 when judicial collision is detected).
+  const createAllowMut = useMutation({
+    mutationFn: async (body: { target: string; note?: string | null }) => {
+      const r = await api.createAllowException(body);
+      if (!r.success) throw new Error(r.error!);
+      return r.data!;
+    },
+    onSuccess: () => { toast.success('Exceção criada'); invalidate(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const toggleAllowMut = useMutation({
+    mutationFn: async (vars: { id: string; enabled: boolean }) => {
+      const r = await api.updateAllowException(vars.id, { enabled: vars.enabled });
+      if (!r.success) throw new Error(r.error!);
+      return r.data!;
+    },
+    onSuccess: () => invalidate(),
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const deleteAllowMut = useMutation({
+    mutationFn: async (id: string) => {
+      const r = await api.deleteAllowException(id);
+      if (!r.success) throw new Error(r.error!);
+    },
+    onSuccess: () => { toast.success('Exceção removida'); invalidate(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const summaryQ = useQuery({
     queryKey: ['policy', 'summary'],
     queryFn: async () => {
