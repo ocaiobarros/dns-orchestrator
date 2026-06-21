@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { LoadingState, ErrorState, EmptyState } from '@/components/DataStates';
 import { useInterfaces, useRoutes, useReachability } from '@/lib/hooks';
 import { useQuery } from '@tanstack/react-query';
