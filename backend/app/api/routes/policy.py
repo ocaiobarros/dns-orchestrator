@@ -1,20 +1,57 @@
 """
-DNS Control — Policy Plane (POL-1) read-only API.
+DNS Control — Policy Plane API.
 
-All endpoints are GET and viewer-accessible (observability). NO mutating
-endpoints in POL-1; CRUD lands in POL-2/POL-3 (admin-only).
+POL-1: read-only GETs (viewer-accessible).
+POL-2a: operator block CRUD (layer=200, kind=block_name, source=operator),
+        admin-only, audited via OperationalEvent. NO policy.d generation,
+        NO Unbound include, NO apply — rules exist in DB only.
+
+Mutations in POL-2a are restricted to operator block rules. Judicial (layer
+100), feeds (layer 300), allow_exception (layer 400) are out of scope here.
 """
 
 import json
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.models.user import User
 from app.models.policy import PolicyRule, PolicyView, PolicyFeedSource, PolicyTenant
+from app.models.operational import OperationalEvent
 
 router = APIRouter()
+
+
+# Audit helper — emits an operational_event for every policy mutation.
+# Reuses the existing events mechanism (no new subsystem; see DESIGN §7).
+def _emit_policy_event(db: Session, event_type: str, actor: User, rule: PolicyRule, extra: dict | None = None) -> None:
+    payload = {
+        "rule_id": rule.id,
+        "kind": rule.kind,
+        "target": rule.target,
+        "action": rule.action,
+        "layer": rule.layer,
+        "scope_view": rule.scope_view,
+        "source": rule.source,
+        "enabled": bool(rule.enabled),
+        "actor_id": actor.id,
+        "actor_username": actor.username,
+    }
+    if extra:
+        payload["change"] = extra
+    db.add(OperationalEvent(
+        event_type=event_type,
+        severity="info",
+        instance_id=None,
+        message=(
+            f"policy[{rule.layer}] {event_type.split('.')[-1]} target='{rule.target}' "
+            f"action='{rule.action}' scope={rule.scope_view or 'global'} by {actor.username}"
+        ),
+        details_json=json.dumps(payload, sort_keys=True),
+    ))
 
 
 def _rule_to_dict(r: PolicyRule) -> dict:
