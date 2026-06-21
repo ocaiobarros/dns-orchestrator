@@ -32,6 +32,40 @@ const LAYER_META: Record<LayerKey, { label: string; icon: React.ElementType; ton
 export default function PolicyPage() {
   const [layerFilter, setLayerFilter] = useState<'all' | LayerKey>('all');
   const [scopeFilter, setScopeFilter] = useState<'all' | 'global' | 'view'>('all');
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const qc = useQueryClient();
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['policy'] });
+  };
+
+  const createMut = useMutation({
+    mutationFn: async (body: { target: string; action: 'always_nxdomain' | 'always_refuse' }) => {
+      const r = await api.createOperatorBlock(body);
+      if (!r.success) throw new Error(r.error!);
+      return r.data!;
+    },
+    onSuccess: () => { toast.success('Bloqueio criado'); invalidate(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const toggleMut = useMutation({
+    mutationFn: async (vars: { id: string; enabled: boolean }) => {
+      const r = await api.updatePolicyRule(vars.id, { enabled: vars.enabled });
+      if (!r.success) throw new Error(r.error!);
+      return r.data!;
+    },
+    onSuccess: () => invalidate(),
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const deleteMut = useMutation({
+    mutationFn: async (id: string) => {
+      const r = await api.deletePolicyRule(id);
+      if (!r.success) throw new Error(r.error!);
+    },
+    onSuccess: () => { toast.success('Bloqueio removido'); invalidate(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const summaryQ = useQuery({
     queryKey: ['policy', 'summary'],
