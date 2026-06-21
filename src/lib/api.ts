@@ -7,7 +7,7 @@
 import type {
   ApiResponse, WizardConfig, SystemInfo, ServiceStatus,
   NetworkInterface, Route, ReachabilityResult, DnsMetrics,
-  DnsTopDomain, DnsInstanceStats, NftCounter, NftStickyEntry,
+  DnsTopDomain, DnsInstanceStats, NftCounter, NftStickyEntry, NatSummary,
   OspfNeighbor, OspfRoute, LogEntry, LogSource,
   ApplyRequest, ApplyResult, DiagCommand, DiagResult,
   ConfigProfile, ConfigDiff, GeneratedFile, PaginatedResponse,
@@ -187,7 +187,7 @@ export const api = {
   getInstanceStats: () => apiCall<DnsInstanceStats[]>('GET', '/dns/instances'),
 
   // NAT / nftables
-  getNftCounters: () => apiCall<any>('GET', '/nat/summary'),
+  getNftCounters: () => apiCall<NatSummary>('GET', '/nat/summary'),
   getStickyTable: () => apiCall<NftStickyEntry[]>('GET', '/nat/sticky'),
   getNftRuleset: () => apiCall<{ ruleset: string }>('GET', '/nat/ruleset'),
   getSystemDrift: () => apiCall<{

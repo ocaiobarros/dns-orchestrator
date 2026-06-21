@@ -471,6 +471,41 @@ export interface NftCounter {
   backend: string;
 }
 
+// Real shape returned by GET /api/nat/summary (backend
+// metrics_service.get_nat_summary). Per-backend rows are parsed from
+// inline DNAT counters; entry_counters come from PREROUTING.
+export interface NatBackendCounter {
+  backend: string;
+  name: string;
+  chain: string;
+  packets: number;
+  bytes: number;
+  tcp_packets: number;
+  udp_packets: number;
+  tcp_bytes: number;
+  udp_bytes: number;
+  port: number;
+  target: string;
+}
+
+export interface NatEntryCounter {
+  vips: string[];
+  protocol: 'tcp' | 'udp' | string;
+  port: number;
+  packets: number;
+  bytes: number;
+}
+
+export interface NatSummary {
+  ruleset_loaded: boolean;
+  status: 'active' | 'no_ruleset' | string;
+  // `counters` and `backends` are the same list (kept for backward
+  // compatibility with older clients reading `counters`).
+  counters: NatBackendCounter[];
+  backends: NatBackendCounter[];
+  entry_counters: NatEntryCounter[];
+}
+
 export interface NftStickyEntry {
   sourceIp: string;
   backend: string;
