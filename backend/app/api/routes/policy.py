@@ -191,3 +191,131 @@ def policy_summary(db: Session = Depends(get_db), _: User = Depends(get_current_
             "999": "Resolução padrão",
         },
     }
+
+
+# ===========================================================================
+# POL-2a — Operator block CRUD (kind=block_name, layer=200, source=operator)
+# Admin-only. Audited. NO policy.d generation, NO Unbound include, NO apply.
+# ===========================================================================
+
+# Allow-listed actions for operator block rules (NXDOMAIN / REFUSED only —
+# redirect_* will land in POL-2b together with payload validation).
+_OPERATOR_BLOCK_ACTIONS = {"always_nxdomain", "always_refuse"}
+
+
+class CreateBlockRequest(BaseModel):
+    target: str = Field(..., min_length=1, max_length=253, description="FQDN to block")
+    action: str = Field("always_nxdomain", description="always_nxdomain | always_refuse")
+    enabled: bool = True
+    scope_view: str | None = Field(None, description="View id; null = global (MVP default)")
+
+
+class UpdateBlockRequest(BaseModel):
+    enabled: bool | None = None
+    action: str | None = None
+
+
+def _normalize_target(t: str) -> str:
+    return (t or "").strip().lower().rstrip(".")
+
+
+def _ensure_operator_block(rule: PolicyRule) -> None:
+    """Reject mutations on anything other than operator block (POL-2a scope)."""
+    if rule.layer != 200 or rule.kind != "block_name" or rule.source != "operator":
+        raise HTTPException(
+            status_code=403,
+            detail="Esta rota só edita regras de bloqueio do operador (layer=200, kind=block_name).",
+        )
+
+
+@router.post("/rules/block", status_code=201)
+def create_block_rule(
+    body: CreateBlockRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    target = _normalize_target(body.target)
+    if not target:
+        raise HTTPException(422, "target é obrigatório")
+    if body.action not in _OPERATOR_BLOCK_ACTIONS:
+        raise HTTPException(422, f"action inválida; permitidas: {sorted(_OPERATOR_BLOCK_ACTIONS)}")
+    if body.scope_view is not None:
+        # Multi-view não está ativo no MVP (POL-6). Recusamos por segurança.
+        if not db.query(PolicyView).filter(PolicyView.id == body.scope_view).first():
+            raise HTTPException(422, "scope_view desconhecido")
+
+    rule = PolicyRule(
+        scope_view=body.scope_view,
+        kind="block_name",
+        target=target,
+        action=body.action,
+        source="operator",
+        layer=200,
+        enabled=bool(body.enabled),
+        created_by=user.id,
+    )
+    db.add(rule)
+    try:
+        db.flush()  # surfaces UNIQUE / CHECK violations before commit
+    except IntegrityError as exc:
+        db.rollback()
+        msg = str(getattr(exc, "orig", exc))
+        if "uq_policy_rules" in msg or "UNIQUE" in msg.upper():
+            raise HTTPException(409, "Regra já existe para este alvo neste escopo")
+        raise HTTPException(422, f"Violação de constraint: {msg}")
+    _emit_policy_event(db, "policy.rule.created", user, rule)
+    db.commit()
+    db.refresh(rule)
+    return _rule_to_dict(rule)
+
+
+@router.patch("/rules/{rule_id}")
+def update_block_rule(
+    rule_id: str,
+    body: UpdateBlockRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    rule = db.query(PolicyRule).filter(PolicyRule.id == rule_id).first()
+    if not rule:
+        raise HTTPException(404, "Regra não encontrada")
+    _ensure_operator_block(rule)
+
+    change: dict = {}
+    if body.enabled is not None and bool(body.enabled) != bool(rule.enabled):
+        change["enabled"] = {"from": bool(rule.enabled), "to": bool(body.enabled)}
+        rule.enabled = bool(body.enabled)
+    if body.action is not None and body.action != rule.action:
+        if body.action not in _OPERATOR_BLOCK_ACTIONS:
+            raise HTTPException(422, f"action inválida; permitidas: {sorted(_OPERATOR_BLOCK_ACTIONS)}")
+        change["action"] = {"from": rule.action, "to": body.action}
+        rule.action = body.action
+
+    if not change:
+        return _rule_to_dict(rule)  # idempotent no-op, no audit noise
+
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(422, f"Violação de constraint: {exc.orig}")
+    _emit_policy_event(db, "policy.rule.updated", user, rule, extra=change)
+    db.commit()
+    db.refresh(rule)
+    return _rule_to_dict(rule)
+
+
+@router.delete("/rules/{rule_id}", status_code=204)
+def delete_block_rule(
+    rule_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    rule = db.query(PolicyRule).filter(PolicyRule.id == rule_id).first()
+    if not rule:
+        raise HTTPException(404, "Regra não encontrada")
+    _ensure_operator_block(rule)
+    _emit_policy_event(db, "policy.rule.deleted", user, rule)
+    db.delete(rule)
+    db.commit()
+    return None
