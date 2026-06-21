@@ -7,7 +7,7 @@
  */
 
 import { useState } from 'react';
-import { Shield, ShieldCheck, ShieldAlert, ShieldOff, Layers, Eye, Rss, Building2, Plus, Trash2 } from 'lucide-react';
+import { Shield, ShieldCheck, ShieldAlert, ShieldOff, Layers, Eye, Rss, Building2, Plus, Trash2, FileCheck2, Play } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { LoadingState } from '@/components/DataStates';
 import { api, type PolicyRuleRecord } from '@/lib/api';
@@ -167,6 +167,10 @@ export default function PolicyPage() {
           </button>
         ))}
       </div>
+
+      {isAdmin && <PolicyApplyPanel />}
+
+
 
       {/* Rules by layer */}
       {rules.length === 0 ? (

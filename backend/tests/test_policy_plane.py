@@ -396,19 +396,233 @@ class OperatorBlockCrudTest(unittest.TestCase):
         r2 = client.delete("/api/policy/rules/jud-1")
         self.assertEqual(r2.status_code, 403)
 
-    def test_no_config_generation_happens(self):
-        """Mutations MUST NOT invoke any Unbound config generator (POL-2b)."""
+    def test_create_does_not_invoke_unbound_generator(self):
+        """Mutations on rules must NOT trigger config generation.
+
+        NOTE: POL-2b adds /policy/preview and /policy/apply endpoints which
+        DO invoke the policy.d generator. The original POL-2a invariant
+        ("no generator import in the policy module") is intentionally
+        relaxed — what we still guarantee here is that the CRUD mutators
+        themselves never reach into the unbound generator.
+        """
         self._clear_rules()
+        import app.generators.unbound_generator as ug
+        called = {"n": 0}
+        orig = ug.generate_unbound_files if hasattr(ug, "generate_unbound_files") else None
+        # generate_unbound_configs is the public entrypoint
         from unittest.mock import patch
-        import app.api.routes.policy as policy_route
-        # Whatever generators exist must NOT be referenced from the policy route module
-        attrs = dir(policy_route)
-        forbidden = [a for a in attrs if "generate_unbound" in a or "policy.d" in a]
-        self.assertEqual(forbidden, [], f"policy route leaked generator refs: {forbidden}")
-        # And a successful create does not import the unbound generator into the policy module
+        with patch("app.services.config_service.generate_unbound_configs") as m:
+            client = self._client_for("admin")
+            r = client.post("/api/policy/rules/block", json={"target": "nogen.example.com"})
+            self.assertEqual(r.status_code, 201)
+            self.assertEqual(m.call_count, 0, "CRUD must not invoke unbound generator")
+
+
+# ===========================================================================
+# POL-2b — Generator + apply pipeline tests
+# ===========================================================================
+
+class PolicyDGeneratorTest(unittest.TestCase):
+    """Pure-function generator: judicial precedence, determinism."""
+
+    def test_emits_local_zones_for_enabled_operator_rules(self):
+        from app.generators.policy_d_generator import generate_policy_d_files, POLICY_D_PATH
+        rules = [
+            {"target": "ads.example.com", "action": "always_nxdomain", "enabled": True, "scope_view": None},
+            {"target": "tracking.example.net", "action": "always_refuse", "enabled": True, "scope_view": None},
+            {"target": "disabled.example.org", "action": "always_nxdomain", "enabled": False, "scope_view": None},
+        ]
+        files, omitted = generate_policy_d_files(rules, judicial_targets=[])
+        self.assertEqual(len(files), 1)
+        f = files[0]
+        self.assertEqual(f["path"], POLICY_D_PATH)
+        self.assertIn('local-zone: "ads.example.com" always_nxdomain', f["content"])
+        self.assertIn('local-zone: "tracking.example.net" always_refuse', f["content"])
+        self.assertNotIn("disabled.example.org", f["content"])
+        self.assertEqual(omitted, [])
+
+    def test_deterministic_output_independent_of_input_order(self):
+        from app.generators.policy_d_generator import generate_policy_d_files
+        a = [
+            {"target": "b.com", "action": "always_nxdomain", "enabled": True, "scope_view": None},
+            {"target": "a.com", "action": "always_nxdomain", "enabled": True, "scope_view": None},
+        ]
+        b = list(reversed(a))
+        fa, _ = generate_policy_d_files(a, [])
+        fb, _ = generate_policy_d_files(b, [])
+        self.assertEqual(fa[0]["content"], fb[0]["content"])
+
+    def test_judicial_target_drops_operator_with_same_name(self):
+        from app.generators.policy_d_generator import generate_policy_d_files
+        rules = [{"target": "court.example.com", "action": "always_refuse",
+                  "enabled": True, "scope_view": None}]
+        files, omitted = generate_policy_d_files(rules, judicial_targets=["court.example.com"])
+        self.assertNotIn("court.example.com", files[0]["content"])
+        self.assertEqual(omitted[0]["reason"], "judicial_precedence")
+        self.assertEqual(omitted[0]["judicial_match"], "court.example.com")
+
+    def test_judicial_ancestor_drops_operator_subdomain(self):
+        from app.generators.policy_d_generator import generate_policy_d_files
+        rules = [{"target": "sub.court.example.com", "action": "always_nxdomain",
+                  "enabled": True, "scope_view": None}]
+        files, omitted = generate_policy_d_files(rules, judicial_targets=["court.example.com"])
+        self.assertNotIn("sub.court.example.com", files[0]["content"])
+        self.assertEqual(omitted[0]["reason"], "judicial_precedence")
+        self.assertEqual(omitted[0]["judicial_match"], "court.example.com")
+
+    def test_empty_rule_set_still_emits_placeholder_file(self):
+        from app.generators.policy_d_generator import generate_policy_d_files
+        files, _ = generate_policy_d_files([], [])
+        self.assertEqual(len(files), 1)
+        self.assertIn("no enabled operator block rules", files[0]["content"])
+
+
+class UnboundIncludeOrderTest(unittest.TestCase):
+    """Defense (b): include order must put anablock.conf LAST."""
+
+    def test_policy_d_included_before_anablock(self):
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        with open(os.path.join(repo_root, "backend/app/generators/unbound_generator.py")) as fh:
+            src = fh.read()
+        i_policy = src.find("policy.d/*.conf")
+        i_anablock = src.find("include: /etc/unbound/anablock.conf")
+        self.assertGreater(i_policy, 0)
+        self.assertGreater(i_anablock, i_policy,
+            "anablock.conf include MUST appear AFTER policy.d include "
+            "to preserve judicial precedence under Unbound's last-wins")
+
+    def test_frontend_generator_mirrors_include_order(self):
+        """FE↔BE parity for the include order."""
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        with open(os.path.join(repo_root, "src/lib/config-generator.ts")) as fh:
+            src = fh.read()
+        i_policy = src.find("policy.d/*.conf")
+        i_anablock = src.find("anablock.conf")
+        self.assertGreater(i_policy, 0)
+        self.assertGreater(i_anablock, i_policy)
+
+
+class ConfigServiceMergesPolicyArtifacts(unittest.TestCase):
+    """generate_preview must append payload['_policyArtifacts'] additively."""
+
+    def test_policy_artifacts_appear_in_preview(self):
+        from app.services.config_service import generate_preview
+        payload = {
+            "operationMode": "simple",
+            "_policyArtifacts": [{
+                "path": "/etc/unbound/policy.d/200-operator-blocks.conf",
+                "content": "# test\n",
+                "permissions": "0644", "owner": "root:unbound",
+            }],
+        }
+        files = generate_preview(payload)
+        paths = [f["path"] for f in files]
+        self.assertIn("/etc/unbound/policy.d/200-operator-blocks.conf", paths)
+
+
+class PolicyApplyRouteTest(OperatorBlockCrudTest):
+    """End-to-end policy apply: RBAC, audit, judicial precedence at the API."""
+
+    def _seed_profile(self) -> str:
+        from app.models.config_profile import ConfigProfile
+        s = self._dbmod.SessionLocal()
+        try:
+            p = ConfigProfile(name="t", payload_json=json.dumps({"operationMode": "simple"}))
+            s.add(p); s.commit(); s.refresh(p)
+            return p.id
+        finally:
+            s.close()
+
+    def test_preview_omits_judicial_collisions(self):
+        self._clear_rules()
+        s = self._dbmod.SessionLocal()
+        try:
+            s.add(PolicyRule(id="jud-a", kind="block_name", target="banned.example.com",
+                             action="always_nxdomain", source="anablock_mirror", layer=100, enabled=True))
+            s.add(PolicyRule(id="op-a", kind="block_name", target="banned.example.com",
+                             action="always_refuse", source="operator", layer=200, enabled=True))
+            s.add(PolicyRule(id="op-b", kind="block_name", target="ads.example.com",
+                             action="always_nxdomain", source="operator", layer=200, enabled=True))
+            s.commit()
+        finally:
+            s.close()
         client = self._client_for("admin")
-        r = client.post("/api/policy/rules/block", json={"target": "nogen.example.com"})
-        self.assertEqual(r.status_code, 201)
+        r = client.get("/api/policy/preview")
+        self.assertEqual(r.status_code, 200, r.text)
+        body = r.json()
+        content = body["files"][0]["content"]
+        self.assertIn("ads.example.com", content)
+        self.assertNotIn("banned.example.com", content,
+            "judicial-covered operator rule must NOT appear in policy.d")
+        self.assertEqual(len(body["omitted"]), 1)
+        self.assertEqual(body["omitted"][0]["reason"], "judicial_precedence")
+
+    def test_viewer_apply_is_forbidden(self):
+        self._clear_rules()
+        client = self._client_for("viewer")
+        r = client.post("/api/policy/apply", json={"profile_id": "irrelevant"})
+        self.assertEqual(r.status_code, 403)
+
+    def test_apply_uses_existing_deploy_pipeline(self):
+        self._clear_rules()
+        s = self._dbmod.SessionLocal()
+        try:
+            s.add(PolicyRule(id="op-x", kind="block_name", target="x.example.com",
+                             action="always_nxdomain", source="operator", layer=200, enabled=True))
+            s.commit()
+        finally:
+            s.close()
+        pid = self._seed_profile()
+
+        from unittest.mock import patch
+        captured = {}
+        def fake_deploy(payload, scope, dry_run, operator):
+            captured["payload"] = payload
+            captured["scope"] = scope
+            return {"success": True, "steps": [{"name": "unbound-checkconf", "status": "success"}]}
+
+        client = self._client_for("admin")
+        with patch("app.api.routes.policy.execute_deploy", side_effect=fake_deploy), \
+             patch("app.api.routes.policy.require_managed_mode", return_value=None):
+            r = client.post("/api/policy/apply", json={"profile_id": pid, "dry_run": True})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["status"], "success")
+        self.assertEqual(captured["scope"], "dns")
+        artifacts = captured["payload"].get("_policyArtifacts")
+        self.assertTrue(artifacts and any(
+            a["path"].endswith("200-operator-blocks.conf") for a in artifacts
+        ))
+        from app.models.operational import OperationalEvent
+        s = self._dbmod.SessionLocal()
+        try:
+            evs = s.query(OperationalEvent).filter(
+                OperationalEvent.event_type == "policy.applied"
+            ).all()
+            self.assertGreaterEqual(len(evs), 1)
+        finally:
+            s.close()
+
+    def test_apply_failure_records_apply_failed(self):
+        self._clear_rules()
+        pid = self._seed_profile()
+        from unittest.mock import patch
+        def fake_deploy(payload, scope, dry_run, operator):
+            return {"success": False, "error": "unbound-checkconf failed", "steps": []}
+        client = self._client_for("admin")
+        with patch("app.api.routes.policy.execute_deploy", side_effect=fake_deploy), \
+             patch("app.api.routes.policy.require_managed_mode", return_value=None):
+            r = client.post("/api/policy/apply", json={"profile_id": pid})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["status"], "failed")
+        from app.models.operational import OperationalEvent
+        s = self._dbmod.SessionLocal()
+        try:
+            evs = s.query(OperationalEvent).filter(
+                OperationalEvent.event_type == "policy.apply_failed"
+            ).all()
+            self.assertGreaterEqual(len(evs), 1)
+        finally:
+            s.close()
 
 
 if __name__ == "__main__":

@@ -332,3 +332,120 @@ def delete_block_rule(
     db.delete(rule)
     db.commit()
     return None
+
+
+# ===========================================================================
+# POL-2b — Policy plane apply
+#
+# Materializes layer-200 (operator) blocks into /etc/unbound/policy.d/ and
+# pushes the change through the EXISTING deploy pipeline (no new pipeline,
+# no new install path). The pipeline already runs unbound-checkconf on
+# staged files; failure aborts the swap and rolls back automatically.
+#
+# Judicial precedence is guaranteed by TWO independent mechanisms (see
+# policy_d_generator docstring): (a) generation-time dedup against DB layer
+# 100, and (b) Unbound's last-wins local-zone resolution combined with the
+# include order policy.d/* → anablock.conf in unbound_generator.py.
+# ===========================================================================
+
+from app.models.config_profile import ConfigProfile
+import app.models.config_revision  # noqa: F401 — register FK target for ApplyJob
+from app.models.apply_job import ApplyJob
+from app.services.policy_service import collect_policy_artifacts
+from app.services.deploy_service import execute_deploy
+from app.services.service_mode import require_managed_mode
+from datetime import datetime, timezone
+
+
+class PolicyApplyRequest(BaseModel):
+    profile_id: str = Field(..., description="ConfigProfile to apply against")
+    dry_run: bool = Field(False, description="Preview-only — checkconf without swap")
+
+
+@router.get("/preview")
+def policy_preview(db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    """Generated policy.d content + judicial omissions, no disk writes."""
+    files, omitted = collect_policy_artifacts(db)
+    return {
+        "files": files,
+        "omitted": omitted,
+        "judicial_precedence_note": (
+            "Operator rules whose target equals or is a sub-domain of a "
+            "layer-100 (judicial) rule are dropped at generation. "
+            "Independently, anablock.conf is included AFTER policy.d so "
+            "Unbound's last-wins resolves duplicates in judicial's favor."
+        ),
+    }
+
+
+@router.post("/apply")
+def policy_apply(
+    body: PolicyApplyRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    """
+    Apply via existing deploy pipeline (staging → checkconf → swap → reload).
+    On checkconf failure, deploy_service performs rollback automatically.
+    """
+    require_managed_mode(db)
+    profile = db.query(ConfigProfile).filter(ConfigProfile.id == body.profile_id).first()
+    if not profile:
+        raise HTTPException(404, "Perfil não encontrado")
+
+    payload = json.loads(profile.payload_json)
+    files, omitted = collect_policy_artifacts(db)
+    # Additive merge — generators stay DB-free; deploy pipeline unchanged.
+    payload["_policyArtifacts"] = files
+
+    job = ApplyJob(
+        profile_id=profile.id,
+        job_type="policy" if not body.dry_run else "policy-dry-run",
+        status="running",
+        started_at=datetime.now(timezone.utc),
+        created_by=user.username,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    result = execute_deploy(payload, scope="dns", dry_run=body.dry_run, operator=user.username)
+
+    job.status = "success" if result.get("success") else "failed"
+    job.finished_at = datetime.now(timezone.utc)
+    job.stdout_log = result.get("stdout", "") or ""
+    job.stderr_log = result.get("stderr", "") or ""
+    job.exit_code = result.get("exit_code", 0) or 0
+    db.commit()
+
+    # Audit the apply itself (separate from per-rule mutation events).
+    db.add(OperationalEvent(
+        event_type="policy.applied" if result.get("success") else "policy.apply_failed",
+        severity="info" if result.get("success") else "warning",
+        instance_id=None,
+        message=(
+            f"policy apply scope=dns dry_run={body.dry_run} "
+            f"status={job.status} omitted_judicial={len(omitted)} by {user.username}"
+        ),
+        details_json=json.dumps({
+            "job_id": job.id,
+            "profile_id": profile.id,
+            "dry_run": body.dry_run,
+            "omitted": omitted,
+            "actor_username": user.username,
+        }, sort_keys=True),
+    ))
+    db.commit()
+
+    return {
+        "id": job.id,
+        "status": job.status,
+        "job_type": job.job_type,
+        "dry_run": body.dry_run,
+        "omitted": omitted,
+        "steps": result.get("steps", []),
+        "error": result.get("error"),
+        "started_at": job.started_at.isoformat(),
+        "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+    }
+

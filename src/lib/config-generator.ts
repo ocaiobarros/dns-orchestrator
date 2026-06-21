@@ -185,6 +185,7 @@ ${privateDomainBlock}    local-zone: "localhost." static
     local-data: "1.0.0.127.in-addr.arpa. 10800 IN PTR localhost."
 
     include: /etc/unbound/unbound-block-domains.conf
+    include: /etc/unbound/policy.d/*.conf
     include: /etc/unbound/anablock.conf
 `;
 
