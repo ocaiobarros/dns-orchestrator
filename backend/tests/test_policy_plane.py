@@ -433,7 +433,8 @@ class PolicyDGeneratorTest(unittest.TestCase):
             {"target": "disabled.example.org", "action": "always_nxdomain", "enabled": False, "scope_view": None},
         ]
         files, omitted = generate_policy_d_files(rules, judicial_targets=[])
-        self.assertEqual(len(files), 1)
+        # POL-3b: now returns [operator_blocks_file, allow_exceptions_file].
+        self.assertEqual(len(files), 2)
         f = files[0]
         self.assertEqual(f["path"], POLICY_D_PATH)
         self.assertIn('local-zone: "ads.example.com" always_nxdomain', f["content"])
