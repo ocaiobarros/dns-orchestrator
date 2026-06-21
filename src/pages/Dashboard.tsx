@@ -16,6 +16,7 @@ import TopologyMini from '@/components/noc/v3/TopologyMini';
 import LatencyMatrix from '@/components/noc/v3/LatencyMatrix';
 import RankList from '@/components/noc/v3/RankList';
 import NocGeoMap from '@/components/noc/NocGeoMap';
+import TelemetryHealthStrip from '@/components/noc/TelemetryHealthStrip';
 import type { MapNode, MapEdge } from '@/components/noc/NocNetworkMap';
 
 export default function Dashboard() {
@@ -211,16 +212,7 @@ function InterceptionDashboard() {
           <Bell size={11} /> <span>Alertas</span>
           <span className="ml-1 px-1.5 py-0.5 rounded bg-warning/20 text-warning text-[10px]">{eventItems.filter((e: any) => e.severity === 'warning').length || 4}</span>
         </div>
-        <div className="text-muted-foreground/70 ml-2 flex items-center gap-3 flex-nowrap whitespace-nowrap text-[10.5px]">
-          <span>Telemetria: <span className="text-primary font-bold">OK</span></span>
-          <span>Coletor: <span className="text-primary">OK</span></span>
-          <span>Última coleta: <span className="text-foreground/85">{new Date().toLocaleTimeString('pt-BR', { hour12: false })}</span></span>
-          <span>Duração: <span className="text-foreground/85">282ms</span></span>
-          <span>Resolver: <span className="text-foreground/85">unbound-control ({healthyCount}/{totalInstances} live)</span></span>
-          <span>Tráfego: <span className="text-foreground/85">nftables</span></span>
-          <span>Logs: <span className="text-foreground/85">journalctl ({eventItems.length} parsed)</span></span>
-          <span>Idade: <span className="text-foreground/85">10s</span></span>
-        </div>
+        <TelemetryHealthStrip compact className="ml-2" />
       </div>
 
       {/* 6 KPI cards */}
@@ -229,11 +221,11 @@ function InterceptionDashboard() {
           accent="violet" visual={<MiniGlobe />} />
         <KpiCard label="Backends" value={`${healthyCount} / ${totalInstances}`} sub="Todos saudáveis"
           glow visual={<MiniBackends />} />
-        <KpiCard label="Total Queries" value={totalQps.toLocaleString()} sub={`QPS: ${Math.round(totalQps / 60) || 0}`}
+        <KpiCard label="Total Queries" value={dnsAvail || safeStats.length > 0 ? totalQps.toLocaleString() : '—'} sub={dnsAvail || safeStats.length > 0 ? `QPS: ${Math.round(totalQps / 60) || 0}` : 'sem dados'}
           visual={<MiniBars />} />
-        <KpiCard label="Cache Hit" value={`${avgCacheHit.toFixed(1)}%`} sub={avgCacheHit > 70 ? 'Eficiente' : 'Moderado'}
+        <KpiCard label="Cache Hit" value={dnsAvail || safeStats.length > 0 ? `${avgCacheHit.toFixed(1)}%` : '—'} sub={dnsAvail || safeStats.length > 0 ? (avgCacheHit > 70 ? 'Eficiente' : 'Moderado') : 'sem dados'}
           glow visual={<MiniDonut pct={avgCacheHit} />} />
-        <KpiCard label="Latência DNS" value={`${avgLatency.toFixed(2)} ms`} sub={avgLatency < 30 ? 'Ótima' : 'Aceitável'}
+        <KpiCard label="Latência DNS" value={dnsAvail || safeStats.length > 0 ? `${avgLatency.toFixed(2)} ms` : '—'} sub={dnsAvail || safeStats.length > 0 ? (avgLatency < 30 ? 'Ótima' : 'Aceitável') : 'sem dados'}
           accent="violet" visual={<MiniSpark accent="violet" />} />
         <KpiCard label="Uptime" value={sysInfo?.uptime || '—'} sub="Sistema"
           visual={<MiniShield />} />
