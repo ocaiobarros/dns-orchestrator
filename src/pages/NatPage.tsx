@@ -49,20 +49,14 @@ export default function NatPage() {
   if (isLoading) return <LoadingState />;
   if (error) return <ErrorState message={error.message} />;
 
-  // Normalize counters: real backend returns { ruleset_loaded, counters: "" | [] | object }
-  const counters: NatBackend[] = (() => {
-    if (Array.isArray(rawSummary)) return rawSummary;
-    if (rawSummary && typeof rawSummary === 'object') {
-      const s = rawSummary as Record<string, unknown>;
-      if (Array.isArray(s.counters)) return s.counters;
-      if (Array.isArray(s.items)) return s.items;
-      if (Array.isArray(s.backends)) return s.backends;
-    }
-    return [];
-  })();
+  // Backend returns { ruleset_loaded, status, counters, backends, entry_counters }.
+  // `backends` is the canonical list; `counters` is kept for backward compatibility.
+  const counters: NatBackend[] = rawSummary
+    ? (rawSummary.backends ?? rawSummary.counters ?? [])
+    : [];
 
-  const rulesetLoaded = rawSummary && typeof rawSummary === 'object' && !Array.isArray(rawSummary)
-    ? Boolean((rawSummary as Record<string, unknown>).ruleset_loaded)
+  const rulesetLoaded = rawSummary
+    ? Boolean(rawSummary.ruleset_loaded)
     : counters.length > 0;
 
   const sticky = Array.isArray(rawSticky) ? rawSticky : [];
