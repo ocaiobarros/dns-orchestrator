@@ -629,11 +629,19 @@ export default function DnsPage() {
   }, [filters.instance, filters.qtype, filters.timeRange, refetchDnsMetrics]);
 
   const chartData = useMemo(() => {
+    // ── P1-04 canonical unit for chartData ────────────────────────────────
+    // `hitRatio` MUST be expressed as a percentage in the 0-100 scale.
+    // Sources we accept here (collector live snapshot, MetricSample history,
+    // unbound-control resolver block) are ALL already 0-100. The Prometheus
+    // exposition is 0-1 by convention and is NEVER read into this chart —
+    // it lives at /api/prometheus and is converted at that border only.
+    // ─────────────────────────────────────────────────────────────────────
     const dbRows = Array.isArray(filteredMetrics) ? filteredMetrics : [];
     const histRows = Array.isArray(telemetryHistory) ? telemetryHistory : [];
     // Fall back to collector circular history when DB-backed metrics are empty
     // (covers Cache Hit Ratio + Latency widgets when DnsEvent/MetricSample tables are empty).
     const metricRows = dbRows.length > 0 ? dbRows : histRows;
+
     const historyRows = metricRows;
     const telemetryBackends = Array.isArray(telemetry?.backends) ? telemetry.backends : [];
     const selectedBackend = selectedInstance
