@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useNoc } from '@/lib/noc-context';
+import OpenResolverBanner from '@/components/OpenResolverBanner';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -236,6 +237,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </header>
+
+        <OpenResolverBanner />
 
         <main className="flex-1 overflow-y-auto w-full max-w-none">
           <div className="noc-page" style={{ paddingBlock: 'var(--app-main-padding)' }}>
