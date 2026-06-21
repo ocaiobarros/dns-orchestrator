@@ -614,9 +614,28 @@ export default function DnsPage() {
     qc.invalidateQueries({ queryKey: ['telemetry', 'recent-queries'] });
   };
 
+  // GATE-RETENÇÃO opção (c): janela curta (1h) → buffer local em /api/dns/metrics;
+  // janelas longas (6h..72h) → TSDB externo via proxy /api/telemetry/range
+  // (dns_chart_bundle). Degradação honesta quando o TSDB não está configurado.
+  const isLongWindow = (TIME_RANGE_HOURS[timeRange] ?? 1) > 1;
   const { data: dnsMetricsPayload, refetch: refetchDnsMetrics } = useQuery({
-    queryKey: ['dnsMetrics', filters.instance, filters.qtype, filters.timeRange],
+    queryKey: ['dnsMetrics', filters.instance, filters.qtype, filters.timeRange, isLongWindow ? 'tsdb' : 'local'],
     queryFn: async () => {
+      if (isLongWindow) {
+        const r = await api.getTelemetryRange({
+          metric: 'dns_chart_bundle',
+          window: timeRange,
+          instance: selectedInstance || undefined,
+        });
+        if (!r.success) throw new Error(r.error!);
+        return {
+          rows: r.data?.rows ?? [],
+          source: r.data?.source ?? 'none',
+          source_available: r.data?.source_available ?? false,
+          degraded: r.data?.degraded ?? true,
+          reason: r.data?.reason,
+        };
+      }
       const r = await api.getDnsMetrics({ instance: selectedInstance || undefined, qtype: qtype || undefined, range: timeRange });
       if (!r.success) throw new Error(r.error!);
       return r.data;
