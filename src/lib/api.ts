@@ -746,10 +746,14 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path.match(/^\/api\/policy\/rules\/[^/]+$/) && method === 'DELETE') return undefined;
   // POL-2b: preview/apply mocks for preview-mode (no backend).
   if (path === '/api/policy/preview') return {
-    files: [{ path: '/etc/unbound/policy.d/200-operator-blocks.conf',
-              content: '# (no enabled operator block rules)\n' }],
+    files: [
+      { path: '/etc/unbound/policy.d/200-operator-blocks.conf',
+        content: '# (no enabled operator block rules)\n' },
+      { path: '/etc/unbound/policy.d/400-allow-exceptions.conf',
+        content: '# (no enabled allow exceptions)\n' },
+    ],
     omitted: [],
-    judicial_precedence_note: 'AnaBlock (layer 100) sempre vence por include order + dedup.',
+    judicial_precedence_note: 'AnaBlock (layer 100) sempre vence por include order — anablock.conf é incluído após policy.d/*.conf.',
   };
   if (path === '/api/policy/apply' && method === 'POST') {
     return {
