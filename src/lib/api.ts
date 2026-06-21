@@ -492,6 +492,15 @@ export const api = {
       started_at: string;
       finished_at: string | null;
     }>('POST', '/policy/apply', body),
+
+  // POL-3a: allow_exception CRUD (admin-only). Backend rejects targets covered
+  // by DB-known judicial rules with 409 (and emits policy.allow_exception.rejected).
+  createAllowException: (body: { target: string; note?: string | null; enabled?: boolean; scope_view?: string | null }) =>
+    apiCall<PolicyRuleRecord>('POST', '/policy/rules/allow', body),
+  updateAllowException: (id: string, body: { enabled?: boolean; note?: string | null }) =>
+    apiCall<PolicyRuleRecord>('PATCH', `/policy/rules/allow/${id}`, body),
+  deleteAllowException: (id: string) =>
+    apiCall<void>('DELETE', `/policy/rules/allow/${id}`),
 };
 
 export interface PolicyRuleRecord {
