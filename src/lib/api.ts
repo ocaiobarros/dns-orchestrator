@@ -7,7 +7,7 @@
 import type {
   ApiResponse, WizardConfig, SystemInfo, ServiceStatus,
   NetworkInterface, Route, ReachabilityResult, DnsMetrics,
-  DnsTopDomain, DnsInstanceStats, NftCounter, NftStickyEntry,
+  DnsTopDomain, DnsInstanceStats, NftCounter, NftStickyEntry, NatSummary,
   OspfNeighbor, OspfRoute, LogEntry, LogSource,
   ApplyRequest, ApplyResult, DiagCommand, DiagResult,
   ConfigProfile, ConfigDiff, GeneratedFile, PaginatedResponse,
