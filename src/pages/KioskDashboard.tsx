@@ -590,7 +590,9 @@ export default function KioskDashboard() {
                     <div className="text-muted-foreground font-mono text-[12px]">Sem dados</div>
                   )}
                 </div>
-                <button className="mt-4 py-2 text-[11px] font-mono text-muted-foreground/80 hover:text-foreground border border-border/40 rounded-md w-full"
+                <button
+                  onClick={() => navigate('/dns')}
+                  className="mt-4 py-2 text-[11px] font-mono text-muted-foreground/80 hover:text-foreground border border-border/40 rounded-md w-full"
                   style={{ background: 'hsl(var(--noc-depth-2))' }}>
                   Ver todos os domínios
                 </button>
