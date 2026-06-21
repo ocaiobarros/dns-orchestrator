@@ -244,6 +244,19 @@ def create_block_rule(
         if not db.query(PolicyView).filter(PolicyView.id == body.scope_view).first():
             raise HTTPException(422, "scope_view desconhecido")
 
+    # Explicit duplicate check — SQLite treats NULL scope_view as distinct in
+    # UNIQUE, so the schema-level UQ does not fire on global rules. Belt-and-
+    # suspenders: check then INSERT.
+    dup_q = db.query(PolicyRule).filter(
+        PolicyRule.kind == "block_name",
+        PolicyRule.source == "operator",
+        PolicyRule.target == target,
+    )
+    dup_q = dup_q.filter(PolicyRule.scope_view.is_(None)) if body.scope_view is None \
+        else dup_q.filter(PolicyRule.scope_view == body.scope_view)
+    if dup_q.first():
+        raise HTTPException(409, "Regra já existe para este alvo neste escopo")
+
     rule = PolicyRule(
         scope_view=body.scope_view,
         kind="block_name",
@@ -256,7 +269,7 @@ def create_block_rule(
     )
     db.add(rule)
     try:
-        db.flush()  # surfaces UNIQUE / CHECK violations before commit
+        db.flush()
     except IntegrityError as exc:
         db.rollback()
         msg = str(getattr(exc, "orig", exc))
