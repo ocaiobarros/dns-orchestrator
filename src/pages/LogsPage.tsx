@@ -26,9 +26,31 @@ const levelColors: Record<string, string> = {
 export default function LogsPage() {
   const [source, setSource] = useState<LogSource | 'all'>('all');
   const [search, setSearch] = useState('');
+  const [exporting, setExporting] = useState(false);
   const activeSource = source === 'all' ? undefined : source;
 
   const { data, isLoading, error, refetch } = useLogs(activeSource, search || undefined);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await api.exportLogs(activeSource);
+      const blob = new Blob([res.content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      a.download = `dns-control-logs-${activeSource ?? 'all'}-${stamp}.log`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`${res.count} registros exportados`);
+    } catch (e: any) {
+      toast.error(`Falha ao exportar: ${e?.message ?? 'erro'}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
 
   return (
     <div className="space-y-6">
