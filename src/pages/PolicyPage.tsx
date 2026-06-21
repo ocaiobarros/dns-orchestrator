@@ -119,16 +119,20 @@ export default function PolicyPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Plano de Política Nativo</h1>
-        <p className="text-sm text-muted-foreground">
-          Visualização somente-leitura. Precedência (alta → baixa):
-          <span className="text-destructive font-mono"> 100 judicial </span>→
-          <span className="font-mono"> 200 operador </span>→
-          <span className="text-blue-500 font-mono"> 300 feeds </span>→
-          <span className="text-emerald-500 font-mono"> 400 allowlist </span>
-          (allowlist <strong>não sobrepõe</strong> camada 100).
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Plano de Política Nativo</h1>
+          <p className="text-sm text-muted-foreground">
+            Precedência (alta → baixa):
+            <span className="text-destructive font-mono"> 100 judicial </span>→
+            <span className="font-mono"> 200 operador </span>→
+            <span className="text-blue-500 font-mono"> 300 feeds </span>→
+            <span className="text-emerald-500 font-mono"> 400 allowlist </span>
+            (allowlist <strong>não sobrepõe</strong> camada 100). Regras vivem no
+            banco; <strong>geração de config chega no POL-2b</strong>.
+          </p>
+        </div>
+        {isAdmin && <CreateBlockButton onCreate={(b) => createMut.mutate(b)} pending={createMut.isPending} />}
       </div>
 
       {/* Summary cards */}
@@ -189,21 +193,44 @@ export default function PolicyPage() {
                   <span className="text-xs text-muted-foreground ml-auto">{items.length} regra(s)</span>
                 </div>
                 <div className="divide-y divide-border">
-                  {items.map(r => (
-                    <div key={r.id} className={`flex items-center gap-3 px-3 py-2 border-l-2 ${meta.tone.split(' ').slice(1).join(' ')}`}>
-                      <code className="text-xs font-mono">{r.target}</code>
-                      <span className="text-xs text-muted-foreground">→ {r.action}</span>
-                      <span className="text-xs text-muted-foreground">[{r.kind}]</span>
-                      <span className="ml-auto flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                          scope: {r.scope_view ? views.find(v => v.id === r.scope_view)?.name ?? r.scope_view : 'global'}
+                  {items.map(r => {
+                    const isOperatorBlock = r.layer === 200 && r.kind === 'block_name' && r.source === 'operator';
+                    const canEdit = isAdmin && isOperatorBlock;
+                    return (
+                      <div key={r.id} className={`flex items-center gap-3 px-3 py-2 border-l-2 ${meta.tone.split(' ').slice(1).join(' ')}`}>
+                        <code className="text-xs font-mono">{r.target}</code>
+                        <span className="text-xs text-muted-foreground">→ {r.action}</span>
+                        <span className="text-xs text-muted-foreground">[{r.kind}]</span>
+                        <span className="ml-auto flex items-center gap-3">
+                          <span className="text-xs text-muted-foreground">
+                            scope: {r.scope_view ? views.find(v => v.id === r.scope_view)?.name ?? r.scope_view : 'global'}
+                          </span>
+                          {canEdit ? (
+                            <>
+                              <Switch
+                                checked={r.enabled}
+                                onCheckedChange={(v) => toggleMut.mutate({ id: r.id, enabled: v })}
+                                aria-label={`Ativar ${r.target}`}
+                              />
+                              <Button
+                                size="icon" variant="ghost"
+                                onClick={() => {
+                                  if (confirm(`Remover regra para ${r.target}?`)) deleteMut.mutate(r.id);
+                                }}
+                                aria-label={`Remover ${r.target}`}
+                              >
+                                <Trash2 size={14} />
+                              </Button>
+                            </>
+                          ) : (
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${r.enabled ? 'bg-emerald-500/10 text-emerald-500' : 'bg-muted text-muted-foreground'}`}>
+                              {r.enabled ? 'ativa' : 'inativa'}
+                            </span>
+                          )}
                         </span>
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${r.enabled ? 'bg-emerald-500/10 text-emerald-500' : 'bg-muted text-muted-foreground'}`}>
-                          {r.enabled ? 'ativa' : 'inativa'}
-                        </span>
-                      </span>
-                    </div>
-                  ))}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );
