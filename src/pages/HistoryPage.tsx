@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import StatusBadge from '@/components/StatusBadge';
 import ApplyStepsViewer from '@/components/ApplyStepsViewer';
 import { LoadingState, ErrorState, EmptyState } from '@/components/DataStates';
@@ -29,6 +30,7 @@ function normalizeHistoryItem(raw: any) {
 }
 
 export default function HistoryPage() {
+  const navigate = useNavigate();
   const { data, isLoading, error, refetch } = useHistory();
   const { data: backups } = useDeployBackups();
   const rollbackMutation = useRollback();
@@ -192,7 +194,9 @@ export default function HistoryPage() {
                         <RotateCcw size={10} /> Rollback
                       </button>
                     )}
-                    <button className="px-2.5 py-1 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80 flex items-center gap-1">
+                    <button
+                      onClick={() => navigate('/files')}
+                      className="px-2.5 py-1 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80 flex items-center gap-1">
                       <FileText size={10} /> Ver Arquivos
                     </button>
                   </div>

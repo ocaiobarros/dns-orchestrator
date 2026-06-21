@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Cpu, MemoryStick, HardDrive, Clock, Activity, Database, Timer,
   Globe, Shield, Server, Wifi, Bell, Eye, CheckCircle2, ChevronDown,
@@ -212,6 +212,7 @@ function CardLabel({ icon, children }: { icon: React.ReactNode; children: React.
 
 export default function KioskDashboard() {
   const { user, refreshSession } = useAuth();
+  const navigate = useNavigate();
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -332,7 +333,10 @@ export default function KioskDashboard() {
                 style={{ background: 'hsl(var(--noc-depth-2))' }}>
                 <ArrowLeft size={14} /> Dashboard
               </Link>
-              <button className="w-9 h-9 rounded-lg bg-noc-depth-2 border border-border/40 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+              <button
+                onClick={() => navigate('/events?severity=warning,critical')}
+                title="Ver alertas operacionais"
+                className="w-9 h-9 rounded-lg bg-noc-depth-2 border border-border/40 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
                 style={{ background: 'hsl(var(--noc-depth-2))' }}>
                 <Bell size={15} />
               </button>
@@ -392,7 +396,9 @@ export default function KioskDashboard() {
                 <div className="text-[10.5px] font-mono font-bold uppercase tracking-[0.2em] text-muted-foreground/75">
                   Serviços Online
                 </div>
-                <button className="ml-auto px-3 py-1 text-[10.5px] font-mono text-muted-foreground/80 hover:text-foreground border border-border/40 rounded-md flex items-center gap-1"
+                <button
+                  onClick={() => navigate('/services')}
+                  className="ml-auto px-3 py-1 text-[10.5px] font-mono text-muted-foreground/80 hover:text-foreground border border-border/40 rounded-md flex items-center gap-1"
                   style={{ background: 'hsl(var(--noc-depth-2))' }}>
                   Ver todos <ChevronDown size={11} />
                 </button>
@@ -558,7 +564,9 @@ export default function KioskDashboard() {
                     <div className="text-muted-foreground font-mono text-[12px]">Sem dados</div>
                   )}
                 </div>
-                <button className="mt-4 py-2 text-[11px] font-mono text-muted-foreground/80 hover:text-foreground border border-border/40 rounded-md w-full"
+                <button
+                  onClick={() => navigate('/services')}
+                  className="mt-4 py-2 text-[11px] font-mono text-muted-foreground/80 hover:text-foreground border border-border/40 rounded-md w-full"
                   style={{ background: 'hsl(var(--noc-depth-2))' }}>
                   Ver todos os backends
                 </button>
@@ -582,7 +590,9 @@ export default function KioskDashboard() {
                     <div className="text-muted-foreground font-mono text-[12px]">Sem dados</div>
                   )}
                 </div>
-                <button className="mt-4 py-2 text-[11px] font-mono text-muted-foreground/80 hover:text-foreground border border-border/40 rounded-md w-full"
+                <button
+                  onClick={() => navigate('/dns')}
+                  className="mt-4 py-2 text-[11px] font-mono text-muted-foreground/80 hover:text-foreground border border-border/40 rounded-md w-full"
                   style={{ background: 'hsl(var(--noc-depth-2))' }}>
                   Ver todos os domínios
                 </button>
@@ -606,7 +616,9 @@ export default function KioskDashboard() {
                     <div className="text-muted-foreground font-mono text-[12px]">Sem dados</div>
                   )}
                 </div>
-                <button className="mt-4 py-2 text-[11px] font-mono text-muted-foreground/80 hover:text-foreground border border-border/40 rounded-md w-full"
+                <button
+                  onClick={() => navigate('/dns')}
+                  className="mt-4 py-2 text-[11px] font-mono text-muted-foreground/80 hover:text-foreground border border-border/40 rounded-md w-full"
                   style={{ background: 'hsl(var(--noc-depth-2))' }}>
                   Ver todos os clientes
                 </button>

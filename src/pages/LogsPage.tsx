@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { LoadingState, ErrorState, EmptyState } from '@/components/DataStates';
 import { useLogs } from '@/lib/hooks';
+import { api } from '@/lib/api';
 import { type LogSource, safeDateShort } from '@/lib/types';
 import { Download } from 'lucide-react';
+import { toast } from 'sonner';
 
 const logSources: { value: LogSource | 'all'; label: string }[] = [
   { value: 'all', label: 'Todos' },
@@ -24,9 +26,35 @@ const levelColors: Record<string, string> = {
 export default function LogsPage() {
   const [source, setSource] = useState<LogSource | 'all'>('all');
   const [search, setSearch] = useState('');
+  const [exporting, setExporting] = useState(false);
   const activeSource = source === 'all' ? undefined : source;
 
   const { data, isLoading, error, refetch } = useLogs(activeSource, search || undefined);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await api.exportLogs(activeSource);
+      const payload = res.data;
+      if (!res.success || !payload) {
+        throw new Error(res.error ?? 'Resposta vazia');
+      }
+      const blob = new Blob([payload.content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      a.download = `dns-control-logs-${activeSource ?? 'all'}-${stamp}.log`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`${payload.count} registros exportados`);
+    } catch (e: any) {
+      toast.error(`Falha ao exportar: ${e?.message ?? 'erro'}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
 
   return (
     <div className="space-y-6">
@@ -35,8 +63,11 @@ export default function LogsPage() {
           <h1 className="text-xl font-semibold">Logs</h1>
           <p className="text-sm text-muted-foreground">Logs do sistema e dos serviços</p>
         </div>
-        <button className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
-          <Download size={12} /> Exportar
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed">
+          <Download size={12} /> {exporting ? 'Exportando…' : 'Exportar'}
         </button>
       </div>
 

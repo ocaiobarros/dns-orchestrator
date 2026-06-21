@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { LoadingState, ErrorState, EmptyState } from '@/components/DataStates';
 import { useInterfaces, useRoutes, useReachability } from '@/lib/hooks';
 import { useQuery } from '@tanstack/react-query';
@@ -153,6 +154,7 @@ function ListenerCard({ l, timeMeta }: { l: any; timeMeta: ServerTimeMetadata })
    Page
    ============================================================ */
 export default function NetworkPage() {
+  const navigate = useNavigate();
   const { data: interfaces, isLoading: ifLoading, error: ifError } = useInterfaces();
   const { data: routes, isLoading: rtLoading } = useRoutes();
   const reachability = useReachability();
@@ -232,7 +234,9 @@ export default function NetworkPage() {
         icon={<Radio size={14} />}
         accentHsl="162 72% 51%"
         action={
-          <button className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-secondary/60 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors">
+          <button
+            onClick={() => navigate('/logs')}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-secondary/60 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors">
             <FileText size={11} /> Ver logs DNS
           </button>
         }

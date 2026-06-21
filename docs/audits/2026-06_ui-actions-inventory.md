@@ -391,3 +391,107 @@ Inventário completo (função → método+path):
 ---
 
 **Fim do relatório.**
+
+---
+
+## Section D — Execução do follow-up: religação (item A) e triagem (item B)
+
+**Data:** 2026-06-21 · **Tipo:** atualização aditiva, sem alterar conclusões anteriores.
+
+### D.1 — Item A: religação dos 11 botões "sem `onClick` (provável bug)"
+
+Regra aplicada: religar somente quando a intenção do rótulo é clara E o alvo já existe no
+codebase. Sem fabricação; sem religar ação destrutiva/CLI sem guard rail; remoção/restauração
+de backend permanece em HOLD (já confirmado em §C.3).
+
+| # | Arquivo:linha | Rótulo | Decisão | Alvo / Justificativa |
+|---|---|---|---|---|
+| K-1 | `KioskDashboard.tsx:335` | Bell (sino) | **religado** | `navigate('/events?severity=warning,critical')` — mesmo padrão de `DnsPage.tsx:993` |
+| K-2 | `KioskDashboard.tsx:395` | "Ver todos" (Serviços) | **religado** | `navigate('/services')` — página existente |
+| K-3 | `KioskDashboard.tsx:561` | "Ver todos os backends" | **religado** | `navigate('/services')` — `Services.tsx` lista todos serviços/instâncias |
+| K-4 | `KioskDashboard.tsx:585` | "Ver todos os domínios" | **religado** | `navigate('/dns')` — seção "Top Domains" em `DnsPage` |
+| K-5 | `KioskDashboard.tsx:609` | "Ver todos os clientes" | **religado** | `navigate('/dns')` — seção "Top Clients" em `DnsPage` |
+| N-1 | `NetworkPage.tsx:235` (após drift, hoje rotulado "Ver logs DNS") | "Ver logs DNS" | **religado** | `navigate('/logs')` — página `LogsPage` com tab "Unbound" |
+| N-2 | `NetworkPage.tsx:385` | "Ver todas as rotas" | **ambíguo — não religado** | A própria página já lista toda a tabela de rotas; não há página/dialog separado de rotas detalhadas |
+| LG-1 | `LogsPage.tsx:38` | "Exportar" | **religado** | `api.exportLogs(activeSource)` já existia em `src/lib/api.ts:210` → blob `.log` client-side com toast |
+| H-5 | `HistoryPage.tsx:195` | "Ver Arquivos" | **religado** | `navigate('/files')` — `FilesPage` é o alvo natural |
+| DN-3 | `DnsPage.tsx:925` (após drift, hoje `≈1004`) | "Padrão" (`SlidersHorizontal`) | **ambíguo — feature ausente** | Sugere preset/saved view de filtros; nenhum mecanismo de presets existe ainda. Sem fabricação. |
+| SV-4 | `Services.tsx:307` | "⋮" (Mais ações) | **ambíguo — feature ausente** | Nenhum `DropdownMenu` ou conjunto de ações adicionais foi definido para serviço. Religar seria fabricar menu inexistente. |
+
+**Resultado A:** 8 religados a alvo existente · 3 reportados como ambíguos / feature ausente · 0 ações destrutivas tocadas · 0 wiring a `removeBackend`/`restoreBackend` (HOLD respeitado).
+
+### D.2 — Item B: triagem dos demais NO-OPs
+
+Convenção:
+- **BUG** = handler ausente em botão com intenção clara e alvo existente (deveria ter sido religado).
+- **PLACEHOLDER** = comportamento parcial intencional (navegação atalho, abre dialog/modal, export client-side a partir de defaults) — funciona, mas a "ação completa" depende do componente alvo.
+- **DECORATIVO** = mutação local necessária para fluxo de UI (filtros, tabs, expand/collapse, close dialog, add/remove em rascunho local) — comportamento correto e final.
+
+Triagem (cobrindo os 48 NO-OPs originais):
+
+| # | Arquivo:linha | Categoria | Nota |
+|---|---|---|---|
+| D-1 | `Dashboard.tsx:308` "Ver todos" Métricas | PLACEHOLDER | Atalho `navigate('/services')` |
+| D-2 | `Dashboard.tsx:331` "Ver todos" Serviços | PLACEHOLDER | Atalho `navigate('/services')` |
+| D-4 | `Dashboard.tsx:424` × remove test domain | DECORATIVO | Rascunho local (`setTestDomains`) |
+| D-5 | `Dashboard.tsx:432` + add test domain | DECORATIVO | Rascunho local |
+| SD-1 | `SimpleDashboard.tsx:678` "Histórico" | PLACEHOLDER | `navigate('/history')` |
+| SD-3 | `SimpleDashboard.tsx:686` "Deploy" | PLACEHOLDER | `navigate('/wizard')` |
+| SV-1 | `Services.tsx:288` "Logs" | PLACEHOLDER | Abre modal local `setLogsOf(svc)` (modal não exibido aqui é DECORATIVO) |
+| SV-3 | `Services.tsx:301` "Inspecionar" | PLACEHOLDER | Abre modal local `setInspecting(svc)` |
+| SV-4 | `Services.tsx:307` "⋮" | **(item A — feature ausente)** | — |
+| SV-5 | `Services.tsx:431` "Fechar" inspect | DECORATIVO | Fecha dialog |
+| SV-6 | `Services.tsx:436` "Fechar" logs | DECORATIVO | Fecha dialog |
+| T-2 | `TroubleshootPage.tsx:194` status filter pills | DECORATIVO | `setStatusFilter` |
+| T-3 | `TroubleshootPage.tsx:244` expand ▸/▾ | DECORATIVO | `setExpanded` |
+| T-5 | `TroubleshootPage.tsx:295` category collapse | DECORATIVO | `setCollapsed` |
+| T-7 | `TroubleshootPage.tsx:537` category filter | DECORATIVO | `setCategoryFilter` |
+| T-8 | `TroubleshootPage.tsx:550` "Ocultar permissões esperadas" | DECORATIVO | `setHideExpectedPerms` |
+| H-1 | `HistoryPage.tsx:63` "Backups (N)" | DECORATIVO | `setShowBackups` |
+| H-3 | `HistoryPage.tsx:115` toggle entry | DECORATIVO | `setExpandedId` |
+| FL-1 | `FilesPage.tsx:44` "Exportar Todos" | PLACEHOLDER | Exporta `generateAllFiles(DEFAULT_CONFIG)` (config estática) — observação: não reflete config aplicada; investigar em tarefa separada se for desejável usar `api.getGeneratedFiles` |
+| FL-2 | `FilesPage.tsx:51` tabs de arquivo | DECORATIVO | `setSelected` |
+| FL-3 | `FilesPage.tsx:70` "Copiar" | DECORATIVO | Clipboard API funciona; sem rede por design |
+| N-2 | `NetworkPage.tsx:385` "Ver todas as rotas" | **(item A — ambíguo)** | — |
+| LG-2 | `LogsPage.tsx:45` source filter tabs | DECORATIVO | Refetch reativo via setState |
+| ST-4 | `SettingsPage.tsx:287` "Exportar JSON" | PLACEHOLDER | Blob client-side a partir do estado local |
+| ST-5 | `SettingsPage.tsx:336` "Abrir diagnóstico" | PLACEHOLDER | `navigate('/troubleshoot')` |
+| U-1 | `UsersPage.tsx:143` "Novo Usuário" | DECORATIVO | Abre dialog (criação real é U-6) |
+| U-2 | `UsersPage.tsx:205` "Alterar senha" | DECORATIVO | Abre dialog (mutação real é U-8) |
+| U-4 | `UsersPage.tsx:218` "Excluir" | DECORATIVO | Abre confirm dialog (delete real é U-10) |
+| U-5 | `UsersPage.tsx:284` "Cancelar" create | DECORATIVO | Fecha dialog |
+| U-7 | `UsersPage.tsx:314` "Cancelar" pw | DECORATIVO | Fecha dialog |
+| U-9 | `UsersPage.tsx:336` "Cancelar" delete | DECORATIVO | `AlertDialogCancel` |
+| DN-1 | `DnsPage.tsx:491` time-range/qtype tabs | DECORATIVO | Refetch reativo |
+| DN-2 | `DnsPage.tsx:914` "Ver Eventos" | PLACEHOLDER | `navigate('/events?...)` |
+| DN-3 | `DnsPage.tsx:925` ("Padrão") | **(item A — feature ausente)** | — |
+| DN-4 | `DnsPage.tsx:948` "Limpar Filtros" | DECORATIVO | `resetFilters()` local |
+| DN-6 | `DnsPage.tsx:1115` tab "Domínios" | DECORATIVO | `setActiveSection` |
+| DN-7 | `DnsPage.tsx:1156` tab "Clientes" | DECORATIVO | `setActiveSection` |
+| EV-1 | `EventsPage.tsx:101` severity pills | DECORATIVO | Refetch reativo |
+| M-1 | `MetricsPage.tsx:401` tab selector | DECORATIVO | `setTab` |
+| NQ-1 | `NocQuickActions.tsx:39` shortcuts | PLACEHOLDER | Atalhos `navigate(a.path)` |
+| NH-2 | `NocHeroBar.tsx:156` "⛶ Fullscreen" | DECORATIVO | Browser API (Fullscreen) |
+| NH-3 | `NocHeroBar.tsx:165` "⋮" menu | DECORATIVO | Toggle de menu local |
+| NH-4 | `NocHeroBar.tsx:186` itens de menu | PLACEHOLDER | Atalhos `navigate(a.path)` |
+| DS-1 | `NocDeploySimulation.tsx:136` × remove domain | DECORATIVO | Rascunho local |
+| DS-2 | `NocDeploySimulation.tsx:148` + add domain | DECORATIVO | Rascunho local |
+
+### D.3 — Resumo executivo da triagem
+
+| Categoria | Quantidade | Observação |
+|---|---|---|
+| **Religados (deixaram de ser BUG)** | 8 | item A — alvo existente |
+| **Reportados ambíguos / feature ausente** | 3 | DN-3, SV-4, N-2 |
+| **BUG remanescente** | 0 | nenhum botão com intenção clara + alvo existente ficou sem `onClick` |
+| **PLACEHOLDER** | 13 | navegação atalho, abre dialog, export client-side |
+| **DECORATIVO** | 27 | mutação local necessária ao fluxo de UI |
+| **QUEBRADO (pré-existente, fora do escopo desta tarefa)** | 2 | DS-3, DS-4 — `dig_${listener.name}_${domain}` (vide §C.2) |
+
+### D.4 — Notas de segurança
+
+- Nenhum botão religado dispara comando CLI ou efeito destrutivo.
+- `api.removeBackend` / `api.restoreBackend` permanecem **órfãos** na UI por design (HOLD — vide §C.3).
+- A nova chamada `api.exportLogs` em `LogsPage` consome um endpoint somente-leitura (`GET /logs/export`), sem efeito de estado e sem `use_privilege`.
+
+**Fim da Section D.**
