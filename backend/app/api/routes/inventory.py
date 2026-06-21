@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.models.user import User
 from app.services.runtime_inventory_service import (
     get_full_inventory, discover_unbound_instances,
@@ -56,7 +56,7 @@ def runtime_listeners(_: User = Depends(get_current_user)):
 
 
 @router.post("/sync")
-def runtime_sync(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def runtime_sync(db: Session = Depends(get_db), _: User = Depends(require_admin)):
     """Manually trigger sync of discovered instances to dns_instances table."""
     result = sync_instances_to_db(db)
     return result

@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.models.user import User
 from app.models.operational import DnsInstance
 from app.services.health_service import (
@@ -57,7 +57,7 @@ def list_health_checks(
 
 
 @router.post("/run/{instance_id}")
-def run_health_check_now(instance_id: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def run_health_check_now(instance_id: str, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     instance = db.query(DnsInstance).filter(DnsInstance.id == instance_id).first()
     if not instance:
         raise HTTPException(404, "Instance not found")

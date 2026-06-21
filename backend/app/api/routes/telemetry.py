@@ -11,7 +11,7 @@ import subprocess
 import time
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.models.user import User
 
 router = APIRouter()
@@ -186,7 +186,7 @@ def _find_collector_script() -> Path | None:
 
 
 @router.post("/recollect")
-def telemetry_recollect(_: User = Depends(get_current_user)):
+def telemetry_recollect(_: User = Depends(require_admin)):
     """Re-run collector synchronously and restart its systemd service.
 
     Used by the Observation Mode panel to refresh top domains/clients

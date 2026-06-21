@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.models.user import User
 from app.services.command_service import run_whitelisted_command, get_available_commands
 from app.services.diagnostics_service import run_health_check, _classify_result
@@ -24,7 +24,7 @@ def list_commands(_: User = Depends(get_current_user)):
 
 
 @router.post("/run")
-def run_command_route(body: RunCommandRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def run_command_route(body: RunCommandRequest, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     result = run_whitelisted_command(body.command_id, body.args)
 
     # Classify the result to determine semantic severity for logging

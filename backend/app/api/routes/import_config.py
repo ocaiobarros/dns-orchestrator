@@ -126,7 +126,7 @@ class ServiceModeRequest(BaseModel):
 
 
 @router.post("/service-mode")
-def set_mode(body: ServiceModeRequest, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def set_mode(body: ServiceModeRequest, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     """Set the service mode (managed | imported | observed)."""
     if body.mode not in (MODE_MANAGED, MODE_IMPORTED, MODE_OBSERVED):
         raise HTTPException(400, f"Invalid mode: {body.mode}. Valid: managed, imported, observed")

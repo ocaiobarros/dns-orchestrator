@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.models.user import User
 from app.models.config_profile import ConfigProfile
 from app.models.config_revision import ConfigRevision
@@ -30,7 +30,7 @@ class DryRunStagingRequest(BaseModel):
 
 
 @router.post("/dry-run-staging")
-def dry_run_staging(body: DryRunStagingRequest, _: User = Depends(get_current_user)):
+def dry_run_staging(body: DryRunStagingRequest, _: User = Depends(require_admin)):
     """
     Staging validation: render files → structural checks → unbound-checkconf.
     Does NOT write to production paths.

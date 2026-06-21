@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.models.user import User
 from app.models.log_entry import Setting
 from app.schemas.common import UpdateSettingsRequest
@@ -21,7 +21,7 @@ def get_settings(db: Session = Depends(get_db), _: User = Depends(get_current_us
 
 
 @router.patch("")
-def update_settings(body: UpdateSettingsRequest, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def update_settings(body: UpdateSettingsRequest, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     for key, value in body.settings.items():
         existing = db.query(Setting).filter(Setting.key == key).first()
         if existing:

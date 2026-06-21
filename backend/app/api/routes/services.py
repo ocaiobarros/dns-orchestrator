@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.models.user import User
 from app.services.diagnostics_service import get_services_status, get_service_detail, restart_service
 from app.core.logging import log_event
@@ -25,7 +25,7 @@ def service_detail(name: str, _: User = Depends(get_current_user)):
 
 
 @router.post("/{name}/restart")
-def service_restart(name: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def service_restart(name: str, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     result = restart_service(name)
     log_event(db, "system", "info", f"Serviço '{name}' reiniciado por '{user.username}'")
     return result
