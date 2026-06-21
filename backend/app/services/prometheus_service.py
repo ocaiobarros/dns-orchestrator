@@ -129,5 +129,17 @@ def _append_latest_metrics(db: Session, instance: DnsInstance, labels: str, line
         ).order_by(MetricSample.collected_at.desc()).first()
 
         if sample:
-            val = f"{sample.metric_value:.4f}" if "ratio" in name else f"{sample.metric_value}"
+            # ── P1-04 border conversion ─────────────────────────────────
+            # MetricSample stores cache_hit_ratio in the chart-canonical
+            # 0-100 (%) scale. The Prometheus HELP for dns_cache_hit_ratio
+            # declares the 0-1 convention, so we MUST divide here to keep
+            # the exposition internally consistent and avoid leaking the
+            # chart's 0-100 scale through /api/prometheus.
+            if name == "dns_cache_hit_ratio":
+                val = f"{float(sample.metric_value) / 100.0:.4f}"
+            elif "ratio" in name:
+                val = f"{sample.metric_value:.4f}"
+            else:
+                val = f"{sample.metric_value}"
             lines.append(f"{name}{{{labels}}} {val}")
+
