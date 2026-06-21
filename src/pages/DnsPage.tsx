@@ -416,12 +416,12 @@ function CacheHitChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[];
 function ErrorsChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; rangeLabel?: string; timeMeta: ServerTimeMetadata; timeRange: string }) {
   const color = 'hsl(330 90% 60%)';
   const colorA = (a: number) => `hsl(330 90% 60% / ${a})`;
-  const series = data.length > 0
-    ? data.map(d => ({ ...d, total: safeNum(d.servfail) + safeNum(d.nxdomain) }))
-    : Array.from({ length: 2 }, (_, i) => ({ ts: Date.now() + i, total: 0 }));
-  const ticks = buildServerTimeTicks(series, timeRange);
+  const hasData = data.length > 0;
+  const series = hasData ? data.map(d => ({ ...d, total: safeNum(d.servfail) + safeNum(d.nxdomain) })) : [];
+  const ticks = hasData ? buildServerTimeTicks(series, timeRange) : [];
   return (
     <Panel title="Erros. (SERVFAIL + NXDOMAIN)" accent="violet" badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}>
+      {!hasData ? <NoDataPlaceholder minHeight={180} /> : (
       <MeasuredChartFrame minHeight={180}>{({ width, height }) => (
         <ResponsiveContainer width={width} height={height}>
           <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
@@ -440,9 +440,11 @@ function ErrorsChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; r
           </AreaChart>
         </ResponsiveContainer>
       )}</MeasuredChartFrame>
+      )}
     </Panel>
   );
 }
+
 
 /* ============================================================
    Helpers — bytes formatter
