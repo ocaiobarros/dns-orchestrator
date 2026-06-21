@@ -339,7 +339,10 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     use-caps-for-id: {"yes" if use_caps_for_id else "no"}
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
-    module-config: "iterator"
+    module-config: "validator iterator"
+    auto-trust-anchor-file: "/var/lib/unbound/root.key"
+    val-clean-additional: yes
+    val-log-level: 1
 
 {private_domains}    local-zone: "localhost." static
     local-data: "localhost. 10800 IN NS localhost."

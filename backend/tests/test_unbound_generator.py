@@ -159,3 +159,47 @@ class UnboundSecurityProfileTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UnboundDnssecValidationTest(unittest.TestCase):
+    """DISC-04 follow-up: DNSSEC validator must be loaded and trust-anchored."""
+
+    def _payload(self):
+        return {
+            "operationMode": "simple",
+            "ipv4Address": "172.250.40.11/23",
+            "enableIpv6": False,
+            "threads": 4,
+            "securityProfile": "isp-hardened",
+            "instances": [
+                {
+                    "name": "unbound01",
+                    "bindIp": "100.127.255.120",
+                    "controlInterface": "127.0.0.11",
+                    "controlPort": 8953,
+                },
+            ],
+            "_wizardConfig": {
+                "operationMode": "simple",
+                "ipv4Address": "172.250.40.11/23",
+                "threads": 4,
+                "securityProfile": "isp-hardened",
+            },
+        }
+
+    def test_module_config_loads_validator_before_iterator(self):
+        files = generate_unbound_configs(self._payload())
+        content = next(f["content"] for f in files if f["path"] == "/etc/unbound/unbound01.conf")
+        self.assertIn('module-config: "validator iterator"', content)
+        self.assertNotIn('module-config: "iterator"\n', content)
+
+    def test_each_instance_consumes_root_trust_anchor_rfc5011(self):
+        files = generate_unbound_configs(self._payload())
+        content = next(f["content"] for f in files if f["path"] == "/etc/unbound/unbound01.conf")
+        self.assertIn('auto-trust-anchor-file: "/var/lib/unbound/root.key"', content)
+        self.assertIn("val-clean-additional: yes", content)
+
+    def test_validation_is_real_not_permissive(self):
+        files = generate_unbound_configs(self._payload())
+        content = next(f["content"] for f in files if f["path"] == "/etc/unbound/unbound01.conf")
+        self.assertNotIn("val-permissive-mode: yes", content)

@@ -158,9 +158,18 @@ describe('Frontend/Backend Parity Contract', () => {
     expect(c1).toContain('control-interface: 127.0.0.12');
   });
 
-  it('module-config is always "iterator"', () => {
+  it('module-config enables DNSSEC validator before iterator', () => {
     const content = generateUnboundConf(config, 0);
-    expect(content).toContain('module-config: "iterator"');
+    expect(content).toContain('module-config: "validator iterator"');
+    expect(content).not.toMatch(/module-config:\s*"iterator"\s*$/m);
+  });
+
+  it('each per-instance config consumes the root trust anchor (RFC 5011)', () => {
+    const content = generateUnboundConf(config, 0);
+    expect(content).toContain('auto-trust-anchor-file: "/var/lib/unbound/root.key"');
+    expect(content).toContain('val-clean-additional: yes');
+    // Real validation — must NOT enable permissive mode
+    expect(content).not.toContain('val-permissive-mode: yes');
   });
 
   it('anablock include stays inside the main server block', () => {

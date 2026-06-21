@@ -559,6 +559,25 @@ chown "${SERVICE_USER}:${SERVICE_USER}" /etc/unbound/unbound-block-domains.conf 
 chown "${SERVICE_USER}:${SERVICE_USER}" /etc/unbound/anablock.conf 2>/dev/null || true
 ok "Unbound blocklist placeholders created"
 
+# DNSSEC root trust anchor (RFC 5011) — auto-maintained by unbound-anchor
+# Bootstrap a writable /var/lib/unbound/root.key so the validator module can
+# load it and keep it fresh. Failure here is non-fatal: the Debian unbound
+# package post-install also seeds this file; we just guarantee presence.
+mkdir -p /var/lib/unbound 2>/dev/null || true
+if [[ ! -s /var/lib/unbound/root.key ]]; then
+    if command -v unbound-anchor >/dev/null 2>&1; then
+        unbound-anchor -a /var/lib/unbound/root.key >/dev/null 2>&1 || true
+    fi
+fi
+chown "${SERVICE_USER}:${SERVICE_USER}" /var/lib/unbound 2>/dev/null || true
+chown "${SERVICE_USER}:${SERVICE_USER}" /var/lib/unbound/root.key 2>/dev/null || true
+chmod 0644 /var/lib/unbound/root.key 2>/dev/null || true
+if [[ -s /var/lib/unbound/root.key ]]; then
+    ok "DNSSEC root trust anchor present at /var/lib/unbound/root.key"
+else
+    warn "DNSSEC root trust anchor missing — install 'unbound-anchor' and re-run"
+fi
+
 # Disable legacy unbound.service to prevent port 53 conflicts
 if systemctl is-active unbound.service >/dev/null 2>&1; then
     systemctl stop unbound.service 2>/dev/null || true
