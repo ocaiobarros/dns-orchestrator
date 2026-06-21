@@ -51,7 +51,12 @@ async function runSimulation(
   for (const listener of listeners) {
     for (const domain of domains) {
       try {
-        const result = await api.runDiagCommand(`dig_${listener.name}_${domain}`);
+        // Catalog id format (see backend/app/executors/command_catalog.py
+        // → _listener_command_id): "dns-dig-listener-<ip-com-pontos-e-dois-pontos-trocados-por-traço>".
+        // O probe do catálogo é por listener (google.com fixo); domain participa
+        // apenas da apresentação dos resultados desta simulação.
+        const listenerId = listener.ip.replace(/[.:]/g, '-');
+        const result = await api.runDiagCommand(`dns-dig-listener-${listenerId}`);
         // Parse mock or real result
         const latency = Math.round(Math.random() * 80 + 5); // simulated
         const rcodes = ['NOERROR', 'NOERROR', 'NOERROR', 'NOERROR', 'SERVFAIL'];
