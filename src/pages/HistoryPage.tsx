@@ -30,6 +30,7 @@ function normalizeHistoryItem(raw: any) {
 }
 
 export default function HistoryPage() {
+  const navigate = useNavigate();
   const { data, isLoading, error, refetch } = useHistory();
   const { data: backups } = useDeployBackups();
   const rollbackMutation = useRollback();
