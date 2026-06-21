@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { LoadingState, ErrorState, EmptyState } from '@/components/DataStates';
 import { useLogs } from '@/lib/hooks';
+import { api } from '@/lib/api';
 import { type LogSource, safeDateShort } from '@/lib/types';
 import { Download } from 'lucide-react';
+import { toast } from 'sonner';
 
 const logSources: { value: LogSource | 'all'; label: string }[] = [
   { value: 'all', label: 'Todos' },
