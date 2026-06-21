@@ -429,3 +429,40 @@ def telemetry_query_rankings(
         "log_source": data.get("query_analytics", {}).get("log_source"),
         "queries_parsed_last_cycle": data.get("query_analytics", {}).get("queries_parsed", 0),
     }
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Long-window history via external TSDB (GATE-RETENÇÃO opção c).
+#
+# READ-ONLY observability — no require_admin. The client picks `metric`
+# from a FIXED allowlist and `window` from a fixed set; the server
+# constructs the PromQL. Raw PromQL is never accepted. TSDB URL + auth
+# come ONLY from server settings; the auth header never leaks back to
+# the client. See backend/app/services/tsdb_proxy_service.py.
+# ──────────────────────────────────────────────────────────────────────
+
+
+@router.get("/range")
+def telemetry_range(
+    metric: str = Query(..., description="Allowlisted metric key or 'dns_chart_bundle'"),
+    window: str = Query(..., pattern="^(1h|6h|12h|24h|48h|72h)$"),
+    instance: str | None = Query(None, max_length=64),
+    _: User = Depends(get_current_user),
+):
+    """Serve long-window telemetry from the external TSDB.
+
+    Returns the same envelope shape as /api/dns/metrics:
+        {rows, source, source_available, degraded, reason?, ...}
+
+    Honest degradation:
+      - URL not configured → source='none', source_available=False,
+        degraded=True, reason='não configurado'.
+      - TSDB unreachable/error → degraded=True, reason='indisponível'.
+      - Empty result → rows=[], reason='sem dados na janela'.
+    Never returns synthetic zeros.
+    """
+    if metric not in tsdb_proxy_service.ALLOWED_METRICS:
+        raise HTTPException(status_code=400, detail=f"metric not allowed: {metric}")
+    if metric == tsdb_proxy_service.COMPOSITE_BUNDLE:
+        return tsdb_proxy_service.query_dns_chart_bundle(window, instance)
+    return tsdb_proxy_service.query_metric(metric, window, instance)
