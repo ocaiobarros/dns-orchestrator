@@ -406,6 +406,54 @@ function CreateBlockButton({ onCreate, pending }: { onCreate: (b: { target: stri
  * existing deploy pipeline server-side (staging → unbound-checkconf → swap
  * → reload → rollback) — there is no new install path.
  */
+function CreateAllowButton({ onCreate, pending }: { onCreate: (b: { target: string; note?: string | null }) => void; pending: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [target, setTarget] = useState('');
+  const [note, setNote] = useState('');
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline">
+          <ShieldCheck size={14} className="mr-1" /> Adicionar exceção
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Adicionar allow_exception (layer 400)</DialogTitle>
+          <DialogDescription>
+            Exceção que des-bloqueia um nome. O backend REJEITA (com auditoria)
+            qualquer alvo coberto por regra judicial conhecida no banco. Para
+            domínios judiciais baixados em runtime, o backstop é a ordem de
+            include na resolução.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div>
+            <label className="text-xs text-muted-foreground">FQDN alvo</label>
+            <Input value={target} onChange={(e) => setTarget(e.target.value)} placeholder="parceiro.example.com" />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Nota (opcional, vai para auditoria)</label>
+            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Motivo / ticket" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
+          <Button
+            disabled={pending || !target.trim()}
+            onClick={() => {
+              onCreate({ target: target.trim(), note: note.trim() || null });
+              setOpen(false);
+              setTarget('');
+              setNote('');
+            }}
+          >Criar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function PolicyApplyPanel() {
   const [profileId, setProfileId] = useState('');
   const [open, setOpen] = useState(false);
