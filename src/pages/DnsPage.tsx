@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Calendar, RefreshCw, Bell, SlidersHorizontal, Layers, Database, Timer, Shield, ChevronDown, Search, Package, HardDrive, Zap, Globe, Users, Server, Activity } from 'lucide-react';
 import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useTelemetry, useTelemetryHistory } from '@/lib/hooks';
+import TelemetryHealthStrip, { FallbackRankingsBadge, isRankingsFallback } from '@/components/noc/TelemetryHealthStrip';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { ServerTimeMetadata } from '@/lib/api';
@@ -1020,29 +1021,43 @@ export default function DnsPage() {
         </div>
       </div>
 
+      {/* Global telemetry provenance strip (mode/source/freshness/retention) */}
+      <TelemetryHealthStrip />
+
       {/* ───── 6 KPI cards (single horizontal row, auto-fit) ───── */}
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))' }}>
-        <KpiCardLarge
-          label="Total Queries"
-          value={telemetryConnected ? totalQueries.toLocaleString() : '0'}
-          sub={`QPS: ${qps}`}
-          accent="blue" sparkData={sparkQ}
-          icon={<Layers size={24} strokeWidth={1.6} />}
-        />
-        <KpiCardLarge
-          label="Cache Hit"
-          value={`${telemetryConnected ? cacheHitRatio : 0}%`}
-          sub={backendCacheHits > 0 ? `${backendCacheHits.toLocaleString()} hits` : 'Eficiente'}
-          accent="mint" sparkData={sparkH}
-          icon={<Database size={24} strokeWidth={1.6} />}
-        />
-        <KpiCardLarge
-          label="Latência"
-          value={`${telemetryConnected ? avgLatency.toFixed(0) : '0'}ms`}
-          sub="Recursion avg"
-          accent="violet" sparkData={sparkL}
-          icon={<Timer size={24} strokeWidth={1.6} />}
-        />
+        {(() => {
+          // Honest empty-state: when the local source has NO real signal
+          // (no source_available, no metrics, no backends), KPI cards must
+          // show "—" instead of fabricated zeros derived from defaults.
+          const noSource = !dnsMetricsSourceAvailable && !telemetryConnected;
+          const dash = '—';
+          return (
+            <>
+              <KpiCardLarge
+                label="Total Queries"
+                value={noSource ? dash : totalQueries.toLocaleString()}
+                sub={noSource ? 'sem dados' : `QPS: ${qps}`}
+                accent="blue" sparkData={noSource ? [] : sparkQ}
+                icon={<Layers size={24} strokeWidth={1.6} />}
+              />
+              <KpiCardLarge
+                label="Cache Hit"
+                value={noSource ? dash : `${cacheHitRatio}%`}
+                sub={noSource ? 'sem dados' : (backendCacheHits > 0 ? `${backendCacheHits.toLocaleString()} hits` : 'Eficiente')}
+                accent="mint" sparkData={noSource ? [] : sparkH}
+                icon={<Database size={24} strokeWidth={1.6} />}
+              />
+              <KpiCardLarge
+                label="Latência"
+                value={noSource ? dash : `${avgLatency.toFixed(0)}ms`}
+                sub={noSource ? 'sem dados' : 'Recursion avg'}
+                accent="violet" sparkData={noSource ? [] : sparkL}
+                icon={<Timer size={24} strokeWidth={1.6} />}
+              />
+            </>
+          );
+        })()}
         <KpiCardLarge
           label="Total Packets"
           value={trafficTotalPackets > 0 ? trafficTotalPackets.toLocaleString('de-DE') : '0'}
@@ -1139,8 +1154,11 @@ export default function DnsPage() {
             title="Top Domínios Consultados"
             accent="mint"
             badge={
-              <span className="ml-2 inline-flex items-center gap-1 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">
-                Fonte: journalctl · {filteredRecentItems.length} queries parsed
+              <span className="ml-2 inline-flex items-center gap-1.5 flex-wrap">
+                <span className="inline-flex items-center gap-1 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">
+                  Fonte: {queryRankings?.log_source ?? queryAnalytics?.log_source ?? 'none'} · {filteredRecentItems.length} queries parsed
+                </span>
+                <FallbackRankingsBadge logSource={queryRankings?.log_source ?? queryAnalytics?.log_source} />
               </span>
             }
           >
@@ -1184,7 +1202,7 @@ export default function DnsPage() {
 
         {/* CENTER — Top Clientes */}
         <div className={`min-w-0 ${focusRing('clients')} rounded-xl`}>
-          <Panel title="Top Clientes DNS" accent="violet">
+          <Panel title="Top Clientes DNS" accent="violet" badge={<FallbackRankingsBadge logSource={queryRankings?.log_source ?? queryAnalytics?.log_source} />}>
             <div className="space-y-1.5">
               {topClients.length === 0 && (
                 <EmptyTopState analytics={queryAnalytics} windowMin={safeNum((telemetry as any)?.window_minutes) || 30} />
