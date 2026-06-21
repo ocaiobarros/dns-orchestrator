@@ -79,11 +79,7 @@ export default function NocPoolOperationalState() {
   });
 
   const safeInstances: V2Instance[] = Array.isArray(instances) ? instances.filter(Boolean) : [];
-  const natBackends: Array<any> = Array.isArray((nat as any)?.backends)
-    ? (nat as any).backends
-    : Array.isArray(nat)
-    ? (nat as any)
-    : [];
+  const natBackends = nat?.backends ?? [];
 
   // Join: per instance, find matching nat backend by bind_ip.
   const correlation = safeInstances.map((inst) => {
