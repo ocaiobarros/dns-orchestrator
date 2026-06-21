@@ -339,3 +339,115 @@ function CreateBlockButton({ onCreate, pending }: { onCreate: (b: { target: stri
     </Dialog>
   );
 }
+
+/**
+ * POL-2b — Preview & Apply panel (admin-only).
+ *
+ * Surfaces the generated policy.d content and the judicial-precedence
+ * omissions BEFORE the operator commits to apply. The apply call reuses the
+ * existing deploy pipeline server-side (staging → unbound-checkconf → swap
+ * → reload → rollback) — there is no new install path.
+ */
+function PolicyApplyPanel() {
+  const [profileId, setProfileId] = useState('');
+  const [open, setOpen] = useState(false);
+  const previewQ = useQuery({
+    queryKey: ['policy-preview'],
+    queryFn: async () => {
+      const r = await api.getPolicyPreview();
+      if (!r.success) throw new Error(r.error!);
+      return r.data!;
+    },
+    enabled: open,
+  });
+  const applyMut = useMutation({
+    mutationFn: async (dryRun: boolean) => {
+      const r = await api.applyPolicy({ profile_id: profileId, dry_run: dryRun });
+      if (!r.success) throw new Error(r.error!);
+      return r.data!;
+    },
+    onSuccess: (r) => {
+      if (r.status === 'success') toast.success(`Apply ${r.dry_run ? '(dry-run)' : ''} OK`);
+      else toast.error(`Apply falhou: ${r.error ?? 'erro desconhecido'}`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <div className="noc-panel p-3 space-y-2">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <FileCheck2 className="h-4 w-4 text-primary" /> Materialização de política
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Gera <code>/etc/unbound/policy.d/200-operator-blocks.conf</code> e aplica via
+            pipeline existente. Precedência judicial preservada: ancestrais layer-100
+            são omitidos na geração e <code>anablock.conf</code> é incluído depois (last-wins).
+          </p>
+        </div>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm" variant="outline">Preview &amp; Aplicar</Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Preview do policy.d</DialogTitle>
+              <DialogDescription>
+                Verifique o conteúdo gerado e os bloqueios omitidos por precedência
+                judicial antes de aplicar. O apply executa pelo pipeline padrão (staging
+                → <code>unbound-checkconf</code> → swap → reload → rollback se falhar).
+              </DialogDescription>
+            </DialogHeader>
+            {previewQ.isLoading ? <LoadingState /> : previewQ.data ? (
+              <div className="space-y-3">
+                <pre className="text-xs bg-muted/30 p-3 rounded border border-border max-h-72 overflow-auto whitespace-pre-wrap">
+                  {previewQ.data.files[0]?.content ?? ''}
+                </pre>
+                {previewQ.data.omitted.length > 0 && (
+                  <div className="text-xs">
+                    <div className="font-semibold text-destructive mb-1">
+                      Omitidos por precedência judicial ({previewQ.data.omitted.length})
+                    </div>
+                    <ul className="space-y-1">
+                      {previewQ.data.omitted.map((o, i) => (
+                        <li key={i} className="font-mono">
+                          {o.target} <span className="text-muted-foreground">←</span>{' '}
+                          <span className="text-destructive">{o.judicial_match ?? o.reason}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 pt-2 border-t border-border">
+                  <Input
+                    placeholder="profile_id do ConfigProfile"
+                    value={profileId}
+                    onChange={(e) => setProfileId(e.target.value)}
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+            ) : null}
+            <DialogFooter>
+              <Button
+                variant="outline" size="sm"
+                disabled={!profileId || applyMut.isPending}
+                onClick={() => applyMut.mutate(true)}
+              >
+                Dry-run (checkconf)
+              </Button>
+              <Button
+                size="sm"
+                disabled={!profileId || applyMut.isPending}
+                onClick={() => applyMut.mutate(false)}
+              >
+                <Play className="h-3 w-3 mr-1" /> Aplicar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </div>
+  );
+}
