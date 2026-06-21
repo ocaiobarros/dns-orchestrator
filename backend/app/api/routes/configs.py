@@ -176,7 +176,7 @@ def list_configs(db: Session = Depends(get_db), _: User = Depends(get_current_us
 
 
 @router.post("", status_code=201)
-def create_config(body: ConfigProfileCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def create_config(body: ConfigProfileCreate, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     profile = ConfigProfile(
         name=body.name,
         description=body.description,
@@ -215,7 +215,7 @@ def get_config(config_id: str, db: Session = Depends(get_db), _: User = Depends(
 
 
 @router.patch("/{config_id}")
-def update_config(config_id: str, body: ConfigProfileCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def update_config(config_id: str, body: ConfigProfileCreate, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     profile = db.query(ConfigProfile).filter(ConfigProfile.id == config_id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Perfil não encontrado")
@@ -240,7 +240,7 @@ def update_config(config_id: str, body: ConfigProfileCreate, db: Session = Depen
 
 
 @router.post("/{config_id}/clone")
-def clone_config(config_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def clone_config(config_id: str, db: Session = Depends(get_db), user: User = Depends(require_admin)):
     profile = db.query(ConfigProfile).filter(ConfigProfile.id == config_id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Perfil não encontrado")
