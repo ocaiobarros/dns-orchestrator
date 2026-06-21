@@ -529,7 +529,7 @@ export function extractInterceptionDiagnostics(config: WizardConfig): Intercepti
     backends: config.instances.map(i => `${i.name}@${i.bindIp}`),
     stickyTimeoutMin: Math.max(1, Math.floor((config.stickyTimeout || 1200) / 60)),
     egressDeliveryMode: config.egressDeliveryMode || 'host-owned',
-    securityProfile: config.securityProfile || 'legacy',
+    securityProfile: config.securityProfile || 'isp-hardened',
     enableIpv6: config.enableIpv6 || false,
     hasOutputHook: nftFiles.some(f => f.path.includes('0053-hook')),
     nftFilesCount: nftFiles.filter(f => f.path.startsWith('/etc/nftables')).length,

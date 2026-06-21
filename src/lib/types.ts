@@ -851,7 +851,10 @@ export const DEFAULT_CONFIG: WizardConfig = {
   ospfDeadInterval: 40,
 
   // Step 8 - Segurança
-  securityProfile: 'legacy',
+  // SECURE-BY-DEFAULT: novas configs nascem em 'isp-hardened' (ACLs restritivas
+  // derivadas do CIDR do host + CGNAT + ACLs do operador). O modo 'legacy'
+  // (open resolver: 0.0.0.0/0 allow) só é aceito por opt-in explícito no Wizard.
+  securityProfile: 'isp-hardened',
   accessControlIpv4: [
     { network: '127.0.0.0/8', action: 'allow', label: 'Loopback' },
   ],

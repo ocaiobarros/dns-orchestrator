@@ -97,8 +97,8 @@ export function buildDecisionLog(config: WizardConfig): GeneratorDecision[] {
     decisions.push({
       category: 'Segurança',
       parameter: 'securityProfile',
-      value: config.securityProfile || 'legacy',
-      reasoning: config.securityProfile === 'isp-hardened'
+      value: config.securityProfile || 'isp-hardened',
+      reasoning: (config.securityProfile || 'isp-hardened') === 'isp-hardened'
         ? 'Perfil ISP-hardened — ACL enforced no nftables INPUT antes do DNAT, com rate limiting e anti-amplificação'
         : 'Perfil legacy — sem filter table, reproduz comportamento Part1/Part2 de referência',
     });
