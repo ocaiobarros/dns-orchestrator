@@ -247,6 +247,17 @@ class OperatorBlockCrudTest(unittest.TestCase):
         import app.models.policy  # noqa: F401
         _dbmod.Base.metadata.create_all(bind=_dbmod.engine)
         cls._dbmod = _dbmod
+        # Persist the fake users referenced by created_by FK
+        from app.models.user import User
+        s = _dbmod.SessionLocal()
+        try:
+            for role in ("admin", "viewer"):
+                uid = f"user-{role}"
+                if not s.query(User).filter(User.id == uid).first():
+                    s.add(User(id=uid, username=f"{role}_user", password_hash="x", role=role, is_active=True))
+            s.commit()
+        finally:
+            s.close()
 
     def _client_for(self, role: str):
         """Build a TestClient with get_current_user / require_admin overridden."""
