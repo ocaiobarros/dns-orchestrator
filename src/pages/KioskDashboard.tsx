@@ -333,7 +333,10 @@ export default function KioskDashboard() {
                 style={{ background: 'hsl(var(--noc-depth-2))' }}>
                 <ArrowLeft size={14} /> Dashboard
               </Link>
-              <button className="w-9 h-9 rounded-lg bg-noc-depth-2 border border-border/40 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+              <button
+                onClick={() => navigate('/events?severity=warning,critical')}
+                title="Ver alertas operacionais"
+                className="w-9 h-9 rounded-lg bg-noc-depth-2 border border-border/40 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
                 style={{ background: 'hsl(var(--noc-depth-2))' }}>
                 <Bell size={15} />
               </button>
