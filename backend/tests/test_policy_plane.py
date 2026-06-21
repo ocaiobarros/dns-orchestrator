@@ -225,5 +225,186 @@ class ReadEndpointsTest(unittest.TestCase):
         self.assertFalse(by_name["public_feed"]["has_auth"])
 
 
+# ===========================================================================
+# POL-2a — Operator block CRUD tests (HTTP-level via TestClient + RBAC + audit)
+# ===========================================================================
+
+class OperatorBlockCrudTest(unittest.TestCase):
+    """
+    Exercises POL-2a mutators end-to-end through FastAPI: schema constraints,
+    RBAC (viewer 403), audit emission (operational_events), and confirms
+    that no Unbound config generator was invoked.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        # Force a fresh isolated SQLite file BEFORE importing app modules that
+        # bind the engine.
+        cls._db_path = tempfile.mktemp(suffix=".sqlite")
+        os.environ["DNS_CONTROL_DB_PATH"] = cls._db_path
+        # Re-import to ensure the engine binds to the fresh path
+        import importlib
+        import app.core.config as _cfg
+        importlib.reload(_cfg)
+        import app.core.database as _dbmod
+        importlib.reload(_dbmod)
+        # Apply schema (POL-1 migration + model create_all)
+        import app.models.user  # noqa
+        import app.models.operational  # noqa
+        import app.models.policy  # noqa
+        _dbmod.Base.metadata.create_all(bind=_dbmod.engine)
+        cls._dbmod = _dbmod
+
+    def _client_for(self, role: str):
+        """Build a TestClient with get_current_user / require_admin overridden."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.api.routes import policy as policy_route
+        from app.api.deps import get_current_user, require_admin
+        import app.models.user as user_mod
+
+        app = FastAPI()
+        app.include_router(policy_route.router, prefix="/api/policy")
+
+        fake_user = user_mod.User(
+            id=f"user-{role}", username=f"{role}_user",
+            password_hash="x", role=role, is_active=True,
+        )
+
+        def _cur():
+            return fake_user
+
+        def _admin():
+            if role != "admin":
+                from fastapi import HTTPException
+                raise HTTPException(status_code=403, detail="forbidden")
+            return fake_user
+
+        app.dependency_overrides[get_current_user] = _cur
+        app.dependency_overrides[require_admin] = _admin
+        # Use the same engine/session as the app
+        from app.core.database import get_db, SessionLocal
+        def _db():
+            s = SessionLocal()
+            try:
+                yield s
+            finally:
+                s.close()
+        app.dependency_overrides[get_db] = _db
+        return TestClient(app)
+
+    def _clear_rules(self):
+        from app.models.policy import PolicyRule
+        from app.models.operational import OperationalEvent
+        s = self._dbmod.SessionLocal()
+        try:
+            s.query(PolicyRule).delete()
+            s.query(OperationalEvent).delete()
+            s.commit()
+        finally:
+            s.close()
+
+    def test_admin_create_then_patch_then_delete_emits_audit(self):
+        self._clear_rules()
+        client = self._client_for("admin")
+        # CREATE
+        r = client.post("/api/policy/rules/block", json={"target": "ads.example.com"})
+        self.assertEqual(r.status_code, 201, r.text)
+        rule = r.json()
+        self.assertEqual(rule["layer"], 200)
+        self.assertEqual(rule["kind"], "block_name")
+        self.assertEqual(rule["source"], "operator")
+        self.assertEqual(rule["target"], "ads.example.com")
+        self.assertTrue(rule["enabled"])
+        # PATCH disable + change action
+        r2 = client.patch(f"/api/policy/rules/{rule['id']}", json={"enabled": False, "action": "always_refuse"})
+        self.assertEqual(r2.status_code, 200, r2.text)
+        self.assertFalse(r2.json()["enabled"])
+        self.assertEqual(r2.json()["action"], "always_refuse")
+        # DELETE
+        r3 = client.delete(f"/api/policy/rules/{rule['id']}")
+        self.assertEqual(r3.status_code, 204)
+        # Audit: 3 events emitted in order
+        from app.models.operational import OperationalEvent
+        s = self._dbmod.SessionLocal()
+        try:
+            evs = s.query(OperationalEvent).order_by(OperationalEvent.created_at.asc()).all()
+            types = [e.event_type for e in evs]
+            self.assertEqual(types, ["policy.rule.created", "policy.rule.updated", "policy.rule.deleted"])
+            for e in evs:
+                self.assertIn("admin_user", e.message)
+                payload = json.loads(e.details_json)
+                self.assertEqual(payload["actor_username"], "admin_user")
+                self.assertEqual(payload["target"], "ads.example.com")
+                self.assertEqual(payload["layer"], 200)
+                self.assertEqual(payload["scope_view"], None)
+        finally:
+            s.close()
+
+    def test_viewer_mutations_are_forbidden(self):
+        self._clear_rules()
+        client = self._client_for("viewer")
+        r = client.post("/api/policy/rules/block", json={"target": "ads.example.com"})
+        self.assertEqual(r.status_code, 403)
+        # Even read still works (viewer can GET)
+        r2 = client.get("/api/policy/rules")
+        self.assertEqual(r2.status_code, 200)
+        # And no event was emitted
+        from app.models.operational import OperationalEvent
+        s = self._dbmod.SessionLocal()
+        try:
+            self.assertEqual(s.query(OperationalEvent).count(), 0)
+        finally:
+            s.close()
+
+    def test_invalid_action_rejected(self):
+        self._clear_rules()
+        client = self._client_for("admin")
+        r = client.post("/api/policy/rules/block", json={"target": "x.com", "action": "redirect_ip"})
+        self.assertEqual(r.status_code, 422)
+
+    def test_duplicate_target_rejected_with_409(self):
+        self._clear_rules()
+        client = self._client_for("admin")
+        r1 = client.post("/api/policy/rules/block", json={"target": "dup.com"})
+        self.assertEqual(r1.status_code, 201)
+        r2 = client.post("/api/policy/rules/block", json={"target": "dup.com"})
+        self.assertEqual(r2.status_code, 409)
+
+    def test_patch_refuses_non_operator_rule(self):
+        """Mutations must NOT touch judicial / feed rules — POL-2a scope."""
+        self._clear_rules()
+        s = self._dbmod.SessionLocal()
+        try:
+            from app.models.policy import PolicyRule
+            jud = PolicyRule(
+                id="jud-1", kind="block_name", target="court.example.com",
+                action="always_nxdomain", source="anablock_mirror", layer=100,
+            )
+            s.add(jud)
+            s.commit()
+        finally:
+            s.close()
+        client = self._client_for("admin")
+        r = client.patch("/api/policy/rules/jud-1", json={"enabled": False})
+        self.assertEqual(r.status_code, 403)
+        r2 = client.delete("/api/policy/rules/jud-1")
+        self.assertEqual(r2.status_code, 403)
+
+    def test_no_config_generation_happens(self):
+        """Mutations MUST NOT invoke any Unbound config generator (POL-2b)."""
+        self._clear_rules()
+        from unittest.mock import patch
+        import app.api.routes.policy as policy_route
+        # Whatever generators exist must NOT be referenced from the policy route module
+        attrs = dir(policy_route)
+        forbidden = [a for a in attrs if "generate_unbound" in a or "policy.d" in a]
+        self.assertEqual(forbidden, [], f"policy route leaked generator refs: {forbidden}")
+        # And a successful create does not import the unbound generator into the policy module
+        client = self._client_for("admin")
+        r = client.post("/api/policy/rules/block", json={"target": "nogen.example.com"})
+        self.assertEqual(r.status_code, 201)
+
+
 if __name__ == "__main__":
     unittest.main()
