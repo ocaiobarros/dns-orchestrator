@@ -63,8 +63,11 @@ export default function LogsPage() {
           <h1 className="text-xl font-semibold">Logs</h1>
           <p className="text-sm text-muted-foreground">Logs do sistema e dos serviços</p>
         </div>
-        <button className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80">
-          <Download size={12} /> Exportar
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="flex items-center gap-1 px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded border border-border hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed">
+          <Download size={12} /> {exporting ? 'Exportando…' : 'Exportar'}
         </button>
       </div>
 
