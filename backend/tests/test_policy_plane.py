@@ -474,8 +474,10 @@ class PolicyDGeneratorTest(unittest.TestCase):
     def test_empty_rule_set_still_emits_placeholder_file(self):
         from app.generators.policy_d_generator import generate_policy_d_files
         files, _ = generate_policy_d_files([], [])
-        self.assertEqual(len(files), 1)
+        # POL-3b: 2 placeholder files (200 + 400) — glob include never empty.
+        self.assertEqual(len(files), 2)
         self.assertIn("no enabled operator block rules", files[0]["content"])
+        self.assertIn("no enabled allow exceptions", files[1]["content"])
 
 
 class UnboundIncludeOrderTest(unittest.TestCase):
