@@ -1,16 +1,24 @@
 /**
- * POL-1 — Policy Plane (read-only)
+ * POL-1 (read) + POL-2a (operator block CRUD, admin-only).
  *
- * Read-only view of the native policy plane: lists rules grouped by layer
- * (100/200/300/400), shows scope (global vs. view), feed sources and tenants.
- * NO mutations — CRUD lands in POL-2/POL-3 (admin-only). Viewer-accessible.
+ * Admin actions: create/toggle/delete layer-200 operator block rules. Backend
+ * is the authority on RBAC — the UI gate is complementary. NO config
+ * generation; rules exist only in DB until POL-2b lands.
  */
 
 import { useState } from 'react';
-import { Shield, ShieldCheck, ShieldAlert, ShieldOff, Layers, Eye, Rss, Building2 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { Shield, ShieldCheck, ShieldAlert, ShieldOff, Layers, Eye, Rss, Building2, Plus, Trash2 } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { LoadingState } from '@/components/DataStates';
 import { api, type PolicyRuleRecord } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+} from '@/components/ui/dialog';
+import { toast } from 'sonner';
 
 type LayerKey = '100' | '200' | '300' | '400';
 
@@ -24,6 +32,40 @@ const LAYER_META: Record<LayerKey, { label: string; icon: React.ElementType; ton
 export default function PolicyPage() {
   const [layerFilter, setLayerFilter] = useState<'all' | LayerKey>('all');
   const [scopeFilter, setScopeFilter] = useState<'all' | 'global' | 'view'>('all');
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const qc = useQueryClient();
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['policy'] });
+  };
+
+  const createMut = useMutation({
+    mutationFn: async (body: { target: string; action: 'always_nxdomain' | 'always_refuse' }) => {
+      const r = await api.createOperatorBlock(body);
+      if (!r.success) throw new Error(r.error!);
+      return r.data!;
+    },
+    onSuccess: () => { toast.success('Bloqueio criado'); invalidate(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const toggleMut = useMutation({
+    mutationFn: async (vars: { id: string; enabled: boolean }) => {
+      const r = await api.updatePolicyRule(vars.id, { enabled: vars.enabled });
+      if (!r.success) throw new Error(r.error!);
+      return r.data!;
+    },
+    onSuccess: () => invalidate(),
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const deleteMut = useMutation({
+    mutationFn: async (id: string) => {
+      const r = await api.deletePolicyRule(id);
+      if (!r.success) throw new Error(r.error!);
+    },
+    onSuccess: () => { toast.success('Bloqueio removido'); invalidate(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const summaryQ = useQuery({
     queryKey: ['policy', 'summary'],
@@ -77,16 +119,20 @@ export default function PolicyPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Plano de Política Nativo</h1>
-        <p className="text-sm text-muted-foreground">
-          Visualização somente-leitura. Precedência (alta → baixa):
-          <span className="text-destructive font-mono"> 100 judicial </span>→
-          <span className="font-mono"> 200 operador </span>→
-          <span className="text-blue-500 font-mono"> 300 feeds </span>→
-          <span className="text-emerald-500 font-mono"> 400 allowlist </span>
-          (allowlist <strong>não sobrepõe</strong> camada 100).
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Plano de Política Nativo</h1>
+          <p className="text-sm text-muted-foreground">
+            Precedência (alta → baixa):
+            <span className="text-destructive font-mono"> 100 judicial </span>→
+            <span className="font-mono"> 200 operador </span>→
+            <span className="text-blue-500 font-mono"> 300 feeds </span>→
+            <span className="text-emerald-500 font-mono"> 400 allowlist </span>
+            (allowlist <strong>não sobrepõe</strong> camada 100). Regras vivem no
+            banco; <strong>geração de config chega no POL-2b</strong>.
+          </p>
+        </div>
+        {isAdmin && <CreateBlockButton onCreate={(b) => createMut.mutate(b)} pending={createMut.isPending} />}
       </div>
 
       {/* Summary cards */}
@@ -147,21 +193,44 @@ export default function PolicyPage() {
                   <span className="text-xs text-muted-foreground ml-auto">{items.length} regra(s)</span>
                 </div>
                 <div className="divide-y divide-border">
-                  {items.map(r => (
-                    <div key={r.id} className={`flex items-center gap-3 px-3 py-2 border-l-2 ${meta.tone.split(' ').slice(1).join(' ')}`}>
-                      <code className="text-xs font-mono">{r.target}</code>
-                      <span className="text-xs text-muted-foreground">→ {r.action}</span>
-                      <span className="text-xs text-muted-foreground">[{r.kind}]</span>
-                      <span className="ml-auto flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                          scope: {r.scope_view ? views.find(v => v.id === r.scope_view)?.name ?? r.scope_view : 'global'}
+                  {items.map(r => {
+                    const isOperatorBlock = r.layer === 200 && r.kind === 'block_name' && r.source === 'operator';
+                    const canEdit = isAdmin && isOperatorBlock;
+                    return (
+                      <div key={r.id} className={`flex items-center gap-3 px-3 py-2 border-l-2 ${meta.tone.split(' ').slice(1).join(' ')}`}>
+                        <code className="text-xs font-mono">{r.target}</code>
+                        <span className="text-xs text-muted-foreground">→ {r.action}</span>
+                        <span className="text-xs text-muted-foreground">[{r.kind}]</span>
+                        <span className="ml-auto flex items-center gap-3">
+                          <span className="text-xs text-muted-foreground">
+                            scope: {r.scope_view ? views.find(v => v.id === r.scope_view)?.name ?? r.scope_view : 'global'}
+                          </span>
+                          {canEdit ? (
+                            <>
+                              <Switch
+                                checked={r.enabled}
+                                onCheckedChange={(v) => toggleMut.mutate({ id: r.id, enabled: v })}
+                                aria-label={`Ativar ${r.target}`}
+                              />
+                              <Button
+                                size="icon" variant="ghost"
+                                onClick={() => {
+                                  if (confirm(`Remover regra para ${r.target}?`)) deleteMut.mutate(r.id);
+                                }}
+                                aria-label={`Remover ${r.target}`}
+                              >
+                                <Trash2 size={14} />
+                              </Button>
+                            </>
+                          ) : (
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${r.enabled ? 'bg-emerald-500/10 text-emerald-500' : 'bg-muted text-muted-foreground'}`}>
+                              {r.enabled ? 'ativa' : 'inativa'}
+                            </span>
+                          )}
                         </span>
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${r.enabled ? 'bg-emerald-500/10 text-emerald-500' : 'bg-muted text-muted-foreground'}`}>
-                          {r.enabled ? 'ativa' : 'inativa'}
-                        </span>
-                      </span>
-                    </div>
-                  ))}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -210,5 +279,59 @@ function SummaryCard({ icon: Icon, label, value, sub }: { icon: React.ElementTyp
         {sub && <div className="text-[10px] text-muted-foreground/70 mt-0.5">{sub}</div>}
       </div>
     </div>
+  );
+}
+
+function CreateBlockButton({ onCreate, pending }: { onCreate: (b: { target: string; action: 'always_nxdomain' | 'always_refuse' }) => void; pending: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [target, setTarget] = useState('');
+  const [action, setAction] = useState<'always_nxdomain' | 'always_refuse'>('always_nxdomain');
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm"><Plus size={14} className="mr-1" /> Adicionar bloqueio</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Adicionar bloqueio do operador</DialogTitle>
+          <DialogDescription>
+            Layer 200 (sobreponível por allowlist). NÃO afeta resolução até o POL-2b
+            materializar a configuração.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div>
+            <label className="text-xs text-muted-foreground">FQDN alvo</label>
+            <Input value={target} onChange={(e) => setTarget(e.target.value)} placeholder="ads.example.com" />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Ação</label>
+            <div className="flex gap-2 mt-1">
+              {(['always_nxdomain', 'always_refuse'] as const).map(a => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => setAction(a)}
+                  className={`px-2 py-1 text-xs rounded border ${action === a ? 'bg-primary/10 border-primary text-primary' : 'border-border text-muted-foreground'}`}
+                >
+                  {a}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
+          <Button
+            disabled={pending || !target.trim()}
+            onClick={() => {
+              onCreate({ target: target.trim(), action });
+              setOpen(false);
+              setTarget('');
+            }}
+          >Criar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

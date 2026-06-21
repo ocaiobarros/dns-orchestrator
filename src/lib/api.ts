@@ -462,6 +462,14 @@ export const api = {
     apiCall<{ items: PolicyFeedSourceRecord[]; total: number }>('GET', '/policy/feed-sources'),
   getPolicySummary: () =>
     apiCall<PolicySummary>('GET', '/policy/summary'),
+
+  // POL-2a: operator block CRUD (admin-only). Backend is the authority on RBAC.
+  createOperatorBlock: (body: { target: string; action?: 'always_nxdomain' | 'always_refuse'; enabled?: boolean; scope_view?: string | null }) =>
+    apiCall<PolicyRuleRecord>('POST', '/policy/rules/block', body),
+  updatePolicyRule: (id: string, body: { enabled?: boolean; action?: 'always_nxdomain' | 'always_refuse' }) =>
+    apiCall<PolicyRuleRecord>('PATCH', `/policy/rules/${id}`, body),
+  deletePolicyRule: (id: string) =>
+    apiCall<void>('DELETE', `/policy/rules/${id}`),
 };
 
 export interface PolicyRuleRecord {
@@ -685,6 +693,26 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
       '999': 'Resolução padrão',
     },
   };
+  // POL-2a: in preview, simulate optimistic local-only mutation (no persistence)
+  if (path === '/api/policy/rules/block' && method === 'POST') {
+    const b = (body || {}) as Record<string, unknown>;
+    return {
+      id: `mock-${Date.now()}`,
+      scope_view: (b.scope_view ?? null) as string | null,
+      kind: 'block_name', target: String(b.target ?? ''),
+      action: String(b.action ?? 'always_nxdomain'),
+      payload: null, source: 'operator', source_ref: null,
+      layer: 200, enabled: b.enabled !== false,
+      created_by: 'preview-admin',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }
+  if (path.match(/^\/api\/policy\/rules\/[^/]+$/) && method === 'PATCH') {
+    const b = (body || {}) as Record<string, unknown>;
+    return { id: path.split('/').pop(), enabled: b.enabled !== false, action: b.action ?? 'always_nxdomain', layer: 200, kind: 'block_name', source: 'operator', target: 'preview', scope_view: null, payload: null, source_ref: null, created_by: null, created_at: null, updated_at: new Date().toISOString() };
+  }
+  if (path.match(/^\/api\/policy\/rules\/[^/]+$/) && method === 'DELETE') return undefined;
 
   // Telemetry mock
   if (path === '/api/telemetry/latest') return mockTelemetryLatest();
