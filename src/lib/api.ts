@@ -251,7 +251,11 @@ export const api = {
     apiCall<SystemSelfTestResult>('POST', '/system/self-test', credentials || {}),
 
   // Reports
-  generateReport: () => apiCall<{ downloadUrl: string; html: string }>('POST', '/dashboard/summary'),
+  // NOTE: removido `generateReport` (POST /dashboard/summary). A rota não existe
+  // como POST (apenas GET /api/dashboard/summary, consumida por getSystemInfo) e
+  // o backend não expõe geração de relatório com downloadUrl/html. Função estava
+  // sem consumidor — feature ausente. Reintroduzir só após decisão de produto
+  // criar o endpoint correspondente.
 
   // Users (admin)
   getUsers: () => apiCall<AuthUserRecord[]>('GET', '/users'),
@@ -362,8 +366,16 @@ export const api = {
     apiCall<{ success: boolean }>('POST', `/actions/restore-backend/${instanceId}`),
   reconcileNow: () =>
     apiCall<ReconcileSummary>('POST', '/actions/reconcile-now'),
+  // Status do scheduler vem aninhado na resposta de GET /api/health
+  // (backend/app/main.py → health_check → campo "scheduler" populado por
+  // app.workers.scheduler.get_scheduler_status). Não há rota dedicada.
   getSchedulerStatus: () =>
-    apiCall<{ running: boolean; jobs: Array<{ id: string; name: string; next_run: string | null }> }>('GET', '/health'),
+    apiCall<{
+      status: string;
+      version: string;
+      database: string;
+      scheduler: { running: boolean; jobs: Array<{ id: string; name: string; next_run: string | null }> };
+    }>('GET', '/health'),
   importHostState: () =>
     apiCall<any>('GET', '/config/import-host'),
 
