@@ -185,7 +185,7 @@ export default function PolicyPage() {
           (<code>anablock.conf</code> vence por last-wins).
         </div>
       )}
-      <div className="hidden">
+      
 
 
       {/* Summary cards */}
