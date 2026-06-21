@@ -731,6 +731,16 @@ export default function DnsPage() {
     if (series.length > 0) return series;
     const resolver = telemetry?.resolver ?? {};
     const fallbackTs = toTs(telemetry?.timestamp ?? Date.now());
+    // P1-03: only synthesize a single fallback point if the live resolver
+    // actually reports activity — otherwise return [] and let the chart
+    // render the honest empty-state placeholder instead of [0,0].
+    const liveHasSignal =
+      firstNum(resolver.total_queries) > 0 ||
+      firstNum(resolver.qps) > 0 ||
+      firstNum(resolver.cache_hit_ratio) > 0 ||
+      (selectedBackend && safeNum(selectedBackend?.resolver?.total_queries) > 0);
+    if (!liveHasSignal && !dnsMetricsSourceAvailable) return [];
+    if (!liveHasSignal) return [];
     return [{
       ts: fallbackTs,
       time: fallbackTs ? formatServerAxisTime(fallbackTs, timeMeta) : '',
@@ -743,7 +753,8 @@ export default function DnsPage() {
       cacheHits: Math.round(firstNum(resolver.cache_hits) * countShare),
       cacheMisses: Math.round(firstNum(resolver.cache_misses) * countShare),
     }];
-  }, [filteredMetrics, telemetryHistory, hours, selectedInstance, qtype, telemetry, timeMeta]);
+
+  }, [filteredMetrics, telemetryHistory, hours, selectedInstance, qtype, telemetry, timeMeta, dnsMetricsSourceAvailable]);
 
   const collectorOk = telemetry?.health?.collector === 'ok';
   const resolver = telemetry?.resolver ?? {};
