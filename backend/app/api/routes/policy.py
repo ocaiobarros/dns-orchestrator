@@ -335,6 +335,210 @@ def delete_block_rule(
 
 
 # ===========================================================================
+# POL-3a — allow_exception CRUD (kind=allow_exception, layer=400, source=operator)
+# Admin-only. Audited. NO policy.d generation / NO impact on resolution
+# (that's POL-3b). Judicial precedence enforcement on creation: if a
+# judicial rule (layer=100) covers the target by equality OR suffix, the
+# request is REJECTED and the attempt is recorded as
+# policy.allow_exception.rejected for compliance traceability.
+#
+# HONEST LIMITATION (must be documented in code AND UI):
+# This validator only catches collisions with judicial rules KNOWN IN THE
+# DB (layer 100). Today there is no anablock_mirror, so judicial domains
+# downloaded at runtime into /etc/unbound/anablock.conf are NOT in the DB
+# — the validator cannot see them. The DEFINITIVE protection at resolution
+# time is the include order (anablock.conf included AFTER policy.d, so
+# Unbound's last-wins gives judicial precedence). Until POL-4 lands the
+# mirror, the DB validator is best-effort first-line; include-order is
+# the always-on backstop. Do NOT advertise "operator cannot allowlist
+# judicial" without this caveat.
+# ===========================================================================
+
+class CreateAllowExceptionRequest(BaseModel):
+    target: str = Field(..., min_length=1, max_length=253, description="FQDN to whitelist")
+    note: str | None = Field(None, max_length=500, description="Optional human note for audit")
+    enabled: bool = True
+    scope_view: str | None = Field(None, description="View id; null = global (MVP default)")
+
+
+class UpdateAllowExceptionRequest(BaseModel):
+    enabled: bool | None = None
+    note: str | None = None
+
+
+def _ensure_operator_allow_exception(rule: PolicyRule) -> None:
+    """Reject mutations on anything other than operator-owned allow_exception."""
+    if rule.layer != 400 or rule.kind != "allow_exception" or rule.source != "operator":
+        raise HTTPException(
+            status_code=403,
+            detail="Esta rota só edita allow_exception do operador (layer=400, kind=allow_exception).",
+        )
+
+
+def _find_judicial_collision(db: Session, target: str, scope_view: str | None) -> PolicyRule | None:
+    """Return the first enabled layer-100 rule that covers `target` (equal or suffix), else None."""
+    norm = _normalize_target(target)
+    q = db.query(PolicyRule).filter(
+        PolicyRule.layer == 100,
+        PolicyRule.enabled.is_(True),
+    )
+    q = q.filter(PolicyRule.scope_view.is_(None)) if scope_view is None \
+        else q.filter(PolicyRule.scope_view == scope_view)
+    for jud in q.all():
+        jt = _normalize_target(jud.target or "")
+        if not jt:
+            continue
+        if norm == jt or norm.endswith("." + jt):
+            return jud
+    return None
+
+
+def _emit_rejected_allow_exception(
+    db: Session, actor: User, target: str, scope_view: str | None, judicial: PolicyRule
+) -> None:
+    """Compliance audit: 'tentou furar ordem judicial'."""
+    db.add(OperationalEvent(
+        event_type="policy.allow_exception.rejected",
+        severity="warning",
+        instance_id=None,
+        message=(
+            f"allow_exception target='{target}' rejeitada — coberta por judicial "
+            f"'{judicial.target}' (layer 100) — actor={actor.username}"
+        ),
+        details_json=json.dumps({
+            "actor_id": actor.id,
+            "actor_username": actor.username,
+            "attempted_target": target,
+            "scope_view": scope_view,
+            "judicial_rule_id": judicial.id,
+            "judicial_target": judicial.target,
+            "reason": "judicial_precedence",
+        }, sort_keys=True),
+    ))
+    # Commit immediately so the rejection trail survives even if the request
+    # raises further — auditing the attempt is the whole point of this event.
+    db.commit()
+
+
+@router.post("/rules/allow", status_code=201)
+def create_allow_exception(
+    body: CreateAllowExceptionRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    target = _normalize_target(body.target)
+    if not target:
+        raise HTTPException(422, "target é obrigatório")
+    if body.scope_view is not None:
+        if not db.query(PolicyView).filter(PolicyView.id == body.scope_view).first():
+            raise HTTPException(422, "scope_view desconhecido")
+
+    # Judicial precedence — first-line enforcement (DB-known judicial only).
+    # The runtime-synced anablock.conf set is the backstop via include-order.
+    jud = _find_judicial_collision(db, target, body.scope_view)
+    if jud is not None:
+        _emit_rejected_allow_exception(db, user, target, body.scope_view, jud)
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"allow_exception '{target}' colide com regra judicial "
+                f"'{jud.target}' (layer 100). Judicial não é sobreponível."
+            ),
+        )
+
+    # Duplicate guard (NULL scope_view → SQLite UQ won't fire; pre-check).
+    dup_q = db.query(PolicyRule).filter(
+        PolicyRule.kind == "allow_exception",
+        PolicyRule.source == "operator",
+        PolicyRule.target == target,
+    )
+    dup_q = dup_q.filter(PolicyRule.scope_view.is_(None)) if body.scope_view is None \
+        else dup_q.filter(PolicyRule.scope_view == body.scope_view)
+    if dup_q.first():
+        raise HTTPException(409, "allow_exception já existe para este alvo neste escopo")
+
+    payload_json = json.dumps({"note": body.note}, sort_keys=True) if body.note else None
+    rule = PolicyRule(
+        scope_view=body.scope_view,
+        kind="allow_exception",
+        target=target,
+        action="allow",
+        payload_json=payload_json,
+        source="operator",
+        layer=400,
+        enabled=bool(body.enabled),
+        created_by=user.id,
+    )
+    db.add(rule)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        msg = str(getattr(exc, "orig", exc))
+        if "uq_policy_rules" in msg or "UNIQUE" in msg.upper():
+            raise HTTPException(409, "allow_exception já existe para este alvo neste escopo")
+        raise HTTPException(422, f"Violação de constraint: {msg}")
+    _emit_policy_event(db, "policy.rule.created", user, rule)
+    db.commit()
+    db.refresh(rule)
+    return _rule_to_dict(rule)
+
+
+@router.patch("/rules/allow/{rule_id}")
+def update_allow_exception(
+    rule_id: str,
+    body: UpdateAllowExceptionRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    rule = db.query(PolicyRule).filter(PolicyRule.id == rule_id).first()
+    if not rule:
+        raise HTTPException(404, "Regra não encontrada")
+    _ensure_operator_allow_exception(rule)
+
+    change: dict = {}
+    if body.enabled is not None and bool(body.enabled) != bool(rule.enabled):
+        change["enabled"] = {"from": bool(rule.enabled), "to": bool(body.enabled)}
+        rule.enabled = bool(body.enabled)
+    if body.note is not None:
+        new_payload = json.dumps({"note": body.note}, sort_keys=True) if body.note else None
+        if new_payload != rule.payload_json:
+            change["note"] = {"from": rule.payload_json, "to": new_payload}
+            rule.payload_json = new_payload
+
+    if not change:
+        return _rule_to_dict(rule)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(422, f"Violação de constraint: {exc.orig}")
+    _emit_policy_event(db, "policy.rule.updated", user, rule, extra=change)
+    db.commit()
+    db.refresh(rule)
+    return _rule_to_dict(rule)
+
+
+@router.delete("/rules/allow/{rule_id}", status_code=204)
+def delete_allow_exception(
+    rule_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    rule = db.query(PolicyRule).filter(PolicyRule.id == rule_id).first()
+    if not rule:
+        raise HTTPException(404, "Regra não encontrada")
+    _ensure_operator_allow_exception(rule)
+    _emit_policy_event(db, "policy.rule.deleted", user, rule)
+    db.delete(rule)
+    db.commit()
+    return None
+
+
+
+
+
+# ===========================================================================
 # POL-2b — Policy plane apply
 #
 # Materializes layer-200 (operator) blocks into /etc/unbound/policy.d/ and

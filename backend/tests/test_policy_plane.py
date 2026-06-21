@@ -625,5 +625,149 @@ class PolicyApplyRouteTest(OperatorBlockCrudTest):
             s.close()
 
 
+# ===========================================================================
+# POL-3a — allow_exception CRUD + judicial rejection audit
+# ===========================================================================
+
+class AllowExceptionCrudTest(OperatorBlockCrudTest):
+    """allow_exception CRUD, judicial enforcement + audited rejection."""
+
+    def _seed_judicial(self, target: str = "court.example.com") -> str:
+        from app.models.policy import PolicyRule
+        s = self._dbmod.SessionLocal()
+        try:
+            rid = f"jud-{uuid.uuid4().hex[:8]}"
+            s.add(PolicyRule(id=rid, kind="block_name", target=target,
+                             action="always_nxdomain", source="anablock_mirror",
+                             layer=100, enabled=True))
+            s.commit()
+            return rid
+        finally:
+            s.close()
+
+    def test_admin_creates_valid_allow_exception_and_audit(self):
+        self._clear_rules()
+        client = self._client_for("admin")
+        r = client.post("/api/policy/rules/allow",
+                        json={"target": "parceiro.example.com", "note": "ticket-42"})
+        self.assertEqual(r.status_code, 201, r.text)
+        rule = r.json()
+        self.assertEqual(rule["layer"], 400)
+        self.assertEqual(rule["kind"], "allow_exception")
+        self.assertEqual(rule["source"], "operator")
+        self.assertEqual(rule["action"], "allow")
+        self.assertEqual(rule["payload"], {"note": "ticket-42"})
+        from app.models.operational import OperationalEvent
+        s = self._dbmod.SessionLocal()
+        try:
+            evs = s.query(OperationalEvent).order_by(OperationalEvent.created_at.asc()).all()
+            self.assertEqual([e.event_type for e in evs], ["policy.rule.created"])
+            self.assertEqual(json.loads(evs[0].details_json)["target"], "parceiro.example.com")
+        finally:
+            s.close()
+
+    def test_create_rejected_when_target_matches_judicial_and_is_audited(self):
+        self._clear_rules()
+        jud_id = self._seed_judicial("court.example.com")
+        client = self._client_for("admin")
+        r = client.post("/api/policy/rules/allow",
+                        json={"target": "court.example.com"})
+        self.assertEqual(r.status_code, 409, r.text)
+        # Rule must NOT be persisted
+        from app.models.policy import PolicyRule
+        s = self._dbmod.SessionLocal()
+        try:
+            self.assertEqual(
+                s.query(PolicyRule).filter(PolicyRule.kind == "allow_exception").count(), 0
+            )
+            from app.models.operational import OperationalEvent
+            evs = s.query(OperationalEvent).filter(
+                OperationalEvent.event_type == "policy.allow_exception.rejected"
+            ).all()
+            self.assertEqual(len(evs), 1)
+            payload = json.loads(evs[0].details_json)
+            self.assertEqual(payload["judicial_rule_id"], jud_id)
+            self.assertEqual(payload["judicial_target"], "court.example.com")
+            self.assertEqual(payload["attempted_target"], "court.example.com")
+            self.assertEqual(payload["reason"], "judicial_precedence")
+        finally:
+            s.close()
+
+    def test_create_rejected_when_target_is_subdomain_of_judicial(self):
+        self._clear_rules()
+        self._seed_judicial("court.example.com")
+        client = self._client_for("admin")
+        r = client.post("/api/policy/rules/allow",
+                        json={"target": "sub.court.example.com"})
+        self.assertEqual(r.status_code, 409, r.text)
+        from app.models.operational import OperationalEvent
+        s = self._dbmod.SessionLocal()
+        try:
+            evs = s.query(OperationalEvent).filter(
+                OperationalEvent.event_type == "policy.allow_exception.rejected"
+            ).all()
+            self.assertEqual(len(evs), 1)
+            payload = json.loads(evs[0].details_json)
+            self.assertEqual(payload["attempted_target"], "sub.court.example.com")
+            self.assertEqual(payload["judicial_target"], "court.example.com")
+        finally:
+            s.close()
+
+    def test_viewer_cannot_create_allow_exception(self):
+        self._clear_rules()
+        client = self._client_for("viewer")
+        r = client.post("/api/policy/rules/allow", json={"target": "ok.example.com"})
+        self.assertEqual(r.status_code, 403)
+
+    def test_endpoint_refuses_to_mutate_non_allow_exception_rule(self):
+        """PATCH/DELETE /rules/allow/{id} cannot touch judicial/feed/block rules."""
+        self._clear_rules()
+        jud_id = self._seed_judicial("court.example.com")
+        client = self._client_for("admin")
+        r = client.patch(f"/api/policy/rules/allow/{jud_id}", json={"enabled": False})
+        self.assertEqual(r.status_code, 403)
+        r2 = client.delete(f"/api/policy/rules/allow/{jud_id}")
+        self.assertEqual(r2.status_code, 403)
+
+    def test_patch_and_delete_allow_exception_emit_audit(self):
+        self._clear_rules()
+        client = self._client_for("admin")
+        cr = client.post("/api/policy/rules/allow", json={"target": "ok.example.com"})
+        self.assertEqual(cr.status_code, 201)
+        rid = cr.json()["id"]
+        pr = client.patch(f"/api/policy/rules/allow/{rid}",
+                          json={"enabled": False, "note": "paused"})
+        self.assertEqual(pr.status_code, 200)
+        self.assertFalse(pr.json()["enabled"])
+        dr = client.delete(f"/api/policy/rules/allow/{rid}")
+        self.assertEqual(dr.status_code, 204)
+        from app.models.operational import OperationalEvent
+        s = self._dbmod.SessionLocal()
+        try:
+            types = [e.event_type for e in s.query(OperationalEvent).order_by(
+                OperationalEvent.created_at.asc()).all()]
+            self.assertEqual(types, ["policy.rule.created", "policy.rule.updated", "policy.rule.deleted"])
+        finally:
+            s.close()
+
+    def test_duplicate_allow_exception_rejected(self):
+        self._clear_rules()
+        client = self._client_for("admin")
+        r1 = client.post("/api/policy/rules/allow", json={"target": "dup.example.com"})
+        self.assertEqual(r1.status_code, 201)
+        r2 = client.post("/api/policy/rules/allow", json={"target": "dup.example.com"})
+        self.assertEqual(r2.status_code, 409)
+
+    def test_create_does_not_invoke_unbound_generator(self):
+        """POL-3a: zero impact on resolution — no generator on the hot path."""
+        self._clear_rules()
+        from unittest.mock import patch
+        with patch("app.services.config_service.generate_unbound_configs") as m:
+            client = self._client_for("admin")
+            r = client.post("/api/policy/rules/allow", json={"target": "nogen.example.com"})
+            self.assertEqual(r.status_code, 201)
+            self.assertEqual(m.call_count, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -67,6 +67,35 @@ export default function PolicyPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // POL-3a: allow_exception mutations (separate hooks — different routes
+  // and the create call surfaces a 409 when judicial collision is detected).
+  const createAllowMut = useMutation({
+    mutationFn: async (body: { target: string; note?: string | null }) => {
+      const r = await api.createAllowException(body);
+      if (!r.success) throw new Error(r.error!);
+      return r.data!;
+    },
+    onSuccess: () => { toast.success('Exceção criada'); invalidate(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const toggleAllowMut = useMutation({
+    mutationFn: async (vars: { id: string; enabled: boolean }) => {
+      const r = await api.updateAllowException(vars.id, { enabled: vars.enabled });
+      if (!r.success) throw new Error(r.error!);
+      return r.data!;
+    },
+    onSuccess: () => invalidate(),
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const deleteAllowMut = useMutation({
+    mutationFn: async (id: string) => {
+      const r = await api.deleteAllowException(id);
+      if (!r.success) throw new Error(r.error!);
+    },
+    onSuccess: () => { toast.success('Exceção removida'); invalidate(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const summaryQ = useQuery({
     queryKey: ['policy', 'summary'],
     queryFn: async () => {
@@ -132,8 +161,32 @@ export default function PolicyPage() {
             banco; <strong>geração de config chega no POL-2b</strong>.
           </p>
         </div>
-        {isAdmin && <CreateBlockButton onCreate={(b) => createMut.mutate(b)} pending={createMut.isPending} />}
+        {isAdmin && (
+          <div className="flex gap-2">
+            <CreateBlockButton onCreate={(b) => createMut.mutate(b)} pending={createMut.isPending} />
+            <CreateAllowButton onCreate={(b) => createAllowMut.mutate(b)} pending={createAllowMut.isPending} />
+          </div>
+        )}
       </div>
+
+      {/* POL-3a — honest limitation note. The DB validator only rejects
+          allow_exception that collides with a layer-100 rule KNOWN in the DB.
+          Until the AnaBlock mirror lands (POL-4), judicial domains pulled at
+          runtime into anablock.conf are NOT in the DB and the validator
+          cannot see them. The real backstop is the include-order at
+          resolution time (POL-2b/POL-3b). Be explicit in the UI. */}
+      {isAdmin && (
+        <div className="noc-panel border-l-2 border-l-amber-500/60 text-xs px-3 py-2 text-muted-foreground">
+          <strong className="text-amber-500">Limitação do validador:</strong>{' '}
+          A rejeição automática de allowlist só cobre regras judiciais
+          presentes no banco (layer 100). O conjunto judicial baixado em
+          runtime (<code>anablock.conf</code>) ainda não é espelhado no DB —
+          o backstop definitivo é a ordem de include na resolução
+          (<code>anablock.conf</code> vence por last-wins).
+        </div>
+      )}
+      
+
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -199,7 +252,14 @@ export default function PolicyPage() {
                 <div className="divide-y divide-border">
                   {items.map(r => {
                     const isOperatorBlock = r.layer === 200 && r.kind === 'block_name' && r.source === 'operator';
-                    const canEdit = isAdmin && isOperatorBlock;
+                    const isOperatorAllow = r.layer === 400 && r.kind === 'allow_exception' && r.source === 'operator';
+                    const canEdit = isAdmin && (isOperatorBlock || isOperatorAllow);
+                    const doToggle = (v: boolean) => isOperatorAllow
+                      ? toggleAllowMut.mutate({ id: r.id, enabled: v })
+                      : toggleMut.mutate({ id: r.id, enabled: v });
+                    const doDelete = () => isOperatorAllow
+                      ? deleteAllowMut.mutate(r.id)
+                      : deleteMut.mutate(r.id);
                     return (
                       <div key={r.id} className={`flex items-center gap-3 px-3 py-2 border-l-2 ${meta.tone.split(' ').slice(1).join(' ')}`}>
                         <code className="text-xs font-mono">{r.target}</code>
@@ -213,14 +273,12 @@ export default function PolicyPage() {
                             <>
                               <Switch
                                 checked={r.enabled}
-                                onCheckedChange={(v) => toggleMut.mutate({ id: r.id, enabled: v })}
+                                onCheckedChange={doToggle}
                                 aria-label={`Ativar ${r.target}`}
                               />
                               <Button
                                 size="icon" variant="ghost"
-                                onClick={() => {
-                                  if (confirm(`Remover regra para ${r.target}?`)) deleteMut.mutate(r.id);
-                                }}
+                                onClick={() => { if (confirm(`Remover regra para ${r.target}?`)) doDelete(); }}
                                 aria-label={`Remover ${r.target}`}
                               >
                                 <Trash2 size={14} />
@@ -348,6 +406,54 @@ function CreateBlockButton({ onCreate, pending }: { onCreate: (b: { target: stri
  * existing deploy pipeline server-side (staging → unbound-checkconf → swap
  * → reload → rollback) — there is no new install path.
  */
+function CreateAllowButton({ onCreate, pending }: { onCreate: (b: { target: string; note?: string | null }) => void; pending: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [target, setTarget] = useState('');
+  const [note, setNote] = useState('');
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline">
+          <ShieldCheck size={14} className="mr-1" /> Adicionar exceção
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Adicionar allow_exception (layer 400)</DialogTitle>
+          <DialogDescription>
+            Exceção que des-bloqueia um nome. O backend REJEITA (com auditoria)
+            qualquer alvo coberto por regra judicial conhecida no banco. Para
+            domínios judiciais baixados em runtime, o backstop é a ordem de
+            include na resolução.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div>
+            <label className="text-xs text-muted-foreground">FQDN alvo</label>
+            <Input value={target} onChange={(e) => setTarget(e.target.value)} placeholder="parceiro.example.com" />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Nota (opcional, vai para auditoria)</label>
+            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Motivo / ticket" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
+          <Button
+            disabled={pending || !target.trim()}
+            onClick={() => {
+              onCreate({ target: target.trim(), note: note.trim() || null });
+              setOpen(false);
+              setTarget('');
+              setNote('');
+            }}
+          >Criar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function PolicyApplyPanel() {
   const [profileId, setProfileId] = useState('');
   const [open, setOpen] = useState(false);
