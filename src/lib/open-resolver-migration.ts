@@ -166,12 +166,26 @@ export interface MigrationPlan {
   migrated: WizardConfig;
 }
 
+export interface AdditionalKnownNetwork {
+  /** Free-form origin tag (e.g. 'runtime-inventory-ipv6', 'operator-declared'). */
+  origin: KnownNetwork['origin'] | string;
+  cidr: string;
+  label?: string;
+}
+
 export interface PlanOptions {
   /**
    * Administrator explicitly confirmed the (possibly empty) coverage list
    * for the `unverifiable` case. Recorded in the apply comment.
    */
   unverifiableConfirmed?: boolean;
+  /**
+   * Extra subscriber networks that MUST be covered, supplied by the caller
+   * from real sources outside the WizardConfig (e.g. runtime inventory,
+   * settings, or operator-declared subscriber list). Each entry is parsed
+   * with the same validator and contributes to `knownNetworks`.
+   */
+  additionalKnownNetworks?: AdditionalKnownNetwork[];
 }
 
 // ───────────────────────── Detection helpers ─────────────────────────
