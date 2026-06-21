@@ -10,9 +10,10 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from app.api.deps import get_current_user, require_admin
 from app.models.user import User
+from app.services import tsdb_proxy_service
 
 router = APIRouter()
 logger = logging.getLogger("dns-control.telemetry")
