@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Cpu, MemoryStick, HardDrive, Clock, Activity, Database, Timer,
   Globe, Shield, Server, Wifi, Bell, Eye, CheckCircle2, ChevronDown,
