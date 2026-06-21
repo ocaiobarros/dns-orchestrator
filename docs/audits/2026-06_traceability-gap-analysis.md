@@ -272,9 +272,9 @@ CREATE INDEX idx_dql_time   ON dns_query_log(occurred_at DESC);
 
 ## Resumo (entrega obrigatória)
 
-* **Operador-quem hoje:** autor presente como texto em `log_entries.message`/`context_json`; coluna estruturada **só em `apply_jobs.created_by`, `config_profiles.created_by`, `config_revisions.created_by`**. Sem `session_id` em log algum. `require_admin` existe mas **não é aplicado**.
+* **Operador-quem hoje:** autor presente como texto em `log_entries.message`/`context_json`; coluna estruturada **só em `apply_jobs.created_by`, `config_profiles.created_by`, `config_revisions.created_by`**. Sem `session_id` em log algum. `require_admin` existe **e é aplicado em todas as 34 rotas mutadoras** (ver correção GO-3 em C.1).
 * **Assinante-quem hoje:** parser regex de `journalctl` no `collector.py` agrega Top Clients em JSON. Sem persistência relacional. `dnstap_collector.py` está implementado mas **inativo**. Nenhum gerador habilita dnstap.
-* **Principais lacunas:** GO-3 (RBAC não aplicado — crítica), GO-1/GO-2 (sem autor estruturado / sem sessão), GA-5/GA-6 (sem RBAC nem anonimização sobre dado sensível — crítica LGPD), GA-1/GA-4 (sem persistência consultável), GA-3 (dnstap dormente).
+* **Principais lacunas:** ~~GO-3 (RBAC não aplicado — crítica)~~ **[GO-3 corrigido como falso-positivo em 2026-06-21]**, GO-1/GO-2 (sem autor estruturado / sem sessão), GA-5/GA-6 (sem RBAC nem anonimização sobre dado sensível — crítica LGPD), GA-1/GA-4 (sem persistência consultável), GA-3 (dnstap dormente).
 * **Fonte recomendada para atribuição:** **dnstap como primária**, journalctl como fallback rotulado "degraded". Justificativa: fidelidade binária, captura de rcode/tempo, performance, IPv6 correto, suporte nativo do Unbound, código já presente no repo.
 * **Decisões em aberto:** retenção, anonimização, base legal LGPD, modelo de storage para volume real, meta-auditoria de acesso, comunicação ao titular, política de export, plano de aplicação retroativa do RBAC.
 * **Arquivos inspecionados (read-only):**
