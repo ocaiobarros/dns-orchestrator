@@ -252,7 +252,14 @@ export default function PolicyPage() {
                 <div className="divide-y divide-border">
                   {items.map(r => {
                     const isOperatorBlock = r.layer === 200 && r.kind === 'block_name' && r.source === 'operator';
-                    const canEdit = isAdmin && isOperatorBlock;
+                    const isOperatorAllow = r.layer === 400 && r.kind === 'allow_exception' && r.source === 'operator';
+                    const canEdit = isAdmin && (isOperatorBlock || isOperatorAllow);
+                    const doToggle = (v: boolean) => isOperatorAllow
+                      ? toggleAllowMut.mutate({ id: r.id, enabled: v })
+                      : toggleMut.mutate({ id: r.id, enabled: v });
+                    const doDelete = () => isOperatorAllow
+                      ? deleteAllowMut.mutate(r.id)
+                      : deleteMut.mutate(r.id);
                     return (
                       <div key={r.id} className={`flex items-center gap-3 px-3 py-2 border-l-2 ${meta.tone.split(' ').slice(1).join(' ')}`}>
                         <code className="text-xs font-mono">{r.target}</code>
@@ -266,14 +273,12 @@ export default function PolicyPage() {
                             <>
                               <Switch
                                 checked={r.enabled}
-                                onCheckedChange={(v) => toggleMut.mutate({ id: r.id, enabled: v })}
+                                onCheckedChange={doToggle}
                                 aria-label={`Ativar ${r.target}`}
                               />
                               <Button
                                 size="icon" variant="ghost"
-                                onClick={() => {
-                                  if (confirm(`Remover regra para ${r.target}?`)) deleteMut.mutate(r.id);
-                                }}
+                                onClick={() => { if (confirm(`Remover regra para ${r.target}?`)) doDelete(); }}
                                 aria-label={`Remover ${r.target}`}
                               >
                                 <Trash2 size={14} />
