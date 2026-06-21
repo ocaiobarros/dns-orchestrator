@@ -577,7 +577,7 @@ export default function DnsPage() {
     qc.invalidateQueries({ queryKey: ['telemetry', 'recent-queries'] });
   };
 
-  const { data: filteredMetrics, refetch: refetchDnsMetrics } = useQuery({
+  const { data: dnsMetricsPayload, refetch: refetchDnsMetrics } = useQuery({
     queryKey: ['dnsMetrics', filters.instance, filters.qtype, filters.timeRange],
     queryFn: async () => {
       const r = await api.getDnsMetrics({ instance: selectedInstance || undefined, qtype: qtype || undefined, range: timeRange });
@@ -586,6 +586,10 @@ export default function DnsPage() {
     },
     refetchInterval: 30000,
   });
+  // P1-03: unwrap the explicit envelope; never invent a [0,0] point.
+  const filteredMetrics = Array.isArray(dnsMetricsPayload?.rows) ? dnsMetricsPayload!.rows : [];
+  const dnsMetricsSourceAvailable = dnsMetricsPayload?.source_available !== false;
+
 
   const { data: serverTimeMeta } = useQuery({
     queryKey: ['system', 'time'],
