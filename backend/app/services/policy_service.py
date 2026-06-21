@@ -30,7 +30,7 @@ from app.generators.policy_d_generator import generate_policy_d_files
 from app.models.policy import PolicyRule
 
 
-def _collect_rules(db: Session) -> tuple[list[dict], list[str]]:
+def _collect_rules(db: Session) -> tuple[list[dict], list[str], list[dict]]:
     operator_rows = db.query(PolicyRule).filter(
         PolicyRule.kind == "block_name",
         PolicyRule.source == "operator",
@@ -41,6 +41,12 @@ def _collect_rules(db: Session) -> tuple[list[dict], list[str]]:
         PolicyRule.layer == 100,
         PolicyRule.enabled.is_(True),
     ).all()
+    allow_rows = db.query(PolicyRule).filter(
+        PolicyRule.kind == "allow_exception",
+        PolicyRule.source == "operator",
+        PolicyRule.layer == 400,
+        PolicyRule.enabled.is_(True),
+    ).all()
     operator = [{
         "id": r.id,
         "target": r.target,
@@ -49,13 +55,19 @@ def _collect_rules(db: Session) -> tuple[list[dict], list[str]]:
         "scope_view": r.scope_view,
     } for r in operator_rows]
     judicial = [r.target for r in judicial_rows]
-    return operator, judicial
+    allow = [{
+        "id": r.id,
+        "target": r.target,
+        "enabled": bool(r.enabled),
+        "scope_view": r.scope_view,
+    } for r in allow_rows]
+    return operator, judicial, allow
 
 
 def collect_policy_artifacts(db: Session) -> tuple[list[dict], list[dict]]:
     """Return (files, omitted) — files for the deploy payload + audit trail."""
-    operator, judicial = _collect_rules(db)
-    return generate_policy_d_files(operator, judicial)
+    operator, judicial, allow = _collect_rules(db)
+    return generate_policy_d_files(operator, judicial, allow)
 
 
 def inject_policy_artifacts(payload: dict[str, Any], db: Session) -> list[dict]:

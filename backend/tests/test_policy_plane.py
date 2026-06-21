@@ -433,7 +433,8 @@ class PolicyDGeneratorTest(unittest.TestCase):
             {"target": "disabled.example.org", "action": "always_nxdomain", "enabled": False, "scope_view": None},
         ]
         files, omitted = generate_policy_d_files(rules, judicial_targets=[])
-        self.assertEqual(len(files), 1)
+        # POL-3b: now returns [operator_blocks_file, allow_exceptions_file].
+        self.assertEqual(len(files), 2)
         f = files[0]
         self.assertEqual(f["path"], POLICY_D_PATH)
         self.assertIn('local-zone: "ads.example.com" always_nxdomain', f["content"])
@@ -473,8 +474,10 @@ class PolicyDGeneratorTest(unittest.TestCase):
     def test_empty_rule_set_still_emits_placeholder_file(self):
         from app.generators.policy_d_generator import generate_policy_d_files
         files, _ = generate_policy_d_files([], [])
-        self.assertEqual(len(files), 1)
+        # POL-3b: 2 placeholder files (200 + 400) — glob include never empty.
+        self.assertEqual(len(files), 2)
         self.assertIn("no enabled operator block rules", files[0]["content"])
+        self.assertIn("no enabled allow exceptions", files[1]["content"])
 
 
 class UnboundIncludeOrderTest(unittest.TestCase):
@@ -767,6 +770,203 @@ class AllowExceptionCrudTest(OperatorBlockCrudTest):
             r = client.post("/api/policy/rules/allow", json={"target": "nogen.example.com"})
             self.assertEqual(r.status_code, 201)
             self.assertEqual(m.call_count, 0)
+
+
+# ===========================================================================
+# POL-3b — allow_exception materialization (400-allow-exceptions.conf)
+# Fire test: judicial precedence preserved by include order even with
+# operator allow_exception present.
+# ===========================================================================
+
+class AllowExceptionGeneratorTest(unittest.TestCase):
+    """Pure-function generator coverage for the 400-file."""
+
+    def test_emits_transparent_local_zone_for_enabled_allow(self):
+        from app.generators.policy_d_generator import (
+            generate_policy_d_files, ALLOW_EXCEPTIONS_PATH, POLICY_D_PATH,
+        )
+        allow = [
+            {"target": "parceiro.example.com", "enabled": True, "scope_view": None},
+            {"target": "disabled.example.com", "enabled": False, "scope_view": None},
+        ]
+        files, _ = generate_policy_d_files([], [], allow)
+        # Both files always emitted, in lexicographic include order.
+        self.assertEqual([f["path"] for f in files], [POLICY_D_PATH, ALLOW_EXCEPTIONS_PATH])
+        allow_content = files[1]["content"]
+        self.assertIn('local-zone: "parceiro.example.com" transparent', allow_content)
+        self.assertNotIn("disabled.example.com", allow_content)
+
+    def test_allow_file_is_deterministic(self):
+        from app.generators.policy_d_generator import generate_policy_d_files
+        a = [
+            {"target": "b.com", "enabled": True, "scope_view": None},
+            {"target": "a.com", "enabled": True, "scope_view": None},
+        ]
+        b = list(reversed(a))
+        fa, _ = generate_policy_d_files([], [], a)
+        fb, _ = generate_policy_d_files([], [], b)
+        self.assertEqual(fa[1]["content"], fb[1]["content"])
+
+    def test_empty_allow_set_still_emits_placeholder(self):
+        from app.generators.policy_d_generator import generate_policy_d_files
+        files, _ = generate_policy_d_files([], [], [])
+        self.assertEqual(len(files), 2)
+        self.assertIn("no enabled allow exceptions", files[1]["content"])
+
+    def test_400_filename_orders_after_200_in_glob(self):
+        """Lexicographic ordering: 200- < 400-, so allow wins over operator block."""
+        from app.generators.policy_d_generator import (
+            POLICY_D_PATH, ALLOW_EXCEPTIONS_PATH,
+        )
+        self.assertLess(POLICY_D_PATH, ALLOW_EXCEPTIONS_PATH)
+        self.assertTrue(POLICY_D_PATH.endswith("200-operator-blocks.conf"))
+        self.assertTrue(ALLOW_EXCEPTIONS_PATH.endswith("400-allow-exceptions.conf"))
+
+    def test_allow_exception_is_NOT_dropped_when_target_matches_judicial(self):
+        """
+        Generator does NOT dedup allow against judicial — the include-order
+        backstop (anablock.conf parsed AFTER policy.d) is the runtime authority.
+        Creation-time DB enforcement (POL-3a) is a separate first-line guard.
+        """
+        from app.generators.policy_d_generator import generate_policy_d_files
+        allow = [{"target": "court.example.com", "enabled": True, "scope_view": None}]
+        files, _ = generate_policy_d_files([], ["court.example.com"], allow)
+        self.assertIn('local-zone: "court.example.com" transparent', files[1]["content"])
+
+
+class JudicialPrecedenceFireTest(unittest.TestCase):
+    """
+    FIRE TEST — the critical end-to-end invariant for POL-3b.
+
+    Builds the exact include chain that Unbound will parse and asserts:
+      * an allow_exception un-blocks an operator-blocked name (transparent
+        appears AFTER nxdomain in parse order → last-wins → un-blocked).
+      * an allow_exception over a judicial name does NOT un-block it
+        (anablock.conf is parsed AFTER policy.d → last-wins → judicial NX
+        still applies even when a transparent exception exists).
+    """
+
+    @staticmethod
+    def _last_local_zone_action(parsed_lines, target):
+        """Return the action of the last `local-zone: "target" <action>` directive."""
+        import re
+        pat = re.compile(rf'^\s*local-zone:\s*"{re.escape(target)}"\s+(\S+)\s*$')
+        last = None
+        for line in parsed_lines:
+            m = pat.match(line)
+            if m:
+                last = m.group(1)
+        return last
+
+    def _build_parse_stream(self, operator_file, allow_file, anablock_content):
+        """
+        Simulate Unbound's include processing order from unbound_generator.py:
+            include: /etc/unbound/unbound-block-domains.conf  (empty here)
+            include: /etc/unbound/policy.d/*.conf  → 200-... then 400-...
+            include: /etc/unbound/anablock.conf
+        """
+        lines: list[str] = []
+        lines.extend(operator_file["content"].splitlines())
+        lines.extend(allow_file["content"].splitlines())
+        lines.extend(anablock_content.splitlines())
+        return lines
+
+    def test_exception_unblocks_operator_blocked_name(self):
+        from app.generators.policy_d_generator import generate_policy_d_files
+        files, _ = generate_policy_d_files(
+            operator_rules=[{"target": "blocked.example.com",
+                             "action": "always_nxdomain",
+                             "enabled": True, "scope_view": None}],
+            judicial_targets=[],
+            allow_exceptions=[{"target": "blocked.example.com",
+                               "enabled": True, "scope_view": None}],
+        )
+        op_file, allow_file = files[0], files[1]
+        stream = self._build_parse_stream(op_file, allow_file, anablock_content="")
+        action = self._last_local_zone_action(stream, "blocked.example.com")
+        self.assertEqual(action, "transparent",
+            "operator allow_exception (400, transparent) MUST override the "
+            "operator block (200, always_nxdomain) under Unbound last-wins")
+
+    def test_exception_does_NOT_unblock_judicial_name(self):
+        from app.generators.policy_d_generator import generate_policy_d_files
+        # Even if (somehow) an exception slipped past the API guard, runtime
+        # anablock.conf — included AFTER policy.d — must still win.
+        files, _ = generate_policy_d_files(
+            operator_rules=[],
+            judicial_targets=[],  # NOT in DB → API guard cannot reject
+            allow_exceptions=[{"target": "court.example.com",
+                               "enabled": True, "scope_view": None}],
+        )
+        op_file, allow_file = files[0], files[1]
+        anablock = 'local-zone: "court.example.com" always_nxdomain\n'
+        stream = self._build_parse_stream(op_file, allow_file, anablock)
+        action = self._last_local_zone_action(stream, "court.example.com")
+        self.assertEqual(action, "always_nxdomain",
+            "judicial directive in anablock.conf (parsed AFTER policy.d) MUST "
+            "override an operator transparent — judicial is non-overridable")
+
+    def test_include_order_in_unbound_generator_puts_anablock_last(self):
+        """Static guard: even after refactors, anablock must remain after policy.d."""
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        with open(os.path.join(repo_root, "backend/app/generators/unbound_generator.py")) as fh:
+            src = fh.read()
+        i_policy = src.find("policy.d/*.conf")
+        i_anablock = src.find("include: /etc/unbound/anablock.conf")
+        self.assertGreater(i_policy, 0)
+        self.assertGreater(i_anablock, i_policy,
+            "anablock.conf MUST stay after policy.d/*.conf — judicial precedence")
+        # FE↔BE parity
+        with open(os.path.join(repo_root, "src/lib/config-generator.ts")) as fh:
+            fe_src = fh.read()
+        self.assertGreater(fe_src.find("policy.d/*.conf"), 0)
+        self.assertGreater(fe_src.find("anablock.conf"), fe_src.find("policy.d/*.conf"))
+
+
+class PolicyApplyIncludesAllowFileTest(OperatorBlockCrudTest):
+    """POL-3b — apply payload must include the 400-file alongside the 200-file."""
+
+    def test_apply_payload_contains_both_policy_files(self):
+        self._clear_rules()
+        s = self._dbmod.SessionLocal()
+        try:
+            s.add(PolicyRule(id="op-1", kind="block_name", target="x.example.com",
+                             action="always_nxdomain", source="operator",
+                             layer=200, enabled=True))
+            s.add(PolicyRule(id="allow-1", kind="allow_exception",
+                             target="ok.example.com", action="allow",
+                             source="operator", layer=400, enabled=True))
+            s.commit()
+        finally:
+            s.close()
+
+        from app.models.config_profile import ConfigProfile
+        s = self._dbmod.SessionLocal()
+        try:
+            p = ConfigProfile(name="t", payload_json=json.dumps({"operationMode": "simple"}))
+            s.add(p); s.commit(); s.refresh(p); pid = p.id
+        finally:
+            s.close()
+
+        from unittest.mock import patch
+        captured = {}
+        def fake_deploy(payload, scope, dry_run, operator):
+            captured["payload"] = payload
+            return {"success": True, "steps": []}
+
+        client = self._client_for("admin")
+        with patch("app.api.routes.policy.execute_deploy", side_effect=fake_deploy), \
+             patch("app.api.routes.policy.require_managed_mode", return_value=None):
+            r = client.post("/api/policy/apply", json={"profile_id": pid, "dry_run": True})
+        self.assertEqual(r.status_code, 200, r.text)
+        paths = [a["path"] for a in captured["payload"].get("_policyArtifacts", [])]
+        self.assertIn("/etc/unbound/policy.d/200-operator-blocks.conf", paths)
+        self.assertIn("/etc/unbound/policy.d/400-allow-exceptions.conf", paths)
+        # Lexicographic order preserved → glob include order is correct.
+        self.assertLess(
+            paths.index("/etc/unbound/policy.d/200-operator-blocks.conf"),
+            paths.index("/etc/unbound/policy.d/400-allow-exceptions.conf"),
+        )
 
 
 if __name__ == "__main__":
