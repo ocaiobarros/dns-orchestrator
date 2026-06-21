@@ -470,6 +470,28 @@ export const api = {
     apiCall<PolicyRuleRecord>('PATCH', `/policy/rules/${id}`, body),
   deletePolicyRule: (id: string) =>
     apiCall<void>('DELETE', `/policy/rules/${id}`),
+
+  // POL-2b: preview & apply (admin-only). Apply reuses the existing deploy
+  // pipeline (staging → unbound-checkconf → swap → reload → rollback). On
+  // checkconf failure the swap is aborted and resolution stays untouched.
+  getPolicyPreview: () =>
+    apiCall<{
+      files: { path: string; content: string; permissions?: string; owner?: string }[];
+      omitted: { target: string; reason: string; judicial_match?: string; action?: string }[];
+      judicial_precedence_note: string;
+    }>('GET', '/policy/preview'),
+  applyPolicy: (body: { profile_id: string; dry_run?: boolean }) =>
+    apiCall<{
+      id: string;
+      status: 'success' | 'failed' | 'running' | 'blocked';
+      job_type: string;
+      dry_run: boolean;
+      omitted: { target: string; reason: string }[];
+      steps: { name?: string; status?: string }[];
+      error?: string | null;
+      started_at: string;
+      finished_at: string | null;
+    }>('POST', '/policy/apply', body),
 };
 
 export interface PolicyRuleRecord {
@@ -713,6 +735,26 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
     return { id: path.split('/').pop(), enabled: b.enabled !== false, action: b.action ?? 'always_nxdomain', layer: 200, kind: 'block_name', source: 'operator', target: 'preview', scope_view: null, payload: null, source_ref: null, created_by: null, created_at: null, updated_at: new Date().toISOString() };
   }
   if (path.match(/^\/api\/policy\/rules\/[^/]+$/) && method === 'DELETE') return undefined;
+  // POL-2b: preview/apply mocks for preview-mode (no backend).
+  if (path === '/api/policy/preview') return {
+    files: [{ path: '/etc/unbound/policy.d/200-operator-blocks.conf',
+              content: '# (no enabled operator block rules)\n' }],
+    omitted: [],
+    judicial_precedence_note: 'AnaBlock (layer 100) sempre vence por include order + dedup.',
+  };
+  if (path === '/api/policy/apply' && method === 'POST') {
+    return {
+      id: `mock-job-${Date.now()}`,
+      status: 'success',
+      job_type: 'policy',
+      dry_run: !!(body as { dry_run?: boolean })?.dry_run,
+      omitted: [],
+      steps: [{ name: 'unbound-checkconf', status: 'success' }],
+      error: null,
+      started_at: new Date().toISOString(),
+      finished_at: new Date().toISOString(),
+    };
+  }
 
   // Telemetry mock
   if (path === '/api/telemetry/latest') return mockTelemetryLatest();

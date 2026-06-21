@@ -355,6 +355,11 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     local-data: "1.0.0.127.in-addr.arpa. 10800 IN PTR localhost."
 
     include: /etc/unbound/unbound-block-domains.conf
+    # POL-2b: operator block rules (layer 200), generated from DB. MUST be
+    # included BEFORE anablock.conf so judicial directives (layer 100) appear
+    # LATER in the parsed config — Unbound resolves duplicate local-zone with
+    # last-wins semantics, preserving judicial precedence by construction.
+    include: /etc/unbound/policy.d/*.conf
     include: /etc/unbound/anablock.conf
 
 """
@@ -410,6 +415,17 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
         "content": "# DNS Control — AnaBlock placeholder\n"
                    "# Este arquivo será populado automaticamente pelo script de sincronização.\n"
                    "# Primeira execução: systemctl start dns-control-anablock.service\n",
+        "permissions": "0644",
+        "owner": "root:unbound",
+    })
+    # POL-2b: policy.d placeholder — guarantees the glob include never fails
+    # when no operator rules exist. Real content (200-operator-blocks.conf) is
+    # produced by policy_d_generator.generate_policy_d_files() during apply.
+    files.append({
+        "path": "/etc/unbound/policy.d/000-placeholder.conf",
+        "content": "# DNS Control — policy.d placeholder (POL-2b)\n"
+                   "# Operator block rules (layer 200) are generated into\n"
+                   "# 200-operator-blocks.conf by the policy plane apply pipeline.\n",
         "permissions": "0644",
         "owner": "root:unbound",
     })

@@ -142,6 +142,15 @@ def generate_preview(payload: dict[str, Any]) -> list[dict]:
         files.extend(generate_sysctl_configs(normalized))
     except Exception:
         pass
+    # POL-2b: additive merge of policy.d artifacts. The policy service builds
+    # these from DB-stored operator block rules and stamps them on the payload
+    # as `_policyArtifacts` BEFORE deploy. Generators stay DB-free; the deploy
+    # pipeline stays unchanged (staging → unbound-checkconf catches errors).
+    extra = payload.get("_policyArtifacts") if isinstance(payload, dict) else None
+    if isinstance(extra, list):
+        for f in extra:
+            if isinstance(f, dict) and f.get("path") and "content" in f:
+                files.append(f)
     return files
 
 
