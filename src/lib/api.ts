@@ -444,7 +444,64 @@ export const api = {
     apiCall<any[]>('GET', `/metrics/dns/errors/dnstap/events?limit=${limit}`),
   getDnstapSummary: () =>
     apiCall<any>('GET', '/metrics/dns/errors/dnstap/summary'),
+
+  // ---- POL-1: Policy Plane (read-only) ----
+  getPolicyRules: (params?: { layer?: number; scope_view?: string; enabled_only?: boolean }) => {
+    const qs = new URLSearchParams();
+    if (params?.layer != null) qs.set('layer', String(params.layer));
+    if (params?.scope_view) qs.set('scope_view', params.scope_view);
+    if (params?.enabled_only) qs.set('enabled_only', 'true');
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return apiCall<{ items: PolicyRuleRecord[]; total: number }>('GET', `/policy/rules${suffix}`);
+  },
+  getPolicyViews: () =>
+    apiCall<{ items: PolicyViewRecord[]; total: number }>('GET', '/policy/views'),
+  getPolicyTenants: () =>
+    apiCall<{ items: PolicyTenantRecord[]; total: number }>('GET', '/policy/tenants'),
+  getPolicyFeedSources: () =>
+    apiCall<{ items: PolicyFeedSourceRecord[]; total: number }>('GET', '/policy/feed-sources'),
+  getPolicySummary: () =>
+    apiCall<PolicySummary>('GET', '/policy/summary'),
 };
+
+export interface PolicyRuleRecord {
+  id: string;
+  scope_view: string | null;
+  kind: 'block_name' | 'override_data' | 'allow_exception' | 'feed_rule';
+  target: string;
+  action: string;
+  payload: unknown;
+  source: 'operator' | 'feed' | 'anablock_mirror';
+  source_ref: string | null;
+  layer: 100 | 200 | 300 | 400 | 999;
+  enabled: boolean;
+  created_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+export interface PolicyViewRecord {
+  id: string; tenant_id: string; name: string;
+  cidrs: string[]; is_default: boolean; created_at: string | null;
+}
+export interface PolicyTenantRecord {
+  id: string; name: string; description: string | null; created_at: string | null;
+}
+export interface PolicyFeedSourceRecord {
+  id: string; name: string; kind: string; url: string; integrity: string;
+  cadence_sec: number; enabled: boolean; is_judicial: boolean;
+  last_version: string | null; last_status: string | null;
+  last_sync_at: string | null; created_at: string | null;
+}
+export interface PolicySummary {
+  total_rules: number;
+  enabled_rules: number;
+  by_layer: Record<string, number>;
+  by_scope: { global: number; view: number };
+  tenants: number;
+  views: number;
+  feed_sources: number;
+  layers_legend: Record<string, string>;
+}
 
 // ---- Mock Response Router ----
 
@@ -608,6 +665,24 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path.startsWith('/api/metrics/dns/errors/dnstap/status')) return { enabled: false, status: 'not_configured', fidelity: 'unavailable', message: 'dnstap collector not running' };
   if (path.startsWith('/api/metrics/dns/errors/dnstap/events')) return [];
   if (path.startsWith('/api/metrics/dns/errors/dnstap/summary')) return { status: 'not_configured', source: 'dnstap', fidelity: 'unavailable' };
+
+  // POL-1: Policy plane (empty in preview — honest empty-state)
+  if (path.startsWith('/api/policy/rules')) return { items: [], total: 0 };
+  if (path === '/api/policy/views') return { items: [], total: 0 };
+  if (path === '/api/policy/tenants') return { items: [], total: 0 };
+  if (path === '/api/policy/feed-sources') return { items: [], total: 0 };
+  if (path === '/api/policy/summary') return {
+    total_rules: 0, enabled_rules: 0,
+    by_layer: {}, by_scope: { global: 0, view: 0 },
+    tenants: 0, views: 0, feed_sources: 0,
+    layers_legend: {
+      '100': 'AnaBlock judicial (não-sobreponível)',
+      '200': 'Bloqueio nativo do operador',
+      '300': 'Feeds de reputação',
+      '400': 'Allowlist / exceção (não sobrepõe layer 100)',
+      '999': 'Resolução padrão',
+    },
+  };
 
   // Telemetry mock
   if (path === '/api/telemetry/latest') return mockTelemetryLatest();

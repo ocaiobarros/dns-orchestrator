@@ -23,6 +23,7 @@ from app.api.routes import (
 )
 from app.api.routes import inventory as inventory_route
 from app.api.routes import dns_errors
+from app.api.routes import policy as policy_route
 
 
 @asynccontextmanager
@@ -96,6 +97,7 @@ app.include_router(actions.router, prefix="/api/actions", tags=["Actions"])
 app.include_router(instances.router, prefix="/api/instances", tags=["Instances"])
 app.include_router(inventory_route.router, prefix="/api/inventory", tags=["Runtime Inventory"])
 app.include_router(dns_errors.router, prefix="/api/metrics/dns/errors", tags=["DNS Errors"])
+app.include_router(policy_route.router, prefix="/api/policy", tags=["Policy"])
 
 
 # ---- Prometheus endpoint (no auth) ----

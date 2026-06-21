@@ -65,8 +65,43 @@ def _run_migrations(eng):
         raw.close()
 
 
+def _apply_versioned_migrations(eng):
+    """
+    Versioned, additive migrations registry (CREATE TABLE / ADD COLUMN only).
+    Tracked in schema_migrations(version PK, applied_at). Idempotent.
+    """
+    raw = eng.raw_connection()
+    try:
+        cur = raw.cursor()
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS schema_migrations ("
+            "version TEXT PRIMARY KEY, applied_at TEXT NOT NULL)"
+        )
+        raw.commit()
+        cur.execute("SELECT version FROM schema_migrations")
+        applied = {row[0] for row in cur.fetchall()}
+        from app.db.migrations import MIGRATIONS
+        for version, fn in MIGRATIONS:
+            if version in applied:
+                continue
+            try:
+                fn(raw)
+                cur.execute(
+                    "INSERT INTO schema_migrations(version, applied_at) VALUES(?, datetime('now'))",
+                    (version,),
+                )
+                raw.commit()
+                print(f"[DNS Control] Migration applied: {version}")
+            except Exception as exc:
+                raw.rollback()
+                print(f"[DNS Control] Migration FAILED {version}: {exc}")
+                raise
+    finally:
+        raw.close()
+
+
 def init_db():
-    # Run migrations BEFORE SQLAlchemy touches the schema
+    # Run legacy in-place migrations BEFORE SQLAlchemy touches the schema
     _run_migrations(engine)
 
     # Import all models so they register with Base.metadata
@@ -79,8 +114,12 @@ def init_db():
     import app.models.operational  # noqa  — v2 operational models
     import app.models.dns_events  # noqa  — DNS query/error events for filtered analytics
     import app.models.vip_counter  # noqa  — VIP counter history
+    import app.models.policy  # noqa  — POL-1: policy plane foundation
 
     Base.metadata.create_all(bind=engine)
+
+    # Versioned additive migrations (run AFTER create_all for legacy DBs)
+    _apply_versioned_migrations(engine)
 
     # Seed default admin if no users exist
     from app.db.seed import seed_admin

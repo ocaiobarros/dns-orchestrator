@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Server, Network, Globe, Shield, Router,
+  LayoutDashboard, Server, Network, Globe, Shield, ShieldCheck, Router,
   FileText, Wrench, Settings, History, FolderOpen, Menu, X, Wand2, Users, LogOut,
   HeartPulse, BarChart3, Bell, Search, ChevronDown, PanelLeftClose, PanelLeftOpen,
   SlidersHorizontal,
@@ -28,6 +28,7 @@ const navItems = [
   { path: '/ospf', label: 'OSPF / FRR', icon: Router, adminOnly: true },
   { path: '/metrics', label: 'Métricas', icon: BarChart3, adminOnly: false },
   { path: '/events', label: 'Eventos', icon: Bell, adminOnly: false },
+  { path: '/policy', label: 'Política', icon: ShieldCheck, adminOnly: false },
   { path: '/logs', label: 'Logs', icon: FileText, adminOnly: true },
   { path: '/troubleshoot', label: 'Troubleshooting', icon: Wrench, adminOnly: true },
   { path: '/files', label: 'Arquivos', icon: FolderOpen, adminOnly: true },
