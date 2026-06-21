@@ -14,6 +14,7 @@ Covers:
 """
 
 import os
+import json
 import tempfile
 import unittest
 import uuid
