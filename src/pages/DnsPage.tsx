@@ -312,6 +312,27 @@ function MeasuredChartFrame({
 }
 
 /* ============================================================
+   Honest empty state for charts when no data point exists.
+   Used by P1-03 fix — never fabricate a [0,0] synthetic series.
+   ============================================================ */
+function NoDataPlaceholder({ minHeight = 180, reason }: { minHeight?: number; reason?: string }) {
+  return (
+    <div
+      className="noc-chart-frame flex flex-col items-center justify-center gap-1 text-center"
+      style={{ minHeight }}
+    >
+      <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+        sem dados
+      </span>
+      <span className="font-mono text-[9px] text-muted-foreground/70">
+        {reason ?? 'fonte de telemetria indisponível'}
+      </span>
+    </div>
+  );
+}
+
+
+/* ============================================================
    Time-series chart panel
    ============================================================ */
 function ChartPanel({
@@ -323,8 +344,10 @@ function ChartPanel({
   const colorAlpha = (a: number) => `hsl(${ACCENT_HSL[accent]} / ${a})`;
   const gid = `chart-${title.replace(/\s+/g, '-')}`;
 
-  const series = data.length > 0 ? data : Array.from({ length: 2 }, (_, i) => ({ ts: Date.now() + i, [dataKey]: 0 }));
-  const ticks = buildServerTimeTicks(series, timeRange);
+  const hasData = data.length > 0;
+  const series = hasData ? data : [];
+  const ticks = hasData ? buildServerTimeTicks(series, timeRange) : [];
+
 
   return (
     <Panel title={title} accent={accent} badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}>
