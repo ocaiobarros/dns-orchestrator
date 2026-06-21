@@ -238,20 +238,13 @@ class OperatorBlockCrudTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        # Force a fresh isolated SQLite file BEFORE importing app modules that
-        # bind the engine.
-        cls._db_path = tempfile.mktemp(suffix=".sqlite")
-        os.environ["DNS_CONTROL_DB_PATH"] = cls._db_path
-        # Re-import to ensure the engine binds to the fresh path
-        import importlib
-        import app.core.config as _cfg
-        importlib.reload(_cfg)
+        # Use the existing app engine (already bound at module import time via
+        # DNS_CONTROL_DB_PATH set at the top of this file). Just ensure all
+        # model tables exist on it.
         import app.core.database as _dbmod
-        importlib.reload(_dbmod)
-        # Apply schema (POL-1 migration + model create_all)
-        import app.models.user  # noqa
-        import app.models.operational  # noqa
-        import app.models.policy  # noqa
+        import app.models.user  # noqa: F401
+        import app.models.operational  # noqa: F401
+        import app.models.policy  # noqa: F401
         _dbmod.Base.metadata.create_all(bind=_dbmod.engine)
         cls._dbmod = _dbmod
 
