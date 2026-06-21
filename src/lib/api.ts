@@ -713,16 +713,6 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
     return { id: path.split('/').pop(), enabled: b.enabled !== false, action: b.action ?? 'always_nxdomain', layer: 200, kind: 'block_name', source: 'operator', target: 'preview', scope_view: null, payload: null, source_ref: null, created_by: null, created_at: null, updated_at: new Date().toISOString() };
   }
   if (path.match(/^\/api\/policy\/rules\/[^/]+$/) && method === 'DELETE') return undefined;
-    by_layer: {}, by_scope: { global: 0, view: 0 },
-    tenants: 0, views: 0, feed_sources: 0,
-    layers_legend: {
-      '100': 'AnaBlock judicial (não-sobreponível)',
-      '200': 'Bloqueio nativo do operador',
-      '300': 'Feeds de reputação',
-      '400': 'Allowlist / exceção (não sobrepõe layer 100)',
-      '999': 'Resolução padrão',
-    },
-  };
 
   // Telemetry mock
   if (path === '/api/telemetry/latest') return mockTelemetryLatest();
