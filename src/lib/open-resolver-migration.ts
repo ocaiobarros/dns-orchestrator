@@ -257,7 +257,7 @@ export function planOpenResolverMigration(
   // ── 1. Sanitize extras and split by family ──
   const cleanExtras = extras.map((s) => s.trim()).filter(Boolean);
   const parsedExtras = cleanExtras.map((c) => ({ raw: c, parsed: parseCidr(c) }));
-  const invalidCidrs = parsedExtras.filter((e) => e.parsed === null).map((e) => e.raw);
+  const invalidCidrs: string[] = parsedExtras.filter((e) => e.parsed === null).map((e) => e.raw);
   const validExtrasV4 = parsedExtras
     .filter((e) => e.parsed && e.parsed.family === 4)
     .map((e) => ({ raw: e.raw, parsed: e.parsed! }));
