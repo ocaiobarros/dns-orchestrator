@@ -28,6 +28,8 @@ PROM_HELP = """# HELP dns_control_up DNS Control API is up
 # TYPE dns_queries_total counter
 # HELP dns_cache_hit_ratio Cache hit ratio (0-1)
 # TYPE dns_cache_hit_ratio gauge
+# HELP dns_cache_hit_percent Cache hit ratio as percentage (0-100)
+# TYPE dns_cache_hit_percent gauge
 # HELP dns_cache_hits Total cache hits
 # TYPE dns_cache_hits counter
 # HELP dns_cache_misses Total cache misses
@@ -142,4 +144,13 @@ def _append_latest_metrics(db: Session, instance: DnsInstance, labels: str, line
             else:
                 val = f"{sample.metric_value}"
             lines.append(f"{name}{{{labels}}} {val}")
+
+            # GATE-PROM transition (b): also expose the 0-100 percent form
+            # alongside the 0-1 ratio so legacy Grafana/VictoriaMetrics
+            # dashboards that historically read the percent scale can migrate
+            # without breaking. See docs/operacao.md migration note.
+            if name == "dns_cache_hit_ratio":
+                lines.append(
+                    f"dns_cache_hit_percent{{{labels}}} {float(sample.metric_value):.4f}"
+                )
 
