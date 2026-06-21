@@ -51,11 +51,17 @@ def _view_to_dict(v: PolicyView) -> dict:
 
 
 def _feed_to_dict(f: PolicyFeedSource) -> dict:
+    # SECURITY: `auth_header` is a feed credential (Bearer/Basic token) and
+    # MUST NEVER be serialized to viewer-accessible read endpoints. We expose
+    # only `has_auth: bool` so the UI can show "auth configured" without
+    # leaking the value. Any future field added here MUST be reviewed for
+    # secret-leak risk; the redaction is asserted by test_policy_plane.py.
     return {
         "id": f.id,
         "name": f.name,
         "kind": f.kind,
         "url": f.url,
+        "has_auth": bool(f.auth_header),  # presence flag, NEVER the value
         "integrity": f.integrity,
         "cadence_sec": f.cadence_sec,
         "enabled": bool(f.enabled),
