@@ -300,6 +300,10 @@ export default function PolicyPage() {
         </div>
       )}
 
+      {/* AnaBlock sync status (read-only). Integração OPCIONAL com a Nuva —
+          ver memory escopo-anablock-segue-manual. */}
+      <AnablockStatusPanel />
+
       {/* POL-5 — Trilha de auditoria (read-only, viewer-ok). */}
       <PolicyAuditTrail />
 
