@@ -730,3 +730,79 @@ function AuditEventRow({ ev }: { ev: PolicyAuditEvent }) {
   );
 }
 
+
+// ===========================================================================
+// AnaBlock status — read-only. Reflete /api/telemetry/anablock (status JSON
+// escrito por gen-anablock.sh). Toggle vive no Wizard (admin-only); aqui só
+// expomos visibilidade do sync periódico (version, md5 curto, contagem, stale).
+// ===========================================================================
+
+function AnablockStatusPanel() {
+  const statusQ = useQuery({
+    queryKey: ['anablock', 'telemetry'],
+    queryFn: async () => {
+      const r = await api.getTelemetryAnablock();
+      if (!r.success) throw new Error(r.error!);
+      return r.data!;
+    },
+    refetchInterval: 60_000,
+  });
+
+  const s = statusQ.data;
+  const lastStatus = s?.anablock_last_status ?? 'UNKNOWN';
+  const stale = !!s?.stale;
+  const lastIso = s?.anablock_last_update_iso;
+  const ageHuman = s?.age_seconds != null
+    ? `${Math.floor(s.age_seconds / 3600)}h${String(Math.floor((s.age_seconds % 3600) / 60)).padStart(2, '0')}`
+    : '—';
+  const dotClass = stale || lastStatus === 'FAIL'
+    ? 'bg-amber-500'
+    : lastStatus === 'OK'
+      ? 'bg-emerald-500'
+      : 'bg-muted-foreground';
+
+  return (
+    <div className="noc-panel">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border flex-wrap">
+        <ShieldAlert size={16} className="text-destructive" />
+        <span className="text-sm font-medium">AnaBlock — sincronização judicial (Nuva)</span>
+        <span className={`inline-block w-2 h-2 rounded-full ${dotClass}`} aria-hidden />
+        <span className="text-xs text-muted-foreground">
+          {s?.enabled ? (stale ? 'STALE' : lastStatus) : 'desabilitado (Wizard)'}
+        </span>
+        <span className="ml-auto text-[11px] text-muted-foreground">
+          read-only — toggle no Wizard (admin)
+        </span>
+      </div>
+      <div className="px-3 py-3 grid grid-cols-2 md:grid-cols-5 gap-x-4 gap-y-2 text-xs">
+        <div>
+          <div className="text-muted-foreground">Último sync</div>
+          <div className="font-mono">{lastIso ? new Date(lastIso).toLocaleString() : '—'}</div>
+          <div className="text-[10px] text-muted-foreground">{ageHuman} atrás</div>
+        </div>
+        <div>
+          <div className="text-muted-foreground">Versão aplicada</div>
+          <div className="font-mono">{s?.last_version_applied ?? '—'}</div>
+        </div>
+        <div>
+          <div className="text-muted-foreground">md5 (curto)</div>
+          <code className="font-mono">{s?.last_md5_short ?? '—'}</code>
+        </div>
+        <div>
+          <div className="text-muted-foreground">Domínios aplicados</div>
+          <div className="font-mono">{(s?.anablock_domains_loaded_count ?? 0).toLocaleString('pt-BR')}</div>
+        </div>
+        <div>
+          <div className="text-muted-foreground">Cadência</div>
+          <div className="font-mono">{s?.sync_interval_hours ? `${s.sync_interval_hours}h` : '—'}</div>
+        </div>
+      </div>
+      {(stale || lastStatus === 'FAIL') && s?.message && (
+        <div className="px-3 py-2 border-t border-border text-[11px] text-amber-500 bg-amber-500/5">
+          <AlertTriangle size={11} className="inline mr-1" />
+          {s.message} — <strong>fail-safe judicial</strong>: último bom conhecido permanece ATIVO.
+        </div>
+      )}
+    </div>
+  );
+}
