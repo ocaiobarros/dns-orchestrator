@@ -501,7 +501,39 @@ export const api = {
     apiCall<PolicyRuleRecord>('PATCH', `/policy/rules/allow/${id}`, body),
   deleteAllowException: (id: string) =>
     apiCall<void>('DELETE', `/policy/rules/allow/${id}`),
+
+  // POL-5: read-only policy audit trail. Viewer-accessible (transparency).
+  // Backend filters operational_events to policy.* and supports an explicit
+  // category alias (mutation | apply | judicial_rejected) plus since/until/limit/offset.
+  getPolicyEvents: (params: {
+    category?: 'mutation' | 'apply' | 'judicial_rejected';
+    since?: string;
+    until?: string;
+    limit?: number;
+    offset?: number;
+  } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.category) qs.set('category', params.category);
+    if (params.since) qs.set('since', params.since);
+    if (params.until) qs.set('until', params.until);
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    if (params.offset != null) qs.set('offset', String(params.offset));
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return apiCall<{ items: PolicyAuditEvent[]; total: number }>(
+      'GET', `/events/policy${suffix}`,
+    );
+  },
 };
+
+export interface PolicyAuditEvent {
+  id: string;
+  event_type: string;
+  severity: 'info' | 'warning' | 'critical' | string;
+  instance_id: string | null;
+  message: string;
+  details_json: string | null;
+  created_at: string;
+}
 
 export interface PolicyRuleRecord {
   id: string;
