@@ -31,15 +31,6 @@ export interface AuthUserRecord {
   lastLoginAt?: string | null;
 }
 
-export interface UpstreamSilenceItem {
-  ip: string;
-  family: 'ipv4' | 'ipv6';
-  count_5min: number;
-  count_15min: number;
-  first_seen: string;
-  last_seen: string;
-  last_seen_epoch: number;
-}
 
 export interface UpstreamSilenceStatus {
   status: 'disabled' | 'ok' | 'degraded';
