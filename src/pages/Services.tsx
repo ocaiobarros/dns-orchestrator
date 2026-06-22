@@ -305,8 +305,10 @@ function ServiceCard({
           <Eye size={12} /> Inspecionar
         </button>
         <button
-          className="inline-flex items-center justify-center w-7 h-7 rounded border border-border bg-secondary/40 hover:bg-secondary/70 text-muted-foreground"
-          aria-label="Mais ações"
+          disabled
+          title="Em breve"
+          className="inline-flex items-center justify-center w-7 h-7 rounded border border-border/40 bg-secondary/20 text-muted-foreground/40 cursor-not-allowed"
+          aria-label="Mais ações (em breve)"
         >
           <MoreVertical size={12} />
         </button>
