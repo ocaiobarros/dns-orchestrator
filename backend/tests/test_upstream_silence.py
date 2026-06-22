@@ -130,7 +130,7 @@ def _seed_admin_and_viewer(db) -> tuple[str, str]:
             username="uss_admin",
             password_hash=hash_password("x"),
             role="admin",
-            status="active",
+            is_active=True,
             must_change_password=False,
         )
         db.add(admin)
@@ -141,7 +141,7 @@ def _seed_admin_and_viewer(db) -> tuple[str, str]:
             username="uss_viewer",
             password_hash=hash_password("x"),
             role="viewer",
-            status="active",
+            is_active=True,
             must_change_password=False,
         )
         db.add(viewer)
