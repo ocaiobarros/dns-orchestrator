@@ -15,6 +15,7 @@ from app.workers.health_worker import health_check_job
 from app.workers.metrics_worker import metrics_collection_job
 from app.workers.reconciliation_worker import reconciliation_job
 from app.workers.dns_error_worker import dns_error_collection_job
+from app.workers.anablock_status_worker import anablock_status_job
 
 logger = logging.getLogger("dns-control.scheduler")
 
