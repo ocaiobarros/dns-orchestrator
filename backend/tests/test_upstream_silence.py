@@ -226,5 +226,187 @@ class EndpointTest(unittest.TestCase):
         self.assertEqual(called, [], f"generators must NOT be invoked: {called}")
 
 
+class ConfigEndpointTest(unittest.TestCase):
+    """v1.1 — windows / cap / alert_threshold são autoritativos no backend."""
+
+    @classmethod
+    def setUpClass(cls):
+        init_db()
+
+    def setUp(self):
+        UpstreamSilenceDetector.instance().reset_for_test()
+        db = SessionLocal()
+        try:
+            # Clean previous settings rows so defaults are deterministic.
+            from app.models.log_entry import Setting
+            for k in (
+                uss.SETTING_WINDOW_SHORT,
+                uss.SETTING_WINDOW_LONG,
+                uss.SETTING_SNAPSHOT_CAP,
+                uss.SETTING_ALERT_THRESHOLD,
+                uss.SETTING_ALERT_WINDOW,
+            ):
+                row = db.query(Setting).filter(Setting.key == k).first()
+                if row:
+                    db.delete(row)
+            db.commit()
+        finally:
+            db.close()
+
+    def test_viewer_can_read_config(self):
+        client = _make_client("viewer")
+        r = client.get("/api/telemetry/upstreams/config")
+        self.assertEqual(r.status_code, 200, r.text)
+        body = r.json()
+        self.assertEqual(body["config"]["window_short"], uss.DEFAULT_WINDOW_SHORT)
+        self.assertEqual(body["bounds"]["window_seconds"]["max"], uss.MAX_WINDOW)
+
+    def test_viewer_cannot_patch_config(self):
+        client = _make_client("viewer")
+        r = client.patch("/api/telemetry/upstreams/config", json={"window_short": 120})
+        self.assertIn(r.status_code, (401, 403))
+
+    def test_admin_patch_clamps_out_of_range(self):
+        client = _make_client("admin")
+        r = client.patch("/api/telemetry/upstreams/config", json={
+            "window_short": 999999,   # clamps to MAX_WINDOW
+            "window_long": 10,        # clamps to MIN_WINDOW
+            "snapshot_cap": -1,       # clamps to MIN_CAP
+            "alert_threshold": 0,     # clamps to MIN_THRESHOLD
+            "alert_window": "bogus",  # falls back to 'short'
+        })
+        self.assertEqual(r.status_code, 200, r.text)
+        cfg = r.json()["config"]
+        # short>long after clamp ⇒ swapped to keep short<=long.
+        self.assertEqual(cfg["window_short"], uss.MIN_WINDOW)
+        self.assertEqual(cfg["window_long"], uss.MAX_WINDOW)
+        self.assertEqual(cfg["snapshot_cap"], uss.MIN_CAP)
+        self.assertEqual(cfg["alert_threshold"], uss.MIN_THRESHOLD)
+        self.assertEqual(cfg["alert_window"], "short")
+        # Live detector reflects new config without restart.
+        live = UpstreamSilenceDetector.instance().get_config()
+        self.assertEqual(live["snapshot_cap"], uss.MIN_CAP)
+
+    def test_admin_patch_rejects_non_numeric(self):
+        client = _make_client("admin")
+        r = client.patch("/api/telemetry/upstreams/config", json={"window_short": "abc"})
+        self.assertEqual(r.status_code, 400, r.text)
+
+    def test_config_round_trip_persists(self):
+        client = _make_client("admin")
+        r = client.patch("/api/telemetry/upstreams/config", json={
+            "window_short": 120, "window_long": 600,
+            "snapshot_cap": 50, "alert_threshold": 3, "alert_window": "long",
+        })
+        self.assertEqual(r.status_code, 200, r.text)
+        r2 = client.get("/api/telemetry/upstreams/config")
+        cfg = r2.json()["config"]
+        self.assertEqual(cfg["window_short"], 120)
+        self.assertEqual(cfg["alert_window"], "long")
+
+
+class AlertDebounceTest(unittest.TestCase):
+    """v1.1 — transição abaixo→acima emite UM evento; permanecer acima não
+    emite novo evento; cair e voltar a subir emite outro."""
+
+    @classmethod
+    def setUpClass(cls):
+        init_db()
+
+    def setUp(self):
+        UpstreamSilenceDetector.instance().reset_for_test()
+        # Threshold baixo para o teste.
+        UpstreamSilenceDetector.instance().apply_config({
+            "window_short": 300, "window_long": 900,
+            "snapshot_cap": 200, "alert_threshold": 2, "alert_window": "short",
+        })
+
+    def _ingest_unique_ips(self, n: int):
+        det = UpstreamSilenceDetector.instance()
+        now = time.time()
+        for i in range(n):
+            line = (
+                f"[DESTROY] udp 17 30 src=10.0.0.1 dst=192.0.2.{i+1} "
+                f"sport=33000 dport=53 [UNREPLIED] src=192.0.2.{i+1} "
+                f"dst=10.0.0.1 sport=53 dport=33000"
+            )
+            det.ingest_for_test(line, ts=now)
+
+    def test_rise_emits_once_then_steady_state_silent(self):
+        det = UpstreamSilenceDetector.instance()
+        self._ingest_unique_ips(3)  # 3 ≥ 2 → above
+        t1 = det.consume_alert_transition()
+        self.assertIsNotNone(t1)
+        self.assertEqual(t1["direction"], "rise")
+        # Repeated polls while still above: no further transition.
+        self.assertIsNone(det.consume_alert_transition())
+        self.assertIsNone(det.consume_alert_transition())
+
+    def test_rearm_after_drop_then_rise_again(self):
+        det = UpstreamSilenceDetector.instance()
+        self._ingest_unique_ips(3)
+        self.assertIsNotNone(det.consume_alert_transition())  # first rise
+        # Drop below by resetting aggregates.
+        det.reset_for_test()
+        det.apply_config({
+            "window_short": 300, "window_long": 900,
+            "snapshot_cap": 200, "alert_threshold": 2, "alert_window": "short",
+        })
+        # Falling edge is observed (debounce reset), no event emitted.
+        self.assertIsNone(det.consume_alert_transition())
+        # New rise → new event.
+        self._ingest_unique_ips(2)
+        t2 = det.consume_alert_transition()
+        self.assertIsNotNone(t2)
+        self.assertEqual(t2["direction"], "rise")
+
+
+class WorkerEmitTest(unittest.TestCase):
+    """Worker emite 1 OperationalEvent por transição."""
+
+    @classmethod
+    def setUpClass(cls):
+        init_db()
+
+    def setUp(self):
+        UpstreamSilenceDetector.instance().reset_for_test()
+        UpstreamSilenceDetector.instance().apply_config({
+            "window_short": 300, "window_long": 900,
+            "snapshot_cap": 200, "alert_threshold": 2, "alert_window": "short",
+        })
+
+    def test_worker_persists_single_event_on_rise(self):
+        from app.workers.upstream_silence_alert_worker import upstream_silence_alert_job
+        det = UpstreamSilenceDetector.instance()
+        now = time.time()
+        for i in range(3):
+            det.ingest_for_test(
+                f"[DESTROY] udp 17 30 src=10.0.0.1 dst=198.51.100.{i+1} "
+                f"sport=33000 dport=53 [UNREPLIED]", ts=now,
+            )
+        db = SessionLocal()
+        try:
+            from app.models.operational import OperationalEvent
+            before = db.query(OperationalEvent).filter_by(
+                event_type="telemetry.upstream_silence.alert"
+            ).count()
+        finally:
+            db.close()
+        r1 = upstream_silence_alert_job()
+        self.assertEqual(r1.get("emitted"), 1)
+        # Re-run while still above the threshold → no new event.
+        r2 = upstream_silence_alert_job()
+        self.assertEqual(r2.get("emitted"), 0)
+        db = SessionLocal()
+        try:
+            from app.models.operational import OperationalEvent
+            after = db.query(OperationalEvent).filter_by(
+                event_type="telemetry.upstream_silence.alert"
+            ).count()
+        finally:
+            db.close()
+        self.assertEqual(after - before, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
