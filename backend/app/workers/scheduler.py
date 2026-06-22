@@ -16,6 +16,7 @@ from app.workers.metrics_worker import metrics_collection_job
 from app.workers.reconciliation_worker import reconciliation_job
 from app.workers.dns_error_worker import dns_error_collection_job
 from app.workers.anablock_status_worker import anablock_status_job
+from app.workers.upstream_silence_alert_worker import upstream_silence_alert_job
 
 logger = logging.getLogger("dns-control.scheduler")
 
