@@ -496,6 +496,15 @@ class UpstreamSilenceDetector:
             self._enabled_changed_at = None
             self._proc = None
             self._thread = None
+            self._alert_active = False
+            self._alert_last_transition_at = None
+            self._cfg = {
+                "window_short": DEFAULT_WINDOW_SHORT,
+                "window_long": DEFAULT_WINDOW_LONG,
+                "snapshot_cap": DEFAULT_SNAPSHOT_CAP,
+                "alert_threshold": DEFAULT_ALERT_THRESHOLD,
+                "alert_window": DEFAULT_ALERT_WINDOW,
+            }
 
 
 # ---------- DB-backed enabled flag ----------
@@ -518,3 +527,105 @@ def set_enabled(db, enabled: bool) -> None:
     else:
         db.add(Setting(key=SETTING_KEY, value=val))
     db.commit()
+
+
+# ---------- Config (windows / cap / alert) ----------
+
+def _clamp_int(raw: object, lo: int, hi: int, default: int) -> int:
+    try:
+        v = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    if v < lo:
+        return lo
+    if v > hi:
+        return hi
+    return v
+
+
+def validate_and_clamp_config(raw: Dict[str, object]) -> Dict[str, object]:
+    """Backend authority: rejects non-numeric inputs; clamps numeric to bounds.
+
+    Returns a complete config dict. Missing keys fall back to defaults.
+    """
+    if not isinstance(raw, dict):
+        raise ValueError("config must be an object")
+    out: Dict[str, object] = {}
+    for key, default in (
+        ("window_short", DEFAULT_WINDOW_SHORT),
+        ("window_long", DEFAULT_WINDOW_LONG),
+    ):
+        if key in raw and raw[key] is not None:
+            try:
+                int(raw[key])  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                raise ValueError(f"{key} must be an integer")
+            out[key] = _clamp_int(raw[key], MIN_WINDOW, MAX_WINDOW, default)
+        else:
+            out[key] = default
+    if int(out["window_short"]) > int(out["window_long"]):  # type: ignore[arg-type]
+        out["window_short"], out["window_long"] = out["window_long"], out["window_short"]
+    if "snapshot_cap" in raw and raw["snapshot_cap"] is not None:
+        try:
+            int(raw["snapshot_cap"])  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            raise ValueError("snapshot_cap must be an integer")
+        out["snapshot_cap"] = _clamp_int(
+            raw["snapshot_cap"], MIN_CAP, MAX_CAP, DEFAULT_SNAPSHOT_CAP
+        )
+    else:
+        out["snapshot_cap"] = DEFAULT_SNAPSHOT_CAP
+    if "alert_threshold" in raw and raw["alert_threshold"] is not None:
+        try:
+            int(raw["alert_threshold"])  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            raise ValueError("alert_threshold must be an integer")
+        out["alert_threshold"] = _clamp_int(
+            raw["alert_threshold"], MIN_THRESHOLD, MAX_THRESHOLD, DEFAULT_ALERT_THRESHOLD
+        )
+    else:
+        out["alert_threshold"] = DEFAULT_ALERT_THRESHOLD
+    aw = str(raw.get("alert_window") or DEFAULT_ALERT_WINDOW).lower()
+    out["alert_window"] = "long" if aw == "long" else "short"
+    return out
+
+
+_CFG_KEYS = (
+    (SETTING_WINDOW_SHORT, "window_short"),
+    (SETTING_WINDOW_LONG, "window_long"),
+    (SETTING_SNAPSHOT_CAP, "snapshot_cap"),
+    (SETTING_ALERT_THRESHOLD, "alert_threshold"),
+    (SETTING_ALERT_WINDOW, "alert_window"),
+)
+
+
+def load_config_from_db(db) -> Dict[str, object]:
+    """Load persisted config; missing keys fall back to defaults."""
+    from app.models.log_entry import Setting
+    rows = {s.key: s.value for s in db.query(Setting).filter(
+        Setting.key.in_([k for k, _ in _CFG_KEYS])
+    ).all()}
+    raw: Dict[str, object] = {}
+    for skey, ckey in _CFG_KEYS:
+        if skey in rows and rows[skey] is not None:
+            raw[ckey] = rows[skey]
+    return validate_and_clamp_config(raw)
+
+
+def save_config_to_db(db, cfg: Dict[str, object]) -> None:
+    from app.models.log_entry import Setting
+    for skey, ckey in _CFG_KEYS:
+        val = str(cfg[ckey])
+        row = db.query(Setting).filter(Setting.key == skey).first()
+        if row:
+            row.value = val
+        else:
+            db.add(Setting(key=skey, value=val))
+    db.commit()
+
+
+def hydrate_detector_config(db) -> Dict[str, object]:
+    """Load DB config (or defaults) into the live detector. Safe at startup."""
+    cfg = load_config_from_db(db)
+    UpstreamSilenceDetector.instance().apply_config(cfg)
+    return cfg
