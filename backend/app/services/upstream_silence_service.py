@@ -245,13 +245,6 @@ class UpstreamSilenceDetector:
                 cls._instance = UpstreamSilenceDetector()
             return cls._instance
 
-    # ---------- factory ----------
-    @classmethod
-    def instance(cls) -> "UpstreamSilenceDetector":
-        with cls._instance_lock:
-            if cls._instance is None:
-                cls._instance = UpstreamSilenceDetector()
-            return cls._instance
 
     # ---------- lifecycle ----------
     def _default_cmd(self) -> list[str]:
