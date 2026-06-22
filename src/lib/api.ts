@@ -49,10 +49,41 @@ export interface UpstreamSilenceStatus {
   last_error: string | null;
 }
 
+export interface UpstreamSilenceItem {
+  ip: string;
+  family: 'ipv4' | 'ipv6';
+  count_5min: number;
+  count_15min: number;
+  count_short: number;
+  count_long: number;
+  first_seen: string;
+  last_seen: string;
+  last_seen_epoch: number;
+}
+
+export interface UpstreamSilenceConfig {
+  window_short: number;
+  window_long: number;
+  snapshot_cap: number;
+  alert_threshold: number;
+  alert_window: 'short' | 'long';
+}
+
+export interface UpstreamSilenceAlertState {
+  threshold: number;
+  window: 'short' | 'long';
+  window_seconds: number;
+  count: number;
+  above: boolean;
+  active: boolean;
+  last_transition_at: string | null;
+}
+
 export interface UpstreamSilenceSnapshot {
   collector_status: 'disabled' | 'ok' | 'degraded';
   running: boolean;
   window_seconds: { short: number; long: number };
+  snapshot_cap: number;
   events_total: number;
   unique_ips: number;
   last_error: string | null;
@@ -61,6 +92,18 @@ export interface UpstreamSilenceSnapshot {
   items: UpstreamSilenceItem[];
   snapshot_at: string;
   binary_available: boolean;
+  config: UpstreamSilenceConfig;
+  alert: UpstreamSilenceAlertState;
+}
+
+export interface UpstreamSilenceConfigEnvelope {
+  config: UpstreamSilenceConfig;
+  bounds: {
+    window_seconds: { min: number; max: number };
+    snapshot_cap: { min: number; max: number };
+    alert_threshold: { min: number; max: number };
+  };
+  defaults: UpstreamSilenceConfig;
 }
 
 export interface ServerTimeMetadata {
