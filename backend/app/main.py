@@ -61,6 +61,12 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
+    try:
+        from app.services import upstream_silence_service as _uss
+        _uss.UpstreamSilenceDetector.instance().stop()
+    except Exception:
+        pass
+
 
 app = FastAPI(
     title="DNS Control",
