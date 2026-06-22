@@ -171,6 +171,79 @@ class UpstreamSilenceDetector:
         self._enabled_changed_at: Optional[float] = None
         # Allow test override of the conntrack binary or argv builder.
         self._cmd_factory = self._default_cmd
+        # Runtime config (overridable via Settings). Defaults = v1 behavior.
+        self._cfg: Dict[str, object] = {
+            "window_short": DEFAULT_WINDOW_SHORT,
+            "window_long": DEFAULT_WINDOW_LONG,
+            "snapshot_cap": DEFAULT_SNAPSHOT_CAP,
+            "alert_threshold": DEFAULT_ALERT_THRESHOLD,
+            "alert_window": DEFAULT_ALERT_WINDOW,
+        }
+        # Alert debounce state — mirrors anablock.sync.stale dedup pattern.
+        # _alert_active stays True from a below→above transition until the
+        # count falls back below threshold (re-armed). Worker fires events
+        # on transitions only, never per poll.
+        self._alert_active = False
+        self._alert_last_transition_at: Optional[float] = None
+
+    # ---------- config ----------
+    def apply_config(self, cfg: Dict[str, object]) -> None:
+        """Replace the runtime config (already validated/clamped)."""
+        with self._lock:
+            for k in ("window_short", "window_long", "snapshot_cap", "alert_threshold"):
+                if k in cfg:
+                    self._cfg[k] = int(cfg[k])  # type: ignore[arg-type]
+            if "alert_window" in cfg:
+                aw = str(cfg["alert_window"])
+                self._cfg["alert_window"] = "long" if aw == "long" else "short"
+
+    def get_config(self) -> Dict[str, object]:
+        with self._lock:
+            return dict(self._cfg)
+
+    def consume_alert_transition(self) -> Optional[Dict[str, object]]:
+        """Atomically evaluate the alert state vs current snapshot and return
+        a transition payload IF a below→above edge happened since last call.
+        Updates the debounce state in place. Returns None when no transition
+        (still above, still below, or just rearmed). Worker-only entrypoint."""
+        now = time.time()
+        cfg = self.get_config()
+        window_key = str(cfg.get("alert_window") or "short")
+        window_sec = int(cfg["window_short"]) if window_key == "short" else int(cfg["window_long"])  # type: ignore[arg-type]
+        threshold = int(cfg["alert_threshold"])  # type: ignore[arg-type]
+        # Count unique IPs with at least one event in the window.
+        unique = 0
+        with self._lock:
+            for agg in self._aggregates.values():
+                if agg.count_window(now, window_sec) > 0:
+                    unique += 1
+            was_active = self._alert_active
+            now_above = unique >= threshold
+            transition: Optional[Dict[str, object]] = None
+            if now_above and not was_active:
+                self._alert_active = True
+                self._alert_last_transition_at = now
+                transition = {
+                    "direction": "rise",
+                    "window": window_key,
+                    "window_seconds": window_sec,
+                    "threshold": threshold,
+                    "count": unique,
+                    "at": now,
+                }
+            elif (not now_above) and was_active:
+                self._alert_active = False
+                self._alert_last_transition_at = now
+                # We only EMIT on rise (per spec), but re-arm here.
+            return transition
+
+    # ---------- factory ----------
+    @classmethod
+    def instance(cls) -> "UpstreamSilenceDetector":
+        with cls._instance_lock:
+            if cls._instance is None:
+                cls._instance = UpstreamSilenceDetector()
+            return cls._instance
 
     # ---------- factory ----------
     @classmethod
