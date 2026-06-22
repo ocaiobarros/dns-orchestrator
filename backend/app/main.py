@@ -39,6 +39,19 @@ async def lifespan(app: FastAPI):
         import logging
         logging.getLogger("dns-control").warning(f"Scheduler failed to start: {e}")
 
+    # Resume upstream-silence detector if admin had enabled it.
+    try:
+        from app.services import upstream_silence_service as _uss
+        db = SessionLocal()
+        try:
+            if _uss.is_enabled(db):
+                _uss.UpstreamSilenceDetector.instance().start()
+        finally:
+            db.close()
+    except Exception as e:  # noqa: BLE001
+        import logging
+        logging.getLogger("dns-control").warning(f"Upstream silence resume failed: {e}")
+
     yield
 
     # Shutdown scheduler
