@@ -29,6 +29,7 @@ const navItems = [
   { path: '/metrics', label: 'Métricas', icon: BarChart3, adminOnly: false },
   { path: '/events', label: 'Eventos', icon: Bell, adminOnly: false },
   { path: '/policy', label: 'Política', icon: ShieldCheck, adminOnly: false },
+  { path: '/observed/upstream-silence', label: 'Upstream Silence', icon: Radio, adminOnly: false },
   { path: '/logs', label: 'Logs', icon: FileText, adminOnly: true },
   { path: '/troubleshoot', label: 'Troubleshooting', icon: Wrench, adminOnly: true },
   { path: '/files', label: 'Arquivos', icon: FolderOpen, adminOnly: true },
