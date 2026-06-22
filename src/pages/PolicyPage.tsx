@@ -7,10 +7,10 @@
  */
 
 import { useState } from 'react';
-import { Shield, ShieldCheck, ShieldAlert, ShieldOff, Layers, Eye, Rss, Building2, Plus, Trash2, FileCheck2, Play } from 'lucide-react';
+import { Shield, ShieldCheck, ShieldAlert, ShieldOff, Layers, Eye, Rss, Building2, Plus, Trash2, FileCheck2, Play, ScrollText, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { LoadingState } from '@/components/DataStates';
-import { api, type PolicyRuleRecord } from '@/lib/api';
+import { api, type PolicyRuleRecord, type PolicyAuditEvent } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
