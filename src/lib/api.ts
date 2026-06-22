@@ -845,6 +845,10 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
     stale: false,
     age_seconds: null,
     conf_present: true,
+    last_md5: null,
+    last_md5_short: null,
+    last_version_applied: null,
+    sync_interval_hours: null,
   };
   if (path === '/api/telemetry/recollect' && method === 'POST') return {
     success: true,
