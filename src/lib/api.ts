@@ -332,6 +332,13 @@ export const api = {
     last_version_applied: string | null;
     sync_interval_hours: number | null;
   }>('GET', '/telemetry/anablock'),
+  // ---- v1 Upstream Silence Detector (conntrack [UNREPLIED] quick-win) ----
+  // Read-only, viewer-ok. Toggle is admin-only.
+  getUpstreamSilence: () => apiCall<UpstreamSilenceSnapshot>('GET', '/telemetry/upstreams'),
+  setUpstreamSilenceEnabled: (enabled: boolean) =>
+    apiCall<{ success: boolean; enabled: boolean; result: UpstreamSilenceStatus }>(
+      'POST', `/telemetry/upstreams/toggle?enabled=${enabled ? 'true' : 'false'}`,
+    ),
   recollectTelemetry: () => apiCall<{
     success: boolean;
     duration_ms: number;
