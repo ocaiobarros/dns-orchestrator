@@ -220,7 +220,7 @@ class EndpointTest(unittest.TestCase):
         from app.generators import nftables_generator, unbound_generator, ip_blocking_generator
         with patch.object(nftables_generator, "generate_nftables_config", side_effect=lambda *a, **k: called.append("nft") or ""), \
              patch.object(unbound_generator, "generate_unbound_configs", side_effect=lambda *a, **k: called.append("unb") or {}), \
-             patch.object(ip_blocking_generator, "generate_ip_blocking_files", side_effect=lambda *a, **k: called.append("ipb") or {}):
+             patch.object(ip_blocking_generator, "generate_ip_blocking_configs", side_effect=lambda *a, **k: called.append("ipb") or {}):
             client.post("/api/telemetry/upstreams/toggle?enabled=false")
             client.get("/api/telemetry/upstreams")
         self.assertEqual(called, [], f"generators must NOT be invoked: {called}")
