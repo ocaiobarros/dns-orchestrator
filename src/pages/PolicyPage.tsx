@@ -300,6 +300,9 @@ export default function PolicyPage() {
         </div>
       )}
 
+      {/* POL-5 — Trilha de auditoria (read-only, viewer-ok). */}
+      <PolicyAuditTrail />
+
       {/* Feed sources */}
       <div className="noc-panel">
         <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
