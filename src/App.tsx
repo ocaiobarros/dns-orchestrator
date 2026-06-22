@@ -86,6 +86,7 @@ const App = () => (
               <Route path="/users" element={<ProtectedApp><UsersPage /></ProtectedApp>} />
               <Route path="/observed/queries" element={<ProtectedApp><ObservedQueriesPage /></ProtectedApp>} />
               <Route path="/observed/log-validation" element={<ProtectedApp><LogValidationPage /></ProtectedApp>} />
+              <Route path="/observed/upstream-silence" element={<ProtectedApp><UpstreamSilencePage /></ProtectedApp>} />
               <Route path="/policy" element={<ProtectedApp><PolicyPage /></ProtectedApp>} />
               <Route path="/kiosk" element={
                 <ProtectedRoute>
