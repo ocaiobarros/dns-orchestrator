@@ -418,26 +418,42 @@ class UpstreamSilenceDetector:
         """Return current aggregate + status. Read-only."""
         now = time.time()
         with self._lock:
+            cfg = dict(self._cfg)
+            window_short = int(cfg["window_short"])  # type: ignore[arg-type]
+            window_long = int(cfg["window_long"])    # type: ignore[arg-type]
+            cap = int(cfg["snapshot_cap"])           # type: ignore[arg-type]
+            threshold = int(cfg["alert_threshold"])  # type: ignore[arg-type]
+            alert_window_key = str(cfg["alert_window"])
+            alert_window_sec = window_short if alert_window_key == "short" else window_long
             items = []
+            alert_count = 0
             for agg in self._aggregates.values():
-                c15 = agg.count_window(now, WINDOW_15MIN)
-                if c15 == 0:
+                cL = agg.count_window(now, window_long)
+                if cL == 0:
                     continue  # outside retention; will be pruned lazily.
+                cS = agg.count_window(now, window_short)
+                if (alert_window_sec == window_short and cS > 0) or (
+                    alert_window_sec == window_long and cL > 0
+                ):
+                    alert_count += 1
                 items.append({
                     "ip": agg.ip,
                     "family": agg.family,
-                    "count_5min": agg.count_window(now, WINDOW_5MIN),
-                    "count_15min": c15,
+                    "count_5min": cS,   # legacy keys kept for backward compat
+                    "count_15min": cL,
+                    "count_short": cS,
+                    "count_long": cL,
                     "first_seen": datetime.fromtimestamp(agg.first_seen, tz=timezone.utc).isoformat(),
                     "last_seen": datetime.fromtimestamp(agg.last_seen, tz=timezone.utc).isoformat(),
                     "last_seen_epoch": int(agg.last_seen),
                 })
-            items.sort(key=lambda r: (r["count_15min"], r["last_seen_epoch"]), reverse=True)
-            items = items[:SNAPSHOT_TOP_N]
+            items.sort(key=lambda r: (r["count_long"], r["last_seen_epoch"]), reverse=True)
+            items = items[:cap]
             payload = {
                 "collector_status": self._status,  # disabled | ok | degraded
                 "running": self._running,
-                "window_seconds": {"short": WINDOW_5MIN, "long": WINDOW_15MIN},
+                "window_seconds": {"short": window_short, "long": window_long},
+                "snapshot_cap": cap,
                 "events_total": self._events_total,
                 "unique_ips": len(items),
                 "last_error": self._last_error,
@@ -452,6 +468,19 @@ class UpstreamSilenceDetector:
                 "items": items,
                 "snapshot_at": datetime.fromtimestamp(now, tz=timezone.utc).isoformat(),
                 "binary_available": shutil.which("conntrack") is not None,
+                "config": cfg,
+                "alert": {
+                    "threshold": threshold,
+                    "window": alert_window_key,
+                    "window_seconds": alert_window_sec,
+                    "count": alert_count,
+                    "above": alert_count >= threshold,
+                    "active": self._alert_active,
+                    "last_transition_at": (
+                        datetime.fromtimestamp(self._alert_last_transition_at, tz=timezone.utc).isoformat()
+                        if self._alert_last_transition_at else None
+                    ),
+                },
             }
             return payload
 
