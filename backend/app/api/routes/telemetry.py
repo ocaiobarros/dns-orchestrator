@@ -130,6 +130,10 @@ def telemetry_anablock(_: User = Depends(get_current_user)):
         "stale": False,
         "age_seconds": None,
         "conf_present": ANABLOCK_CONF_FILE.exists(),
+        "last_md5": None,
+        "last_md5_short": None,
+        "last_version_applied": None,
+        "sync_interval_hours": None,
     }
 
     if not ANABLOCK_STATUS_FILE.exists():
@@ -143,6 +147,8 @@ def telemetry_anablock(_: User = Depends(get_current_user)):
         with open(ANABLOCK_STATUS_FILE) as f:
             status = json.load(f)
         ts = status.get("last_update_timestamp")
+        last_md5 = status.get("last_md5") or None
+        sync_hours = status.get("sync_interval_hours")
         response.update({
             "anablock_last_update_timestamp": ts,
             "anablock_last_update_iso": status.get("last_update_iso"),
@@ -151,11 +157,19 @@ def telemetry_anablock(_: User = Depends(get_current_user)):
             "message": status.get("message", ""),
             "mode": status.get("mode"),
             "api_url": status.get("api_url"),
+            "last_md5": last_md5,
+            "last_md5_short": last_md5[:8] if last_md5 else None,
+            "last_version_applied": status.get("last_version_applied") or None,
+            "sync_interval_hours": int(sync_hours) if isinstance(sync_hours, (int, float)) else None,
         })
         if ts:
             age = int(time.time() - int(ts))
             response["age_seconds"] = age
-            response["stale"] = age > 12 * 3600
+            # Stale = 2× cadência configurada (mínimo 12h). Reflete a postura
+            # de degradação honesta: passou do dobro do esperado ⇒ alerta.
+            base_h = response["sync_interval_hours"] or 6
+            stale_threshold = max(12, base_h * 2) * 3600
+            response["stale"] = age > stale_threshold
     except (json.JSONDecodeError, OSError, ValueError) as e:
         response["anablock_last_status"] = "FAIL"
         response["message"] = f"Status corrompido: {e}"
