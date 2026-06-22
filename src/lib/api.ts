@@ -327,6 +327,10 @@ export const api = {
     stale: boolean;
     age_seconds: number | null;
     conf_present: boolean;
+    last_md5: string | null;
+    last_md5_short: string | null;
+    last_version_applied: string | null;
+    sync_interval_hours: number | null;
   }>('GET', '/telemetry/anablock'),
   recollectTelemetry: () => apiCall<{
     success: boolean;
