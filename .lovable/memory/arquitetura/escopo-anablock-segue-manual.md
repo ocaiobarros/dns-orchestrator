@@ -1,42 +1,53 @@
 ---
 name: Escopo AnaBlock Segue Manual
-description: AnaBlock é integração de terceiro que segue o manual oficial; sem mirror-no-DB; precedência via include-order já provada empiricamente.
+description: AnaBlock é integração OPCIONAL de terceiro (caixa-preta auto-atualizada); DNS Control não gerencia ciclo de vida judicial; sem mirror-no-DB; precedência via include-order já comprovada.
 type: constraint
 ---
 
 # Escopo da Integração AnaBlock
 
-Decisão definitiva e travada.
+Decisão de produto ratificada pelo PO. Definitiva e travada.
 
 ## Regra
-- AnaBlock é ferramenta de **terceiro**. A integração segue o **manual oficial**
-  da AnaBlock (`/api/version`, `/api/md5`, `/domains/all?output=unbound`,
-  `/ipv4/block`, `/ipv4/unblock`, `/ipv6/*`). **Não inventar** mecanismos fora
-  do manual.
-- **Não existe** "mirror" que ingere o conjunto judicial AnaBlock como regras
-  `layer=100` no DB de política. O DB de política contém apenas:
-  - regras judiciais **explícitas** opcionais (layer 100, autoria do operador
-    para casos pontuais);
-  - regras de operador (layer 200);
-  - feeds genéricos (layer 300, escopo POL-4);
-  - allow_exception (layer 400).
+- **AnaBlock é ferramenta de TERCEIRO**, caixa-preta auto-atualizada: novas
+  ordens, revogações e expirações vêm prontas da AnaBlock.
+- **O operador nunca gerencia/interfere/modifica** o conteúdo judicial.
+- A **única** responsabilidade do DNS Control é integrá-la como funcionalidade
+  **OPCIONAL** (liga/desliga no Wizard) e fazê-lo com segurança.
+- **DNS Control NÃO gerencia o ciclo de vida do dado judicial.** Não há
+  ingestão, edição, revisão, expiração ou versionamento próprio das ordens
+  judiciais dentro do produto.
+- **Não existe mirror-no-DB** das regras AnaBlock como `layer=100`. O DB de
+  política contém apenas: judiciais explícitas opcionais autorais (raras),
+  regras de operador (200), feeds genéricos (300, escopo POL-4 futuro) e
+  allow_exception (400). AnaBlock vive **fora** desse DB, em `anablock.conf`.
 
-## Precedência judicial — como é garantida
-- `anablock.conf` é incluído em `unbound.conf` **depois** do glob
-  `policy.d/*.conf`. Por "last-wins" do `local-zone` no Unbound, qualquer
-  `local-zone` judicial vence operador/exceção.
-- **Comprovado empiricamente** contra Unbound 1.24.2 — ver
-  `docs/audits/2026-06_judicial-precedence-real-unbound.md`.
-- O validador-no-DB de `allow_exception` (POL-3a) é apenas primeira-linha
-  (UX/cedo); o **backstop definitivo** é o include-order.
+## Responsabilidades do DNS Control (escopo restrito)
+1. **Toggle opcional** no Wizard (habilita/desabilita a integração).
+2. **Sync seguro** seguindo o manual oficial AnaBlock
+   (`/api/version`, `/domains/all?output=unbound`, `/ipv4/block`, etc.).
+3. **`unbound-checkconf` antes de aplicar** — payload inválido é rejeitado, o
+   arquivo bom anterior permanece (fail-safe judicial).
+4. **Include-order**: `anablock.conf` é incluído em `unbound.conf` **depois**
+   de `policy.d/*.conf`, garantindo precedência judicial por "last-wins" do
+   `local-zone` no Unbound.
+5. **Observabilidade**: surfaçar última atualização, contagem, status e stale
+   na UI/telemetria — sem editar conteúdo.
+
+## Precedência judicial — comprovada empiricamente
+- Validada contra Unbound real **1.24.2** em
+  `docs/audits/2026-06_judicial-precedence-real-unbound.md` (dois casos:
+  exceção un-bloqueia operador; judicial vence exceção e permanece bloqueado).
+- Auditoria de aderência ao manual em
+  `docs/audits/2026-06_anablock-integration-vs-manual.md`.
 
 ## Por quê (não fazer mirror)
 - Manual é a fonte canônica; mirror duplica estado e cria divergência.
-- Conjunto judicial muda fora do produto — espelhar é responsabilidade
-  desnecessária e risco de fora-de-sincronia.
-- A garantia de precedência já existe na camada certa (Unbound include-order),
-  e foi auditada contra runtime real.
+- Ciclo de vida judicial (ordens, revogações, expirações) é responsabilidade
+  da AnaBlock — espelhar é assumir governança que não nos cabe.
+- A precedência judicial já existe na camada certa (Unbound include-order) e
+  foi auditada contra runtime real.
 
 ## Fronteira
-- Feeds genéricos (layer 300) **não são AnaBlock**. Têm pipeline próprio
-  (POL-4 futuro), com governança/integridade/cadência distintas.
+- Feeds genéricos (layer 300) **não são AnaBlock**. Pipeline próprio (POL-4
+  futuro) com governança/integridade/cadência distintas.
