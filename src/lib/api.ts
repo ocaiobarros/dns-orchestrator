@@ -933,6 +933,7 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
     collector_status: 'disabled',
     running: false,
     window_seconds: { short: 300, long: 900 },
+    snapshot_cap: 200,
     events_total: 0,
     unique_ips: 0,
     last_error: null,
@@ -941,7 +942,38 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
     items: [],
     snapshot_at: new Date().toISOString(),
     binary_available: false,
+    config: {
+      window_short: 300,
+      window_long: 900,
+      snapshot_cap: 200,
+      alert_threshold: 10,
+      alert_window: 'short',
+    },
+    alert: {
+      threshold: 10,
+      window: 'short',
+      window_seconds: 300,
+      count: 0,
+      above: false,
+      active: false,
+      last_transition_at: null,
+    },
   } as UpstreamSilenceSnapshot;
+  if (path === '/api/telemetry/upstreams/config' && method === 'GET') return {
+    config: { window_short: 300, window_long: 900, snapshot_cap: 200, alert_threshold: 10, alert_window: 'short' },
+    bounds: {
+      window_seconds: { min: 60, max: 3600 },
+      snapshot_cap: { min: 1, max: 1000 },
+      alert_threshold: { min: 1, max: 10000 },
+    },
+    defaults: { window_short: 300, window_long: 900, snapshot_cap: 200, alert_threshold: 10, alert_window: 'short' },
+  } as UpstreamSilenceConfigEnvelope;
+  if (path === '/api/telemetry/upstreams/config' && method === 'PATCH') return {
+    success: true,
+    config: (body as UpstreamSilenceConfig) ?? {
+      window_short: 300, window_long: 900, snapshot_cap: 200, alert_threshold: 10, alert_window: 'short',
+    },
+  };
   if (path.startsWith('/api/telemetry/upstreams/toggle') && method === 'POST') {
     const enabled = path.includes('enabled=true');
     return {
