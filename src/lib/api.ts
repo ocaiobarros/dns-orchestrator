@@ -31,6 +31,38 @@ export interface AuthUserRecord {
   lastLoginAt?: string | null;
 }
 
+export interface UpstreamSilenceItem {
+  ip: string;
+  family: 'ipv4' | 'ipv6';
+  count_5min: number;
+  count_15min: number;
+  first_seen: string;
+  last_seen: string;
+  last_seen_epoch: number;
+}
+
+export interface UpstreamSilenceStatus {
+  status: 'disabled' | 'ok' | 'degraded';
+  running: boolean;
+  supervised_started_at: number | null;
+  enabled_changed_at: number | null;
+  last_error: string | null;
+}
+
+export interface UpstreamSilenceSnapshot {
+  collector_status: 'disabled' | 'ok' | 'degraded';
+  running: boolean;
+  window_seconds: { short: number; long: number };
+  events_total: number;
+  unique_ips: number;
+  last_error: string | null;
+  supervised_started_at: string | null;
+  enabled_changed_at: string | null;
+  items: UpstreamSilenceItem[];
+  snapshot_at: string;
+  binary_available: boolean;
+}
+
 export interface ServerTimeMetadata {
   server_time: string;
   timezone: string;
