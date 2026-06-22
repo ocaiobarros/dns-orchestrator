@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Server, Network, Globe, Shield, ShieldCheck, Router,
   FileText, Wrench, Settings, History, FolderOpen, Menu, X, Wand2, Users, LogOut,
   HeartPulse, BarChart3, Bell, Search, ChevronDown, PanelLeftClose, PanelLeftOpen,
-  SlidersHorizontal,
+  SlidersHorizontal, Radio,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useNoc } from '@/lib/noc-context';
