@@ -505,29 +505,43 @@ done
 
         sync_script = f"""#!/bin/bash
 # DNS Control — AnaBlock Sync Script
-# Sincroniza domínios bloqueados judicialmente via API AnaBlock
+# Sincroniza domínios bloqueados judicialmente via API AnaBlock (Nuva).
+# AnaBlock é ferramenta de terceiro consumida PRONTA — este script só
+# integra, NÃO modifica nada do lado AnaBlock.
+#
+# Fluxo (fail-safe judicial — na dúvida, mantém bloqueio anterior):
+#   1. GET /api/version  → comparação condicional; igual ⇒ no-op
+#   2. GET /api/domain/all?output=unbound  → staging em disco (~MB / ~72k zonas)
+#   3. GET /api/md5  → integridade do payload; divergência ⇒ NÃO aplica
+#   4. unbound-checkconf no staging  → inválido ⇒ NÃO aplica
+#   5. swap atômico + reload de instâncias  → falha ⇒ rollback do .bak
+#
 # Modo: {blocklist_mode}
-# Validação: {"ativa" if validate_before else "desativada"}
+# Validação checkconf: {"ativa" if validate_before else "desativada"}
 # Auto-reload: {"ativo" if auto_reload else "desativado"}
-# Gerado automaticamente — não editar manualmente
+# Gerado automaticamente — não editar manualmente.
 
 set -uo pipefail
 
 APIURL="{domain_url}"
+MD5URL="{md5_url}"
 CONF="/etc/unbound/anablock.conf"
 CONF_BAK="/etc/unbound/anablock.conf.bak"
 CONF_TMP="/tmp/anablock-sync-$$.conf"
 VERSION_URL="{api_url}/api/version"
 VERSION_FILE="/var/lib/dns-control/anablock-version"
+MD5_FILE="/var/lib/dns-control/anablock-md5"
 STATUS_FILE="/var/lib/dns-control/anablock-status.json"
+EVENTS_LOG="/var/lib/dns-control/anablock-events.jsonl"
 
 mkdir -p /var/lib/dns-control 2>/dev/null || true
 
 write_status() {{
-    # write_status <status> <message> [domains_count]
     local status="$1"
     local message="$2"
     local domains="${{3:-0}}"
+    local md5="${{4:-}}"
+    local version="${{5:-}}"
     local ts
     ts=$(date -u +%s)
     cat > "$STATUS_FILE.tmp" <<EOF
@@ -538,11 +552,30 @@ write_status() {{
   "last_status": "$status",
   "message": "$message",
   "mode": "{blocklist_mode}",
-  "api_url": "{api_url}"
+  "api_url": "{api_url}",
+  "last_md5": "$md5",
+  "last_version_applied": "$version",
+  "sync_interval_hours": {sync_hours}
 }}
 EOF
     mv "$STATUS_FILE.tmp" "$STATUS_FILE" 2>/dev/null || true
     chmod 0644 "$STATUS_FILE" 2>/dev/null || true
+}}
+
+# Append one JSONL event per run so the backend worker can emit
+# operational_events (anablock.sync.applied / .unchanged / .failed)
+# without the bash script needing DB access. Idempotente por linha.
+emit_event() {{
+    local event_type="$1"
+    local reason="$2"
+    local domains="${{3:-0}}"
+    local md5="${{4:-}}"
+    local version="${{5:-}}"
+    local ts
+    ts=$(date -u +%s)
+    printf '{{"ts":%s,"event_type":"%s","reason":"%s","domains":%s,"md5":"%s","version":"%s"}}\\n' \\
+        "$ts" "$event_type" "$reason" "$domains" "$md5" "$version" \\
+        >> "$EVENTS_LOG" 2>/dev/null || true
 }}
 
 cleanup_fail() {{
@@ -550,43 +583,70 @@ cleanup_fail() {{
 }}
 trap cleanup_fail EXIT
 
-# Verificar se houve atualização na base
+# 1) Detecção condicional — version
 REMOTE_VERSION=$(curl -sf --max-time 10 "$VERSION_URL" 2>/dev/null || echo "0")
 LOCAL_VERSION=$(cat "$VERSION_FILE" 2>/dev/null || echo "0")
+LAST_MD5=$(cat "$MD5_FILE" 2>/dev/null || echo "")
+
+if [ "$REMOTE_VERSION" = "0" ]; then
+    DOMAINS=$(grep -c "^local-zone" "$CONF" 2>/dev/null || echo 0)
+    write_status "FAIL" "API indisponível — mantendo último bom conhecido" "$DOMAINS" "$LAST_MD5" "$LOCAL_VERSION"
+    emit_event "anablock.sync.failed" "api_unreachable" "$DOMAINS" "$LAST_MD5" "$LOCAL_VERSION"
+    logger -t anablock-sync "ERRO: API indisponível — mantendo último bom conhecido"
+    exit 1
+fi
 
 if [ "$REMOTE_VERSION" = "$LOCAL_VERSION" ] && [ -f "$CONF" ]; then
     DOMAINS=$(grep -c "^local-zone" "$CONF" 2>/dev/null || echo 0)
-    write_status "OK" "sem alterações (versão $LOCAL_VERSION)" "$DOMAINS"
+    write_status "OK" "sem alterações (versão $LOCAL_VERSION)" "$DOMAINS" "$LAST_MD5" "$LOCAL_VERSION"
+    emit_event "anablock.sync.unchanged" "version_unchanged" "$DOMAINS" "$LAST_MD5" "$LOCAL_VERSION"
     logger -t anablock-sync "AnaBlock: sem alterações (versão $LOCAL_VERSION)"
     exit 0
 fi
 
 logger -t anablock-sync "AnaBlock: atualizando $LOCAL_VERSION → $REMOTE_VERSION"
 
-# Baixar nova configuração — fallback: manter arquivo válido anterior
-if ! curl -sf --max-time 30 "$APIURL" -o "$CONF_TMP"; then
+# 2) Download em STAGING em disco (não memória; ~72k zonas / vários MB)
+if ! curl -sf --max-time 60 "$APIURL" -o "$CONF_TMP"; then
     DOMAINS=$(grep -c "^local-zone" "$CONF" 2>/dev/null || echo 0)
-    write_status "FAIL" "falha ao baixar configuração AnaBlock — mantendo versão anterior" "$DOMAINS"
-    logger -t anablock-sync "ERRO: falha ao baixar configuração AnaBlock — mantendo versão anterior"
+    write_status "FAIL" "falha ao baixar — mantendo versão anterior" "$DOMAINS" "$LAST_MD5" "$LOCAL_VERSION"
+    emit_event "anablock.sync.failed" "download_failed" "$DOMAINS" "$LAST_MD5" "$LOCAL_VERSION"
+    logger -t anablock-sync "ERRO: falha ao baixar — mantendo versão anterior"
     exit 1
 fi
+
+# 3) INTEGRIDADE — md5(/api/md5) vs md5sum(payload). Sem md5 do servidor,
+# recusamos por princípio (fail-safe judicial — catálogo de terceiro não revisável).
+REMOTE_MD5=$(curl -sf --max-time 10 "$MD5URL" 2>/dev/null | tr -d '"' | awk '{{print $1}}' | head -c 32)
+LOCAL_MD5=$(md5sum "$CONF_TMP" 2>/dev/null | awk '{{print $1}}')
+if [ -z "$REMOTE_MD5" ] || [ -z "$LOCAL_MD5" ] || [ "$REMOTE_MD5" != "$LOCAL_MD5" ]; then
+    DOMAINS=$(grep -c "^local-zone" "$CONF" 2>/dev/null || echo 0)
+    write_status "FAIL" "integridade md5 divergente — NÃO aplicado (remote=$REMOTE_MD5 local=$LOCAL_MD5)" "$DOMAINS" "$LAST_MD5" "$LOCAL_VERSION"
+    emit_event "anablock.sync.failed" "md5_mismatch" "$DOMAINS" "$LAST_MD5" "$LOCAL_VERSION"
+    logger -t anablock-sync "ERRO: md5 divergente — NÃO aplicado (mantido último bom)"
+    exit 1
+fi
+
+# 4) unbound-checkconf no staging — bloqueia se inválido
 {validate_block}
-# Backup da versão anterior
+# 5) Backup do bom conhecido + swap atômico
 if [ -f "$CONF" ]; then
     cp "$CONF" "$CONF_BAK"
 fi
 
-# Aplicar: mover atomicamente
 mv "$CONF_TMP" "$CONF"
 chown root:unbound "$CONF" 2>/dev/null || true
 chmod 0644 "$CONF" 2>/dev/null || true
 DOMAINS=$(grep -c "^local-zone" "$CONF" 2>/dev/null || echo 0)
 {reload_block}
-# Salvar versão e status
+# Persistir version/md5 só após sucesso comprovado
 echo "$REMOTE_VERSION" > "$VERSION_FILE"
-write_status "OK" "atualização concluída (versão $REMOTE_VERSION)" "$DOMAINS"
-logger -t anablock-sync "AnaBlock: atualização concluída (versão $REMOTE_VERSION, $DOMAINS domínios)"
+echo "$REMOTE_MD5" > "$MD5_FILE"
+write_status "OK" "atualização aplicada (versão $REMOTE_VERSION, md5 $REMOTE_MD5)" "$DOMAINS" "$REMOTE_MD5" "$REMOTE_VERSION"
+emit_event "anablock.sync.applied" "applied" "$DOMAINS" "$REMOTE_MD5" "$REMOTE_VERSION"
+logger -t anablock-sync "AnaBlock: aplicado (versão $REMOTE_VERSION, $DOMAINS domínios, md5 $REMOTE_MD5)"
 """
+
         # Emit BOTH the operator-friendly path under /etc/unbound/ AND
         # the legacy /opt/dns-control/ path for backward compatibility.
         files.append({
