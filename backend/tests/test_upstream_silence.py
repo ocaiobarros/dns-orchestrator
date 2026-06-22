@@ -119,58 +119,51 @@ class AggregationTest(unittest.TestCase):
         self.assertEqual(det.snapshot()["unique_ips"], 0)
 
 
-def _seed_admin_and_viewer(db) -> tuple[str, str]:
-    """Create one admin + one viewer if missing. Returns usernames."""
-    from app.core.security import hash_password
-    import uuid
-    admin = db.query(User).filter(User.username == "uss_admin").first()
-    if not admin:
-        admin = User(
-            id=str(uuid.uuid4()),
-            username="uss_admin",
-            password_hash=hash_password("x"),
-            role="admin",
-            is_active=True,
-            must_change_password=False,
-        )
-        db.add(admin)
-    viewer = db.query(User).filter(User.username == "uss_viewer").first()
-    if not viewer:
-        viewer = User(
-            id=str(uuid.uuid4()),
-            username="uss_viewer",
-            password_hash=hash_password("x"),
-            role="viewer",
-            is_active=True,
-            must_change_password=False,
-        )
-        db.add(viewer)
-    db.commit()
-    return admin.username, viewer.username
+def _make_client(role: str):
+    """TestClient mounting only the telemetry router with RBAC overrides
+    (mirrors test_policy_plane.py pattern; avoids dealing with sessions)."""
+    from fastapi import FastAPI, HTTPException
+    from fastapi.testclient import TestClient
+    from app.api.routes import telemetry as telemetry_route
+    from app.api.deps import get_current_user, require_admin
+    from app.core.database import get_db, SessionLocal
+    import app.models.user as user_mod
 
+    app2 = FastAPI()
+    app2.include_router(telemetry_route.router, prefix="/api/telemetry")
 
-def _login(client: TestClient, username: str) -> None:
-    """Helper: directly mint a session by hitting the login endpoint."""
-    r = client.post("/api/auth/login", json={"username": username, "password": "x"})
-    assert r.status_code == 200, r.text
+    fake_user = user_mod.User(
+        id=f"user-{role}", username=f"{role}_user",
+        password_hash="x", role=role, is_active=True,
+    )
+
+    def _cur():
+        return fake_user
+
+    def _admin():
+        if role != "admin":
+            raise HTTPException(status_code=403, detail="forbidden")
+        return fake_user
+
+    def _db():
+        s = SessionLocal()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app2.dependency_overrides[get_current_user] = _cur
+    app2.dependency_overrides[require_admin] = _admin
+    app2.dependency_overrides[get_db] = _db
+    return TestClient(app2)
 
 
 class EndpointTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         init_db()
-        cls.client = TestClient(app)
-        db = SessionLocal()
-        try:
-            _seed_admin_and_viewer(db)
-            # Reset toggle to OFF for a clean slate.
-            uss.set_enabled(db, False)
-        finally:
-            db.close()
-        UpstreamSilenceDetector.instance().reset_for_test()
 
     def setUp(self):
-        # Each test starts with detector reset + toggle off.
         UpstreamSilenceDetector.instance().stop()
         UpstreamSilenceDetector.instance().reset_for_test()
         db = SessionLocal()
@@ -178,28 +171,26 @@ class EndpointTest(unittest.TestCase):
             uss.set_enabled(db, False)
         finally:
             db.close()
-        self.client.cookies.clear()
 
     def test_viewer_can_read_snapshot(self):
-        _login(self.client, "uss_viewer")
-        r = self.client.get("/api/telemetry/upstreams")
-        self.assertEqual(r.status_code, 200)
+        client = _make_client("viewer")
+        r = client.get("/api/telemetry/upstreams")
+        self.assertEqual(r.status_code, 200, r.text)
         body = r.json()
         self.assertIn("collector_status", body)
         self.assertEqual(body["collector_status"], "disabled")
         self.assertEqual(body["items"], [])
 
     def test_viewer_cannot_toggle(self):
-        _login(self.client, "uss_viewer")
-        r = self.client.post("/api/telemetry/upstreams/toggle?enabled=true")
+        client = _make_client("viewer")
+        r = client.post("/api/telemetry/upstreams/toggle?enabled=true")
         self.assertIn(r.status_code, (401, 403))
-        # And nothing was started.
         snap = UpstreamSilenceDetector.instance().snapshot()
         self.assertEqual(snap["collector_status"], "disabled")
 
     def test_admin_toggle_off_keeps_disabled(self):
-        _login(self.client, "uss_admin")
-        r = self.client.post("/api/telemetry/upstreams/toggle?enabled=false")
+        client = _make_client("admin")
+        r = client.post("/api/telemetry/upstreams/toggle?enabled=false")
         self.assertEqual(r.status_code, 200, r.text)
         snap = UpstreamSilenceDetector.instance().snapshot()
         self.assertEqual(snap["collector_status"], "disabled")
@@ -208,37 +199,30 @@ class EndpointTest(unittest.TestCase):
     def test_admin_toggle_on_when_binary_missing_is_degraded(self):
         """Honest degradation: binary missing ⇒ status='degraded' + last_error,
         nunca fingir sucesso. Não derruba o restante da telemetria."""
-        _login(self.client, "uss_admin")
-        # Force the "no binary" branch even if the test host happens to
-        # have conntrack installed.
+        client = _make_client("admin")
         with patch("app.services.upstream_silence_service.shutil.which", return_value=None):
-            r = self.client.post("/api/telemetry/upstreams/toggle?enabled=true")
+            r = client.post("/api/telemetry/upstreams/toggle?enabled=true")
             self.assertEqual(r.status_code, 200, r.text)
             body = r.json()
             self.assertTrue(body["enabled"])
-            # Status comes back degraded.
             result = body["result"]
             self.assertEqual(result["status"], "degraded")
             self.assertIsNotNone(result["last_error"])
-            # Other telemetry endpoints still respond.
-            r2 = self.client.get("/api/telemetry/status")
+            r2 = client.get("/api/telemetry/status")
             self.assertEqual(r2.status_code, 200)
-        # Cleanup
-        self.client.post("/api/telemetry/upstreams/toggle?enabled=false")
+        client.post("/api/telemetry/upstreams/toggle?enabled=false")
 
     def test_no_generators_invoked_by_toggle(self):
         """GUARD: o toggle é puramente observacional — nenhum generator
-        de nftables/unbound pode ser chamado (postura POL-2b/3b)."""
-        _login(self.client, "uss_admin")
+        de nftables/unbound pode ser chamado."""
+        client = _make_client("admin")
         called = []
-        # Sentinel: monkeypatch the top-level generator entrypoints; if any
-        # is invoked synchronously during toggle, the test fails.
         from app.generators import nftables_generator, unbound_generator, ip_blocking_generator
         with patch.object(nftables_generator, "generate_nftables_config", side_effect=lambda *a, **k: called.append("nft") or ""), \
              patch.object(unbound_generator, "generate_unbound_configs", side_effect=lambda *a, **k: called.append("unb") or {}), \
              patch.object(ip_blocking_generator, "generate_ip_blocking_files", side_effect=lambda *a, **k: called.append("ipb") or {}):
-            self.client.post("/api/telemetry/upstreams/toggle?enabled=false")
-            self.client.get("/api/telemetry/upstreams")
+            client.post("/api/telemetry/upstreams/toggle?enabled=false")
+            client.get("/api/telemetry/upstreams")
         self.assertEqual(called, [], f"generators must NOT be invoked: {called}")
 
 
