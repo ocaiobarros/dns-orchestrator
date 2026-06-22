@@ -52,14 +52,32 @@ from typing import Deque, Dict, Optional
 logger = logging.getLogger("dns-control.upstream-silence")
 
 SETTING_KEY = "UPSTREAM_SILENCE_DETECTOR_ENABLED"
+SETTING_WINDOW_SHORT = "UPSTREAM_SILENCE_WINDOW_SHORT_SEC"
+SETTING_WINDOW_LONG = "UPSTREAM_SILENCE_WINDOW_LONG_SEC"
+SETTING_SNAPSHOT_CAP = "UPSTREAM_SILENCE_SNAPSHOT_CAP"
+SETTING_ALERT_THRESHOLD = "UPSTREAM_SILENCE_ALERT_THRESHOLD"
+SETTING_ALERT_WINDOW = "UPSTREAM_SILENCE_ALERT_WINDOW"  # 'short' | 'long'
 
-# Windows for the sliding aggregate, in seconds.
-WINDOW_5MIN = 5 * 60
-WINDOW_15MIN = 15 * 60
-RETENTION_SECONDS = WINDOW_15MIN  # we never keep timestamps older than this.
+# Defaults preserved from v1 to keep behavior backward-compatible.
+DEFAULT_WINDOW_SHORT = 5 * 60
+DEFAULT_WINDOW_LONG = 15 * 60
+DEFAULT_SNAPSHOT_CAP = 200
+DEFAULT_ALERT_THRESHOLD = 10  # unique silent IPs in the configured window
+DEFAULT_ALERT_WINDOW = "short"
 
-# Cap top-N IPs returned by the snapshot to keep payload small.
-SNAPSHOT_TOP_N = 200
+# Backend-authoritative clamps. UI is convenience only — backend rejects/clamps.
+MIN_WINDOW = 60          # 1 min
+MAX_WINDOW = 60 * 60     # 60 min — bounds in-memory aggregate footprint.
+MIN_CAP = 1
+MAX_CAP = 1000
+MIN_THRESHOLD = 1
+MAX_THRESHOLD = 10000
+
+# Legacy aliases kept for back-compat with v1 tests / external imports.
+WINDOW_5MIN = DEFAULT_WINDOW_SHORT
+WINDOW_15MIN = DEFAULT_WINDOW_LONG
+RETENTION_SECONDS = MAX_WINDOW  # absolute ceiling for kept timestamps.
+SNAPSHOT_TOP_N = DEFAULT_SNAPSHOT_CAP
 
 # Regexes for conntrack -E output (`-o extended`).
 #
@@ -153,6 +171,71 @@ class UpstreamSilenceDetector:
         self._enabled_changed_at: Optional[float] = None
         # Allow test override of the conntrack binary or argv builder.
         self._cmd_factory = self._default_cmd
+        # Runtime config (overridable via Settings). Defaults = v1 behavior.
+        self._cfg: Dict[str, object] = {
+            "window_short": DEFAULT_WINDOW_SHORT,
+            "window_long": DEFAULT_WINDOW_LONG,
+            "snapshot_cap": DEFAULT_SNAPSHOT_CAP,
+            "alert_threshold": DEFAULT_ALERT_THRESHOLD,
+            "alert_window": DEFAULT_ALERT_WINDOW,
+        }
+        # Alert debounce state — mirrors anablock.sync.stale dedup pattern.
+        # _alert_active stays True from a below→above transition until the
+        # count falls back below threshold (re-armed). Worker fires events
+        # on transitions only, never per poll.
+        self._alert_active = False
+        self._alert_last_transition_at: Optional[float] = None
+
+    # ---------- config ----------
+    def apply_config(self, cfg: Dict[str, object]) -> None:
+        """Replace the runtime config (already validated/clamped)."""
+        with self._lock:
+            for k in ("window_short", "window_long", "snapshot_cap", "alert_threshold"):
+                if k in cfg:
+                    self._cfg[k] = int(cfg[k])  # type: ignore[arg-type]
+            if "alert_window" in cfg:
+                aw = str(cfg["alert_window"])
+                self._cfg["alert_window"] = "long" if aw == "long" else "short"
+
+    def get_config(self) -> Dict[str, object]:
+        with self._lock:
+            return dict(self._cfg)
+
+    def consume_alert_transition(self) -> Optional[Dict[str, object]]:
+        """Atomically evaluate the alert state vs current snapshot and return
+        a transition payload IF a below→above edge happened since last call.
+        Updates the debounce state in place. Returns None when no transition
+        (still above, still below, or just rearmed). Worker-only entrypoint."""
+        now = time.time()
+        cfg = self.get_config()
+        window_key = str(cfg.get("alert_window") or "short")
+        window_sec = int(cfg["window_short"]) if window_key == "short" else int(cfg["window_long"])  # type: ignore[arg-type]
+        threshold = int(cfg["alert_threshold"])  # type: ignore[arg-type]
+        # Count unique IPs with at least one event in the window.
+        unique = 0
+        with self._lock:
+            for agg in self._aggregates.values():
+                if agg.count_window(now, window_sec) > 0:
+                    unique += 1
+            was_active = self._alert_active
+            now_above = unique >= threshold
+            transition: Optional[Dict[str, object]] = None
+            if now_above and not was_active:
+                self._alert_active = True
+                self._alert_last_transition_at = now
+                transition = {
+                    "direction": "rise",
+                    "window": window_key,
+                    "window_seconds": window_sec,
+                    "threshold": threshold,
+                    "count": unique,
+                    "at": now,
+                }
+            elif (not now_above) and was_active:
+                self._alert_active = False
+                self._alert_last_transition_at = now
+                # We only EMIT on rise (per spec), but re-arm here.
+            return transition
 
     # ---------- factory ----------
     @classmethod
@@ -161,6 +244,7 @@ class UpstreamSilenceDetector:
             if cls._instance is None:
                 cls._instance = UpstreamSilenceDetector()
             return cls._instance
+
 
     # ---------- lifecycle ----------
     def _default_cmd(self) -> list[str]:
@@ -334,26 +418,42 @@ class UpstreamSilenceDetector:
         """Return current aggregate + status. Read-only."""
         now = time.time()
         with self._lock:
+            cfg = dict(self._cfg)
+            window_short = int(cfg["window_short"])  # type: ignore[arg-type]
+            window_long = int(cfg["window_long"])    # type: ignore[arg-type]
+            cap = int(cfg["snapshot_cap"])           # type: ignore[arg-type]
+            threshold = int(cfg["alert_threshold"])  # type: ignore[arg-type]
+            alert_window_key = str(cfg["alert_window"])
+            alert_window_sec = window_short if alert_window_key == "short" else window_long
             items = []
+            alert_count = 0
             for agg in self._aggregates.values():
-                c15 = agg.count_window(now, WINDOW_15MIN)
-                if c15 == 0:
+                cL = agg.count_window(now, window_long)
+                if cL == 0:
                     continue  # outside retention; will be pruned lazily.
+                cS = agg.count_window(now, window_short)
+                if (alert_window_sec == window_short and cS > 0) or (
+                    alert_window_sec == window_long and cL > 0
+                ):
+                    alert_count += 1
                 items.append({
                     "ip": agg.ip,
                     "family": agg.family,
-                    "count_5min": agg.count_window(now, WINDOW_5MIN),
-                    "count_15min": c15,
+                    "count_5min": cS,   # legacy keys kept for backward compat
+                    "count_15min": cL,
+                    "count_short": cS,
+                    "count_long": cL,
                     "first_seen": datetime.fromtimestamp(agg.first_seen, tz=timezone.utc).isoformat(),
                     "last_seen": datetime.fromtimestamp(agg.last_seen, tz=timezone.utc).isoformat(),
                     "last_seen_epoch": int(agg.last_seen),
                 })
-            items.sort(key=lambda r: (r["count_15min"], r["last_seen_epoch"]), reverse=True)
-            items = items[:SNAPSHOT_TOP_N]
+            items.sort(key=lambda r: (r["count_long"], r["last_seen_epoch"]), reverse=True)
+            items = items[:cap]
             payload = {
                 "collector_status": self._status,  # disabled | ok | degraded
                 "running": self._running,
-                "window_seconds": {"short": WINDOW_5MIN, "long": WINDOW_15MIN},
+                "window_seconds": {"short": window_short, "long": window_long},
+                "snapshot_cap": cap,
                 "events_total": self._events_total,
                 "unique_ips": len(items),
                 "last_error": self._last_error,
@@ -368,6 +468,19 @@ class UpstreamSilenceDetector:
                 "items": items,
                 "snapshot_at": datetime.fromtimestamp(now, tz=timezone.utc).isoformat(),
                 "binary_available": shutil.which("conntrack") is not None,
+                "config": cfg,
+                "alert": {
+                    "threshold": threshold,
+                    "window": alert_window_key,
+                    "window_seconds": alert_window_sec,
+                    "count": alert_count,
+                    "above": alert_count >= threshold,
+                    "active": self._alert_active,
+                    "last_transition_at": (
+                        datetime.fromtimestamp(self._alert_last_transition_at, tz=timezone.utc).isoformat()
+                        if self._alert_last_transition_at else None
+                    ),
+                },
             }
             return payload
 
@@ -383,6 +496,15 @@ class UpstreamSilenceDetector:
             self._enabled_changed_at = None
             self._proc = None
             self._thread = None
+            self._alert_active = False
+            self._alert_last_transition_at = None
+            self._cfg = {
+                "window_short": DEFAULT_WINDOW_SHORT,
+                "window_long": DEFAULT_WINDOW_LONG,
+                "snapshot_cap": DEFAULT_SNAPSHOT_CAP,
+                "alert_threshold": DEFAULT_ALERT_THRESHOLD,
+                "alert_window": DEFAULT_ALERT_WINDOW,
+            }
 
 
 # ---------- DB-backed enabled flag ----------
@@ -405,3 +527,105 @@ def set_enabled(db, enabled: bool) -> None:
     else:
         db.add(Setting(key=SETTING_KEY, value=val))
     db.commit()
+
+
+# ---------- Config (windows / cap / alert) ----------
+
+def _clamp_int(raw: object, lo: int, hi: int, default: int) -> int:
+    try:
+        v = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    if v < lo:
+        return lo
+    if v > hi:
+        return hi
+    return v
+
+
+def validate_and_clamp_config(raw: Dict[str, object]) -> Dict[str, object]:
+    """Backend authority: rejects non-numeric inputs; clamps numeric to bounds.
+
+    Returns a complete config dict. Missing keys fall back to defaults.
+    """
+    if not isinstance(raw, dict):
+        raise ValueError("config must be an object")
+    out: Dict[str, object] = {}
+    for key, default in (
+        ("window_short", DEFAULT_WINDOW_SHORT),
+        ("window_long", DEFAULT_WINDOW_LONG),
+    ):
+        if key in raw and raw[key] is not None:
+            try:
+                int(raw[key])  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                raise ValueError(f"{key} must be an integer")
+            out[key] = _clamp_int(raw[key], MIN_WINDOW, MAX_WINDOW, default)
+        else:
+            out[key] = default
+    if int(out["window_short"]) > int(out["window_long"]):  # type: ignore[arg-type]
+        out["window_short"], out["window_long"] = out["window_long"], out["window_short"]
+    if "snapshot_cap" in raw and raw["snapshot_cap"] is not None:
+        try:
+            int(raw["snapshot_cap"])  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            raise ValueError("snapshot_cap must be an integer")
+        out["snapshot_cap"] = _clamp_int(
+            raw["snapshot_cap"], MIN_CAP, MAX_CAP, DEFAULT_SNAPSHOT_CAP
+        )
+    else:
+        out["snapshot_cap"] = DEFAULT_SNAPSHOT_CAP
+    if "alert_threshold" in raw and raw["alert_threshold"] is not None:
+        try:
+            int(raw["alert_threshold"])  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            raise ValueError("alert_threshold must be an integer")
+        out["alert_threshold"] = _clamp_int(
+            raw["alert_threshold"], MIN_THRESHOLD, MAX_THRESHOLD, DEFAULT_ALERT_THRESHOLD
+        )
+    else:
+        out["alert_threshold"] = DEFAULT_ALERT_THRESHOLD
+    aw = str(raw.get("alert_window") or DEFAULT_ALERT_WINDOW).lower()
+    out["alert_window"] = "long" if aw == "long" else "short"
+    return out
+
+
+_CFG_KEYS = (
+    (SETTING_WINDOW_SHORT, "window_short"),
+    (SETTING_WINDOW_LONG, "window_long"),
+    (SETTING_SNAPSHOT_CAP, "snapshot_cap"),
+    (SETTING_ALERT_THRESHOLD, "alert_threshold"),
+    (SETTING_ALERT_WINDOW, "alert_window"),
+)
+
+
+def load_config_from_db(db) -> Dict[str, object]:
+    """Load persisted config; missing keys fall back to defaults."""
+    from app.models.log_entry import Setting
+    rows = {s.key: s.value for s in db.query(Setting).filter(
+        Setting.key.in_([k for k, _ in _CFG_KEYS])
+    ).all()}
+    raw: Dict[str, object] = {}
+    for skey, ckey in _CFG_KEYS:
+        if skey in rows and rows[skey] is not None:
+            raw[ckey] = rows[skey]
+    return validate_and_clamp_config(raw)
+
+
+def save_config_to_db(db, cfg: Dict[str, object]) -> None:
+    from app.models.log_entry import Setting
+    for skey, ckey in _CFG_KEYS:
+        val = str(cfg[ckey])
+        row = db.query(Setting).filter(Setting.key == skey).first()
+        if row:
+            row.value = val
+        else:
+            db.add(Setting(key=skey, value=val))
+    db.commit()
+
+
+def hydrate_detector_config(db) -> Dict[str, object]:
+    """Load DB config (or defaults) into the live detector. Safe at startup."""
+    cfg = load_config_from_db(db)
+    UpstreamSilenceDetector.instance().apply_config(cfg)
+    return cfg

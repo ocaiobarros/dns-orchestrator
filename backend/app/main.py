@@ -44,6 +44,12 @@ async def lifespan(app: FastAPI):
         from app.services import upstream_silence_service as _uss
         db = SessionLocal()
         try:
+            # Hydrate runtime config from Settings (windows/cap/threshold)
+            # so the detector reflects DB state without a restart cycle.
+            try:
+                _uss.hydrate_detector_config(db)
+            except Exception:  # noqa: BLE001
+                pass
             if _uss.is_enabled(db):
                 _uss.UpstreamSilenceDetector.instance().start()
         finally:

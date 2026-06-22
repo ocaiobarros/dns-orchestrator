@@ -16,6 +16,7 @@ from app.workers.metrics_worker import metrics_collection_job
 from app.workers.reconciliation_worker import reconciliation_job
 from app.workers.dns_error_worker import dns_error_collection_job
 from app.workers.anablock_status_worker import anablock_status_job
+from app.workers.upstream_silence_alert_worker import upstream_silence_alert_job
 
 logger = logging.getLogger("dns-control.scheduler")
 
@@ -123,10 +124,21 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # Upstream silence alert worker — evaluates the detector's aggregate
+    # against the configured threshold every 15s and emits ONE
+    # telemetry.upstream_silence.alert per below→above transition.
+    _scheduler.add_job(
+        upstream_silence_alert_job,
+        trigger=IntervalTrigger(seconds=15),
+        id="upstream_silence_alert_worker",
+        name="Upstream Silence Alert (debounced)",
+        replace_existing=True,
+    )
+
     _scheduler.start()
     logger.info(
         "v2.1 Scheduler started: health(10s), metrics(30s), reconciliation(10s), "
-        "dns-errors(60s), anablock-status(60s) — file-lock protected"
+        "dns-errors(60s), anablock-status(60s), upstream-silence-alert(15s) — file-lock protected"
     )
 
 

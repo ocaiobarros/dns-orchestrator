@@ -558,3 +558,79 @@ def telemetry_upstreams_toggle(
         "enabled": enabled,
         "result": result,
     }
+
+
+# ---------- Upstream silence config (windows / cap / alert threshold) ----------
+
+@router.get("/upstreams/config")
+def telemetry_upstreams_get_config(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Return current detector config (viewer-ok).
+
+    Includes the backend-authoritative bounds so the UI can clamp at the
+    edges for convenience — but the backend remains the source of truth.
+    """
+    cfg = upstream_silence.load_config_from_db(db)
+    # Make sure the live detector matches what we just read (drift-proof).
+    upstream_silence.UpstreamSilenceDetector.instance().apply_config(cfg)
+    return {
+        "config": cfg,
+        "bounds": {
+            "window_seconds": {
+                "min": upstream_silence.MIN_WINDOW,
+                "max": upstream_silence.MAX_WINDOW,
+            },
+            "snapshot_cap": {
+                "min": upstream_silence.MIN_CAP,
+                "max": upstream_silence.MAX_CAP,
+            },
+            "alert_threshold": {
+                "min": upstream_silence.MIN_THRESHOLD,
+                "max": upstream_silence.MAX_THRESHOLD,
+            },
+        },
+        "defaults": {
+            "window_short": upstream_silence.DEFAULT_WINDOW_SHORT,
+            "window_long": upstream_silence.DEFAULT_WINDOW_LONG,
+            "snapshot_cap": upstream_silence.DEFAULT_SNAPSHOT_CAP,
+            "alert_threshold": upstream_silence.DEFAULT_ALERT_THRESHOLD,
+            "alert_window": upstream_silence.DEFAULT_ALERT_WINDOW,
+        },
+    }
+
+
+@router.patch("/upstreams/config")
+def telemetry_upstreams_patch_config(
+    body: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    """Update detector config (admin-only). Backend validates/clamps.
+
+    Applies live to the running detector (no restart required) and audits
+    the change via operational_events. Returns the effective (post-clamp)
+    config so the UI sees exactly what the backend persisted.
+    """
+    try:
+        cfg = upstream_silence.validate_and_clamp_config(body or {})
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    upstream_silence.save_config_to_db(db, cfg)
+    upstream_silence.UpstreamSilenceDetector.instance().apply_config(cfg)
+
+    try:
+        db.add(OperationalEvent(
+            event_type="telemetry.upstream_silence.config",
+            severity="info",
+            message=f"Upstream silence config atualizada por admin '{user.username}'",
+            details_json=json.dumps({"actor": user.username, "config": cfg}, sort_keys=True),
+        ))
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        logger.exception("Failed to persist upstream_silence config event")
+
+    return {"success": True, "config": cfg}

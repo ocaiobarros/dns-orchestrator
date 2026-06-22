@@ -31,15 +31,6 @@ export interface AuthUserRecord {
   lastLoginAt?: string | null;
 }
 
-export interface UpstreamSilenceItem {
-  ip: string;
-  family: 'ipv4' | 'ipv6';
-  count_5min: number;
-  count_15min: number;
-  first_seen: string;
-  last_seen: string;
-  last_seen_epoch: number;
-}
 
 export interface UpstreamSilenceStatus {
   status: 'disabled' | 'ok' | 'degraded';
@@ -49,10 +40,41 @@ export interface UpstreamSilenceStatus {
   last_error: string | null;
 }
 
+export interface UpstreamSilenceItem {
+  ip: string;
+  family: 'ipv4' | 'ipv6';
+  count_5min: number;
+  count_15min: number;
+  count_short: number;
+  count_long: number;
+  first_seen: string;
+  last_seen: string;
+  last_seen_epoch: number;
+}
+
+export interface UpstreamSilenceConfig {
+  window_short: number;
+  window_long: number;
+  snapshot_cap: number;
+  alert_threshold: number;
+  alert_window: 'short' | 'long';
+}
+
+export interface UpstreamSilenceAlertState {
+  threshold: number;
+  window: 'short' | 'long';
+  window_seconds: number;
+  count: number;
+  above: boolean;
+  active: boolean;
+  last_transition_at: string | null;
+}
+
 export interface UpstreamSilenceSnapshot {
   collector_status: 'disabled' | 'ok' | 'degraded';
   running: boolean;
   window_seconds: { short: number; long: number };
+  snapshot_cap: number;
   events_total: number;
   unique_ips: number;
   last_error: string | null;
@@ -61,6 +83,18 @@ export interface UpstreamSilenceSnapshot {
   items: UpstreamSilenceItem[];
   snapshot_at: string;
   binary_available: boolean;
+  config: UpstreamSilenceConfig;
+  alert: UpstreamSilenceAlertState;
+}
+
+export interface UpstreamSilenceConfigEnvelope {
+  config: UpstreamSilenceConfig;
+  bounds: {
+    window_seconds: { min: number; max: number };
+    snapshot_cap: { min: number; max: number };
+    alert_threshold: { min: number; max: number };
+  };
+  defaults: UpstreamSilenceConfig;
 }
 
 export interface ServerTimeMetadata {
@@ -370,6 +404,12 @@ export const api = {
   setUpstreamSilenceEnabled: (enabled: boolean) =>
     apiCall<{ success: boolean; enabled: boolean; result: UpstreamSilenceStatus }>(
       'POST', `/telemetry/upstreams/toggle?enabled=${enabled ? 'true' : 'false'}`,
+    ),
+  getUpstreamSilenceConfig: () =>
+    apiCall<UpstreamSilenceConfigEnvelope>('GET', '/telemetry/upstreams/config'),
+  updateUpstreamSilenceConfig: (cfg: Partial<UpstreamSilenceConfig>) =>
+    apiCall<{ success: boolean; config: UpstreamSilenceConfig }>(
+      'PATCH', '/telemetry/upstreams/config', cfg,
     ),
   recollectTelemetry: () => apiCall<{
     success: boolean;
@@ -893,6 +933,7 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
     collector_status: 'disabled',
     running: false,
     window_seconds: { short: 300, long: 900 },
+    snapshot_cap: 200,
     events_total: 0,
     unique_ips: 0,
     last_error: null,
@@ -901,7 +942,38 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
     items: [],
     snapshot_at: new Date().toISOString(),
     binary_available: false,
+    config: {
+      window_short: 300,
+      window_long: 900,
+      snapshot_cap: 200,
+      alert_threshold: 10,
+      alert_window: 'short',
+    },
+    alert: {
+      threshold: 10,
+      window: 'short',
+      window_seconds: 300,
+      count: 0,
+      above: false,
+      active: false,
+      last_transition_at: null,
+    },
   } as UpstreamSilenceSnapshot;
+  if (path === '/api/telemetry/upstreams/config' && method === 'GET') return {
+    config: { window_short: 300, window_long: 900, snapshot_cap: 200, alert_threshold: 10, alert_window: 'short' },
+    bounds: {
+      window_seconds: { min: 60, max: 3600 },
+      snapshot_cap: { min: 1, max: 1000 },
+      alert_threshold: { min: 1, max: 10000 },
+    },
+    defaults: { window_short: 300, window_long: 900, snapshot_cap: 200, alert_threshold: 10, alert_window: 'short' },
+  } as UpstreamSilenceConfigEnvelope;
+  if (path === '/api/telemetry/upstreams/config' && method === 'PATCH') return {
+    success: true,
+    config: (body as UpstreamSilenceConfig) ?? {
+      window_short: 300, window_long: 900, snapshot_cap: 200, alert_threshold: 10, alert_window: 'short',
+    },
+  };
   if (path.startsWith('/api/telemetry/upstreams/toggle') && method === 'POST') {
     const enabled = path.includes('enabled=true');
     return {
