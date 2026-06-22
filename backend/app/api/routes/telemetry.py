@@ -14,6 +14,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.api.deps import get_current_user, require_admin
 from app.models.user import User
 from app.services import tsdb_proxy_service
+from app.core.database import get_db
+from sqlalchemy.orm import Session
+from app.services import upstream_silence_service as upstream_silence
+from app.models.operational import OperationalEvent
 
 router = APIRouter()
 logger = logging.getLogger("dns-control.telemetry")
@@ -480,3 +484,77 @@ def telemetry_range(
     if metric == tsdb_proxy_service.COMPOSITE_BUNDLE:
         return tsdb_proxy_service.query_dns_chart_bundle(window, instance)
     return tsdb_proxy_service.query_metric(metric, window, instance)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Upstream Silence Detector — v1 (conntrack [UNREPLIED] quick-win)
+#
+# Opt-in admin-only. OFF por padrão. Endpoint de leitura espelha o padrão
+# /anablock: viewer-ok, read-only, devolve `collector_status` para que a
+# UI pinte degradação honesta em vez de "0 falhas" fabricado.
+#
+# ZERO regra nftables, ZERO geração — só LEITURA de conntrack.
+# Ver docs/audits/2026-06_dns-upstream-failure-detection-foundation.md.
+# ──────────────────────────────────────────────────────────────────────
+
+
+@router.get("/upstreams")
+def telemetry_upstreams(_: User = Depends(get_current_user)):
+    """Snapshot de IPs autoritativos sem resposta (janela 5/15 min).
+
+    Quando o detector está OFF (toggle admin), responde com
+    `collector_status='disabled'` e lista vazia. A UI distingue
+    isso de "0 falhas observadas".
+    """
+    detector = upstream_silence.UpstreamSilenceDetector.instance()
+    payload = detector.snapshot()
+    return payload
+
+
+@router.post("/upstreams/toggle")
+def telemetry_upstreams_toggle(
+    enabled: bool = Query(..., description="true = ativar coleta; false = desativar"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    """Liga/desliga o detector (admin-only). Auditado em operational_events.
+
+    OFF → subprocesso é terminado; nada é coletado; endpoint retorna
+    `disabled`. ON → tenta iniciar o supervisor; se o binário `conntrack`
+    estiver ausente, devolve `status='degraded'` com `last_error` —
+    nunca finge sucesso.
+    """
+    upstream_silence.set_enabled(db, enabled)
+    detector = upstream_silence.UpstreamSilenceDetector.instance()
+    if enabled:
+        result = detector.start()
+    else:
+        result = detector.stop()
+
+    # Auditoria — reusa o pipeline existente de operational_events.
+    try:
+        ev = OperationalEvent(
+            event_type="telemetry.upstream_silence.toggle",
+            severity="info" if enabled else "warning",
+            message=(
+                f"Upstream silence detector {'ENABLED' if enabled else 'DISABLED'} "
+                f"por admin '{user.username}'"
+            ),
+            details_json=json.dumps({
+                "enabled": enabled,
+                "actor": user.username,
+                "status": result.get("collector_status") or result.get("status"),
+                "last_error": result.get("last_error"),
+            }),
+        )
+        db.add(ev)
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        logger.exception("Failed to persist upstream_silence toggle event")
+
+    return {
+        "success": True,
+        "enabled": enabled,
+        "result": result,
+    }

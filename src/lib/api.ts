@@ -31,6 +31,38 @@ export interface AuthUserRecord {
   lastLoginAt?: string | null;
 }
 
+export interface UpstreamSilenceItem {
+  ip: string;
+  family: 'ipv4' | 'ipv6';
+  count_5min: number;
+  count_15min: number;
+  first_seen: string;
+  last_seen: string;
+  last_seen_epoch: number;
+}
+
+export interface UpstreamSilenceStatus {
+  status: 'disabled' | 'ok' | 'degraded';
+  running: boolean;
+  supervised_started_at: number | null;
+  enabled_changed_at: number | null;
+  last_error: string | null;
+}
+
+export interface UpstreamSilenceSnapshot {
+  collector_status: 'disabled' | 'ok' | 'degraded';
+  running: boolean;
+  window_seconds: { short: number; long: number };
+  events_total: number;
+  unique_ips: number;
+  last_error: string | null;
+  supervised_started_at: string | null;
+  enabled_changed_at: string | null;
+  items: UpstreamSilenceItem[];
+  snapshot_at: string;
+  binary_available: boolean;
+}
+
 export interface ServerTimeMetadata {
   server_time: string;
   timezone: string;
@@ -332,6 +364,13 @@ export const api = {
     last_version_applied: string | null;
     sync_interval_hours: number | null;
   }>('GET', '/telemetry/anablock'),
+  // ---- v1 Upstream Silence Detector (conntrack [UNREPLIED] quick-win) ----
+  // Read-only, viewer-ok. Toggle is admin-only.
+  getUpstreamSilence: () => apiCall<UpstreamSilenceSnapshot>('GET', '/telemetry/upstreams'),
+  setUpstreamSilenceEnabled: (enabled: boolean) =>
+    apiCall<{ success: boolean; enabled: boolean; result: UpstreamSilenceStatus }>(
+      'POST', `/telemetry/upstreams/toggle?enabled=${enabled ? 'true' : 'false'}`,
+    ),
   recollectTelemetry: () => apiCall<{
     success: boolean;
     duration_ms: number;
@@ -850,6 +889,33 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
     last_version_applied: null,
     sync_interval_hours: null,
   };
+  if (path === '/api/telemetry/upstreams') return {
+    collector_status: 'disabled',
+    running: false,
+    window_seconds: { short: 300, long: 900 },
+    events_total: 0,
+    unique_ips: 0,
+    last_error: null,
+    supervised_started_at: null,
+    enabled_changed_at: null,
+    items: [],
+    snapshot_at: new Date().toISOString(),
+    binary_available: false,
+  } as UpstreamSilenceSnapshot;
+  if (path.startsWith('/api/telemetry/upstreams/toggle') && method === 'POST') {
+    const enabled = path.includes('enabled=true');
+    return {
+      success: true,
+      enabled,
+      result: {
+        status: enabled ? 'degraded' : 'disabled',
+        running: enabled,
+        supervised_started_at: null,
+        enabled_changed_at: Date.now() / 1000,
+        last_error: enabled ? '(mock) binário conntrack indisponível no preview' : null,
+      } as UpstreamSilenceStatus,
+    };
+  }
   if (path === '/api/telemetry/recollect' && method === 'POST') return {
     success: true,
     duration_ms: 1234,
