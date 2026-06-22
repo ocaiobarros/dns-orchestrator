@@ -52,14 +52,32 @@ from typing import Deque, Dict, Optional
 logger = logging.getLogger("dns-control.upstream-silence")
 
 SETTING_KEY = "UPSTREAM_SILENCE_DETECTOR_ENABLED"
+SETTING_WINDOW_SHORT = "UPSTREAM_SILENCE_WINDOW_SHORT_SEC"
+SETTING_WINDOW_LONG = "UPSTREAM_SILENCE_WINDOW_LONG_SEC"
+SETTING_SNAPSHOT_CAP = "UPSTREAM_SILENCE_SNAPSHOT_CAP"
+SETTING_ALERT_THRESHOLD = "UPSTREAM_SILENCE_ALERT_THRESHOLD"
+SETTING_ALERT_WINDOW = "UPSTREAM_SILENCE_ALERT_WINDOW"  # 'short' | 'long'
 
-# Windows for the sliding aggregate, in seconds.
-WINDOW_5MIN = 5 * 60
-WINDOW_15MIN = 15 * 60
-RETENTION_SECONDS = WINDOW_15MIN  # we never keep timestamps older than this.
+# Defaults preserved from v1 to keep behavior backward-compatible.
+DEFAULT_WINDOW_SHORT = 5 * 60
+DEFAULT_WINDOW_LONG = 15 * 60
+DEFAULT_SNAPSHOT_CAP = 200
+DEFAULT_ALERT_THRESHOLD = 10  # unique silent IPs in the configured window
+DEFAULT_ALERT_WINDOW = "short"
 
-# Cap top-N IPs returned by the snapshot to keep payload small.
-SNAPSHOT_TOP_N = 200
+# Backend-authoritative clamps. UI is convenience only — backend rejects/clamps.
+MIN_WINDOW = 60          # 1 min
+MAX_WINDOW = 60 * 60     # 60 min — bounds in-memory aggregate footprint.
+MIN_CAP = 1
+MAX_CAP = 1000
+MIN_THRESHOLD = 1
+MAX_THRESHOLD = 10000
+
+# Legacy aliases kept for back-compat with v1 tests / external imports.
+WINDOW_5MIN = DEFAULT_WINDOW_SHORT
+WINDOW_15MIN = DEFAULT_WINDOW_LONG
+RETENTION_SECONDS = MAX_WINDOW  # absolute ceiling for kept timestamps.
+SNAPSHOT_TOP_N = DEFAULT_SNAPSHOT_CAP
 
 # Regexes for conntrack -E output (`-o extended`).
 #
