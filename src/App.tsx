@@ -32,6 +32,7 @@ const MetricsPage = lazy(() => import("@/pages/MetricsPage"));
 const KioskDashboard = lazy(() => import("@/pages/KioskDashboard"));
 const ObservedQueriesPage = lazy(() => import("@/pages/ObservedQueriesPage"));
 const LogValidationPage = lazy(() => import("@/pages/LogValidationPage"));
+const UpstreamSilencePage = lazy(() => import("@/pages/UpstreamSilencePage"));
 const PolicyPage = lazy(() => import("@/pages/PolicyPage"));
 
 const queryClient = new QueryClient();
