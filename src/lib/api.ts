@@ -405,6 +405,12 @@ export const api = {
     apiCall<{ success: boolean; enabled: boolean; result: UpstreamSilenceStatus }>(
       'POST', `/telemetry/upstreams/toggle?enabled=${enabled ? 'true' : 'false'}`,
     ),
+  getUpstreamSilenceConfig: () =>
+    apiCall<UpstreamSilenceConfigEnvelope>('GET', '/telemetry/upstreams/config'),
+  updateUpstreamSilenceConfig: (cfg: Partial<UpstreamSilenceConfig>) =>
+    apiCall<{ success: boolean; config: UpstreamSilenceConfig }>(
+      'PATCH', '/telemetry/upstreams/config', cfg,
+    ),
   recollectTelemetry: () => apiCall<{
     success: boolean;
     duration_ms: number;
