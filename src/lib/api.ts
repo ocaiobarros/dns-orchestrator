@@ -711,7 +711,10 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path.match(/\/api\/users\//) && method === 'PATCH') return { success: true };
   if (path.match(/\/api\/users\//) && method === 'DELETE') return undefined;
 
-  // v2: Events
+  // POL-5: policy audit trail mock (honest empty state).
+  if (path.startsWith('/api/events/policy')) return { items: [], total: 0 };
+
+  // v2: Events (legacy)
   if (path.startsWith('/api/events')) return mockV2Events();
 
   // v2: Metrics
