@@ -889,6 +889,33 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
     last_version_applied: null,
     sync_interval_hours: null,
   };
+  if (path === '/api/telemetry/upstreams') return {
+    collector_status: 'disabled',
+    running: false,
+    window_seconds: { short: 300, long: 900 },
+    events_total: 0,
+    unique_ips: 0,
+    last_error: null,
+    supervised_started_at: null,
+    enabled_changed_at: null,
+    items: [],
+    snapshot_at: new Date().toISOString(),
+    binary_available: false,
+  } as UpstreamSilenceSnapshot;
+  if (path.startsWith('/api/telemetry/upstreams/toggle') && method === 'POST') {
+    const enabled = path.includes('enabled=true');
+    return {
+      success: true,
+      enabled,
+      result: {
+        status: enabled ? 'degraded' : 'disabled',
+        running: enabled,
+        supervised_started_at: null,
+        enabled_changed_at: Date.now() / 1000,
+        last_error: enabled ? '(mock) binário conntrack indisponível no preview' : null,
+      } as UpstreamSilenceStatus,
+    };
+  }
   if (path === '/api/telemetry/recollect' && method === 'POST') return {
     success: true,
     duration_ms: 1234,
