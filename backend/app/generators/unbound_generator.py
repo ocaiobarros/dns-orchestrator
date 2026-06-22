@@ -449,16 +449,31 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
         validate_before = payload.get("blocklistValidateBeforeReload") if payload.get("blocklistValidateBeforeReload") is not None else blocklist_cfg.get("blocklistValidateBeforeReload", True)
         auto_reload = payload.get("blocklistAutoReload") if payload.get("blocklistAutoReload") is not None else blocklist_cfg.get("blocklistAutoReload", True)
 
-        # Build API URL with output params
-        domain_url = f"{api_url}/domains/all?output=unbound"
+        # Build domain-set URL.
+        # Confirmed endpoints (per integration manual + audit
+        # 2026-06_anablock-integration-vs-manual.md): the live API exposes
+        #   GET /api/version  → versão atual da base
+        #   GET /api/md5      → md5 do conteúdo de /api/domain/all (mesmos params)
+        #   GET /api/domain/all?output=unbound[&cname=…|&ipv4=…|&ipv6=…]
+        # The previous path "/domains/all" was the manual's legacy notation; the
+        # base today serves "/api/domain/all". We do NOT modify the AnaBlock
+        # code — só consumimos. Integridade é validada via /api/md5 ANTES do
+        # swap (portão, não diff humano).
+        domain_url = f"{api_url}/api/domain/all?output=unbound"
+        md5_url = f"{api_url}/api/md5?output=unbound"
         if blocklist_mode == "redirect_cname" and cname_target:
             domain_url += f"&cname={cname_target}"
+            md5_url += f"&cname={cname_target}"
         elif blocklist_mode == "redirect_ip" and redirect_ipv4:
             domain_url += f"&ipv4={redirect_ipv4}"
+            md5_url += f"&ipv4={redirect_ipv4}"
         elif blocklist_mode == "redirect_ip_dualstack" and redirect_ipv4:
             domain_url += f"&ipv4={redirect_ipv4}"
+            md5_url += f"&ipv4={redirect_ipv4}"
             if redirect_ipv6:
                 domain_url += f"&ipv6={redirect_ipv6}"
+                md5_url += f"&ipv6={redirect_ipv6}"
+
 
         validate_block = """
 # Validar configuração antes de aplicar
