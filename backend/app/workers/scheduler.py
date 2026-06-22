@@ -15,6 +15,7 @@ from app.workers.health_worker import health_check_job
 from app.workers.metrics_worker import metrics_collection_job
 from app.workers.reconciliation_worker import reconciliation_job
 from app.workers.dns_error_worker import dns_error_collection_job
+from app.workers.anablock_status_worker import anablock_status_job
 
 logger = logging.getLogger("dns-control.scheduler")
 
@@ -111,8 +112,22 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # AnaBlock status worker — tails events JSONL written by gen-anablock.sh
+    # and emits operational_events (applied/unchanged/failed/stale). 60s is
+    # cheap (idempotent file read) and reflects status freshness honestly.
+    _scheduler.add_job(
+        anablock_status_job,
+        trigger=IntervalTrigger(seconds=60),
+        id="anablock_status_worker",
+        name="AnaBlock Status & Events",
+        replace_existing=True,
+    )
+
     _scheduler.start()
-    logger.info("v2.1 Scheduler started: health(10s), metrics(30s), reconciliation(10s), dns-errors(60s) — file-lock protected")
+    logger.info(
+        "v2.1 Scheduler started: health(10s), metrics(30s), reconciliation(10s), "
+        "dns-errors(60s), anablock-status(60s) — file-lock protected"
+    )
 
 
 def stop_scheduler():
