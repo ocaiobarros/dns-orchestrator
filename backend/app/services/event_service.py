@@ -3,15 +3,31 @@ DNS Control v2 — Event Service
 Query and manage operational events.
 """
 
+from datetime import datetime
+
 from sqlalchemy.orm import Session
 from app.models.operational import OperationalEvent, OperationalAction
+
+
+def _parse_dt(s: str | None) -> datetime | None:
+    if not s:
+        return None
+    try:
+        # Accept "...Z" by normalising to +00:00 (fromisoformat is strict pre-3.11
+        # about the trailing 'Z').
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def get_events(
     db: Session,
     severity: str | None = None,
     event_type: str | None = None,
+    event_type_prefix: str | None = None,
     instance_id: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> dict:
@@ -20,8 +36,17 @@ def get_events(
         q = q.filter(OperationalEvent.severity == severity)
     if event_type:
         q = q.filter(OperationalEvent.event_type == event_type)
+    if event_type_prefix:
+        # SQLAlchemy escapes the % automatically when using startswith().
+        q = q.filter(OperationalEvent.event_type.startswith(event_type_prefix))
     if instance_id:
         q = q.filter(OperationalEvent.instance_id == instance_id)
+    dt_since = _parse_dt(since)
+    if dt_since is not None:
+        q = q.filter(OperationalEvent.created_at >= dt_since)
+    dt_until = _parse_dt(until)
+    if dt_until is not None:
+        q = q.filter(OperationalEvent.created_at <= dt_until)
 
     total = q.count()
     events = q.offset(offset).limit(limit).all()

@@ -7,10 +7,10 @@
  */
 
 import { useState } from 'react';
-import { Shield, ShieldCheck, ShieldAlert, ShieldOff, Layers, Eye, Rss, Building2, Plus, Trash2, FileCheck2, Play } from 'lucide-react';
+import { Shield, ShieldCheck, ShieldAlert, ShieldOff, Layers, Eye, Rss, Building2, Plus, Trash2, FileCheck2, Play, ScrollText, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { LoadingState } from '@/components/DataStates';
-import { api, type PolicyRuleRecord } from '@/lib/api';
+import { api, type PolicyRuleRecord, type PolicyAuditEvent } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -300,6 +300,9 @@ export default function PolicyPage() {
         </div>
       )}
 
+      {/* POL-5 — Trilha de auditoria (read-only, viewer-ok). */}
+      <PolicyAuditTrail />
+
       {/* Feed sources */}
       <div className="noc-panel">
         <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
@@ -557,3 +560,169 @@ function PolicyApplyPanel() {
     </div>
   );
 }
+
+// ===========================================================================
+// POL-5 — Trilha de auditoria de política (read-only, viewer-ok).
+// Lê /api/events/policy. Sem mutação. Destaca policy.allow_exception.rejected
+// (tentativa sobre judicial) — trilha de compliance.
+// ===========================================================================
+
+type AuditCategory = 'all' | 'mutation' | 'apply' | 'judicial_rejected';
+
+const CATEGORY_LABEL: Record<AuditCategory, string> = {
+  all: 'Todos',
+  mutation: 'Mutações',
+  apply: 'Apply',
+  judicial_rejected: 'Rejeição judicial',
+};
+
+const PAGE_SIZE = 20;
+
+function PolicyAuditTrail() {
+  const [category, setCategory] = useState<AuditCategory>('all');
+  const [page, setPage] = useState(0);
+
+  const eventsQ = useQuery({
+    queryKey: ['policy', 'audit-events', category, page],
+    queryFn: async () => {
+      const r = await api.getPolicyEvents({
+        category: category === 'all' ? undefined : category,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      });
+      if (!r.success) throw new Error(r.error!);
+      return r.data!;
+    },
+    placeholderData: (prev) => prev,
+  });
+
+  const items: PolicyAuditEvent[] = eventsQ.data?.items ?? [];
+  const total = eventsQ.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  return (
+    <div className="noc-panel">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border flex-wrap">
+        <ScrollText size={16} className="text-muted-foreground" />
+        <span className="text-sm font-medium">Trilha de auditoria de política</span>
+        <span className="text-xs text-muted-foreground">
+          (somente leitura — eventos emitidos pelo plano POL)
+        </span>
+        <div className="ml-auto flex gap-1">
+          {(Object.keys(CATEGORY_LABEL) as AuditCategory[]).map(k => (
+            <button
+              key={k}
+              onClick={() => { setCategory(k); setPage(0); }}
+              className={`px-2 py-1 text-xs rounded border ${category === k ? 'bg-primary/10 border-primary text-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}
+            >
+              {CATEGORY_LABEL[k]}
+              {k === 'judicial_rejected' && <AlertTriangle size={11} className="inline ml-1 text-amber-500" />}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {eventsQ.isLoading ? (
+        <div className="px-3 py-6 text-xs text-muted-foreground">Carregando…</div>
+      ) : items.length === 0 ? (
+        <div className="px-3 py-8 text-xs text-muted-foreground text-center">
+          Nenhum evento de política no filtro selecionado.
+        </div>
+      ) : (
+        <div className="divide-y divide-border">
+          {items.map(ev => <AuditEventRow key={ev.id} ev={ev} />)}
+        </div>
+      )}
+
+      {/* Paginação honesta */}
+      <div className="flex items-center justify-between px-3 py-2 border-t border-border text-xs text-muted-foreground">
+        <span>
+          {total === 0 ? '—' : `${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, total)} de ${total}`}
+        </span>
+        <div className="flex items-center gap-1">
+          <Button
+            size="icon" variant="ghost"
+            disabled={page === 0}
+            onClick={() => setPage(p => Math.max(0, p - 1))}
+            aria-label="Página anterior"
+          >
+            <ChevronLeft size={14} />
+          </Button>
+          <span className="font-mono">{page + 1}/{totalPages}</span>
+          <Button
+            size="icon" variant="ghost"
+            disabled={page + 1 >= totalPages}
+            onClick={() => setPage(p => p + 1)}
+            aria-label="Próxima página"
+          >
+            <ChevronRight size={14} />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AuditEventRow({ ev }: { ev: PolicyAuditEvent }) {
+  let details: Record<string, unknown> = {};
+  try {
+    details = ev.details_json ? JSON.parse(ev.details_json) : {};
+  } catch {
+    details = {};
+  }
+  const isRejection = ev.event_type === 'policy.allow_exception.rejected';
+  const actor = (details.actor_username as string | undefined) ?? (details.actor_id as string | undefined) ?? '—';
+  const target = (details.target as string | undefined)
+    ?? (details.attempted_target as string | undefined)
+    ?? (details.scope as string | undefined)
+    ?? '—';
+
+  // Compliance highlight: tentativa de allowlist sobre regra judicial.
+  if (isRejection) {
+    const judicial = (details.judicial_target as string | undefined) ?? '—';
+    return (
+      <div className="px-3 py-2 border-l-2 border-l-amber-500 bg-amber-500/5">
+        <div className="flex items-center gap-2 flex-wrap text-xs">
+          <AlertTriangle size={13} className="text-amber-500" />
+          <span className="font-medium text-amber-500">REJEIÇÃO JUDICIAL</span>
+          <code className="font-mono text-muted-foreground">{ev.event_type}</code>
+          <span className="ml-auto text-muted-foreground font-mono">
+            {new Date(ev.created_at).toLocaleString()}
+          </span>
+        </div>
+        <div className="mt-1 text-xs grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-0.5">
+          <div><span className="text-muted-foreground">Tentativa:</span> <code className="font-mono">{target}</code></div>
+          <div><span className="text-muted-foreground">Judicial:</span> <code className="font-mono">{judicial}</code></div>
+          <div><span className="text-muted-foreground">Ator:</span> <code className="font-mono">{actor}</code></div>
+        </div>
+        <div className="text-[11px] text-muted-foreground mt-0.5">{ev.message}</div>
+      </div>
+    );
+  }
+
+  const severityClass = ev.severity === 'warning'
+    ? 'border-l-amber-500'
+    : ev.severity === 'critical'
+      ? 'border-l-destructive'
+      : 'border-l-border';
+  const scope = (details.scope as string | undefined)
+    ?? (details.action as string | undefined)
+    ?? (details.layer != null ? `layer ${String(details.layer)}` : '—');
+
+  return (
+    <div className={`px-3 py-2 border-l-2 ${severityClass}`}>
+      <div className="flex items-center gap-2 flex-wrap text-xs">
+        <code className="font-mono text-foreground">{ev.event_type}</code>
+        <span className="text-muted-foreground">→ {scope}</span>
+        <code className="font-mono text-muted-foreground">{target}</code>
+        <span className="ml-auto text-muted-foreground font-mono">
+          {new Date(ev.created_at).toLocaleString()}
+        </span>
+      </div>
+      <div className="text-[11px] text-muted-foreground mt-0.5">
+        ator: <code className="font-mono">{actor}</code> — {ev.message}
+      </div>
+    </div>
+  );
+}
+

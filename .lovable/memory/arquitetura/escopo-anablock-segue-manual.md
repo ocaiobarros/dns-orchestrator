@@ -8,6 +8,14 @@ type: constraint
 
 Decisão de produto ratificada pelo PO. Definitiva e travada.
 
+## Contexto — origem e governança (Nuva)
+AnaBlock é ferramenta de **código aberto da Nuva**. Embora aberta, **não a
+modificamos**: a Nuva a mantém para entregá-la pronta, segura e com as ordens
+judiciais atualizadas periodicamente. O DNS Control apenas **consome o
+resultado pronto**, como integração opcional. Alterar o código da AnaBlock é
+inviável e fora de escopo por princípio — o **ciclo de vida do dado judicial
+é responsabilidade da Nuva**, não do DNS Control.
+
 ## Regra
 - **AnaBlock é ferramenta de TERCEIRO**, caixa-preta auto-atualizada: novas
   ordens, revogações e expirações vêm prontas da AnaBlock.

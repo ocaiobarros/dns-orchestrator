@@ -969,5 +969,145 @@ class PolicyApplyIncludesAllowFileTest(OperatorBlockCrudTest):
         )
 
 
+# ===========================================================================
+# POL-5 — read-only audit trail surface (/api/events + /api/events/policy)
+# ===========================================================================
+
+class PolicyAuditTrailReadTest(OperatorBlockCrudTest):
+    """POL-5 — events endpoint filters by policy.* and viewer can read."""
+
+    def _client_for_events(self, role: str):
+        """TestClient mounting the events router with RBAC dependency overrides."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.api.routes import events as events_route
+        from app.api.deps import get_current_user
+        import app.models.user as user_mod
+
+        app = FastAPI()
+        app.include_router(events_route.router, prefix="/api/events")
+        fake_user = user_mod.User(
+            id=f"user-{role}", username=f"{role}_user",
+            password_hash="x", role=role, is_active=True,
+        )
+        app.dependency_overrides[get_current_user] = lambda: fake_user
+        from app.core.database import get_db, SessionLocal
+        def _db():
+            s = SessionLocal()
+            try:
+                yield s
+            finally:
+                s.close()
+        app.dependency_overrides[get_db] = _db
+        return TestClient(app)
+
+    def _seed_events(self):
+        from app.models.operational import OperationalEvent
+        s = self._dbmod.SessionLocal()
+        try:
+            # Mix policy + non-policy to prove the prefix filter is honest.
+            s.add(OperationalEvent(
+                event_type="policy.rule.created", severity="info",
+                instance_id=None, message="created x", details_json="{}",
+            ))
+            s.add(OperationalEvent(
+                event_type="policy.applied", severity="info",
+                instance_id=None, message="applied", details_json="{}",
+            ))
+            s.add(OperationalEvent(
+                event_type="policy.allow_exception.rejected", severity="warning",
+                instance_id=None,
+                message="rejected court.example.com",
+                details_json=json.dumps({
+                    "actor_username": "admin_user",
+                    "attempted_target": "court.example.com",
+                    "judicial_target": "court.example.com",
+                    "reason": "judicial_precedence",
+                }, sort_keys=True),
+            ))
+            s.add(OperationalEvent(
+                event_type="health_heartbeat", severity="info",
+                instance_id=None, message="ping", details_json="{}",
+            ))
+            s.commit()
+        finally:
+            s.close()
+
+    def test_viewer_can_read_policy_events(self):
+        self._clear_rules()
+        self._seed_events()
+        client = self._client_for_events("viewer")
+        r = client.get("/api/events/policy")
+        self.assertEqual(r.status_code, 200, r.text)
+        body = r.json()
+        types = sorted({i["event_type"] for i in body["items"]})
+        self.assertEqual(types, [
+            "policy.allow_exception.rejected",
+            "policy.applied",
+            "policy.rule.created",
+        ])
+        # Non-policy event must NOT leak.
+        self.assertNotIn("health_heartbeat", types)
+
+    def test_category_filter_isolates_judicial_rejected(self):
+        self._clear_rules()
+        self._seed_events()
+        client = self._client_for_events("viewer")
+        r = client.get("/api/events/policy?category=judicial_rejected")
+        self.assertEqual(r.status_code, 200, r.text)
+        items = r.json()["items"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["event_type"], "policy.allow_exception.rejected")
+        self.assertEqual(items[0]["severity"], "warning")
+        details = json.loads(items[0]["details_json"])
+        # Compliance trail keeps actor + attempted + judicial target visible.
+        self.assertEqual(details["attempted_target"], "court.example.com")
+        self.assertEqual(details["judicial_target"], "court.example.com")
+        self.assertEqual(details["actor_username"], "admin_user")
+
+    def test_invalid_category_returns_400(self):
+        self._clear_rules()
+        client = self._client_for_events("viewer")
+        r = client.get("/api/events/policy?category=bogus")
+        self.assertEqual(r.status_code, 400)
+
+    def test_pagination_with_limit_and_offset(self):
+        self._clear_rules()
+        self._seed_events()
+        client = self._client_for_events("viewer")
+        r1 = client.get("/api/events/policy?limit=2&offset=0")
+        r2 = client.get("/api/events/policy?limit=2&offset=2")
+        self.assertEqual(r1.status_code, 200)
+        self.assertEqual(r2.status_code, 200)
+        b1, b2 = r1.json(), r2.json()
+        self.assertEqual(b1["total"], 3)
+        self.assertEqual(b2["total"], 3)
+        self.assertEqual(len(b1["items"]), 2)
+        self.assertEqual(len(b2["items"]), 1)
+        # No id appears on both pages.
+        ids1 = {i["id"] for i in b1["items"]}
+        ids2 = {i["id"] for i in b2["items"]}
+        self.assertEqual(ids1 & ids2, set())
+
+    def test_empty_state_when_no_events_match(self):
+        self._clear_rules()
+        client = self._client_for_events("viewer")
+        r = client.get("/api/events/policy")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["total"], 0)
+        self.assertEqual(body["items"], [])
+
+    def test_event_type_prefix_on_generic_endpoint(self):
+        self._clear_rules()
+        self._seed_events()
+        client = self._client_for_events("viewer")
+        r = client.get("/api/events?event_type_prefix=policy.")
+        self.assertEqual(r.status_code, 200)
+        types = {i["event_type"] for i in r.json()["items"]}
+        self.assertTrue(all(t.startswith("policy.") for t in types))
+
+
 if __name__ == "__main__":
     unittest.main()
+
