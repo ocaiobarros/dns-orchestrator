@@ -64,7 +64,7 @@ export default function TopologyMini({
         {backends.slice(0, 3).map((b) => {
           const ok = b.healthy !== false;
           return (
-            <div key={b.name} className="px-2 py-1 rounded-md bg-card border min-w-0 w-full max-w-[clamp(110px,12vw,180px)]"
+            <div key={b.name} className="px-2 py-1 rounded-md bg-card border min-w-0 w-full max-w-[clamp(96px,11vw,160px)]"
               style={{
                 borderColor: ok ? 'hsl(var(--primary) / 0.3)' : 'hsl(var(--destructive) / 0.4)',
                 boxShadow: ok ? '0 0 10px -5px hsl(var(--primary) / 0.4)' : '0 0 10px -5px hsl(var(--destructive) / 0.4)',
