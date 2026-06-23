@@ -106,9 +106,9 @@ describe('Frontend/Backend Parity Contract', () => {
     expect(content).not.toMatch(/^\s*root-hints:\s*"/m);
   });
 
-  it('hardening defaults: harden-dnssec=yes, caps-for-id=no', () => {
+  it('hardening defaults in Simple mode: harden-dnssec=no (no local validator), caps-for-id=no', () => {
     const content = generateUnboundConf(config, 0);
-    expect(content).toContain('harden-dnssec-stripped: yes');
+    expect(content).toContain('harden-dnssec-stripped: no');
     expect(content).toContain('use-caps-for-id: no');
   });
 
