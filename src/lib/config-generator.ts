@@ -100,7 +100,8 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
   // ═══ BLOCK 1: server: ═══
   let serverBlock = `server:
     verbosity: 1
-    statistics-interval: 20
+    statistics-interval: 0
+    statistics-cumulative: yes
     extended-statistics: yes
     num-threads: ${threads}
 

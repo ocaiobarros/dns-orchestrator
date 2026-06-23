@@ -2,7 +2,7 @@
 DNS Control — Unbound Configuration Generator
 Generates per-instance unbound configs at /etc/unbound/{name}.conf
 Matches vdns-02 runtime exactly:
-- verbosity: 1, statistics-interval: 20, extended-statistics: yes
+- verbosity: 1, statistics-interval: 0, statistics-cumulative: yes, extended-statistics: yes
 - outgoing-range: 8192, outgoing-port-avoid/permit
 - so-rcvbuf/sndbuf: 8m, so-reuseport: yes
 - prefetch: yes, prefetch-key: yes
@@ -233,7 +233,12 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
         # ═══ BLOCK 1: server: ═══
         config = f"""server:
     verbosity: 1
-    statistics-interval: 20
+    # Telemetria cumulativa: contadores monotônicos desde o start, lidos via
+    # stats_noreset pelo collector (delta-based QPS). statistics-interval:0
+    # desliga o dump/reset periódico no log; statistics-cumulative:yes garante
+    # que total.num.queries/cachehits/cachemiss NÃO sejam zerados pelo daemon.
+    statistics-interval: 0
+    statistics-cumulative: yes
     extended-statistics: yes
     num-threads: {threads}
 
