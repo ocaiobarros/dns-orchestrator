@@ -226,8 +226,11 @@ function ServiceCard({
       {!isNft ? (
         <div className="space-y-1.5 py-2 border-y border-border/40">
           <MetricRow
-            label="CPU" value={`${cpu.toFixed(0)}%`} suffix={cpuTime || ''}
-            pct={cpu} sparkSeed={seed + '-cpu'}
+            label="CPU"
+            value={Number.isFinite(cpu) ? `${(cpu as number).toFixed(0)}%` : (cpuTime || svc.cpu || '—')}
+            suffix={Number.isFinite(cpu) ? (cpuTime || '') : 'tempo'}
+            pct={Number.isFinite(cpu) ? (cpu as number) : 0}
+            sparkSeed={seed + '-cpu'}
           />
           <MetricRow
             label="Memória" value={formatMemory(svc)} suffix={`${memPct.toFixed(0)}%`}
