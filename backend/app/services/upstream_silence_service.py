@@ -248,13 +248,20 @@ class UpstreamSilenceDetector:
 
     # ---------- lifecycle ----------
     def _default_cmd(self) -> list[str]:
+        # conntrack -E (netlink event stream) requires CAP_NET_ADMIN.
+        # Service runs as unprivileged user (dns-control); invoke via sudo -n
+        # with the absolute path that matches the sudoers allowlist entry.
+        # The exact argv (and flag order) must match the sudoers line —
+        # /etc/sudoers.d/dns-control-diagnostics.
         return [
-            "conntrack", "-E",
+            "sudo", "-n",
+            "/usr/sbin/conntrack", "-E",
             "-p", "udp",
             "--dport", "53",
             "--event-mask", "DESTROY",
             "-o", "extended",
         ]
+
 
     def start(self) -> Dict[str, object]:
         """Enable the detector. Idempotent."""
