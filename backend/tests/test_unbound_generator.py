@@ -162,11 +162,14 @@ if __name__ == "__main__":
 
 
 class UnboundDnssecValidationTest(unittest.TestCase):
-    """DISC-04 follow-up: DNSSEC validator must be loaded and trust-anchored."""
+    """DNSSEC posture is mode-dependent:
+    - Simple (forward-only): NO local validator (delegated to upstream).
+    - Iterative (interception): validator + auto-trust-anchor present.
+    """
 
-    def _payload(self):
+    def _payload(self, mode="simple"):
         return {
-            "operationMode": "simple",
+            "operationMode": mode,
             "ipv4Address": "172.250.40.11/23",
             "enableIpv6": False,
             "threads": 4,
@@ -180,26 +183,31 @@ class UnboundDnssecValidationTest(unittest.TestCase):
                 },
             ],
             "_wizardConfig": {
-                "operationMode": "simple",
+                "operationMode": mode,
                 "ipv4Address": "172.250.40.11/23",
                 "threads": 4,
                 "securityProfile": "isp-hardened",
             },
         }
 
-    def test_module_config_loads_validator_before_iterator(self):
-        files = generate_unbound_configs(self._payload())
+    def test_simple_mode_emits_iterator_only(self):
+        files = generate_unbound_configs(self._payload("simple"))
+        content = next(f["content"] for f in files if f["path"] == "/etc/unbound/unbound01.conf")
+        self.assertIn('module-config: "iterator"', content)
+        self.assertNotIn('module-config: "validator iterator"', content)
+
+    def test_simple_mode_does_not_emit_auto_trust_anchor(self):
+        files = generate_unbound_configs(self._payload("simple"))
+        content = next(f["content"] for f in files if f["path"] == "/etc/unbound/unbound01.conf")
+        self.assertNotIn("auto-trust-anchor-file", content)
+        self.assertNotIn("val-clean-additional", content)
+        self.assertNotIn("val-permissive-mode: yes", content)
+
+    def test_iterative_mode_loads_validator_and_trust_anchor(self):
+        files = generate_unbound_configs(self._payload("interception"))
         content = next(f["content"] for f in files if f["path"] == "/etc/unbound/unbound01.conf")
         self.assertIn('module-config: "validator iterator"', content)
-        self.assertNotIn('module-config: "iterator"\n', content)
-
-    def test_each_instance_consumes_root_trust_anchor_rfc5011(self):
-        files = generate_unbound_configs(self._payload())
-        content = next(f["content"] for f in files if f["path"] == "/etc/unbound/unbound01.conf")
         self.assertIn('auto-trust-anchor-file: "/var/lib/unbound/root.key"', content)
         self.assertIn("val-clean-additional: yes", content)
-
-    def test_validation_is_real_not_permissive(self):
-        files = generate_unbound_configs(self._payload())
-        content = next(f["content"] for f in files if f["path"] == "/etc/unbound/unbound01.conf")
         self.assertNotIn("val-permissive-mode: yes", content)
+

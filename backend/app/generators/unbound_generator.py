@@ -335,7 +335,18 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     hide-identity: yes
     hide-version: yes
     harden-glue: yes
-    harden-dnssec-stripped: {"yes" if harden_dnssec else "no"}
+"""
+        if is_simple:
+            # Modo Simples (forward-only): validação DNSSEC delegada ao upstream
+            # (validator local é incompatível com forward-only — não prima a raiz).
+            config += f"""    harden-dnssec-stripped: no
+    use-caps-for-id: {"yes" if use_caps_for_id else "no"}
+    do-not-query-address: 127.0.0.1/8
+    do-not-query-localhost: yes
+    module-config: "iterator"
+"""
+        else:
+            config += f"""    harden-dnssec-stripped: {"yes" if harden_dnssec else "no"}
     use-caps-for-id: {"yes" if use_caps_for_id else "no"}
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
@@ -343,6 +354,8 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     auto-trust-anchor-file: "/var/lib/unbound/root.key"
     val-clean-additional: yes
     val-log-level: 1
+"""
+        config += f"""
 
 {private_domains}    local-zone: "localhost." static
     local-data: "localhost. 10800 IN NS localhost."

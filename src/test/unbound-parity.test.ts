@@ -106,9 +106,9 @@ describe('Frontend/Backend Parity Contract', () => {
     expect(content).not.toMatch(/^\s*root-hints:\s*"/m);
   });
 
-  it('hardening defaults: harden-dnssec=yes, caps-for-id=no', () => {
+  it('hardening defaults in Simple mode: harden-dnssec=no (no local validator), caps-for-id=no', () => {
     const content = generateUnboundConf(config, 0);
-    expect(content).toContain('harden-dnssec-stripped: yes');
+    expect(content).toContain('harden-dnssec-stripped: no');
     expect(content).toContain('use-caps-for-id: no');
   });
 
@@ -158,17 +158,25 @@ describe('Frontend/Backend Parity Contract', () => {
     expect(c1).toContain('control-interface: 127.0.0.12');
   });
 
-  it('module-config enables DNSSEC validator before iterator', () => {
+  it('Simple mode emits iterator-only module-config (no local DNSSEC validator)', () => {
     const content = generateUnboundConf(config, 0);
-    expect(content).toContain('module-config: "validator iterator"');
-    expect(content).not.toMatch(/module-config:\s*"iterator"\s*$/m);
+    expect(content).toContain('module-config: "iterator"');
+    expect(content).not.toContain('module-config: "validator iterator"');
   });
 
-  it('each per-instance config consumes the root trust anchor (RFC 5011)', () => {
+  it('Simple mode does NOT emit auto-trust-anchor (DNSSEC delegated to upstream)', () => {
     const content = generateUnboundConf(config, 0);
+    expect(content).not.toContain('auto-trust-anchor-file');
+    expect(content).not.toContain('val-clean-additional');
+    expect(content).not.toContain('val-permissive-mode: yes');
+  });
+
+  it('Interception (iterative) mode emits validator + auto-trust-anchor', () => {
+    const iterativeCfg = makePayload({ operationMode: 'interception' });
+    const content = generateUnboundConf(iterativeCfg, 0);
+    expect(content).toContain('module-config: "validator iterator"');
     expect(content).toContain('auto-trust-anchor-file: "/var/lib/unbound/root.key"');
     expect(content).toContain('val-clean-additional: yes');
-    // Real validation — must NOT enable permissive mode
     expect(content).not.toContain('val-permissive-mode: yes');
   });
 
