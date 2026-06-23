@@ -61,17 +61,17 @@ line vty
 !
 """
     else:
+        # ── Modo Interceptação (OSPF ativo) ─────────────────────────────
+        # Gerado byte-a-byte fiel ao gabarito (servidor homologado, vtysh
+        # show running-config). Não adicionar diretivas extras: o produto
+        # reproduz o layout manual aprovado.
         router_id = ospf.get("routerId", loopback.get("ip", "10.0.0.1"))
         area = ospf.get("area", "0.0.0.0")
         interfaces = ospf.get("interfaces", [])
-        redistribute = ospf.get("redistribute", []) or ["connected"]
         network_cidr = env.get("networkCidr", "10.0.0.0/24")
-        network_type = ospf.get("networkType", "point-to-point") or "point-to-point"
-        hello = ospf.get("helloInterval", 10)
-        dead = ospf.get("deadInterval", 40)
         default_cost = ospf.get("cost", 1) or 1
+        metric = ospf.get("redistributeMetric", 10) or 10
 
-        # Host main IPv4 (sem máscara) — usado como next-hop do route-map
         host_ipv4_raw = str(env.get("ipv4Address") or payload.get("ipv4Address") or "").strip()
         host_ipv4 = host_ipv4_raw.split("/")[0].strip() if host_ipv4_raw else ""
 
@@ -79,81 +79,74 @@ line vty
         enable_ipv6 = bool(payload.get("enableIpv6") or wizard_cfg.get("enableIpv6") or env.get("enableIpv6"))
         main_iface = env.get("mainInterface") or wizard_cfg.get("mainInterface") or ""
 
-        # Garantir que a interface principal apareça no bloco de interfaces
+        # Conjunto de interfaces OSPF (mainInterface garantida)
         normalized_ifaces: list[dict] = []
         seen_names: set[str] = set()
         for iface in interfaces:
-            if isinstance(iface, dict):
+            if isinstance(iface, dict) and iface.get("name"):
                 normalized_ifaces.append(iface)
-                if iface.get("name"):
-                    seen_names.add(iface["name"])
+                seen_names.add(iface["name"])
             elif isinstance(iface, str) and iface:
                 normalized_ifaces.append({"name": iface})
                 seen_names.add(iface)
         if main_iface and main_iface not in seen_names:
             normalized_ifaces.insert(0, {"name": main_iface})
 
-        config = f"""! DNS Control — FRR configuration
-! Generated configuration — do not edit manually
-!
-frr version 10.2
-frr defaults traditional
-hostname {hostname}
-log syslog informational
-service integrated-vtysh-config
-!
-"""
+        lines: list[str] = [
+            "frr version 8.4.4",
+            "frr defaults traditional",
+            f"hostname {hostname}",
+            "service integrated-vtysh-config",
+            "!",
+            "interface lo0",
+            "exit",
+            "!",
+        ]
 
         for iface in normalized_ifaces:
             iface_name = iface.get("name", "")
             if not iface_name:
                 continue
-            passive = bool(iface.get("passive", False))
             cost = iface.get("cost", default_cost)
-            config += f"interface {iface_name}\n"
-            config += f" ip ospf cost {cost}\n"
-            config += f" ip ospf network {network_type}\n"
-            config += f" ip ospf hello-interval {hello}\n"
-            config += f" ip ospf dead-interval {dead}\n"
-            if passive:
-                config += " ip ospf passive\n"
+            lines.append(f"interface {iface_name}")
+            lines.append(f" ip ospf cost {cost}")
+            lines.append(" ip ospf network point-to-point")
             if enable_ipv6:
-                config += f" ipv6 ospf6 area {area}\n"
-                config += f" ipv6 ospf6 cost {cost}\n"
-                config += f" ipv6 ospf6 network {network_type}\n"
-            config += "!\n"
+                lines.append(f" ipv6 ospf6 area {area}")
+                lines.append(f" ipv6 ospf6 cost {cost}")
+                lines.append(" ipv6 ospf6 network point-to-point")
+            lines.append("exit")
+            lines.append("!")
 
-        if loopback.get("ip"):
-            config += "interface lo\n ip ospf passive\n!\n"
+        lines += [
+            "router ospf",
+            f" ospf router-id {router_id}",
+            " redistribute connected",
+            f" network {network_cidr} area {area}",
+            "exit",
+            "!",
+        ]
 
-        config += f"router ospf\n ospf router-id {router_id}\n"
-        for r in redistribute:
-            config += f" redistribute {r}\n"
-        config += f" network {network_cidr} area {area}\n"
-        if loopback.get("ip"):
-            config += f" network {loopback['ip']}/32 area {area}\n"
-        if loopback.get("vip"):
-            config += f" network {loopback['vip']}/32 area {area}\n"
-        config += " passive-interface lo\n log-adjacency-changes\n!\n"
-
-        # ── router ospf6 (dual-stack) ──
-        if enable_ipv6:
-            config += f"router ospf6\n ospf6 router-id {router_id}\n"
-            for r in redistribute:
-                config += f" redistribute {r}\n"
-            config += "!\n"
-
-        # ── route-map OSPF-IMPORT-CONNECTED-IPV4 ──
-        # Ajusta next-hop e métrica das rotas redistribute connected (em
-        # especial dos VIPs interceptados em lo0). Reproduz o gabarito.
         if host_ipv4:
-            metric = ospf.get("redistributeMetric", 10) or 10
-            config += "route-map OSPF-IMPORT-CONNECTED-IPV4 permit 65535\n"
-            config += f" set ip next-hop {host_ipv4}\n"
-            config += f" set metric {metric}\n"
-            config += " set metric-type type-1\n!\n"
+            lines += [
+                "route-map OSPF-IMPORT-CONNECTED-IPV4 permit 65535",
+                f" set ip next-hop {host_ipv4}",
+                f" set metric {metric}",
+                " set metric-type type-1",
+                "exit",
+                "!",
+            ]
 
-        config += "line vty\n!\n"
+        lines += [
+            "segment-routing",
+            " traffic-eng",
+            " exit",
+            "exit",
+            "!",
+            "",
+        ]
+
+        config = "\n".join(lines)
 
     files = [{
         "path": "/etc/frr/frr.conf",
@@ -162,10 +155,11 @@ service integrated-vtysh-config
         "owner": "frr:frr",
     }]
 
-    # Daemons: liga ospf6d quando dual-stack + OSPF ativo
+    # Daemons: ospf6d ligado em dual-stack (gabarito) — as diretivas ipv6
+    # ospf6 na interface exigem ospf6d ativo mesmo sem bloco router ospf6.
     wizard_cfg = payload.get("_wizardConfig", {}) or {}
-    enable_ipv6 = bool(payload.get("enableIpv6") or wizard_cfg.get("enableIpv6") or payload.get("environment", {}).get("enableIpv6"))
-    ospf6_active = ospf_active and enable_ipv6
+    enable_ipv6_d = bool(payload.get("enableIpv6") or wizard_cfg.get("enableIpv6") or payload.get("environment", {}).get("enableIpv6"))
+    ospf6_active = ospf_active and enable_ipv6_d
 
     daemons = f"""# DNS Control — FRR daemons
 # Layout homologado: este arquivo SEMPRE existe no modo Interceptação.
@@ -204,4 +198,5 @@ staticd_options="-A 127.0.0.1"
     })
 
     return files
+
 
