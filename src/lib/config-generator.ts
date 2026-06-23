@@ -1965,14 +1965,9 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
         '    control-interface: /run/unbound.ctl\n' +
         '    control-use-cert: "no"\n',
     });
-    // DNSSEC trust anchor drop-in (presente no host homologado).
-    files.push({
-      path: '/etc/unbound/unbound.conf.d/root-auto-trust-anchor-file.conf',
-      content:
-        '# DNS Control — DNSSEC trust anchor drop-in (layout homologado)\n' +
-        'server:\n' +
-        '    auto-trust-anchor-file: "/var/lib/unbound/root.key"\n',
-    });
+    // Drop-in DNSSEC trust anchor removido: modo Interceptação opera em
+    // forward-first (paridade com gabarito), iterator puro, sem validator
+    // local — auto-trust-anchor-file é inerte e fora de paridade.
   }
 
 

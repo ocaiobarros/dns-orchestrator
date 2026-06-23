@@ -300,14 +300,9 @@ def _generate_unbound_dropins(payload: dict, instances: list) -> list[dict]:
         ),
     ))
 
-    files.append(_file(
-        "/etc/unbound/unbound.conf.d/root-auto-trust-anchor-file.conf",
-        OWNED_HEADER + (
-            "server:\n"
-            "    # DNSSEC root trust anchor — refreshed by the unbound-anchor utility.\n"
-            '    auto-trust-anchor-file: "/var/lib/unbound/root.key"\n'
-        ),
-    ))
+    # Drop-in auto-trust-anchor removido: modos forward-first (Simples e
+    # Interceptação) usam iterator puro (sem validator local) por paridade
+    # com o gabarito; o anchor file é inerte sem o módulo validator.
 
     return files
 
