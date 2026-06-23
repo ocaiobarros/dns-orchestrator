@@ -256,6 +256,7 @@ apt-get install -y -qq \
     openssl \
     nginx \
     nodejs npm \
+    conntrack \
     2>>"${INSTALL_LOG}" && ok "System packages installed" || { fail "Package installation had errors (see ${INSTALL_LOG})"; WARNINGS=$((WARNINGS+1)); }
 
 # ═══ Step 2: Service user ═══
