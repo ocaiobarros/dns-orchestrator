@@ -30,13 +30,13 @@ function memoryMb(svc: any): number {
   return 0;
 }
 
+// Backend (diagnostics_service.py:531-535) populates svc.cpu with systemd's
+// "CPU:" field, which is CPU TIME (e.g. "1.234s", "426ms"), NOT % usage.
+// Only return a numeric % when the backend explicitly provides svc.cpuPercent;
+// otherwise return NaN so callers can opt out of fake % displays/penalties.
 function cpuPct(svc: any): number {
-  if (typeof svc.cpuPercent === 'number') return svc.cpuPercent;
-  if (typeof svc.cpu === 'string') {
-    const m = svc.cpu.match(/([\d.]+)/);
-    if (m) return parseFloat(m[1]);
-  }
-  return 0;
+  if (typeof svc.cpuPercent === 'number' && Number.isFinite(svc.cpuPercent)) return svc.cpuPercent;
+  return NaN;
 }
 
 function getServiceStatus(svc: any): string {
