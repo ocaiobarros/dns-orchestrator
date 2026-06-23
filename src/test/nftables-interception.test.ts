@@ -95,13 +95,13 @@ describe('Golden File — 1 service VIP, 2 instances', () => {
   it('generates PREROUTING hook', () => {
     const f = fileByPath(files, '/etc/network/nftables.d/0051-hook-ipv4-prerouting.nft');
     expect(f).toBeDefined();
-    expect(f!.content).toContain('type nat hook prerouting priority dstnat');
+    expect(f!.content).toContain('type nat hook prerouting priority -100');
   });
 
   it('generates OUTPUT hook (local interception)', () => {
     const f = fileByPath(files, '/etc/network/nftables.d/0053-hook-ipv4-output.nft');
     expect(f).toBeDefined();
-    expect(f!.content).toContain('type nat hook output priority dstnat');
+    expect(f!.content).toContain('type nat hook output priority -100');
   });
 
   it('defines DNS_ANYCAST_IPV4 with service VIP', () => {
@@ -600,8 +600,8 @@ describe('Structural validation — nftables interception', () => {
   it('hook priorities are consistent', () => {
     const preHook = fileByPath(files, '/etc/network/nftables.d/0051-hook-ipv4-prerouting.nft');
     const outHook = fileByPath(files, '/etc/network/nftables.d/0053-hook-ipv4-output.nft');
-    expect(preHook!.content).toContain('priority dstnat');
-    expect(outHook!.content).toContain('priority dstnat');
+    expect(preHook!.content).toContain('priority -100');
+    expect(outHook!.content).toContain('priority -100');
   });
 
   it('VIP count matches backends × protos in DNAT action rules', () => {
