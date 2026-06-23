@@ -115,7 +115,7 @@ describe('Unbound blocklist conditional includes', () => {
       
       expect(paths).toContain('/etc/unbound/unbound-block-domains.conf');
       expect(paths).toContain('/etc/unbound/anablock.conf');
-      expect(paths).toContain('/opt/dns-control/scripts/anablock-sync.sh');
+      expect(paths).toContain('/etc/unbound/anablock-sync.sh');
       expect(paths).toContain('/etc/systemd/system/anablock-sync.service');
       expect(paths).toContain('/etc/systemd/system/anablock-sync.timer');
     });
