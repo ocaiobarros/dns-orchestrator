@@ -226,6 +226,38 @@ def _generate_modular(
         _file("/etc/network/nftables.d/0052-hook-ipv6-prerouting.nft",
               "table ip6 nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n")
 
+def _generate_modular(
+    vip_ipv4s: list[str],
+    vip_ipv6s: list[str],
+    backends: list[dict],
+    enable_ipv6: bool,
+    sticky_timeout_min: int,
+    host_ipv4: str = "",
+    egress_primary_ipv4: str = "",
+) -> list[dict]:
+    """Generate /etc/network/nftables.d/*.nft modular snippets using block syntax.
+    All snippets wrapped in table ip nat { ... } for Debian 13 compatibility.
+    """
+    files: list[dict] = []
+
+    def _file(path: str, content: str):
+        files.append({"path": path, "content": content, "permissions": "0644", "owner": "root:root"})
+
+    # ── Master nftables.conf ──
+    _file("/etc/nftables.conf", "#!/usr/sbin/nft -f\n\nflush ruleset\ninclude \"/etc/network/nftables.d/*.nft\"\n")
+
+    # ── Tables (empty, additive) ──
+    _file("/etc/network/nftables.d/0002-table-ipv4-nat.nft", "table ip nat {\n}\n")
+    if enable_ipv6:
+        _file("/etc/network/nftables.d/0003-table-ipv6-nat.nft", "table ip6 nat {\n}\n")
+
+    # ── PREROUTING hooks (block syntax) ──
+    _file("/etc/network/nftables.d/0051-hook-ipv4-prerouting.nft",
+          "table ip nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n")
+    if enable_ipv6:
+        _file("/etc/network/nftables.d/0052-hook-ipv6-prerouting.nft",
+              "table ip6 nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n")
+
     # ── OUTPUT hook (local interception — captures DNS from host itself) ──
     _file("/etc/network/nftables.d/0053-hook-ipv4-output.nft",
           "table ip nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n")
@@ -233,11 +265,30 @@ def _generate_modular(
         _file("/etc/network/nftables.d/0054-hook-ipv6-output.nft",
               "table ip6 nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n")
 
+    # ── POSTROUTING hooks (srcnat) — empty chain, additive ──
+    # Reproduz layout do servidor homologado: chain POSTROUTING existe em ambas
+    # as famílias; a regra SNAT real é emitida em 8001-... apenas em IPv4 e
+    # somente quando host_ipv4 + egress_primary_ipv4 estão presentes.
+    _file("/etc/network/nftables.d/0055-hook-ipv4-postrouting.nft",
+          "table ip nat {\n    chain POSTROUTING {\n        type nat hook postrouting priority srcnat; policy accept;\n    }\n}\n")
+    if enable_ipv6:
+        _file("/etc/network/nftables.d/0056-hook-ipv6-postrouting.nft",
+              "table ip6 nat {\n    chain POSTROUTING {\n        type nat hook postrouting priority srcnat; policy accept;\n    }\n}\n")
+
+    # ── SNAT local IPv4: tráfego self-originated do host sai com o egress primário ──
+    # Degrada com segurança: sem host_ipv4 ou egress_primary_ipv4, não emite regra.
+    if host_ipv4 and egress_primary_ipv4:
+        _file("/etc/network/nftables.d/8001-nat-rule-snat-local-ipv4.nft",
+              "table ip nat {\n    chain POSTROUTING {\n"
+              f"        ip saddr {host_ipv4} counter snat to {egress_primary_ipv4}\n"
+              "    }\n}\n")
+
     # ── VIP definitions ──
     if vip_ipv4s:
         vip_lines = ", ".join(vip_ipv4s)
         _file("/etc/network/nftables.d/5100-nat-define-anyaddr-ipv4.nft",
               f"define DNS_ANYCAST_IPV4 = {{ {vip_lines} }}\n")
+
 
     if enable_ipv6 and vip_ipv6s:
         vip6_lines = ", ".join(vip_ipv6s)
