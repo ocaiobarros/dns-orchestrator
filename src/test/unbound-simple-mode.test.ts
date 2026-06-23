@@ -208,10 +208,10 @@ describe('Unbound Simple Mode — num-queries-per-thread', () => {
 });
 
 describe('Unbound Simple Mode — Optional Hardening', () => {
-  it('defaults hardenDnssecStripped=yes, useCapsForId=no', () => {
+  it('Simple mode forces harden-dnssec-stripped=no (no local validator), useCapsForId=no by default', () => {
     const config = makeSimpleConfig();
     const content = generateUnboundConf(config, 0);
-    expect(content).toContain('harden-dnssec-stripped: yes');
+    expect(content).toContain('harden-dnssec-stripped: no');
     expect(content).toContain('use-caps-for-id: no');
   });
 
