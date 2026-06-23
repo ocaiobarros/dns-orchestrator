@@ -92,6 +92,7 @@ PACKAGES=(
     sudo
     openssl
     psmisc
+    conntrack
 )
 
 apt-get install -y -qq "${PACKAGES[@]}" >> "${INSTALL_LOG}" 2>&1 \
