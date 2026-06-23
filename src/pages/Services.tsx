@@ -66,14 +66,23 @@ function categoryLabel(c: string): string {
 }
 
 // Health % derivado de sinais reais (status + cpu/mem). Sem mock — apenas score determinístico.
+// Health honesto baseado APENAS em sinais reais que o backend fornece:
+// status (active/running), presença de PID e memória dentro do esperado.
+// Não penalizamos por CPU porque svc.cpu é CPU-TIME (não %); penalizar
+// gerava 75% fixo em serviços 100% saudáveis. Se um dia o backend expor
+// cpuPercent real, ele é incorporado de forma honesta.
 function healthScore(svc: any): number {
   const st = getServiceStatus(svc);
   if (st !== 'running') return 0;
-  const cpu = cpuPct(svc);
-  const mem = memoryMb(svc);
   let score = 100;
-  if (cpu > 80) score -= 25; else if (cpu > 60) score -= 12; else if (cpu > 40) score -= 5;
+  // PID ausente em serviço "running" é sinal fraco — penaliza levemente.
+  if (svc.pid == null) score -= 5;
+  const mem = memoryMb(svc);
   if (mem > 2048) score -= 10; else if (mem > 1024) score -= 4;
+  const cpu = cpuPct(svc);
+  if (Number.isFinite(cpu)) {
+    if (cpu > 80) score -= 25; else if (cpu > 60) score -= 12; else if (cpu > 40) score -= 5;
+  }
   return Math.max(60, Math.min(100, Math.round(score)));
 }
 
