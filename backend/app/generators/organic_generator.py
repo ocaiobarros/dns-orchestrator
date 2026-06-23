@@ -8,7 +8,6 @@ Emits config files in the native OS layout used by the production server:
   /etc/network/nftables.d/post-up.sh              [owned, header banner]
   /etc/network/nftables.d/*.nft                   [owned, header banner]
   /etc/unbound/unbound.conf.d/remote-control.conf [owned, header banner]
-  /etc/unbound/unbound.conf.d/root-auto-trust-anchor-file.conf [owned]
   /etc/unbound/gen-block-domains.sh               [owned]
 
 It deliberately does NOT touch the following operator-managed assets:
