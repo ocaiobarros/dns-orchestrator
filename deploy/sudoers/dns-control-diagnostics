@@ -100,4 +100,5 @@ dns-control ALL=(root) NOPASSWD: \
     /usr/sbin/ip link del lo0, \
     /usr/sbin/ip link show lo0, \
     /usr/bin/bash -n *, \
+    /usr/sbin/conntrack -E -p udp --dport 53 --event-mask DESTROY -o extended, \
     /etc/network/post-up.d/dns-control
