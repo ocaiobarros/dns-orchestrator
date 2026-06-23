@@ -196,35 +196,6 @@ def generate_nftables_config(payload: dict[str, Any], validation_mode: bool = Fa
     return files
 
 
-def _generate_modular(
-    vip_ipv4s: list[str],
-    vip_ipv6s: list[str],
-    backends: list[dict],
-    enable_ipv6: bool,
-    sticky_timeout_min: int,
-) -> list[dict]:
-    """Generate /etc/network/nftables.d/*.nft modular snippets using block syntax.
-    All snippets wrapped in table ip nat { ... } for Debian 13 compatibility.
-    """
-    files: list[dict] = []
-
-    def _file(path: str, content: str):
-        files.append({"path": path, "content": content, "permissions": "0644", "owner": "root:root"})
-
-    # ── Master nftables.conf ──
-    _file("/etc/nftables.conf", "#!/usr/sbin/nft -f\n\nflush ruleset\ninclude \"/etc/network/nftables.d/*.nft\"\n")
-
-    # ── Tables (empty, additive) ──
-    _file("/etc/network/nftables.d/0002-table-ipv4-nat.nft", "table ip nat {\n}\n")
-    if enable_ipv6:
-        _file("/etc/network/nftables.d/0003-table-ipv6-nat.nft", "table ip6 nat {\n}\n")
-
-    # ── PREROUTING hooks (block syntax) ──
-    _file("/etc/network/nftables.d/0051-hook-ipv4-prerouting.nft",
-          "table ip nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n")
-    if enable_ipv6:
-        _file("/etc/network/nftables.d/0052-hook-ipv6-prerouting.nft",
-              "table ip6 nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n")
 
 def _generate_modular(
     vip_ipv4s: list[str],
