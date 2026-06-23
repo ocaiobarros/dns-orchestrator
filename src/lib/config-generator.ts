@@ -457,7 +457,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/opt/dns-control/scripts/anablock-sync.sh
+ExecStart=/etc/unbound/anablock-sync.sh
 TimeoutSec=120
 User=root
 
@@ -1794,7 +1794,7 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
   // os unboundXX.conf incluem esse arquivo, então ele precisa existir mesmo
   // com AnaBlock desabilitado (placeholder seguro = comentários inofensivos).
   if (config.enableBlocklist) {
-    files.push({ path: '/opt/dns-control/scripts/anablock-sync.sh', content: generateAnablockSyncScript(config) });
+    files.push({ path: '/etc/unbound/anablock-sync.sh', content: generateAnablockSyncScript(config) });
     files.push({ path: '/etc/systemd/system/anablock-sync.service', content: generateAnablockService() });
     if (config.blocklistAutoSync) {
       files.push({ path: '/etc/systemd/system/anablock-sync.timer', content: generateAnablockTimer(config) });
