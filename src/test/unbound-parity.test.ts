@@ -171,12 +171,13 @@ describe('Frontend/Backend Parity Contract', () => {
     expect(content).not.toContain('val-permissive-mode: yes');
   });
 
-  it('Interception (iterative) mode emits validator + auto-trust-anchor', () => {
+  it('Interception (forward-first) mode emits iterator only (gabarito parity)', () => {
     const iterativeCfg = makePayload({ operationMode: 'interception' });
     const content = generateUnboundConf(iterativeCfg, 0);
-    expect(content).toContain('module-config: "validator iterator"');
-    expect(content).toContain('auto-trust-anchor-file: "/var/lib/unbound/root.key"');
-    expect(content).toContain('val-clean-additional: yes');
+    expect(content).toContain('module-config: "iterator"');
+    expect(content).not.toContain('validator iterator');
+    expect(content).not.toContain('auto-trust-anchor-file');
+    expect(content).not.toContain('val-clean-additional');
     expect(content).not.toContain('val-permissive-mode: yes');
   });
 

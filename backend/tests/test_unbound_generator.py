@@ -203,11 +203,11 @@ class UnboundDnssecValidationTest(unittest.TestCase):
         self.assertNotIn("val-clean-additional", content)
         self.assertNotIn("val-permissive-mode: yes", content)
 
-    def test_iterative_mode_loads_validator_and_trust_anchor(self):
+    def test_iterative_mode_uses_iterator_only_gabarito_parity(self):
         files = generate_unbound_configs(self._payload("interception"))
         content = next(f["content"] for f in files if f["path"] == "/etc/unbound/unbound01.conf")
-        self.assertIn('module-config: "validator iterator"', content)
-        self.assertIn('auto-trust-anchor-file: "/var/lib/unbound/root.key"', content)
-        self.assertIn("val-clean-additional: yes", content)
-        self.assertNotIn("val-permissive-mode: yes", content)
+        self.assertIn('module-config: "iterator"', content)
+        self.assertNotIn('validator iterator', content)
+        self.assertNotIn('auto-trust-anchor-file', content)
+        self.assertNotIn('val-clean-additional', content)
 

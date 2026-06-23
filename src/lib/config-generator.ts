@@ -166,22 +166,14 @@ ${rootHintsLine}
     hide-identity: yes
     hide-version: yes
     harden-glue: yes
-${isSimple
-  ? `    # Modo Simples (forward-only): validação DNSSEC delegada ao upstream
-    # (validator local é incompatível com forward-only — não consegue primar a raiz).
-    harden-dnssec-stripped: no
+    # Modos Simples e Interceptação operam em forward-first (gabarito):
+    # iterator puro, sem validator local. Validator + auto-trust-anchor
+    # em forward-first causa SERVFAIL (não consegue primar a raiz).
+    harden-dnssec-stripped: ${isSimple ? 'no' : (hardenDnssec ? 'yes' : 'no')}
     use-caps-for-id: ${capsForId ? 'yes' : 'no'}
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
-    module-config: "iterator"`
-  : `    harden-dnssec-stripped: ${hardenDnssec ? 'yes' : 'no'}
-    use-caps-for-id: ${capsForId ? 'yes' : 'no'}
-    do-not-query-address: 127.0.0.1/8
-    do-not-query-localhost: yes
-    module-config: "validator iterator"
-    auto-trust-anchor-file: "/var/lib/unbound/root.key"
-    val-clean-additional: yes
-    val-log-level: 1`}
+    module-config: "iterator"
 
 ${privateDomainBlock}    local-zone: "localhost." static
     local-data: "localhost. 10800 IN NS localhost."
@@ -1037,8 +1029,8 @@ export function generateSimpleNftablesModular(config: WizardConfig): { path: str
 
   files.push({ path: '/etc/nftables.conf', content: `#!/usr/sbin/nft -f\n\nflush ruleset\ninclude "/etc/nftables.d/*.nft"\n` });
   files.push({ path: '/etc/nftables.d/5000-local-table.nft', content: 'table ip nat {\n}\n' });
-  files.push({ path: '/etc/nftables.d/5010-local-hook-prerouting.nft', content: `table ip nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n` });
-  files.push({ path: '/etc/nftables.d/5011-local-hook-output.nft', content: `table ip nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n` });
+  files.push({ path: '/etc/nftables.d/5010-local-hook-prerouting.nft', content: `table ip nat {\n    chain PREROUTING {\n        type nat hook prerouting priority -100; policy accept;\n    }\n}\n` });
+  files.push({ path: '/etc/nftables.d/5011-local-hook-output.nft', content: `table ip nat {\n    chain OUTPUT {\n        type nat hook output priority -100; policy accept;\n    }\n}\n` });
   files.push({ path: '/etc/nftables.d/5100-local-define-frontend.nft', content: `define DNS_FRONTEND_IP = { ${frontendIp} }\n` });
 
   // Sets (only for sticky)
@@ -1135,24 +1127,24 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
   // PREROUTING hooks (base chains inside table block)
   files.push({
     path: '/etc/network/nftables.d/0051-hook-ipv4-prerouting.nft',
-    content: `table ip nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n`,
+    content: `table ip nat {\n    chain PREROUTING {\n        type nat hook prerouting priority -100; policy accept;\n    }\n}\n`,
   });
   if (config.enableIpv6) {
     files.push({
       path: '/etc/network/nftables.d/0052-hook-ipv6-prerouting.nft',
-      content: `table ip6 nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n`,
+      content: `table ip6 nat {\n    chain PREROUTING {\n        type nat hook prerouting priority -100; policy accept;\n    }\n}\n`,
     });
   }
 
   // OUTPUT hooks (local interception — captures DNS from host itself)
   files.push({
     path: '/etc/network/nftables.d/0053-hook-ipv4-output.nft',
-    content: `table ip nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n`,
+    content: `table ip nat {\n    chain OUTPUT {\n        type nat hook output priority -100; policy accept;\n    }\n}\n`,
   });
   if (config.enableIpv6) {
     files.push({
       path: '/etc/network/nftables.d/0054-hook-ipv6-output.nft',
-      content: `table ip6 nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n`,
+      content: `table ip6 nat {\n    chain OUTPUT {\n        type nat hook output priority -100; policy accept;\n    }\n}\n`,
     });
   }
 
@@ -1973,14 +1965,9 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
         '    control-interface: /run/unbound.ctl\n' +
         '    control-use-cert: "no"\n',
     });
-    // DNSSEC trust anchor drop-in (presente no host homologado).
-    files.push({
-      path: '/etc/unbound/unbound.conf.d/root-auto-trust-anchor-file.conf',
-      content:
-        '# DNS Control — DNSSEC trust anchor drop-in (layout homologado)\n' +
-        'server:\n' +
-        '    auto-trust-anchor-file: "/var/lib/unbound/root.key"\n',
-    });
+    // Drop-in DNSSEC trust anchor removido: modo Interceptação opera em
+    // forward-first (paridade com gabarito), iterator puro, sem validator
+    // local — auto-trust-anchor-file é inerte e fora de paridade.
   }
 
 
