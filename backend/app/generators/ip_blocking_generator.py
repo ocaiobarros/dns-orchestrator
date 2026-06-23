@@ -214,7 +214,7 @@ fi
 """
 
     files.append({
-        "path": "/usr/local/bin/anablock-ip-sync.sh",
+        "path": "/etc/unbound/anablock-ip-sync.sh",
         "content": sync_script,
         "permissions": "0755",
         "owner": "root:root",
