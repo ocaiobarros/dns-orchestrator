@@ -25,7 +25,7 @@ export default function LatencyMatrix({ frontend, resolvers, upstreams }: Props)
   }));
 
   return (
-    <div className="relative min-h-[240px] py-3 font-mono text-[10px]">
+    <div className="relative w-full min-w-0 overflow-hidden min-h-[240px] py-3 font-mono text-[10px]">
       {/* Animated connector lines (SVG overlay) */}
       <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none" viewBox="0 0 100 100">
         <defs>
