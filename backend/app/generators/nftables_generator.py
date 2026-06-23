@@ -145,6 +145,24 @@ def _collect_all_vip_ips(payload: dict[str, Any], nat: dict[str, Any]) -> tuple[
     return _dedupe(ipv4s), _dedupe(ipv6s)
 
 
+def _extract_host_ipv4(payload: dict[str, Any]) -> str:
+    """Return the bare host IPv4 (no /mask) from payload.ipv4Address."""
+    wizard_cfg = payload.get("_wizardConfig", {}) or {}
+    raw = str(payload.get("ipv4Address") or wizard_cfg.get("ipv4Address") or "").strip()
+    if not raw:
+        return ""
+    return raw.split("/")[0].strip()
+
+
+def _extract_primary_egress_ipv4(instances: list[dict[str, Any]]) -> str:
+    """First non-empty exitIp/egressIpv4 across instances, ordered."""
+    for inst in instances:
+        exit_ip = str(inst.get("exitIp") or inst.get("egressIpv4") or "").strip()
+        if exit_ip:
+            return exit_ip
+    return ""
+
+
 def generate_nftables_config(payload: dict[str, Any], validation_mode: bool = False) -> list[dict]:
     """Generate modular nftables snippets in /etc/network/nftables.d/."""
     nat = payload.get("nat", {}) if isinstance(payload.get("nat", {}), dict) else {}
@@ -163,7 +181,14 @@ def generate_nftables_config(payload: dict[str, Any], validation_mode: bool = Fa
     if validation_mode:
         return _generate_monolithic_validation(vip_ipv4s, backends, enable_ipv6, sticky_timeout_min)
 
-    files = _generate_modular(vip_ipv4s, vip_ipv6s, backends, enable_ipv6, sticky_timeout_min)
+    host_ipv4 = _extract_host_ipv4(payload)
+    egress_primary = _extract_primary_egress_ipv4(instances)
+
+    files = _generate_modular(
+        vip_ipv4s, vip_ipv6s, backends, enable_ipv6, sticky_timeout_min,
+        host_ipv4=host_ipv4, egress_primary_ipv4=egress_primary,
+    )
+
 
     # ═══ TABLE FILTER — EDGE ACL ═══
     files.extend(_generate_filter_table(payload, enable_ipv6))
