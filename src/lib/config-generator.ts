@@ -1156,6 +1156,32 @@ export function generateNftablesModular(config: WizardConfig): { path: string; c
     });
   }
 
+  // POSTROUTING hooks (srcnat) — reproduzem layout do servidor homologado.
+  // A chain existe em ambas as famílias; a regra SNAT real é emitida apenas
+  // em IPv4 (8001-...) quando há host IP + egress primário definidos.
+  files.push({
+    path: '/etc/network/nftables.d/0055-hook-ipv4-postrouting.nft',
+    content: `table ip nat {\n    chain POSTROUTING {\n        type nat hook postrouting priority srcnat; policy accept;\n    }\n}\n`,
+  });
+  if (config.enableIpv6) {
+    files.push({
+      path: '/etc/network/nftables.d/0056-hook-ipv6-postrouting.nft',
+      content: `table ip6 nat {\n    chain POSTROUTING {\n        type nat hook postrouting priority srcnat; policy accept;\n    }\n}\n`,
+    });
+  }
+
+  // SNAT local IPv4: tráfego self-originated do host sai com o egress primário.
+  // Degrada com segurança: sem host IP ou egress, não emite a regra.
+  const hostIpv4 = (config.ipv4Address || '').split('/')[0].trim();
+  const primaryEgressIpv4 = (config.instances.find(i => (i.egressIpv4 || '').trim())?.egressIpv4 || '').trim();
+  if (hostIpv4 && primaryEgressIpv4) {
+    files.push({
+      path: '/etc/network/nftables.d/8001-nat-rule-snat-local-ipv4.nft',
+      content: `table ip nat {\n    chain POSTROUTING {\n        ip saddr ${hostIpv4} counter snat to ${primaryEgressIpv4}\n    }\n}\n`,
+    });
+  }
+
+
   // ═══ TABLE FILTER — EDGE ACL (security boundary) ═══
   // ACL is enforced HERE at nftables INPUT, BEFORE DNAT reaches Unbound.
   // Unbound remains 0.0.0.0/0 allow — it trusts nftables to filter.
