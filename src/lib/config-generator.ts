@@ -611,7 +611,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/anablock-ip-sync.sh
+ExecStart=/etc/unbound/anablock-ip-sync.sh
 TimeoutSec=120
 User=root
 
@@ -1907,7 +1907,7 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
 
   // IP Blocking
   if (config.enableIpBlocking) {
-    files.push({ path: '/usr/local/bin/anablock-ip-sync.sh', content: generateIpBlockingSyncScript(config) });
+    files.push({ path: '/etc/unbound/anablock-ip-sync.sh', content: generateIpBlockingSyncScript(config) });
     files.push({ path: '/etc/systemd/system/anablock-ip-sync.service', content: generateIpBlockingService() });
     if (config.ipBlockingAutoSync) {
       files.push({ path: '/etc/systemd/system/anablock-ip-sync.timer', content: generateIpBlockingTimer(config) });
