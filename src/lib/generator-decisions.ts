@@ -250,15 +250,27 @@ export function buildDecisionLog(config: WizardConfig): GeneratorDecision[] {
     }
   }
 
+  // DNSSEC posture (mode-dependent)
+  decisions.push({
+    category: 'Segurança',
+    parameter: 'DNSSEC (validador local)',
+    value: isSimple ? 'desabilitado (delegado ao upstream)' : 'validator + auto-trust-anchor',
+    reasoning: isSimple
+      ? 'Modo Simples (forward-only): validador local é incompatível com forward-only (não prima a raiz a partir do forwarder) — validação DNSSEC é feita pelos resolvers upstream (1.1.1.1/8.8.8.8). "Se é Simples, é simples."'
+      : 'Modo Iterativo: Unbound monta cadeia de confiança a partir da raiz com auto-trust-anchor-file (RFC 5011) e val-clean-additional.',
+  });
+
   // Hardening
   const hardenDnssec = config.hardenDnssecStripped !== false;
   const capsForId = config.useCapsForId === true;
   decisions.push({
     category: 'Segurança',
     parameter: 'hardening',
-    value: `dnssec-stripped=${hardenDnssec ? 'yes' : 'no'}, caps-for-id=${capsForId ? 'yes' : 'no'}`,
+    value: `dnssec-stripped=${isSimple ? 'no (sem validator)' : (hardenDnssec ? 'yes' : 'no')}, caps-for-id=${capsForId ? 'yes' : 'no'}`,
     reasoning: [
-      hardenDnssec ? 'DNSSEC stripping protection ativa' : 'DNSSEC stripping desabilitado (compatibilidade)',
+      isSimple
+        ? 'DNSSEC stripping protection desabilitado no Simples (depende do validator local)'
+        : (hardenDnssec ? 'DNSSEC stripping protection ativa' : 'DNSSEC stripping desabilitado (compatibilidade)'),
       capsForId ? '0x20 randomization ativa (anti-spoofing)' : '0x20 desabilitado (compatibilidade com autoritativos antigos)',
     ].join('. '),
   });
