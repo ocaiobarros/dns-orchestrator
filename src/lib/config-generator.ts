@@ -611,7 +611,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/anablock-ip-sync.sh
+ExecStart=/etc/unbound/anablock-ip-sync.sh
 TimeoutSec=120
 User=root
 
