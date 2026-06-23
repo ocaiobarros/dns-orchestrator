@@ -10,8 +10,17 @@ interface Props {
 export default function TopologyMini({
   clientLabel = 'CLIENTES DNS', frontendIp, frontendQps = 0, backends, upstreamLabel = 'UPSTREAM',
 }: Props) {
+  // Frontend may be a single IP or a comma-separated list (Simple mode = multiple listeners).
+  const frontendIps = (frontendIp || '')
+    .split(/[,\s]+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+  const primaryIp = frontendIps[0] || '—';
+  const extraCount = Math.max(frontendIps.length - 1, 0);
+  const allIpsTitle = frontendIps.length > 1 ? frontendIps.join('\n') : undefined;
+
   return (
-    <div className="relative flex items-center justify-between gap-1.5 py-4 px-1 min-h-[220px] font-mono text-[9px]">
+    <div className="relative flex items-center justify-between gap-1.5 py-4 px-1 min-h-[220px] w-full min-w-0 overflow-hidden font-mono text-[9px]">
       {/* Clients */}
       <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
         <div className="w-11 h-11 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center"
@@ -28,13 +37,22 @@ export default function TopologyMini({
 
       {/* Frontend DNS */}
       <div className="flex flex-col items-center gap-1.5 flex-shrink min-w-0">
-        <div className="px-2 py-1.5 rounded-lg bg-card border border-primary/40 text-center min-w-0 w-full max-w-[clamp(110px,12vw,180px)]"
-          style={{ boxShadow: '0 0 18px -4px hsl(var(--primary) / 0.4)' }}>
+        <div className="px-2 py-1.5 rounded-lg bg-card border border-primary/40 text-center min-w-0 w-full max-w-[clamp(96px,11vw,160px)]"
+          style={{ boxShadow: '0 0 18px -4px hsl(var(--primary) / 0.4)' }}
+          title={allIpsTitle}>
           <div className="text-[8px] font-bold text-primary uppercase tracking-wider">Frontend DNS</div>
-          <div className="text-foreground font-mono text-[9.5px] mt-0.5 break-all leading-tight">{frontendIp || '—'}</div>
+          <div className="flex items-center justify-center gap-1 mt-0.5 min-w-0">
+            <span className="text-foreground font-mono text-[9.5px] leading-tight truncate">{primaryIp}</span>
+            {extraCount > 0 && (
+              <span className="flex-shrink-0 px-1 rounded bg-primary/15 text-primary text-[8px] font-bold leading-tight">
+                +{extraCount}
+              </span>
+            )}
+          </div>
           <div className="text-muted-foreground text-[8px] mt-0.5">{frontendQps} q/s</div>
         </div>
       </div>
+
 
       <AnimatedEdge multiple={Math.min(backends.length, 3)} />
 
@@ -46,7 +64,7 @@ export default function TopologyMini({
         {backends.slice(0, 3).map((b) => {
           const ok = b.healthy !== false;
           return (
-            <div key={b.name} className="px-2 py-1 rounded-md bg-card border min-w-0 w-full max-w-[clamp(110px,12vw,180px)]"
+            <div key={b.name} className="px-2 py-1 rounded-md bg-card border min-w-0 w-full max-w-[clamp(96px,11vw,160px)]"
               style={{
                 borderColor: ok ? 'hsl(var(--primary) / 0.3)' : 'hsl(var(--destructive) / 0.4)',
                 boxShadow: ok ? '0 0 10px -5px hsl(var(--primary) / 0.4)' : '0 0 10px -5px hsl(var(--destructive) / 0.4)',

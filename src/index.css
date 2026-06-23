@@ -629,6 +629,7 @@
     background: var(--gradient-card);
     border: 1px solid hsl(var(--border) / 0.5);
     box-shadow: 0 12px 48px -16px hsl(var(--noc-depth-0) / 0.8);
+    min-width: 0;
   }
   .noc-panel-v3-header {
     @apply flex items-center gap-2 px-4 py-3 border-b border-border/40;
