@@ -457,7 +457,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/opt/dns-control/scripts/anablock-sync.sh
+ExecStart=/etc/unbound/anablock-sync.sh
 TimeoutSec=120
 User=root
 
