@@ -193,7 +193,10 @@ def _generate_validation(
     lines: list[str] = [
         "#!/usr/sbin/nft -f",
         "# DNS Control — nftables local balancing validation",
-        "# flush ruleset  (removed for validation)",
+        "# Usado APENAS com 'nft -c -f' (check mode / dry-run). NUNCA aplicado.",
+        "# 'flush ruleset' abaixo é dry-run sob '-c' (não muta o kernel) e isola a",
+        "# validação para que sets/tables já presentes no kernel não causem 'File exists'.",
+        "flush ruleset",
         "",
         "table ip nat {",
     ]
