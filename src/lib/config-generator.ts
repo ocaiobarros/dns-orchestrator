@@ -1605,68 +1605,77 @@ line vty
 `;
   }
 
+  // Modo Interceptação (OSPF ativo): gerado byte-a-byte fiel ao gabarito
+  // (servidor homologado, vtysh show running-config). Não adicionar
+  // diretivas extras — o produto reproduz o layout manual aprovado.
   const hostIpv4 = (config.ipv4Address || '').split('/')[0].trim();
   const area = config.ospfArea || '0.0.0.0';
-  const netType = config.networkType || 'point-to-point';
-  const hello = config.ospfHelloInterval ?? 10;
-  const dead = config.ospfDeadInterval ?? 40;
   const cost = config.ospfCost ?? 1;
   const metric = (config as any).ospfRedistributeMetric ?? 10;
   const ipv6 = !!config.enableIpv6;
+  const networkCidr = config.ipv4Cidr || '0.0.0.0/0';
+  const hostname = config.hostname || 'dns-control';
 
-  // Garante que mainInterface está no conjunto de interfaces OSPF
   const ifaceSet = new Set(config.ospfInterfaces || []);
   if (config.mainInterface) ifaceSet.add(config.mainInterface);
   const ifaces = Array.from(ifaceSet);
 
-  const interfaceBlocks = ifaces.map(iface => {
-    const lines = [
-      `interface ${iface}`,
-      ` ip ospf cost ${cost}`,
-      ` ip ospf network ${netType}`,
-      ` ip ospf hello-interval ${hello}`,
-      ` ip ospf dead-interval ${dead}`,
-    ];
+  const lines: string[] = [
+    'frr version 8.4.4',
+    'frr defaults traditional',
+    `hostname ${hostname}`,
+    'service integrated-vtysh-config',
+    '!',
+    'interface lo0',
+    'exit',
+    '!',
+  ];
+
+  for (const iface of ifaces) {
+    lines.push(`interface ${iface}`);
+    lines.push(` ip ospf cost ${cost}`);
+    lines.push(' ip ospf network point-to-point');
     if (ipv6) {
-      lines.push(
-        ` ipv6 ospf6 area ${area}`,
-        ` ipv6 ospf6 cost ${cost}`,
-        ` ipv6 ospf6 network ${netType}`,
-      );
+      lines.push(` ipv6 ospf6 area ${area}`);
+      lines.push(` ipv6 ospf6 cost ${cost}`);
+      lines.push(' ipv6 ospf6 network point-to-point');
     }
+    lines.push('exit');
     lines.push('!');
-    return lines.join('\n');
-  }).join('\n');
+  }
 
-  const vipNetworks = config.serviceVips.map(v => ` network ${v.ipv4}/32 area ${area}`).join('\n');
+  lines.push(
+    'router ospf',
+    ` ospf router-id ${config.routerId}`,
+    ' redistribute connected',
+    ` network ${networkCidr} area ${area}`,
+    'exit',
+    '!',
+  );
 
-  const ospf6Block = ipv6
-    ? `router ospf6\n ospf6 router-id ${config.routerId}\n${config.redistributeConnected ? ' redistribute connected\n' : ''}!\n`
-    : '';
+  if (hostIpv4) {
+    lines.push(
+      'route-map OSPF-IMPORT-CONNECTED-IPV4 permit 65535',
+      ` set ip next-hop ${hostIpv4}`,
+      ` set metric ${metric}`,
+      ' set metric-type type-1',
+      'exit',
+      '!',
+    );
+  }
 
-  const routeMap = hostIpv4
-    ? `route-map OSPF-IMPORT-CONNECTED-IPV4 permit 65535\n set ip next-hop ${hostIpv4}\n set metric ${metric}\n set metric-type type-1\n!\n`
-    : '';
+  lines.push(
+    'segment-routing',
+    ' traffic-eng',
+    ' exit',
+    'exit',
+    '!',
+    '',
+  );
 
-  return `! DNS Control — FRR configuration
-! Generated for: ${config.hostname || 'dns-control'}
-!
-frr version 10.2
-frr defaults traditional
-hostname ${config.hostname || 'dns-control'}
-log syslog informational
-service integrated-vtysh-config
-!
-${interfaceBlocks}
-router ospf
- ospf router-id ${config.routerId}
-${config.redistributeConnected ? ' redistribute connected\n' : ''}${vipNetworks ? vipNetworks + '\n' : ''} passive-interface lo
- log-adjacency-changes
-!
-${ospf6Block}${routeMap}line vty
-!
-`;
+  return lines.join('\n');
 }
+
 
 export function generateFrrDaemons(config: WizardConfig): string {
   const ospfActive = isOspfEnabled(config);
