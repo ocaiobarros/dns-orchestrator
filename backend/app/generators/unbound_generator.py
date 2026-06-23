@@ -647,16 +647,13 @@ emit_event "anablock.sync.applied" "applied" "$DOMAINS" "$REMOTE_MD5" "$REMOTE_V
 logger -t anablock-sync "AnaBlock: aplicado (versão $REMOTE_VERSION, $DOMAINS domínios, md5 $REMOTE_MD5)"
 """
 
-        # Emit BOTH the operator-friendly path under /etc/unbound/ AND
-        # the legacy /opt/dns-control/ path for backward compatibility.
+        # Emit only under /etc/unbound/ — covered by ReadWritePaths of the
+        # dns-control-api.service. The legacy /opt/dns-control/scripts/ path
+        # was REMOVED because /opt/dns-control is read-only under
+        # ProtectSystem=strict (no entry in ReadWritePaths) and would abort
+        # the entire apply batch with "Read-only file system".
         files.append({
             "path": "/etc/unbound/gen-anablock.sh",
-            "content": sync_script,
-            "permissions": "0755",
-            "owner": "root:root",
-        })
-        files.append({
-            "path": "/opt/dns-control/scripts/anablock-sync.sh",
             "content": sync_script,
             "permissions": "0755",
             "owner": "root:root",
