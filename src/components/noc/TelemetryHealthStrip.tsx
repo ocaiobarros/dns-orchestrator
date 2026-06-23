@@ -98,23 +98,24 @@ export function TelemetryHealthStrip({ className = '', compact = false }: Props)
 }
 
 /**
- * Returns true when the rankings (Top Domains / Top Clients) are coming from
- * the journalctl-regex fallback path. UI uses this to show a "degradado
- * (fallback)" badge so the operator knows fidelity is lower than dnstap.
+ * Returns true only when rankings (Top Domains / Top Clients) have NO usable
+ * source — i.e. the journalctl-regex path also failed. journalctl é a fonte
+ * normal/esperada para rankings (Unbound não loga query por padrão), portanto
+ * não deve ser rotulada como "degradado".
  */
 export function isRankingsFallback(logSource: string | null | undefined): boolean {
-  const v = String(logSource ?? '').toLowerCase();
-  return v === 'journalctl';
+  const v = String(logSource ?? '').toLowerCase().trim();
+  return v === '' || v === 'none' || v === 'unavailable' || v === 'error';
 }
 
 export function FallbackRankingsBadge({ logSource }: { logSource: string | null | undefined }) {
   if (!isRankingsFallback(logSource)) return null;
   return (
     <span
-      title="Rankings derivados de journalctl + regex (menor fidelidade que dnstap)."
+      title="Fonte de rankings indisponível — verifique o coletor de logs."
       className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-warning/40 bg-warning/10 text-warning text-[9px] font-mono font-bold uppercase tracking-wider"
     >
-      <AlertTriangle size={9} /> degradado (fallback)
+      <AlertTriangle size={9} /> fonte indisponível
     </span>
   );
 }
