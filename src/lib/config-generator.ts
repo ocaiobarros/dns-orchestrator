@@ -1605,16 +1605,48 @@ line vty
 `;
   }
 
-  const interfaceBlocks = config.ospfInterfaces.map(iface => `!
-interface ${iface}
- ip ospf area ${config.ospfArea}
- ip ospf network ${config.networkType}
- ip ospf hello-interval ${config.ospfHelloInterval ?? 10}
- ip ospf dead-interval ${config.ospfDeadInterval ?? 40}
-${iface === config.mainInterface ? ` ip ospf cost ${config.ospfCost}` : ''}`).join('\n');
+  const hostIpv4 = (config.ipv4Address || '').split('/')[0].trim();
+  const area = config.ospfArea || '0.0.0.0';
+  const netType = config.networkType || 'point-to-point';
+  const hello = config.ospfHelloInterval ?? 10;
+  const dead = config.ospfDeadInterval ?? 40;
+  const cost = config.ospfCost ?? 1;
+  const metric = (config as any).ospfRedistributeMetric ?? 10;
+  const ipv6 = !!config.enableIpv6;
 
-  // Announce VIPs via connected redistribution
-  const vipNetworks = config.serviceVips.map(v => `  network ${v.ipv4}/32 area ${config.ospfArea}`).join('\n');
+  // Garante que mainInterface está no conjunto de interfaces OSPF
+  const ifaceSet = new Set(config.ospfInterfaces || []);
+  if (config.mainInterface) ifaceSet.add(config.mainInterface);
+  const ifaces = Array.from(ifaceSet);
+
+  const interfaceBlocks = ifaces.map(iface => {
+    const lines = [
+      `interface ${iface}`,
+      ` ip ospf cost ${cost}`,
+      ` ip ospf network ${netType}`,
+      ` ip ospf hello-interval ${hello}`,
+      ` ip ospf dead-interval ${dead}`,
+    ];
+    if (ipv6) {
+      lines.push(
+        ` ipv6 ospf6 area ${area}`,
+        ` ipv6 ospf6 cost ${cost}`,
+        ` ipv6 ospf6 network ${netType}`,
+      );
+    }
+    lines.push('!');
+    return lines.join('\n');
+  }).join('\n');
+
+  const vipNetworks = config.serviceVips.map(v => ` network ${v.ipv4}/32 area ${area}`).join('\n');
+
+  const ospf6Block = ipv6
+    ? `router ospf6\n ospf6 router-id ${config.routerId}\n${config.redistributeConnected ? ' redistribute connected\n' : ''}!\n`
+    : '';
+
+  const routeMap = hostIpv4
+    ? `route-map OSPF-IMPORT-CONNECTED-IPV4 permit 65535\n set ip next-hop ${hostIpv4}\n set metric ${metric}\n set metric-type type-1\n!\n`
+    : '';
 
   return `! DNS Control — FRR configuration
 ! Generated for: ${config.hostname || 'dns-control'}
@@ -1625,24 +1657,25 @@ hostname ${config.hostname || 'dns-control'}
 log syslog informational
 service integrated-vtysh-config
 !
+${interfaceBlocks}
 router ospf
  ospf router-id ${config.routerId}
-${config.redistributeConnected ? ' redistribute connected' : ''}
- passive-interface lo
-${vipNetworks}
-${interfaceBlocks}
+${config.redistributeConnected ? ' redistribute connected\n' : ''}${vipNetworks ? vipNetworks + '\n' : ''} passive-interface lo
+ log-adjacency-changes
 !
-line vty
+${ospf6Block}${routeMap}line vty
 !
 `;
 }
 
 export function generateFrrDaemons(config: WizardConfig): string {
   const ospfActive = isOspfEnabled(config);
+  const ospf6Active = ospfActive && !!config.enableIpv6;
   return `# DNS Control — FRR daemons
 # Layout homologado: este arquivo SEMPRE existe no modo Interceptação.
 # OSPF ativo: ${ospfActive ? 'SIM' : 'NÃO (placeholder seguro)'}
 ospfd=${ospfActive ? 'yes' : 'no'}
+ospf6d=${ospf6Active ? 'yes' : 'no'}
 bgpd=no
 ripd=no
 ripngd=no
@@ -1663,9 +1696,11 @@ pathd=no
 vtysh_enable=yes
 zebra_options="  -A 127.0.0.1 -s 90000000"
 ospfd_options="  -A 127.0.0.1"
+ospf6d_options="  -A ::1"
 staticd_options="-A 127.0.0.1"
 `;
 }
+
 
 // ═══ DNS CONTROL SERVICE ═══
 
