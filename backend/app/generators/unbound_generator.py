@@ -341,24 +341,15 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     hide-version: yes
     harden-glue: yes
 """
-        if is_simple:
-            # Modo Simples (forward-only): validação DNSSEC delegada ao upstream
-            # (validator local é incompatível com forward-only — não prima a raiz).
-            config += f"""    harden-dnssec-stripped: no
+        # Modos Simples e Interceptação operam ambos em forward-first
+        # (gabarito do servidor homologado): iterator puro, sem validator
+        # local. Validator + auto-trust-anchor em forward-first causa
+        # SERVFAIL (não consegue primar a raiz a partir do upstream).
+        config += f"""    harden-dnssec-stripped: {"no" if is_simple else ("yes" if harden_dnssec else "no")}
     use-caps-for-id: {"yes" if use_caps_for_id else "no"}
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
     module-config: "iterator"
-"""
-        else:
-            config += f"""    harden-dnssec-stripped: {"yes" if harden_dnssec else "no"}
-    use-caps-for-id: {"yes" if use_caps_for_id else "no"}
-    do-not-query-address: 127.0.0.1/8
-    do-not-query-localhost: yes
-    module-config: "validator iterator"
-    auto-trust-anchor-file: "/var/lib/unbound/root.key"
-    val-clean-additional: yes
-    val-log-level: 1
 """
         config += f"""
 

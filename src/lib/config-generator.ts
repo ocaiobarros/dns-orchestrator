@@ -166,22 +166,14 @@ ${rootHintsLine}
     hide-identity: yes
     hide-version: yes
     harden-glue: yes
-${isSimple
-  ? `    # Modo Simples (forward-only): validação DNSSEC delegada ao upstream
-    # (validator local é incompatível com forward-only — não consegue primar a raiz).
-    harden-dnssec-stripped: no
+    # Modos Simples e Interceptação operam em forward-first (gabarito):
+    # iterator puro, sem validator local. Validator + auto-trust-anchor
+    # em forward-first causa SERVFAIL (não consegue primar a raiz).
+    harden-dnssec-stripped: ${isSimple ? 'no' : (hardenDnssec ? 'yes' : 'no')}
     use-caps-for-id: ${capsForId ? 'yes' : 'no'}
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
-    module-config: "iterator"`
-  : `    harden-dnssec-stripped: ${hardenDnssec ? 'yes' : 'no'}
-    use-caps-for-id: ${capsForId ? 'yes' : 'no'}
-    do-not-query-address: 127.0.0.1/8
-    do-not-query-localhost: yes
-    module-config: "validator iterator"
-    auto-trust-anchor-file: "/var/lib/unbound/root.key"
-    val-clean-additional: yes
-    val-log-level: 1`}
+    module-config: "iterator"
 
 ${privateDomainBlock}    local-zone: "localhost." static
     local-data: "localhost. 10800 IN NS localhost."
