@@ -224,17 +224,17 @@ def _generate_modular(
 
     # ── PREROUTING hooks (block syntax) ──
     _file("/etc/network/nftables.d/0051-hook-ipv4-prerouting.nft",
-          "table ip nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n")
+          "table ip nat {\n    chain PREROUTING {\n        type nat hook prerouting priority -100; policy accept;\n    }\n}\n")
     if enable_ipv6:
         _file("/etc/network/nftables.d/0052-hook-ipv6-prerouting.nft",
-              "table ip6 nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n")
+              "table ip6 nat {\n    chain PREROUTING {\n        type nat hook prerouting priority -100; policy accept;\n    }\n}\n")
 
     # ── OUTPUT hook (local interception — captures DNS from host itself) ──
     _file("/etc/network/nftables.d/0053-hook-ipv4-output.nft",
-          "table ip nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n")
+          "table ip nat {\n    chain OUTPUT {\n        type nat hook output priority -100; policy accept;\n    }\n}\n")
     if enable_ipv6:
         _file("/etc/network/nftables.d/0054-hook-ipv6-output.nft",
-              "table ip6 nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n")
+              "table ip6 nat {\n    chain OUTPUT {\n        type nat hook output priority -100; policy accept;\n    }\n}\n")
 
     # ── POSTROUTING hooks (srcnat) — empty chain, additive ──
     # Reproduz layout do servidor homologado: chain POSTROUTING existe em ambas
@@ -511,7 +511,7 @@ def _generate_monolithic_validation(
 
     # PREROUTING hook
     lines.append("    chain PREROUTING {")
-    lines.append("        type nat hook prerouting priority dstnat; policy accept;")
+    lines.append("        type nat hook prerouting priority -100; policy accept;")
     vip_str = ", ".join(vip_ipv4s) if vip_ipv4s else "127.0.0.1"
     for proto in ("tcp", "udp"):
         lines.append(f"        ip daddr {{ {vip_str} }} {proto} dport 53 counter jump ipv4_{proto}_dns")
@@ -519,7 +519,7 @@ def _generate_monolithic_validation(
 
     # OUTPUT hook (local interception)
     lines.append("    chain OUTPUT {")
-    lines.append("        type nat hook output priority dstnat; policy accept;")
+    lines.append("        type nat hook output priority -100; policy accept;")
     for proto in ("tcp", "udp"):
         lines.append(f"        ip daddr {{ {vip_str} }} {proto} dport 53 counter jump ipv4_{proto}_dns")
     lines.append("    }")

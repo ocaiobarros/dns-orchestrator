@@ -102,9 +102,9 @@ def _generate_modular(
 
     # ── 5010: Hooks ──
     _file("/etc/nftables.d/5010-local-hook-prerouting.nft",
-          "table ip nat {\n    chain PREROUTING {\n        type nat hook prerouting priority dstnat; policy accept;\n    }\n}\n")
+          "table ip nat {\n    chain PREROUTING {\n        type nat hook prerouting priority -100; policy accept;\n    }\n}\n")
     _file("/etc/nftables.d/5011-local-hook-output.nft",
-          "table ip nat {\n    chain OUTPUT {\n        type nat hook output priority dstnat; policy accept;\n    }\n}\n")
+          "table ip nat {\n    chain OUTPUT {\n        type nat hook output priority -100; policy accept;\n    }\n}\n")
 
     # ── 5100: Defines ──
     _file("/etc/nftables.d/5100-local-define-frontend.nft",
@@ -233,13 +233,13 @@ def _generate_validation(
 
     # Hooks with capture rules
     lines.append("    chain PREROUTING {")
-    lines.append("        type nat hook prerouting priority dstnat; policy accept;")
+    lines.append("        type nat hook prerouting priority -100; policy accept;")
     for proto in ("tcp", "udp"):
         lines.append(f"        ip daddr {frontend_ip} {proto} dport 53 counter jump local_{proto}_dns")
     lines.append("    }")
 
     lines.append("    chain OUTPUT {")
-    lines.append("        type nat hook output priority dstnat; policy accept;")
+    lines.append("        type nat hook output priority -100; policy accept;")
     for proto in ("tcp", "udp"):
         lines.append(f"        ip daddr {frontend_ip} {proto} dport 53 counter jump local_{proto}_dns")
     lines.append("    }")
