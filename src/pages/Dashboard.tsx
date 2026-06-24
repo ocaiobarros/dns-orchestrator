@@ -230,7 +230,10 @@ function InterceptionDashboard() {
 
       {/* 6 KPI cards */}
       <div className="noc-grid-kpi">
-        <KpiCard label="Frontend DNS" value={frontendIp ? `${frontendIp}:53` : '—'} sub="Respondendo"
+        <KpiCard label="Frontend DNS (VIP)" value={frontendIp ? `${frontendIp}:53` : '—'}
+          sub={listenerIps.length || egressIps.length
+            ? `${listenerIps.length} listener(s) · ${egressIps.length} egress`
+            : 'Respondendo'}
           accent="violet" visual={<MiniGlobe />} />
         <KpiCard label="Backends" value={`${healthyCount} / ${totalInstances}`} sub="Todos saudáveis"
           glow visual={<MiniBackends />} />
