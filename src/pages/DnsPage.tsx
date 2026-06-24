@@ -366,12 +366,27 @@ function ChartPanel({
   const ticks = hasData ? buildServerTimeTicks(series, timeRange) : [];
 
 
+function ChartPanel({
+  title, data, dataKey, accent, rangeLabel, timeMeta, timeRange, yLabel, footnote,
+}: {
+  title: string; data: any[]; dataKey: string; accent: Accent; rangeLabel?: string; timeMeta: ServerTimeMetadata; timeRange: string;
+  yLabel?: string; footnote?: React.ReactNode;
+}) {
+  const color = `hsl(${ACCENT_HSL[accent]})`;
+  const colorAlpha = (a: number) => `hsl(${ACCENT_HSL[accent]} / ${a})`;
+  const gid = `chart-${title.replace(/\s+/g, '-')}`;
+
+  const hasData = data.length > 0;
+  const series = hasData ? data : [];
+  const ticks = hasData ? buildServerTimeTicks(series, timeRange) : [];
+
+
   return (
     <Panel title={title} accent={accent} badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}>
       {!hasData ? <NoDataPlaceholder minHeight={180} /> : (
       <MeasuredChartFrame minHeight={180}>{({ width, height }) => (
         <ResponsiveContainer width={width} height={height}>
-          <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
+          <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: 6 }}>
             <defs>
               <linearGradient id={gid} x1="0" x2="0" y1="0" y2="1">
                 <stop offset="0%" stopColor={color} stopOpacity={0.5} />
@@ -380,7 +395,8 @@ function ChartPanel({
             </defs>
             <CartesianGrid stroke={colorAlpha(0.12)} strokeDasharray="2 4" vertical={false} />
             <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta, timeRange)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
-            <YAxis stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={40} />
+            <YAxis stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={48}
+              label={yLabel ? { value: yLabel, angle: -90, position: 'insideLeft', style: { fill: 'hsl(215 15% 55%)', fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: 30 } : undefined} />
             <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Area
               type="monotone" dataKey={dataKey} stroke={color} strokeWidth={1.5}
@@ -391,6 +407,9 @@ function ChartPanel({
           </AreaChart>
         </ResponsiveContainer>
       )}</MeasuredChartFrame>
+      )}
+      {footnote && (
+        <div className="mt-2 px-1 text-[10px] leading-snug text-muted-foreground/80">{footnote}</div>
       )}
     </Panel>
   );
@@ -410,10 +429,12 @@ function CacheHitChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[];
       {!hasData ? <NoDataPlaceholder minHeight={180} /> : (
       <MeasuredChartFrame minHeight={180}>{({ width, height }) => (
         <ResponsiveContainer width={width} height={height}>
-          <LineChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
+          <LineChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: 6 }}>
             <CartesianGrid stroke="hsl(290 60% 40% / 0.15)" strokeDasharray="2 4" vertical={false} />
             <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta, timeRange)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
-            <YAxis domain={[0, 100]} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={40} />
+            <YAxis domain={[0, 100]} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={48}
+              label={{ value: '% cache hit', angle: -90, position: 'insideLeft', style: { fill: 'hsl(215 15% 55%)', fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: 36 }} />
+
             <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Line type="monotone" dataKey="hitRatio" stroke={color} strokeWidth={1.5} dot={false}
               isAnimationActive={false}
