@@ -547,6 +547,11 @@ class UpstreamSilenceDetector:
     # ---------- aggregation ----------
     def _record(self, ip: str, family: str, ts: float) -> None:
         with self._lock:
+            # Drop local/own IPs (loopback/private/CGNAT/link-local + host
+            # egress/listeners/VIPs). Falso-positivo conhecido: o nosso
+            # próprio egress aparecia no topo da tabela em produção.
+            if is_local_or_own(ip, self._own_ips):
+                return
             agg = self._aggregates.get(ip)
             if agg is None:
                 agg = _IpAggregate(ip=ip, family=family)
@@ -559,8 +564,15 @@ class UpstreamSilenceDetector:
         event = parse_conntrack_event_line(line)
         if event is None or event.get("replied"):
             return False
-        self._record(str(event["ip"]), str(event["family"]), ts if ts is not None else time.time())
+        ip = str(event["ip"])
+        # Mirror production filter so tests exercise the real path.
+        with self._lock:
+            own = set(self._own_ips)
+        if is_local_or_own(ip, own):
+            return False
+        self._record(ip, str(event["family"]), ts if ts is not None else time.time())
         return True
+
 
     # ---------- snapshot ----------
     def _status_payload_unlocked(self) -> Dict[str, object]:
