@@ -450,7 +450,7 @@ function ErrorsChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; r
       {!hasData ? <NoDataPlaceholder minHeight={180} /> : (
       <MeasuredChartFrame minHeight={180}>{({ width, height }) => (
         <ResponsiveContainer width={width} height={height}>
-          <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
+          <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: 6 }}>
             <defs>
               <linearGradient id="err-grad" x1="0" x2="0" y1="0" y2="1">
                 <stop offset="0%" stopColor={color} stopOpacity={0.55} />
@@ -459,7 +459,8 @@ function ErrorsChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; r
             </defs>
             <CartesianGrid stroke={colorA(0.1)} strokeDasharray="2 4" vertical={false} />
             <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta, timeRange)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
-            <YAxis stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={40} />
+            <YAxis stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={48}
+              label={{ value: 'consultas com erro', angle: -90, position: 'insideLeft', style: { fill: 'hsl(215 15% 55%)', fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: 60 }} />
             <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Area type="monotone" dataKey="total" stroke={color} strokeWidth={1.5} fill="url(#err-grad)" isAnimationActive={false}
               style={{ filter: `drop-shadow(0 0 4px ${color})` }} />
