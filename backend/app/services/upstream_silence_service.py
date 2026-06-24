@@ -314,6 +314,28 @@ class UpstreamSilenceDetector:
         # on transitions only, never per poll.
         self._alert_active = False
         self._alert_last_transition_at: Optional[float] = None
+        # Denylist de IPs DESTE host (egress/listeners/VIPs). Pode estar vazia
+        # — nesse caso só os ranges estáticos filtram. Populada por
+        # `set_own_ips` (chamada na inicialização/toggle a partir da config).
+        self._own_ips: Set[str] = set()
+
+    # ---------- own-ip denylist ----------
+    def set_own_ips(self, ips: Iterable[str]) -> None:
+        """Substitui a denylist de IPs locais do host. Thread-safe."""
+        normalized: Set[str] = set()
+        for raw in ips or ():
+            if not raw:
+                continue
+            s = str(raw).strip().split("/", 1)[0]
+            if s:
+                normalized.add(s)
+        with self._lock:
+            self._own_ips = normalized
+
+    def get_own_ips(self) -> Set[str]:
+        with self._lock:
+            return set(self._own_ips)
+
 
     # ---------- config ----------
     def apply_config(self, cfg: Dict[str, object]) -> None:
