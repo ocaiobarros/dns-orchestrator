@@ -276,10 +276,23 @@ function InterceptionDashboard() {
       {/* Quad: Top Domínios / Top Clientes / Métricas por Backend / Status dos Serviços */}
       <div className="noc-grid-quad">
         <PanelV3 title="Top Domínios" icon={<ListOrdered size={13} />}>
-          <RankList
-            items={(topDomains || []).slice(0, 5).map((d: any) => ({ label: d.domain, value: d.query_count || d.count || 0 }))}
-            onSeeAll={() => navigate('/dns')}
-          />
+          {(() => {
+            const fromTelemetry = Array.isArray((telemetry as any)?.top_domains) ? (telemetry as any).top_domains : [];
+            const fromLegacy = Array.isArray(topDomainsLegacy) ? topDomainsLegacy : [];
+            const src = fromTelemetry.length ? fromTelemetry : fromLegacy;
+            const items = src.slice(0, 5).map((d: any) => ({
+              label: d.domain || d.name || '—',
+              value: Number(d.count ?? d.query_count ?? d.queries ?? 0),
+            })).filter((x: any) => x.value > 0);
+            if (items.length === 0) {
+              return (
+                <div className="text-[11px] text-muted-foreground/70 py-6 text-center">
+                  Aguardando coleta do parser de logs (journalctl). Disponível em /dns assim que houver tráfego.
+                </div>
+              );
+            }
+            return <RankList items={items} onSeeAll={() => navigate('/dns')} />;
+          })()}
         </PanelV3>
 
         <PanelV3 title="Top Clientes" icon={<UsersIcon size={13} />}>
