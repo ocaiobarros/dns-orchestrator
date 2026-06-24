@@ -638,7 +638,9 @@ class UpstreamSilenceDetector:
                 "items": items,
                 "snapshot_at": datetime.fromtimestamp(now, tz=timezone.utc).isoformat(),
                 "binary_available": shutil.which("conntrack") is not None,
+                "own_ips_count": len(self._own_ips),
                 "config": cfg,
+
                 "alert": {
                     "threshold": threshold,
                     "window": alert_window_key,
