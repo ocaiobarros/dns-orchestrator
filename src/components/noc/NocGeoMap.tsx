@@ -84,7 +84,7 @@ function FitBounds({ positions }: { positions: [number, number][] }) {
   useEffect(() => {
     if (positions.length > 0 && !fitted.current) {
       const bounds = L.latLngBounds(positions.map(([lat, lng]) => [lat, lng]));
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 6 });
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 7 });
       fitted.current = true;
     }
   }, [positions, map]);
