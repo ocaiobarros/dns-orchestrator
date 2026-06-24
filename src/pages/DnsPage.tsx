@@ -1098,9 +1098,9 @@ export default function DnsPage() {
                 icon={<Database size={24} strokeWidth={1.6} />}
               />
               <KpiCardLarge
-                label="Latência"
-                value={noSource ? dash : `${avgLatency.toFixed(0)}ms`}
-                sub={noSource ? 'sem dados' : 'Recursion avg'}
+                label="Latência de recursão"
+                value={noSource ? dash : `${avgLatency.toFixed(0)} ms`}
+                sub={noSource ? 'sem dados' : 'recursão avg (cache-miss) · 100–200 ms é normal'}
                 accent="violet" sparkData={noSource ? [] : sparkL}
                 icon={<Timer size={24} strokeWidth={1.6} />}
               />
