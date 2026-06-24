@@ -803,3 +803,30 @@ def hydrate_detector_config(db) -> Dict[str, object]:
     cfg = load_config_from_db(db)
     UpstreamSilenceDetector.instance().apply_config(cfg)
     return cfg
+
+
+def hydrate_detector_own_ips(db) -> Set[str]:
+    """Build the denylist of own host IPs from the most recent ConfigProfile
+    and inject it into the live detector. Tolerant: returns an empty set
+    (degraded — only static ranges filter) if nothing usable is found."""
+    own: Set[str] = set()
+    try:
+        import json as _json
+        from app.models.config_profile import ConfigProfile
+        profile = (
+            db.query(ConfigProfile)
+            .order_by(ConfigProfile.updated_at.desc(), ConfigProfile.created_at.desc())
+            .first()
+        )
+        if profile and profile.payload_json:
+            try:
+                payload = _json.loads(profile.payload_json)
+            except Exception:  # noqa: BLE001
+                payload = None
+            own = collect_own_ips_from_payload(payload)
+    except Exception:  # noqa: BLE001 — never derrubar telemetria
+        logger.exception("hydrate_detector_own_ips: falha ao carregar config; "
+                         "filtro degrada para ranges estáticos apenas.")
+        own = set()
+    UpstreamSilenceDetector.instance().set_own_ips(own)
+    return own
