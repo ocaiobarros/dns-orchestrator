@@ -274,21 +274,23 @@ function InterceptionDashboard() {
           visual={<MiniShield />} />
       </div>
 
-      {/* Triple panel: Topologia + Mapa Mundi + Mapa de Latência */}
-      <div className="noc-grid-triple">
+      {/* Geo map — full width row (precisa de aspect ratio ~2:1 sem área morta) */}
+      <PanelV3 title="Mapa de Rede DNS" icon={<MapIcon size={13} />}>
+        <div className="-mx-4 overflow-hidden w-[calc(100%+2rem)]"
+             style={{ aspectRatio: '21 / 9', maxHeight: 'clamp(280px, 42vh, 520px)' }}>
+          <NocGeoMap nodes={geoNodes} edges={geoEdges} />
+        </div>
+        <div className="flex items-center gap-4 text-[10px] font-mono mt-3 text-muted-foreground/70">
+          <span>Nodos: <span className="text-primary font-bold">{geoNodes.length}</span></span>
+          <span>Regiões: <span className="text-primary font-bold">10</span></span>
+          <span>QPS Total: <span className="text-primary font-bold">{totalQps}</span></span>
+        </div>
+      </PanelV3>
+
+      {/* Topologia + Latência — lado a lado em lg+, empilhados abaixo */}
+      <div className="grid gap-[clamp(0.5rem,0.8vw,1rem)] grid-cols-1 lg:grid-cols-2">
         <PanelV3 title="Topologia do Serviço" icon={<Network size={13} />}>
           <TopologyMini frontendIp={frontendIp} frontendQps={totalQps} backends={topoBackends} />
-        </PanelV3>
-
-        <PanelV3 title="Mapa de Rede DNS" icon={<MapIcon size={13} />}>
-          <div className="h-[220px] -mx-4 overflow-hidden">
-            <NocGeoMap nodes={geoNodes} edges={geoEdges} />
-          </div>
-          <div className="flex items-center gap-4 text-[10px] font-mono mt-3 text-muted-foreground/70">
-            <span>Nodos: <span className="text-primary font-bold">{geoNodes.length}</span></span>
-            <span>Regiões: <span className="text-primary font-bold">10</span></span>
-            <span>QPS Total: <span className="text-primary font-bold">{totalQps}</span></span>
-          </div>
         </PanelV3>
 
         <PanelV3 title="Mapa de Latência (ms)" icon={<Radio size={13} />}>
