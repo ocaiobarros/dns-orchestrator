@@ -1415,8 +1415,28 @@ export default function DnsPage() {
 
       {/* ───── Secondary charts (preserved — were tab "Tráfego") ───── */}
       <div className={`grid grid-cols-1 lg:grid-cols-2 gap-3 ${focusRing('traffic')} rounded-xl`}>
-        <ChartPanel title="QPS ao longo do tempo" data={effectiveChartData} dataKey="qps" accent="blue" rangeLabel={periodLabel} timeMeta={timeMeta} timeRange={timeRange} />
-        <ChartPanel title="Latência (ms)" data={effectiveChartData} dataKey="latency" accent="violet" rangeLabel={periodLabel} timeMeta={timeMeta} timeRange={timeRange} />
+        <ChartPanel
+          title="QPS ao longo do tempo"
+          data={effectiveChartData}
+          dataKey="qps"
+          accent="blue"
+          rangeLabel={periodLabel}
+          timeMeta={timeMeta}
+          timeRange={timeRange}
+          yLabel="QPS (consultas/s)"
+          footnote={<>QPS = consultas por segundo na janela amostrada. Valor pode estar abaixo do QPS instantâneo quando filtrado por backend/qtype (mostra apenas a fatia correspondente).</>}
+        />
+        <ChartPanel
+          title="Latência de recursão (ms)"
+          data={effectiveChartData}
+          dataKey="latency"
+          accent="violet"
+          rangeLabel={periodLabel}
+          timeMeta={timeMeta}
+          timeRange={timeRange}
+          yLabel="ms (recursão)"
+          footnote={<>Tempo de resolver um nome <strong>não cacheado</strong> na internet (cache-miss). 100–200&nbsp;ms é normal; &gt;400&nbsp;ms é lento. Consultas servidas do cache (&lt;1&nbsp;ms) não aparecem aqui.</>}
+        />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <CacheHitChart data={effectiveChartData} rangeLabel={periodLabel} timeMeta={timeMeta} timeRange={timeRange} />
