@@ -436,12 +436,26 @@ DNS_CONTROL_INITIAL_ADMIN_PASSWORD=${ADMIN_PASS}
 DNS_CONTROL_HOST=127.0.0.1
 DNS_CONTROL_PORT=8000
 EOF
-
-    chmod 600 "${ENV_FILE}"
     ok "Environment file created at ${ENV_FILE}"
 else
     ok "Environment file preserved (already exists)"
 fi
+
+# ── Idempotent guarantee: persistent SECRET_KEY ──
+# If DNS_CONTROL_SECRET_KEY is missing/empty in the env, generate ONCE and
+# append. NEVER overwrite an existing key — rotating it would invalidate every
+# JWT and force logout (the opposite of what we want). Do not log the value.
+if ! grep -qE '^DNS_CONTROL_SECRET_KEY=.+' "${ENV_FILE}"; then
+    sed -i '/^DNS_CONTROL_SECRET_KEY=$/d' "${ENV_FILE}"
+    printf 'DNS_CONTROL_SECRET_KEY=%s\n' "$(openssl rand -hex 32)" >> "${ENV_FILE}"
+    ok "DNS_CONTROL_SECRET_KEY persistent key generated and stored in ${ENV_FILE}"
+else
+    ok "DNS_CONTROL_SECRET_KEY preserved (sessions survive restart)"
+fi
+
+# Restrictive permission: root:dns-control 0640 (service reads via EnvironmentFile=)
+chown root:"${SERVICE_USER}" "${ENV_FILE}" 2>/dev/null || chown root:root "${ENV_FILE}"
+chmod 0640 "${ENV_FILE}"
 
 # ═══ Step 7: Initialize database ═══
 echo "[7/${TOTAL_STEPS}] Activating backend and initializing database..."
