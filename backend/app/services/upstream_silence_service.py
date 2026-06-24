@@ -37,6 +37,7 @@ contam; linhas sem essa flag (DESTROY de fluxo respondido) são ignoradas.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
 import re
@@ -47,7 +48,8 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Deque, Dict, Optional
+from typing import Deque, Dict, Iterable, Optional, Set
+
 
 logger = logging.getLogger("dns-control.upstream-silence")
 
@@ -127,6 +129,134 @@ def parse_conntrack_event_line(line: str) -> Optional[Dict[str, object]]:
     return {"ip": ip, "family": _ip_family(ip), "replied": replied}
 
 
+# ---------------------------------------------------------------------------
+# Local / own-IP filtering
+# ---------------------------------------------------------------------------
+#
+# Sem este filtro o detector lista os PRÓPRIOS IPs do host (egress, listeners,
+# VIPs interceptados) como "autoritativos mudos" — falso-positivo. Aplicamos
+# dois níveis:
+#   (a) Ranges estáticos não-roteáveis na internet pública: loopback, RFC1918,
+#       RFC6598 CGNAT (cobre 100.64/10 e portanto os listeners 100.126.x),
+#       link-local IPv4 e IPv6, ULA IPv6 (fc00::/7).
+#   (b) Denylist dinâmica `own_ips` com os IPs DESTE host extraídos da config
+#       de deploy (egress IPv4/IPv6, bind/listeners, VIPs interceptados,
+#       service VIPs). Construída por `collect_own_ips_from_payload`.
+#
+# A função `is_local_or_own` é pura e testável.
+
+_STATIC_LOCAL_NETS = tuple(
+    ipaddress.ip_network(n) for n in (
+        "127.0.0.0/8",       # loopback IPv4
+        "10.0.0.0/8",        # RFC1918
+        "172.16.0.0/12",     # RFC1918
+        "192.168.0.0/16",    # RFC1918
+        "169.254.0.0/16",    # link-local IPv4
+        "100.64.0.0/10",     # RFC6598 CGNAT (cobre listeners 100.126.x)
+        "0.0.0.0/8",         # "this network"
+        "224.0.0.0/4",       # multicast IPv4
+        "::1/128",           # loopback IPv6
+        "fc00::/7",          # ULA IPv6 (RFC4193)
+        "fe80::/10",         # link-local IPv6
+        "ff00::/8",          # multicast IPv6
+        "::/128",            # unspecified
+    )
+)
+
+
+def is_local_or_own(ip: str, own_ips: Optional[Iterable[str]] = None) -> bool:
+    """Pure predicate. True se ``ip`` é loopback/privado/CGNAT/link-local
+    (não-roteável na internet) OU pertence à denylist ``own_ips`` (egress,
+    listeners, VIPs deste host). Entradas inválidas retornam True (descartam)
+    — defesa: nunca agregar lixo."""
+    if not ip:
+        return True
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return True
+    for net in _STATIC_LOCAL_NETS:
+        if addr.version == net.version and addr in net:
+            return True
+    if own_ips:
+        # Normalize via ip_address so notation variants (e.g. ::FFFF:1.2.3.4
+        # vs 1.2.3.4) compare correctly.
+        for raw in own_ips:
+            if not raw:
+                continue
+            try:
+                if ipaddress.ip_address(str(raw).strip()) == addr:
+                    return True
+            except ValueError:
+                continue
+    return False
+
+
+def collect_own_ips_from_payload(payload: Optional[Dict[str, object]]) -> Set[str]:
+    """Extrai do payload de deploy a denylist de IPs DESTE host: egress
+    (IPv4/IPv6), bind/listeners, VIPs interceptados e service VIPs. Tolerante
+    a payloads ausentes/parciais."""
+    out: Set[str] = set()
+    if not isinstance(payload, dict):
+        return out
+
+    def _add(v: object) -> None:
+        if v is None:
+            return
+        s = str(v).strip()
+        if not s:
+            return
+        # Strip CIDR mask if present (e.g. "10.0.0.1/32" → "10.0.0.1").
+        s = s.split("/", 1)[0]
+        out.add(s)
+
+    # Host-level IPs (vários nomes possíveis ao longo da história do schema).
+    for k in ("hostIp", "hostIpv4", "hostIpv6", "mainHostIp", "mainIp",
+              "frontendIp", "frontendIpv4", "frontendIpv6"):
+        _add(payload.get(k))
+    loopback = payload.get("loopback") or {}
+    if isinstance(loopback, dict):
+        _add(loopback.get("vip"))
+        _add(loopback.get("ipv4"))
+        _add(loopback.get("ipv6"))
+
+    # Wizard nested config (alguns deploys aninham aí).
+    wizard_cfg = payload.get("_wizardConfig")
+    if isinstance(wizard_cfg, dict) and wizard_cfg:
+        out |= collect_own_ips_from_payload(wizard_cfg)
+
+
+    # Instâncias: egress + binds.
+    for inst in payload.get("instances", []) or []:
+        if not isinstance(inst, dict):
+            continue
+        _add(inst.get("exitIp")); _add(inst.get("egressIpv4"))
+        _add(inst.get("exitIpv6")); _add(inst.get("egressIpv6"))
+        _add(inst.get("bindIp")); _add(inst.get("bindIpv6"))
+
+    # VIPs interceptados (DNS Seizure) — IPs públicos do host atraídos por rota.
+    for vip in payload.get("interceptedVips", []) or []:
+        if not isinstance(vip, dict):
+            continue
+        _add(vip.get("vipIp")); _add(vip.get("vipIpv6"))
+        _add(vip.get("ipv4")); _add(vip.get("ipv6"))
+
+    # Service VIPs (modo Simples / VIP local).
+    for vip in payload.get("serviceVips", []) or []:
+        if not isinstance(vip, dict):
+            continue
+        _add(vip.get("ipv4")); _add(vip.get("ipv6"))
+
+    nat = payload.get("nat") or {}
+    if isinstance(nat, dict):
+        for vip in nat.get("serviceVips", []) or []:
+            if isinstance(vip, dict):
+                _add(vip.get("ipv4")); _add(vip.get("ipv6"))
+
+    return out
+
+
+
 @dataclass
 class _IpAggregate:
     """In-memory aggregate for one autoritativo IP."""
@@ -185,6 +315,28 @@ class UpstreamSilenceDetector:
         # on transitions only, never per poll.
         self._alert_active = False
         self._alert_last_transition_at: Optional[float] = None
+        # Denylist de IPs DESTE host (egress/listeners/VIPs). Pode estar vazia
+        # — nesse caso só os ranges estáticos filtram. Populada por
+        # `set_own_ips` (chamada na inicialização/toggle a partir da config).
+        self._own_ips: Set[str] = set()
+
+    # ---------- own-ip denylist ----------
+    def set_own_ips(self, ips: Iterable[str]) -> None:
+        """Substitui a denylist de IPs locais do host. Thread-safe."""
+        normalized: Set[str] = set()
+        for raw in ips or ():
+            if not raw:
+                continue
+            s = str(raw).strip().split("/", 1)[0]
+            if s:
+                normalized.add(s)
+        with self._lock:
+            self._own_ips = normalized
+
+    def get_own_ips(self) -> Set[str]:
+        with self._lock:
+            return set(self._own_ips)
+
 
     # ---------- config ----------
     def apply_config(self, cfg: Dict[str, object]) -> None:
@@ -396,6 +548,11 @@ class UpstreamSilenceDetector:
     # ---------- aggregation ----------
     def _record(self, ip: str, family: str, ts: float) -> None:
         with self._lock:
+            # Drop local/own IPs (loopback/private/CGNAT/link-local + host
+            # egress/listeners/VIPs). Falso-positivo conhecido: o nosso
+            # próprio egress aparecia no topo da tabela em produção.
+            if is_local_or_own(ip, self._own_ips):
+                return
             agg = self._aggregates.get(ip)
             if agg is None:
                 agg = _IpAggregate(ip=ip, family=family)
@@ -408,8 +565,15 @@ class UpstreamSilenceDetector:
         event = parse_conntrack_event_line(line)
         if event is None or event.get("replied"):
             return False
-        self._record(str(event["ip"]), str(event["family"]), ts if ts is not None else time.time())
+        ip = str(event["ip"])
+        # Mirror production filter so tests exercise the real path.
+        with self._lock:
+            own = set(self._own_ips)
+        if is_local_or_own(ip, own):
+            return False
+        self._record(ip, str(event["family"]), ts if ts is not None else time.time())
         return True
+
 
     # ---------- snapshot ----------
     def _status_payload_unlocked(self) -> Dict[str, object]:
@@ -475,7 +639,9 @@ class UpstreamSilenceDetector:
                 "items": items,
                 "snapshot_at": datetime.fromtimestamp(now, tz=timezone.utc).isoformat(),
                 "binary_available": shutil.which("conntrack") is not None,
+                "own_ips_count": len(self._own_ips),
                 "config": cfg,
+
                 "alert": {
                     "threshold": threshold,
                     "window": alert_window_key,
@@ -505,6 +671,8 @@ class UpstreamSilenceDetector:
             self._thread = None
             self._alert_active = False
             self._alert_last_transition_at = None
+            self._own_ips = set()
+
             self._cfg = {
                 "window_short": DEFAULT_WINDOW_SHORT,
                 "window_long": DEFAULT_WINDOW_LONG,
@@ -636,3 +804,30 @@ def hydrate_detector_config(db) -> Dict[str, object]:
     cfg = load_config_from_db(db)
     UpstreamSilenceDetector.instance().apply_config(cfg)
     return cfg
+
+
+def hydrate_detector_own_ips(db) -> Set[str]:
+    """Build the denylist of own host IPs from the most recent ConfigProfile
+    and inject it into the live detector. Tolerant: returns an empty set
+    (degraded — only static ranges filter) if nothing usable is found."""
+    own: Set[str] = set()
+    try:
+        import json as _json
+        from app.models.config_profile import ConfigProfile
+        profile = (
+            db.query(ConfigProfile)
+            .order_by(ConfigProfile.updated_at.desc(), ConfigProfile.created_at.desc())
+            .first()
+        )
+        if profile and profile.payload_json:
+            try:
+                payload = _json.loads(profile.payload_json)
+            except Exception:  # noqa: BLE001
+                payload = None
+            own = collect_own_ips_from_payload(payload)
+    except Exception:  # noqa: BLE001 — never derrubar telemetria
+        logger.exception("hydrate_detector_own_ips: falha ao carregar config; "
+                         "filtro degrada para ranges estáticos apenas.")
+        own = set()
+    UpstreamSilenceDetector.instance().set_own_ips(own)
+    return own

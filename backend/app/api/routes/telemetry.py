@@ -527,9 +527,16 @@ def telemetry_upstreams_toggle(
     upstream_silence.set_enabled(db, enabled)
     detector = upstream_silence.UpstreamSilenceDetector.instance()
     if enabled:
+        # Refresh own-IP denylist from latest config so o detector ignore
+        # nosso próprio egress/listeners/VIPs (falso-positivo conhecido).
+        try:
+            upstream_silence.hydrate_detector_own_ips(db)
+        except Exception:  # noqa: BLE001
+            logger.exception("hydrate_detector_own_ips failed; filtro degrada para ranges estáticos")
         result = detector.start()
     else:
         result = detector.stop()
+
 
     # Auditoria — reusa o pipeline existente de operational_events.
     try:
