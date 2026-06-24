@@ -21,7 +21,9 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Radio, AlertTriangle, PowerOff, Wifi, RefreshCw, Loader2, Settings2, Bell,
+  Info, CheckCircle2, Globe,
 } from 'lucide-react';
+
 import {
   api,
   type UpstreamSilenceSnapshot,
@@ -174,11 +176,27 @@ export default function NocUpstreamSilence() {
         </div>
 
         <div className="px-4 py-3 space-y-3">
+          {/* Legenda contextual — explica O QUE este painel mostra, para
+              que ninguém olhe a tabela e ache que o servidor está com problema. */}
+          <div className="flex items-start gap-2 rounded border border-border/40 bg-muted/20 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
+            <Info size={13} className="mt-0.5 shrink-0 text-primary/80" />
+            <p>
+              Lista servidores DNS <strong className="text-foreground">autoritativos da
+              internet</strong> que pararam de responder às consultas de recursão deste
+              resolver. IPs locais e do próprio servidor são filtrados automaticamente.{' '}
+              <span className="text-foreground">Tabela vazia = nenhum autoritativo
+              externo mudo (bom sinal).</span> Um IP aqui indica problema{' '}
+              <strong className="text-foreground">lá fora</strong> (no autoritativo), não
+              no seu DNS.
+            </p>
+          </div>
+
           {!isAdmin && snap?.collector_status === 'disabled' && (
             <div className="text-[11px] font-mono text-muted-foreground">
               Detector desativado. Peça a um administrador para habilitar a coleta.
             </div>
           )}
+
 
           {snap?.collector_status === 'degraded' && (
             <div className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-[11px] font-mono text-destructive">
@@ -243,7 +261,13 @@ export default function NocUpstreamSilence() {
 
           <div className="rounded border border-border/40">
             <div className="grid grid-cols-12 gap-2 px-3 py-2 border-b border-border/40 text-[9px] font-mono uppercase tracking-wider text-muted-foreground/70">
-              <div className="col-span-4">IP autoritativo</div>
+              <div
+                className="col-span-4 flex items-center gap-1"
+                title="Autoritativo externo (DNS público na internet) que parou de responder à recursão deste resolver. IPs locais e do próprio servidor são filtrados."
+              >
+                <Globe size={9} className="text-muted-foreground/60" />
+                Autoritativo externo sem resposta
+              </div>
               <div className="col-span-1">v</div>
               <div className="col-span-2 text-right">5 min</div>
               <div className="col-span-2 text-right">15 min</div>
@@ -255,13 +279,27 @@ export default function NocUpstreamSilence() {
                 Carregando…
               </div>
             ) : filtered.length === 0 ? (
-              <div className="px-3 py-6 text-center text-[11px] font-mono text-muted-foreground">
-                {snap?.collector_status === 'ok'
-                  ? 'Nenhum autoritativo mudo na janela observada.'
-                  : snap?.collector_status === 'disabled'
+              snap?.collector_status === 'ok' ? (
+                <div className="px-3 py-6 flex flex-col items-center justify-center gap-2 text-center">
+                  <div className="flex items-center gap-2 text-emerald-400">
+                    <CheckCircle2 size={16} />
+                    <span className="text-xs font-semibold uppercase tracking-wider">
+                      Nenhum autoritativo público mudo detectado
+                    </span>
+                  </div>
+                  <span className="text-[10.5px] text-muted-foreground max-w-[420px] leading-snug">
+                    Todos os autoritativos externos consultados estão respondendo
+                    normalmente na janela observada. Sem indício de "site não abre"
+                    causado por DNS lá fora.
+                  </span>
+                </div>
+              ) : (
+                <div className="px-3 py-6 text-center text-[11px] font-mono text-muted-foreground">
+                  {snap?.collector_status === 'disabled'
                     ? 'Sem observação ativa — distinto de "0 falhas".'
                     : 'Sem dados — coleta indisponível.'}
-              </div>
+                </div>
+              )
             ) : (
               <div className="divide-y divide-border/40 max-h-[480px] overflow-y-auto">
                 {filtered.map((row) => {
@@ -273,8 +311,14 @@ export default function NocUpstreamSilence() {
                         kind === 'recent' ? 'bg-amber-500/5' : ''
                       }`}
                     >
-                      <div className="col-span-4 text-foreground truncate" title={row.ip}>{row.ip}</div>
+                      <div
+                        className="col-span-4 text-foreground truncate"
+                        title={`${row.ip} — autoritativo externo sem resposta (problema lá fora, não no seu DNS)`}
+                      >
+                        {row.ip}
+                      </div>
                       <div className="col-span-1 text-muted-foreground uppercase">{row.family === 'ipv6' ? 'v6' : 'v4'}</div>
+
                       <div className="col-span-2 text-right tabular-nums text-foreground">{row.count_5min}</div>
                       <div className="col-span-2 text-right tabular-nums text-amber-400">{row.count_15min}</div>
                       <div className="col-span-2 text-right text-muted-foreground">{formatAge(row.last_seen_epoch)}</div>
