@@ -574,39 +574,41 @@ function TrafficEvolutionChart({ data, rangeLabel, timeMeta, timeRange }: { data
   const series = hasData ? data : [];
   const ticks = hasData ? buildServerTimeTicks(series, timeRange) : [];
   const cQps = 'hsl(200 90% 60%)';
-  const cHit = 'hsl(162 72% 51%)';
   const cLat = 'hsl(270 75% 65%)';
   return (
     <Panel
-      title="Evolução do Tráfego"
+      title="Evolução do Tráfego — QPS (esq.) e Latência de recursão (dir.)"
       accent="blue"
       badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}
     >
       {!hasData ? <NoDataPlaceholder minHeight={220} /> : (
       <MeasuredChartFrame minHeight={220}>{({ width, height }) => (
         <ResponsiveContainer width={width} height={height}>
-          <LineChart data={series} margin={{ top: 6, right: 30, bottom: 4, left: -10 }}>
+          <LineChart data={series} margin={{ top: 6, right: 30, bottom: 4, left: 6 }}>
             <CartesianGrid stroke="hsl(220 35% 18% / 0.6)" strokeDasharray="2 4" vertical={false} />
             <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta, timeRange)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
-            <YAxis yAxisId="left" stroke={cQps} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cQps }} tickLine={false} axisLine={false} width={36}
-              label={{ value: 'Queries (QPS)', angle: -90, position: 'insideLeft', style: { fill: cQps, fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: 40 }} />
-            <YAxis yAxisId="right" orientation="right" stroke={cLat} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cLat }} tickLine={false} axisLine={false} width={36}
-              label={{ value: 'Latência (ms)', angle: 90, position: 'insideRight', style: { fill: cLat, fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: -40 }} />
+            <YAxis yAxisId="left" stroke={cQps} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cQps }} tickLine={false} axisLine={false} width={48}
+              label={{ value: 'QPS (consultas/s)', angle: -90, position: 'insideLeft', style: { fill: cQps, fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: 50 }} />
+            <YAxis yAxisId="right" orientation="right" stroke={cLat} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cLat }} tickLine={false} axisLine={false} width={48}
+              label={{ value: 'Latência recursão (ms)', angle: 90, position: 'insideRight', style: { fill: cLat, fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: -60 }} />
             <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Legend wrapperStyle={{ fontSize: 10, fontFamily: 'JetBrains Mono' }} iconType="line" />
-            <Line yAxisId="left" type="monotone" dataKey="qps" name="Queries (QPS)" stroke={cQps} strokeWidth={1.6} dot={false} isAnimationActive={false}
+            <Line yAxisId="left" type="monotone" dataKey="qps" name="QPS (esq.)" stroke={cQps} strokeWidth={1.6} dot={false} isAnimationActive={false}
               style={{ filter: `drop-shadow(0 0 4px ${cQps})` }} />
-            <Line yAxisId="left" type="monotone" dataKey="hitRatio" name="Cache Hit (%)" stroke={cHit} strokeWidth={1.6} dot={false} isAnimationActive={false}
-              style={{ filter: `drop-shadow(0 0 4px ${cHit})` }} />
-            <Line yAxisId="right" type="monotone" dataKey="latency" name="Latência (ms)" stroke={cLat} strokeWidth={1.6} dot={false} isAnimationActive={false}
+            <Line yAxisId="right" type="monotone" dataKey="latency" name="Latência recursão · ms (dir.)" stroke={cLat} strokeWidth={1.6} dot={false} isAnimationActive={false}
               style={{ filter: `drop-shadow(0 0 4px ${cLat})` }} />
           </LineChart>
         </ResponsiveContainer>
       )}</MeasuredChartFrame>
       )}
+      <div className="mt-2 px-1 text-[10px] leading-snug text-muted-foreground/80">
+        QPS = consultas por segundo (eixo esq.). Latência = tempo de <strong>recursão na internet</strong> em cache-miss (eixo dir.); 100–200&nbsp;ms é normal.
+        Cache Hit tem painel próprio (escala 0–100%), por isso não aparece aqui.
+      </div>
     </Panel>
   );
 }
+
 
 
 /* ============================================================
