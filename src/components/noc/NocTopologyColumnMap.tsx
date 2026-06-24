@@ -136,8 +136,8 @@ function EndpointCard({
 
       <div className="rounded-xl border border-border/40 bg-background/30 px-3 py-3">
         <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-muted-foreground/55">IP principal</div>
-        <div title={primaryIp} style={{ scrollbarWidth: 'thin' }} className="mt-2 overflow-x-auto whitespace-nowrap font-mono text-lg font-black leading-tight text-foreground lg:text-xl">
-          {primaryIp}
+        <div title={primaryIp} className="mt-2 break-words font-mono text-lg font-black leading-tight text-foreground lg:text-xl">
+          {formatIpWithBreaks(primaryIp)}
         </div>
         {secondaryLabel && (
           <div className="mt-2 text-[10px] font-mono text-muted-foreground/70">{secondaryLabel}</div>
@@ -196,16 +196,16 @@ function ResolverCard({
           <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(220px,0.75fr)]">
             <div className="rounded-xl border border-border/40 bg-background/30 px-3 py-3">
               <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-muted-foreground/55">Bind IP</div>
-              <div title={instance.bind_ip} style={{ scrollbarWidth: 'thin' }} className="mt-2 overflow-x-auto whitespace-nowrap font-mono text-base font-black leading-snug text-foreground lg:text-lg">
-                {instance.bind_ip}
+              <div title={instance.bind_ip} className="mt-2 break-words font-mono text-base font-black leading-snug text-foreground lg:text-lg">
+                {formatIpWithBreaks(instance.bind_ip)}
               </div>
               <div className="mt-2 text-[10px] font-mono text-muted-foreground/70">porta {instance.port}</div>
             </div>
 
             <div className="rounded-xl border border-border/40 bg-background/20 px-3 py-3">
               <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-muted-foreground/55">Upstream resolvido</div>
-              <div title={instance.resolved_ip || ''} style={{ scrollbarWidth: 'thin' }} className="mt-2 overflow-x-auto whitespace-nowrap font-mono text-sm font-bold text-foreground/90">
-                {instance.resolved_ip || '—'}
+              <div title={instance.resolved_ip || ''} className="mt-2 break-words font-mono text-sm font-bold text-foreground/90">
+                {instance.resolved_ip ? formatIpWithBreaks(instance.resolved_ip) : '—'}
               </div>
               <div className="mt-2 text-[10px] font-mono text-muted-foreground/70 truncate">
                 probe {instance.probe_domain || '—'}

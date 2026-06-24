@@ -1,4 +1,5 @@
 import { resolveIpPair } from '@/lib/ip-utils';
+import { formatIpWithBreaks } from '@/lib/ip-format';
 
 interface IpAddressStackProps {
   ipv4?: string | null;
@@ -43,10 +44,9 @@ export default function IpAddressStack({
           </span>
           <span
             title={row.value}
-            style={{ scrollbarWidth: 'thin' }}
-            className={`block min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs leading-snug text-foreground/90 ${valueClassName}`.trim()}
+            className={`block min-w-0 flex-1 break-words font-mono text-xs leading-snug text-foreground/90 ${valueClassName}`.trim()}
           >
-            {row.value}
+            {formatIpWithBreaks(row.value)}
           </span>
         </div>
       ))}
