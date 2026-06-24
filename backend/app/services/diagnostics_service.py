@@ -641,9 +641,70 @@ def restart_service(name: str) -> dict:
 
 # ── Network ──
 
+# Module-level cache for interface byte counters (rate calculation needs two samples).
+# Maps iface name -> (rx_bytes, tx_bytes, monotonic_timestamp).
+_iface_rate_cache: dict[str, tuple[int, int, float]] = {}
+
+
+def _read_proc_net_dev() -> dict[str, tuple[int, int]]:
+    """Read cumulative RX/TX byte counters from /proc/net/dev.
+
+    Returns {iface_name: (rx_bytes, tx_bytes)}. Returns {} on any error
+    so that interface listing degrades gracefully (no traffic rates,
+    but IP/MTU/MAC/status still rendered).
+    """
+    counters: dict[str, tuple[int, int]] = {}
+    try:
+        with open("/proc/net/dev", "r", encoding="utf-8") as fp:
+            lines = fp.readlines()
+        # First two lines are headers.
+        for line in lines[2:]:
+            if ":" not in line:
+                continue
+            name_part, stats_part = line.split(":", 1)
+            name = name_part.strip()
+            fields = stats_part.split()
+            # /proc/net/dev columns: rx_bytes rx_packets ... (8 RX) tx_bytes tx_packets ... (8 TX)
+            if len(fields) >= 9:
+                try:
+                    rx = int(fields[0])
+                    tx = int(fields[8])
+                    counters[name] = (rx, tx)
+                except ValueError:
+                    continue
+    except OSError:
+        pass
+    return counters
+
+
+def _compute_iface_rates(iface_name: str, rx_bytes: int, tx_bytes: int) -> tuple[float, float]:
+    """Return (rx_bps, tx_bps) for an interface using delta vs previous sample.
+
+    - First sample (no prior reading): returns (0.0, 0.0); next call has a delta.
+    - Counter reset (now < prev): clamp this cycle to 0.
+    - Tiny dt (< 0.5s): return 0 to avoid divide-by-near-zero spikes.
+    """
+    import time
+    now = time.monotonic()
+    prev = _iface_rate_cache.get(iface_name)
+    _iface_rate_cache[iface_name] = (rx_bytes, tx_bytes, now)
+    if prev is None:
+        return 0.0, 0.0
+    prev_rx, prev_tx, prev_t = prev
+    dt = now - prev_t
+    if dt < 0.5:
+        return 0.0, 0.0
+    drx = rx_bytes - prev_rx
+    dtx = tx_bytes - prev_tx
+    rx_bps = max(0.0, drx * 8.0 / dt)
+    tx_bps = max(0.0, dtx * 8.0 / dt)
+    return rx_bps, tx_bps
+
+
 def get_network_interfaces() -> list[dict]:
     """Return all interfaces with ALL their IPs (multiple per interface)."""
     result = _safe_run("ip", ["-j", "addr", "show"], timeout=10)
+    counters = _read_proc_net_dev()
     try:
         interfaces = json.loads(result["stdout"])
         parsed = []
@@ -657,11 +718,15 @@ def get_network_interfaces() -> list[dict]:
                 elif a.get("family") == "inet6":
                     ipv6_list.append(addr_str)
 
+            ifname = iface.get("ifname", "")
+            rx_bytes, tx_bytes = counters.get(ifname, (0, 0))
+            rx_bps, tx_bps = _compute_iface_rates(ifname, rx_bytes, tx_bytes)
+
             parsed.append({
-                "name": iface.get("ifname", ""),
+                "name": ifname,
                 "status": iface.get("operstate", "UNKNOWN"),
                 "state": iface.get("operstate", "UNKNOWN"),
-                "type": _classify_interface_type(iface.get("ifname", ""), iface.get("link_type", "")),
+                "type": _classify_interface_type(ifname, iface.get("link_type", "")),
                 "ipv4": ipv4_list[0] if ipv4_list else "",
                 "ipv4Addresses": ipv4_list,
                 "ipv6": ipv6_list[0] if ipv6_list else "",
@@ -669,10 +734,15 @@ def get_network_interfaces() -> list[dict]:
                 "mac": iface.get("address", ""),
                 "mtu": iface.get("mtu", 1500),
                 "flags": iface.get("flags", []),
+                "rxBytes": rx_bytes,
+                "txBytes": tx_bytes,
+                "rxBps": rx_bps,
+                "txBps": tx_bps,
             })
         return parsed
     except (json.JSONDecodeError, KeyError, StopIteration):
         return []
+
 
 
 def _classify_interface_type(name: str, link_type: str) -> str:

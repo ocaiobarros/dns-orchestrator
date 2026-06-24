@@ -48,6 +48,9 @@ class NetworkInterfaceResponse(BaseModel):
     mtu: int = 1500
     rx_bytes: int = 0
     tx_bytes: int = 0
+    rx_bps: float = 0.0
+    tx_bps: float = 0.0
+
 
 
 class RouteResponse(BaseModel):

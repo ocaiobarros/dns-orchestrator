@@ -16,14 +16,15 @@ import {
 /* ============================================================
    Helpers
    ============================================================ */
-function formatBpsValue(bytes: number | undefined | null): string {
-  if (bytes == null || isNaN(bytes)) return '0 bps';
-  const bits = bytes * 8;
+function formatBpsValue(bps: number | undefined | null): string {
+  if (bps == null || isNaN(bps)) return '0 bps';
+  const bits = bps;
   if (bits >= 1e9) return `${(bits / 1e9).toFixed(2)} Gbps`;
   if (bits >= 1e6) return `${(bits / 1e6).toFixed(1)} Mbps`;
   if (bits >= 1e3) return `${(bits / 1e3).toFixed(0)} Kbps`;
   return `${bits.toFixed(0)} bps`;
 }
+
 
 function MiniSpark({ active, color }: { active: boolean; color: string }) {
   if (!active) {
@@ -298,7 +299,7 @@ export default function NetworkPage() {
                       else if (isUnknown) { statusColor = '215 15% 55%'; }
 
                       const typeColor = ifType === 'physical' ? '270 75% 65%' : '290 65% 60%';
-                      const hasTraffic = (iface.rxBytes ?? 0) > 0 || (iface.txBytes ?? 0) > 0;
+                      const hasTraffic = (iface.rxBps ?? 0) > 0 || (iface.txBps ?? 0) > 0;
 
                       return (
                         <tr
@@ -360,7 +361,7 @@ export default function NetworkPage() {
                               <MiniSpark active={hasTraffic} color="hsl(162 72% 51%)" />
                             </div>
                             <div className="text-[11px] tabular-nums text-foreground/85 mt-0.5">
-                              {formatBpsValue(iface.rxBytes)}
+                              {formatBpsValue(iface.rxBps)}
                             </div>
                           </td>
                           <td className="py-3 align-top w-[120px]">
@@ -368,7 +369,7 @@ export default function NetworkPage() {
                               <MiniSpark active={hasTraffic} color="hsl(200 90% 60%)" />
                             </div>
                             <div className="text-[11px] tabular-nums text-foreground/85 mt-0.5">
-                              {formatBpsValue(iface.txBytes)}
+                              {formatBpsValue(iface.txBps)}
                             </div>
                           </td>
                         </tr>
