@@ -41,7 +41,11 @@ export default function IpAddressStack({
           <span className="w-10 shrink-0 text-[10px] font-mono uppercase tracking-wider text-muted-foreground/70">
             {row.label}
           </span>
-          <span className={`min-w-0 break-all font-mono text-xs leading-snug text-foreground/90 ${valueClassName}`.trim()}>
+          <span
+            title={row.value}
+            style={{ scrollbarWidth: 'thin' }}
+            className={`block min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs leading-snug text-foreground/90 ${valueClassName}`.trim()}
+          >
             {row.value}
           </span>
         </div>
