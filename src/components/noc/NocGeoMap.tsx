@@ -219,6 +219,43 @@ export default function NocGeoMap({
 
           <FitBounds positions={allPositions} />
 
+          {/* DNS Server marker — ALWAYS visible so the operator can see where
+              "the DNS" is on the map, even if geoNodes is empty/loading. */}
+          <CircleMarker
+            center={[serverLat, serverLng]}
+            radius={14}
+            pathOptions={{
+              color: 'hsl(140, 80%, 50%)',
+              fillColor: 'hsl(140, 80%, 50%)',
+              fillOpacity: 0.85,
+              weight: 3,
+              opacity: 1,
+            }}
+          >
+            <Popup>
+              <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#e2e8f0', background: '#0f172a', padding: 10, borderRadius: 8, border: '1px solid #1e293b', minWidth: 160 }}>
+                <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 6 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', display: 'inline-block', marginRight: 6 }} />
+                  DNS Server (este host)
+                </div>
+                <div style={{ color: '#94a3b8' }}>São Paulo, BR</div>
+                <div style={{ color: '#64748b', fontSize: 9, marginTop: 4 }}>Frontend DNS + Resolvers</div>
+              </div>
+            </Popup>
+          </CircleMarker>
+          <CircleMarker
+            center={[serverLat, serverLng]}
+            radius={22}
+            pathOptions={{
+              color: 'hsl(140, 80%, 50%)',
+              fillColor: 'hsl(140, 80%, 50%)',
+              fillOpacity: 0.1,
+              weight: 1,
+              opacity: 0.5,
+            }}
+          />
+
+
           {/* Client access points — small cyan dots with traffic lines */}
           {CLIENT_ACCESS_POINTS.map(client => {
             const scaledRadius = Math.max(3, Math.min(10, client.qps / 40));
