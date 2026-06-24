@@ -243,7 +243,7 @@ export default function LatencyMatrix({ frontend, resolvers, upstreams }: Props)
         </div>
 
         {/* Legend — bands REAIS de DNS recursivo + nota explicativa */}
-        <div className="mt-3 space-y-1.5 text-[10px] leading-snug">
+        <div className="mt-4 pt-3 border-t border-border/40 space-y-1.5 text-[10px] leading-snug">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-primary" />
