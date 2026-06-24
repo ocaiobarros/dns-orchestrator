@@ -2380,6 +2380,9 @@ def _save_deploy_state(deploy_id: str, operator: str, success: bool, backup_id: 
         # Extract operation mode, frontend IP and upstream forwarders from payload
         operation_mode = ""
         frontend_dns_ip = ""
+        frontend_dns_ipv6 = ""
+        intercepted_v4: list[str] = []
+        intercepted_v6: list[str] = []
         forward_addrs: list[str] = []
         forward_first = False
         managed_instances: list[str] = []
@@ -2387,7 +2390,35 @@ def _save_deploy_state(deploy_id: str, operator: str, success: bool, backup_id: 
             normalized = normalize_payload(payload)
             wizard_cfg = normalized.get("_wizardConfig", {}) or {}
             operation_mode = normalized.get("operationMode", "")
-            frontend_dns_ip = normalized.get("frontendDnsIp", "")
+            frontend_dns_ip = str(normalized.get("frontendDnsIp", "") or "").strip()
+            frontend_dns_ipv6 = str(normalized.get("frontendDnsIpv6", "") or "").strip()
+
+            # Collect intercepted VIPs (DNS Seizure) — these ARE the frontend
+            # in pure Interception mode (no explicit "Own VIP" was configured).
+            intercepted_raw = (
+                normalized.get("interceptedVips")
+                or wizard_cfg.get("interceptedVips")
+                or []
+            )
+            for v in intercepted_raw or []:
+                if isinstance(v, dict):
+                    ip4 = str(v.get("vipIp") or "").strip()
+                    ip6 = str(v.get("vipIpv6") or "").strip()
+                    if ip4:
+                        intercepted_v4.append(ip4)
+                    if ip6:
+                        intercepted_v6.append(ip6)
+
+            # In Interception mode without an explicit Frontend DNS (Own VIP),
+            # the client-facing IP IS the first intercepted VIP. Without this
+            # derivation the UI falls back to anycast/egress and mislabels the
+            # egress (e.g. 45.232.x.x) as the Frontend DNS.
+            mode_lc = (operation_mode or "").lower()
+            if not frontend_dns_ip and intercepted_v4 and "intercep" in mode_lc:
+                frontend_dns_ip = intercepted_v4[0]
+            if not frontend_dns_ipv6 and intercepted_v6 and "intercep" in mode_lc:
+                frontend_dns_ipv6 = intercepted_v6[0]
+
             raw_forward_addrs = normalized.get("forwardAddrs") or wizard_cfg.get("forwardAddrs") or []
             if isinstance(raw_forward_addrs, list):
                 forward_addrs = _dedupe_preserve_order([str(x).strip() for x in raw_forward_addrs])
@@ -2414,10 +2445,14 @@ def _save_deploy_state(deploy_id: str, operator: str, success: bool, backup_id: 
             "lastBackupPath": os.path.join(BACKUP_ROOT, backup_id) if backup_id else None,
             "operationMode": operation_mode,
             "frontendDnsIp": frontend_dns_ip,
+            "frontendDnsIpv6": frontend_dns_ipv6,
+            "interceptedVips": intercepted_v4,
+            "interceptedVipsIpv6": intercepted_v6,
             "forwardAddrs": forward_addrs,
             "forwardFirst": forward_first,
             "managedInstances": managed_instances,
         }
+
         os.makedirs(os.path.dirname(DEPLOY_STATE_FILE), exist_ok=True)
         with open(DEPLOY_STATE_FILE, "w") as f:
             json.dump(state, f, indent=2)

@@ -276,20 +276,30 @@ def get_dashboard_summary() -> dict:
     except Exception:
         pass
 
-    if not operation_mode:
+    # Always load deploy_state to expose interceptedVips to the UI, even when
+    # service mode is observed/imported. This gives the UI a stable source for
+    # "the VIP a client consults" without scanning the heterogeneous vip_anycast.
+    deploy_state = {}
+    try:
         from app.services.deploy_service import get_deploy_state
-        deploy_state = get_deploy_state()
+        deploy_state = get_deploy_state() or {}
+    except Exception:
+        deploy_state = {}
+    if not operation_mode:
         operation_mode = deploy_state.get("operationMode", "")
         frontend_dns_ip = deploy_state.get("frontendDnsIp", "")
     else:
-        # In observed/imported mode, try to get frontendDnsIp from VIP discovery
-        try:
-            from app.services.runtime_inventory_service import discover_vips
-            vips = discover_vips()
-            if vips:
-                frontend_dns_ip = vips[0]["ip"]
-        except Exception:
-            pass
+        # Observed/imported: deploy_state may have no frontendDnsIp — try VIP discovery.
+        frontend_dns_ip = deploy_state.get("frontendDnsIp", "") or frontend_dns_ip
+        if not frontend_dns_ip:
+            try:
+                from app.services.runtime_inventory_service import discover_vips
+                vips = discover_vips()
+                if vips:
+                    frontend_dns_ip = vips[0]["ip"]
+            except Exception:
+                pass
+
 
     return {
         "total_queries": dns_metrics.get("total_queries", 0),
@@ -327,6 +337,9 @@ def get_dashboard_summary() -> dict:
         "last_apply_status": sys_info.get("last_apply_status", "unknown"),
         "operation_mode": operation_mode,
         "frontend_dns_ip": frontend_dns_ip,
+        "frontend_dns_ipv6": deploy_state.get("frontendDnsIpv6", ""),
+        "intercepted_vips": deploy_state.get("interceptedVips", []),
+        "intercepted_vips_ipv6": deploy_state.get("interceptedVipsIpv6", []),
     }
 
 
