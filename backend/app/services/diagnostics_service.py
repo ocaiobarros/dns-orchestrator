@@ -337,9 +337,9 @@ def get_dashboard_summary() -> dict:
         "last_apply_status": sys_info.get("last_apply_status", "unknown"),
         "operation_mode": operation_mode,
         "frontend_dns_ip": frontend_dns_ip,
-        "frontend_dns_ipv6": (deploy_state.get("frontendDnsIpv6", "") if 'deploy_state' in locals() else ""),
-        "intercepted_vips": (deploy_state.get("interceptedVips", []) if 'deploy_state' in locals() else []),
-        "intercepted_vips_ipv6": (deploy_state.get("interceptedVipsIpv6", []) if 'deploy_state' in locals() else []),
+        "frontend_dns_ipv6": deploy_state.get("frontendDnsIpv6", ""),
+        "intercepted_vips": deploy_state.get("interceptedVips", []),
+        "intercepted_vips_ipv6": deploy_state.get("interceptedVipsIpv6", []),
     }
 
 
