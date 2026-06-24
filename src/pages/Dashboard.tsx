@@ -52,7 +52,9 @@ function InterceptionDashboard() {
     queryFn: async () => { const r = await api.getEvents(undefined, 20); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 5000,
   });
-  const { data: topDomains } = useQuery({
+  // Top domains: same source as /dns (telemetry payload, parsed from journalctl by collector).
+  // /dns/top-domains backend currently returns []; using telemetry.top_domains keeps both screens consistent.
+  const { data: topDomainsLegacy } = useQuery({
     queryKey: ['topDomains', 5],
     queryFn: async () => { const r = await api.getTopDomains(5); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 30000,
