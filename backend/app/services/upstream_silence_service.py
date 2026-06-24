@@ -37,6 +37,7 @@ contam; linhas sem essa flag (DESTROY de fluxo respondido) são ignoradas.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
 import re
@@ -47,7 +48,8 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Deque, Dict, Optional
+from typing import Deque, Dict, Iterable, Optional, Set
+
 
 logger = logging.getLogger("dns-control.upstream-silence")
 
