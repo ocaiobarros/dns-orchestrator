@@ -22,15 +22,15 @@ export default function TopologyMini({
   return (
     <div className="relative flex items-center justify-around gap-2 py-4 px-1 min-h-[260px] h-full w-full min-w-0 overflow-hidden font-mono text-[10px]">
       {/* Clients */}
-      <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
-        <div className="w-11 h-11 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center"
+      <div className="flex flex-col items-center gap-2 flex-shrink-0">
+        <div className="w-16 h-16 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center"
           style={{ boxShadow: '0 0 14px -4px hsl(var(--primary) / 0.5)' }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--primary))" strokeWidth="1.6">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--primary))" strokeWidth="1.6">
             <circle cx="9" cy="8" r="3" /><circle cx="17" cy="9" r="2.5" />
             <path d="M3 20 c0-3 3-5 6-5 s6 2 6 5" /><path d="M14 20 c0-2.5 2-4 4-4 s4 1.5 4 4" />
           </svg>
         </div>
-        <div className="text-[8px] font-bold uppercase tracking-wider text-primary text-center leading-tight">{clientLabel}</div>
+        <div className="text-[9px] font-bold uppercase tracking-wider text-primary text-center leading-tight">{clientLabel}</div>
       </div>
 
       <AnimatedEdge />
