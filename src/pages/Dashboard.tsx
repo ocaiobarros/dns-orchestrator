@@ -89,13 +89,16 @@ function InterceptionDashboard() {
   const totalInstances = safeV2.length > 0 ? safeV2.length : (health?.total ?? 0);
   const allRunning = safeServices.length > 0 && safeServices.every(s => s.status === 'running' || s.status === 'active' || s.active);
   const eventItems = recentEvents?.items ?? (Array.isArray(recentEvents) ? recentEvents : []);
-  // Frontend DNS = the VIP/IP a CLIENT consults. Must NOT mix egress/listeners.
-  // Priority: single value from wizard/deploy state → diagnostics single-VIP field →
-  // best-effort filter of vip_anycast (drop CGN-NAT listeners + backend bind IPs).
-  const isCgn = (ip: string) => /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(ip);
-  const vipAnycastList = String(sysInfo?.vip_anycast || '').split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
-  const singleVipHint = (deployState?.frontendDnsIp || sysInfo?.frontend_dns_ip || '').trim();
-  const frontendIp = singleVipHint || vipAnycastList.find(ip => !isCgn(ip)) || vipAnycastList[0] || '172.250.40.3';
+  // Frontend DNS = the VIP/IP a CLIENT consults. The backend derives this from
+  // wizard inputs: explicit `frontendDnsIp` (Own VIP) takes priority; in pure
+  // Interception mode it falls back to the first intercepted VIP. We do NOT
+  // scan `vip_anycast` here — that list mixes egress / listeners / VIPs and
+  // a non-CGN scan would mislabel the egress (e.g. 45.232.x.x) as Frontend.
+  const interceptedVips: string[] = Array.isArray((sysInfo as any)?.intercepted_vips)
+    ? ((sysInfo as any).intercepted_vips as unknown[]).map(String).filter(Boolean)
+    : [];
+  const singleVipHint = (deployState?.frontendDnsIp || (sysInfo as any)?.frontend_dns_ip || '').trim();
+  const frontendIp = singleVipHint || interceptedVips[0] || '—';
 
   const lastLoginFail = eventItems.find((e: any) => e.event_type?.includes('login_fail'));
   const lastLoginFailMsg = lastLoginFail
