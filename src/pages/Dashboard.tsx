@@ -87,8 +87,13 @@ function InterceptionDashboard() {
   const totalInstances = safeV2.length > 0 ? safeV2.length : (health?.total ?? 0);
   const allRunning = safeServices.length > 0 && safeServices.every(s => s.status === 'running' || s.status === 'active' || s.active);
   const eventItems = recentEvents?.items ?? (Array.isArray(recentEvents) ? recentEvents : []);
-  const vipAddress = sysInfo?.vip_anycast ?? null;
-  const frontendIp = vipAddress || sysInfo?.frontend_dns_ip || deployState?.frontendDnsIp || '172.250.40.3';
+  // Frontend DNS = the VIP/IP a CLIENT consults. Must NOT mix egress/listeners.
+  // Priority: single value from wizard/deploy state → diagnostics single-VIP field →
+  // best-effort filter of vip_anycast (drop CGN-NAT listeners + backend bind IPs).
+  const isCgn = (ip: string) => /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(ip);
+  const vipAnycastList = String(sysInfo?.vip_anycast || '').split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
+  const singleVipHint = (deployState?.frontendDnsIp || sysInfo?.frontend_dns_ip || '').trim();
+  const frontendIp = singleVipHint || vipAnycastList.find(ip => !isCgn(ip)) || vipAnycastList[0] || '172.250.40.3';
 
   const lastLoginFail = eventItems.find((e: any) => e.event_type?.includes('login_fail'));
   const lastLoginFailMsg = lastLoginFail
