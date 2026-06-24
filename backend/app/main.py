@@ -50,6 +50,13 @@ async def lifespan(app: FastAPI):
                 _uss.hydrate_detector_config(db)
             except Exception:  # noqa: BLE001
                 pass
+            # Also hydrate the own-IP denylist (egress/listeners/VIPs) so the
+            # detector não conta o próprio host como autoritativo mudo.
+            try:
+                _uss.hydrate_detector_own_ips(db)
+            except Exception:  # noqa: BLE001
+                pass
+
             if _uss.is_enabled(db):
                 _uss.UpstreamSilenceDetector.instance().start()
         finally:
