@@ -20,7 +20,7 @@ export default function TopologyMini({
   const allIpsTitle = frontendIps.length > 1 ? frontendIps.join('\n') : undefined;
 
   return (
-    <div className="relative flex items-center justify-around gap-2 py-4 px-1 min-h-[220px] w-full min-w-0 overflow-hidden font-mono text-[9px]">
+    <div className="relative flex items-center justify-around gap-2 py-4 px-1 min-h-[260px] h-full w-full min-w-0 overflow-hidden font-mono text-[10px]">
       {/* Clients */}
       <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
         <div className="w-11 h-11 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center"
