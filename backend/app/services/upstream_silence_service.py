@@ -668,6 +668,8 @@ class UpstreamSilenceDetector:
             self._thread = None
             self._alert_active = False
             self._alert_last_transition_at = None
+            self._own_ips = set()
+
             self._cfg = {
                 "window_short": DEFAULT_WINDOW_SHORT,
                 "window_long": DEFAULT_WINDOW_LONG,
