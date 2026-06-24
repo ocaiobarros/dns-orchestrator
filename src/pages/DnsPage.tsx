@@ -257,6 +257,16 @@ function Panel({
   );
 }
 
+// Unit suffix per dataKey — keeps tooltips honest (number without unit misleads).
+const UNIT_BY_KEY: Record<string, string> = {
+  qps: ' QPS',
+  latency: ' ms',
+  hitRatio: ' %',
+  servfail: ' consultas',
+  nxdomain: ' consultas',
+  total: ' consultas',
+};
+
 function ChartTooltip({ active, payload, label, meta }: { active?: boolean; payload?: any[]; label?: unknown; meta: ServerTimeMetadata }) {
   if (!active || !payload?.length) return null;
   return (
@@ -264,16 +274,22 @@ function ChartTooltip({ active, payload, label, meta }: { active?: boolean; payl
       <div className="font-bold text-foreground">{formatServerTooltipTime(label, meta)}</div>
       <div className="mt-0.5 text-muted-foreground">{meta.timezone_label} ({meta.timezone})</div>
       <div className="mt-2 space-y-1">
-        {payload.filter(item => item?.value !== undefined && item?.value !== null).map(item => (
-          <div key={item.dataKey || item.name} className="flex items-center justify-between gap-5">
-            <span style={{ color: item.color }}>{item.name || item.dataKey}</span>
-            <span className="font-bold text-foreground tabular-nums">{typeof item.value === 'number' ? item.value.toFixed(item.value % 1 === 0 ? 0 : 2) : item.value}</span>
-          </div>
-        ))}
+        {payload.filter(item => item?.value !== undefined && item?.value !== null).map(item => {
+          const unit = UNIT_BY_KEY[String(item.dataKey)] ?? '';
+          return (
+            <div key={item.dataKey || item.name} className="flex items-center justify-between gap-5">
+              <span style={{ color: item.color }}>{item.name || item.dataKey}</span>
+              <span className="font-bold text-foreground tabular-nums">
+                {typeof item.value === 'number' ? item.value.toFixed(item.value % 1 === 0 ? 0 : 2) : item.value}{unit}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
+
 
 function MeasuredChartFrame({
   minHeight = 180,
