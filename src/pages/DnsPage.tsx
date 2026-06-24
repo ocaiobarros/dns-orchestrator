@@ -353,20 +353,6 @@ function NoDataPlaceholder({ minHeight = 180, reason }: { minHeight?: number; re
    Time-series chart panel
    ============================================================ */
 function ChartPanel({
-  title, data, dataKey, accent, rangeLabel, timeMeta, timeRange,
-}: {
-  title: string; data: any[]; dataKey: string; accent: Accent; rangeLabel?: string; timeMeta: ServerTimeMetadata; timeRange: string;
-}) {
-  const color = `hsl(${ACCENT_HSL[accent]})`;
-  const colorAlpha = (a: number) => `hsl(${ACCENT_HSL[accent]} / ${a})`;
-  const gid = `chart-${title.replace(/\s+/g, '-')}`;
-
-  const hasData = data.length > 0;
-  const series = hasData ? data : [];
-  const ticks = hasData ? buildServerTimeTicks(series, timeRange) : [];
-
-
-function ChartPanel({
   title, data, dataKey, accent, rangeLabel, timeMeta, timeRange, yLabel, footnote,
 }: {
   title: string; data: any[]; dataKey: string; accent: Accent; rangeLabel?: string; timeMeta: ServerTimeMetadata; timeRange: string;
@@ -379,6 +365,8 @@ function ChartPanel({
   const hasData = data.length > 0;
   const series = hasData ? data : [];
   const ticks = hasData ? buildServerTimeTicks(series, timeRange) : [];
+
+
 
 
   return (
