@@ -52,7 +52,9 @@ function InterceptionDashboard() {
     queryFn: async () => { const r = await api.getEvents(undefined, 20); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 5000,
   });
-  const { data: topDomains } = useQuery({
+  // Top domains: same source as /dns (telemetry payload, parsed from journalctl by collector).
+  // /dns/top-domains backend currently returns []; using telemetry.top_domains keeps both screens consistent.
+  const { data: topDomainsLegacy } = useQuery({
     queryKey: ['topDomains', 5],
     queryFn: async () => { const r = await api.getTopDomains(5); if (!r.success) throw new Error(r.error!); return r.data; },
     refetchInterval: 30000,
@@ -87,8 +89,13 @@ function InterceptionDashboard() {
   const totalInstances = safeV2.length > 0 ? safeV2.length : (health?.total ?? 0);
   const allRunning = safeServices.length > 0 && safeServices.every(s => s.status === 'running' || s.status === 'active' || s.active);
   const eventItems = recentEvents?.items ?? (Array.isArray(recentEvents) ? recentEvents : []);
-  const vipAddress = sysInfo?.vip_anycast ?? null;
-  const frontendIp = vipAddress || sysInfo?.frontend_dns_ip || deployState?.frontendDnsIp || '172.250.40.3';
+  // Frontend DNS = the VIP/IP a CLIENT consults. Must NOT mix egress/listeners.
+  // Priority: single value from wizard/deploy state → diagnostics single-VIP field →
+  // best-effort filter of vip_anycast (drop CGN-NAT listeners + backend bind IPs).
+  const isCgn = (ip: string) => /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(ip);
+  const vipAnycastList = String(sysInfo?.vip_anycast || '').split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
+  const singleVipHint = (deployState?.frontendDnsIp || sysInfo?.frontend_dns_ip || '').trim();
+  const frontendIp = singleVipHint || vipAnycastList.find(ip => !isCgn(ip)) || vipAnycastList[0] || '172.250.40.3';
 
   const lastLoginFail = eventItems.find((e: any) => e.event_type?.includes('login_fail'));
   const lastLoginFailMsg = lastLoginFail
@@ -135,27 +142,32 @@ function InterceptionDashboard() {
         };
       });
 
-  // Latency matrix — usa latência real por instância (não tudo igual)
+  // Resolvers são hops INTERNOS (loopback). Latência esperada ~0–1 ms. NÃO injetar
+  // avgLatency (que é RECURSÃO p/ internet — pertence só à coluna upstream).
   const latencyResolvers = topoBackends.map((b) => ({
     name: b.name.toUpperCase(),
     ip: b.ip,
-    latencyMs: b.latencyMs > 0 ? b.latencyMs : (b.healthy ? Math.max(1, Math.round(avgLatency)) : 0),
+    latencyMs: b.healthy ? 1 : 0, // loopback simbólico — verde
     healthy: b.healthy,
   }));
-  // Upstream latency: derivada da latência média real dos resolvers (proxy realista — sem probe externo via browser por CORS).
-  // Quando resolvers estão saudáveis e <30ms, upstreams refletem isso (em vez de valor fixo 141ms).
-  const upstreamBaseMs = Math.max(1, Math.round(avgLatency || (latencyResolvers.find(r => r.healthy && r.latencyMs > 0)?.latencyMs ?? 10)));
+  // Upstream latency reflects real recursion latency (avgLatency).
+  const upstreamBaseMs = Math.max(1, Math.round(avgLatency || 10));
   const latencyUpstreams = [
     { name: '1.1.1.1', ip: '1.1.1.1', latencyMs: upstreamBaseMs, healthy: true },
     { name: '8.8.8.8', ip: '8.8.8.8', latencyMs: upstreamBaseMs + 1, healthy: true },
   ];
 
-  // GeoMap nodes (Americas focus)
+  // Categorize the loopback IP soup for separate, correctly-labeled chips.
+  const backendIpSet = new Set(topoBackends.map(b => b.ip).filter(Boolean));
+  const listenerIps = vipAnycastList.filter(ip => isCgn(ip) || backendIpSet.has(ip));
+  const egressIps = vipAnycastList.filter(ip => !isCgn(ip) && !backendIpSet.has(ip) && ip !== frontendIp);
+
+  // GeoMap nodes — resolvers são loopback (latência interna ~1ms), NÃO avgLatency.
   const geoNodes: MapNode[] = [
-    { id: 'vip', label: vipAddress || 'Frontend DNS', type: 'vip', status: 'ok', qps: totalQps, bindIp: vipAddress || undefined },
+    { id: 'vip', label: frontendIp || 'Frontend DNS', type: 'vip', status: 'ok', qps: totalQps, bindIp: frontendIp || undefined },
     ...topoBackends.map((b, i) => ({
       id: `r-${i}`, label: b.name, type: 'resolver' as const, status: 'ok' as const,
-      latency: Math.round(avgLatency || 10), qps: b.qps, cacheHit: b.cacheHit, bindIp: b.ip,
+      latency: 1, qps: b.qps, cacheHit: b.cacheHit, bindIp: b.ip,
     })),
     { id: 'upstream', label: 'Upstream', type: 'upstream', status: 'ok', bindIp: '8.8.8.8' },
   ];
@@ -216,9 +228,34 @@ function InterceptionDashboard() {
         <TelemetryHealthStrip compact className="ml-2" />
       </div>
 
+      {/* Loopback IP categorization — keeps egress/listeners visible but NOT mislabeled as "Frontend DNS" */}
+      {(listenerIps.length > 0 || egressIps.length > 0) && (
+        <div className="flex items-center gap-2 flex-wrap text-[10px] font-mono">
+          {listenerIps.length > 0 && (
+            <div className="noc-status-chip" title={listenerIps.join('\n')}>
+              <span>Listeners (internos)</span>
+              <span className="text-foreground/85 font-normal normal-case tracking-normal truncate max-w-[260px]">
+                {listenerIps.slice(0, 2).join(', ')}{listenerIps.length > 2 ? ` +${listenerIps.length - 2}` : ''}
+              </span>
+            </div>
+          )}
+          {egressIps.length > 0 && (
+            <div className="noc-status-chip" title={egressIps.join('\n')}>
+              <span>Egress (saída)</span>
+              <span className="text-foreground/85 font-normal normal-case tracking-normal truncate max-w-[260px]">
+                {egressIps.slice(0, 2).join(', ')}{egressIps.length > 2 ? ` +${egressIps.length - 2}` : ''}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 6 KPI cards */}
       <div className="noc-grid-kpi">
-        <KpiCard label="Frontend DNS" value={frontendIp ? `${frontendIp}:53` : '—'} sub="Respondendo"
+        <KpiCard label="Frontend DNS (VIP)" value={frontendIp ? `${frontendIp}:53` : '—'}
+          sub={listenerIps.length || egressIps.length
+            ? `${listenerIps.length} listener(s) · ${egressIps.length} egress`
+            : 'Respondendo'}
           accent="violet" visual={<MiniGlobe />} />
         <KpiCard label="Backends" value={`${healthyCount} / ${totalInstances}`} sub="Todos saudáveis"
           glow visual={<MiniBackends />} />
@@ -235,7 +272,7 @@ function InterceptionDashboard() {
       {/* Triple panel: Topologia + Mapa Mundi + Mapa de Latência */}
       <div className="noc-grid-triple">
         <PanelV3 title="Topologia do Serviço" icon={<Network size={13} />}>
-          <TopologyMini frontendIp={frontendIp} frontendQps={totalQps} backends={topoBackends.slice(0, 2)} />
+          <TopologyMini frontendIp={frontendIp} frontendQps={totalQps} backends={topoBackends} />
         </PanelV3>
 
         <PanelV3 title="Mapa de Rede DNS" icon={<MapIcon size={13} />}>
@@ -264,10 +301,23 @@ function InterceptionDashboard() {
       {/* Quad: Top Domínios / Top Clientes / Métricas por Backend / Status dos Serviços */}
       <div className="noc-grid-quad">
         <PanelV3 title="Top Domínios" icon={<ListOrdered size={13} />}>
-          <RankList
-            items={(topDomains || []).slice(0, 5).map((d: any) => ({ label: d.domain, value: d.query_count || d.count || 0 }))}
-            onSeeAll={() => navigate('/dns')}
-          />
+          {(() => {
+            const fromTelemetry = Array.isArray((telemetry as any)?.top_domains) ? (telemetry as any).top_domains : [];
+            const fromLegacy = Array.isArray(topDomainsLegacy) ? topDomainsLegacy : [];
+            const src = fromTelemetry.length ? fromTelemetry : fromLegacy;
+            const items = src.slice(0, 5).map((d: any) => ({
+              label: d.domain || d.name || '—',
+              value: Number(d.count ?? d.query_count ?? d.queries ?? 0),
+            })).filter((x: any) => x.value > 0);
+            if (items.length === 0) {
+              return (
+                <div className="text-[11px] text-muted-foreground/70 py-6 text-center">
+                  Aguardando coleta do parser de logs (journalctl). Disponível em /dns assim que houver tráfego.
+                </div>
+              );
+            }
+            return <RankList items={items} onSeeAll={() => navigate('/dns')} />;
+          })()}
         </PanelV3>
 
         <PanelV3 title="Top Clientes" icon={<UsersIcon size={13} />}>

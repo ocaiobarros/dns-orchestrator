@@ -54,17 +54,17 @@ export default function TopologyMini({
       </div>
 
 
-      <AnimatedEdge multiple={Math.min(backends.length, 3)} />
+      <AnimatedEdge multiple={Math.min(backends.length, 4)} />
 
       {/* Backends */}
       <div className="flex flex-col gap-1.5 flex-shrink min-w-0">
         {backends.length === 0 && (
           <div className="text-muted-foreground text-[10px]">Sem backends</div>
         )}
-        {backends.slice(0, 3).map((b) => {
+        {backends.slice(0, 4).map((b) => {
           const ok = b.healthy !== false;
           return (
-            <div key={b.name} className="px-2 py-1 rounded-md bg-card border min-w-0 w-full max-w-[clamp(96px,11vw,160px)]"
+            <div key={b.name} className="px-2 py-0.5 rounded-md bg-card border min-w-0 w-full max-w-[clamp(96px,11vw,160px)]"
               style={{
                 borderColor: ok ? 'hsl(var(--primary) / 0.3)' : 'hsl(var(--destructive) / 0.4)',
                 boxShadow: ok ? '0 0 10px -5px hsl(var(--primary) / 0.4)' : '0 0 10px -5px hsl(var(--destructive) / 0.4)',
@@ -77,13 +77,18 @@ export default function TopologyMini({
                   }} />
                 <span className={`text-[9px] font-bold ${ok ? 'text-primary' : 'text-destructive'}`}>{b.name}</span>
               </div>
-              <div className="text-foreground/90 text-[9px] font-mono mt-0.5 truncate">{b.ip}</div>
-              <div className="text-muted-foreground text-[8px] mt-0.5">
+              <div className="text-foreground/90 text-[9px] font-mono truncate">{b.ip}</div>
+              <div className="text-muted-foreground text-[8px]">
                 {b.qps ?? 0} q/s · {b.cacheHit ?? 0}%
               </div>
             </div>
           );
         })}
+        {backends.length > 4 && (
+          <div className="text-[9px] font-mono text-muted-foreground/70 text-center">
+            +{backends.length - 4} backend(s)
+          </div>
+        )}
       </div>
 
       <AnimatedEdge />
