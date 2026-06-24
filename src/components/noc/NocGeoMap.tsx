@@ -160,17 +160,18 @@ export default function NocGeoMap({
     return result;
   }, [nodes, serverLat, serverLng]);
 
-  // All positions for fit bounds (Americas: BR + US visible together)
+  // All positions for fit bounds — focus on the REAL node + Brazilian client cloud.
+  // Upstreams (US/EU) and arbitrary "Americas" anchors are NOT used for framing,
+  // otherwise the map opens wide and the operator can't see the actual node.
   const allPositions = useMemo<[number, number][]>(() => {
-    const pts: [number, number][] = geoNodes
-      .filter(n => n.lat != null && n.lng != null)
-      .map(n => [n.lat!, n.lng!]);
+    const pts: [number, number][] = [];
+    pts.push([serverLat, serverLng]);
+    geoNodes
+      .filter(n => (n.type === 'vip' || n.type === 'resolver') && n.lat != null && n.lng != null)
+      .forEach(n => pts.push([n.lat!, n.lng!]));
     CLIENT_ACCESS_POINTS.forEach(c => pts.push([c.lat, c.lng]));
-    // Anchor points to force Americas framing (NA + SA centered)
-    pts.push([45, -100]);   // North America anchor
-    pts.push([-25, -55]);   // South America anchor
     return pts;
-  }, [geoNodes]);
+  }, [geoNodes, serverLat, serverLng]);
 
   // Total QPS for scaling
   const totalQps = useMemo(() => {
