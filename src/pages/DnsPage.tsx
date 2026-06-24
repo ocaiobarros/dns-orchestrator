@@ -257,6 +257,16 @@ function Panel({
   );
 }
 
+// Unit suffix per dataKey — keeps tooltips honest (number without unit misleads).
+const UNIT_BY_KEY: Record<string, string> = {
+  qps: ' QPS',
+  latency: ' ms',
+  hitRatio: ' %',
+  servfail: ' consultas',
+  nxdomain: ' consultas',
+  total: ' consultas',
+};
+
 function ChartTooltip({ active, payload, label, meta }: { active?: boolean; payload?: any[]; label?: unknown; meta: ServerTimeMetadata }) {
   if (!active || !payload?.length) return null;
   return (
@@ -264,16 +274,22 @@ function ChartTooltip({ active, payload, label, meta }: { active?: boolean; payl
       <div className="font-bold text-foreground">{formatServerTooltipTime(label, meta)}</div>
       <div className="mt-0.5 text-muted-foreground">{meta.timezone_label} ({meta.timezone})</div>
       <div className="mt-2 space-y-1">
-        {payload.filter(item => item?.value !== undefined && item?.value !== null).map(item => (
-          <div key={item.dataKey || item.name} className="flex items-center justify-between gap-5">
-            <span style={{ color: item.color }}>{item.name || item.dataKey}</span>
-            <span className="font-bold text-foreground tabular-nums">{typeof item.value === 'number' ? item.value.toFixed(item.value % 1 === 0 ? 0 : 2) : item.value}</span>
-          </div>
-        ))}
+        {payload.filter(item => item?.value !== undefined && item?.value !== null).map(item => {
+          const unit = UNIT_BY_KEY[String(item.dataKey)] ?? '';
+          return (
+            <div key={item.dataKey || item.name} className="flex items-center justify-between gap-5">
+              <span style={{ color: item.color }}>{item.name || item.dataKey}</span>
+              <span className="font-bold text-foreground tabular-nums">
+                {typeof item.value === 'number' ? item.value.toFixed(item.value % 1 === 0 ? 0 : 2) : item.value}{unit}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
+
 
 function MeasuredChartFrame({
   minHeight = 180,
@@ -337,9 +353,10 @@ function NoDataPlaceholder({ minHeight = 180, reason }: { minHeight?: number; re
    Time-series chart panel
    ============================================================ */
 function ChartPanel({
-  title, data, dataKey, accent, rangeLabel, timeMeta, timeRange,
+  title, data, dataKey, accent, rangeLabel, timeMeta, timeRange, yLabel, footnote,
 }: {
   title: string; data: any[]; dataKey: string; accent: Accent; rangeLabel?: string; timeMeta: ServerTimeMetadata; timeRange: string;
+  yLabel?: string; footnote?: React.ReactNode;
 }) {
   const color = `hsl(${ACCENT_HSL[accent]})`;
   const colorAlpha = (a: number) => `hsl(${ACCENT_HSL[accent]} / ${a})`;
@@ -350,12 +367,14 @@ function ChartPanel({
   const ticks = hasData ? buildServerTimeTicks(series, timeRange) : [];
 
 
+
+
   return (
     <Panel title={title} accent={accent} badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}>
       {!hasData ? <NoDataPlaceholder minHeight={180} /> : (
       <MeasuredChartFrame minHeight={180}>{({ width, height }) => (
         <ResponsiveContainer width={width} height={height}>
-          <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
+          <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: 6 }}>
             <defs>
               <linearGradient id={gid} x1="0" x2="0" y1="0" y2="1">
                 <stop offset="0%" stopColor={color} stopOpacity={0.5} />
@@ -364,7 +383,8 @@ function ChartPanel({
             </defs>
             <CartesianGrid stroke={colorAlpha(0.12)} strokeDasharray="2 4" vertical={false} />
             <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta, timeRange)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
-            <YAxis stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={40} />
+            <YAxis stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={48}
+              label={yLabel ? { value: yLabel, angle: -90, position: 'insideLeft', style: { fill: 'hsl(215 15% 55%)', fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: 30 } : undefined} />
             <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Area
               type="monotone" dataKey={dataKey} stroke={color} strokeWidth={1.5}
@@ -375,6 +395,9 @@ function ChartPanel({
           </AreaChart>
         </ResponsiveContainer>
       )}</MeasuredChartFrame>
+      )}
+      {footnote && (
+        <div className="mt-2 px-1 text-[10px] leading-snug text-muted-foreground/80">{footnote}</div>
       )}
     </Panel>
   );
@@ -394,10 +417,12 @@ function CacheHitChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[];
       {!hasData ? <NoDataPlaceholder minHeight={180} /> : (
       <MeasuredChartFrame minHeight={180}>{({ width, height }) => (
         <ResponsiveContainer width={width} height={height}>
-          <LineChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
+          <LineChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: 6 }}>
             <CartesianGrid stroke="hsl(290 60% 40% / 0.15)" strokeDasharray="2 4" vertical={false} />
             <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta, timeRange)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
-            <YAxis domain={[0, 100]} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={40} />
+            <YAxis domain={[0, 100]} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={48}
+              label={{ value: '% cache hit', angle: -90, position: 'insideLeft', style: { fill: 'hsl(215 15% 55%)', fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: 36 }} />
+
             <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Line type="monotone" dataKey="hitRatio" stroke={color} strokeWidth={1.5} dot={false}
               isAnimationActive={false}
@@ -425,7 +450,7 @@ function ErrorsChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; r
       {!hasData ? <NoDataPlaceholder minHeight={180} /> : (
       <MeasuredChartFrame minHeight={180}>{({ width, height }) => (
         <ResponsiveContainer width={width} height={height}>
-          <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: -10 }}>
+          <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 4, left: 6 }}>
             <defs>
               <linearGradient id="err-grad" x1="0" x2="0" y1="0" y2="1">
                 <stop offset="0%" stopColor={color} stopOpacity={0.55} />
@@ -434,7 +459,8 @@ function ErrorsChart({ data, rangeLabel, timeMeta, timeRange }: { data: any[]; r
             </defs>
             <CartesianGrid stroke={colorA(0.1)} strokeDasharray="2 4" vertical={false} />
             <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta, timeRange)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
-            <YAxis stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={40} />
+            <YAxis stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} width={48}
+              label={{ value: 'consultas com erro', angle: -90, position: 'insideLeft', style: { fill: 'hsl(215 15% 55%)', fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: 60 }} />
             <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Area type="monotone" dataKey="total" stroke={color} strokeWidth={1.5} fill="url(#err-grad)" isAnimationActive={false}
               style={{ filter: `drop-shadow(0 0 4px ${color})` }} />
@@ -548,39 +574,41 @@ function TrafficEvolutionChart({ data, rangeLabel, timeMeta, timeRange }: { data
   const series = hasData ? data : [];
   const ticks = hasData ? buildServerTimeTicks(series, timeRange) : [];
   const cQps = 'hsl(200 90% 60%)';
-  const cHit = 'hsl(162 72% 51%)';
   const cLat = 'hsl(270 75% 65%)';
   return (
     <Panel
-      title="Evolução do Tráfego"
+      title="Evolução do Tráfego — QPS (esq.) e Latência de recursão (dir.)"
       accent="blue"
       badge={<div className="ml-2 flex flex-wrap items-center gap-1.5">{rangeLabel ? <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-primary">{rangeLabel}</span> : null}<span className="rounded border border-border/60 bg-secondary/70 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{timezoneBadgeText(timeMeta)}</span></div>}
     >
       {!hasData ? <NoDataPlaceholder minHeight={220} /> : (
       <MeasuredChartFrame minHeight={220}>{({ width, height }) => (
         <ResponsiveContainer width={width} height={height}>
-          <LineChart data={series} margin={{ top: 6, right: 30, bottom: 4, left: -10 }}>
+          <LineChart data={series} margin={{ top: 6, right: 30, bottom: 4, left: 6 }}>
             <CartesianGrid stroke="hsl(220 35% 18% / 0.6)" strokeDasharray="2 4" vertical={false} />
             <XAxis dataKey="ts" type="number" domain={['dataMin', 'dataMax']} ticks={ticks} tickFormatter={(value) => formatServerAxisTime(value, timeMeta, timeRange)} minTickGap={36} stroke="hsl(215 15% 40%)" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} tickLine={false} axisLine={false} interval={0} />
-            <YAxis yAxisId="left" stroke={cQps} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cQps }} tickLine={false} axisLine={false} width={36}
-              label={{ value: 'Queries (QPS)', angle: -90, position: 'insideLeft', style: { fill: cQps, fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: 40 }} />
-            <YAxis yAxisId="right" orientation="right" stroke={cLat} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cLat }} tickLine={false} axisLine={false} width={36}
-              label={{ value: 'Latência (ms)', angle: 90, position: 'insideRight', style: { fill: cLat, fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: -40 }} />
+            <YAxis yAxisId="left" stroke={cQps} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cQps }} tickLine={false} axisLine={false} width={48}
+              label={{ value: 'QPS (consultas/s)', angle: -90, position: 'insideLeft', style: { fill: cQps, fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: 50 }} />
+            <YAxis yAxisId="right" orientation="right" stroke={cLat} tick={{ fontSize: 9, fontFamily: 'JetBrains Mono', fill: cLat }} tickLine={false} axisLine={false} width={48}
+              label={{ value: 'Latência recursão (ms)', angle: 90, position: 'insideRight', style: { fill: cLat, fontFamily: 'JetBrains Mono', fontSize: 9 }, dy: -60 }} />
             <Tooltip content={<ChartTooltip meta={timeMeta} />} />
             <Legend wrapperStyle={{ fontSize: 10, fontFamily: 'JetBrains Mono' }} iconType="line" />
-            <Line yAxisId="left" type="monotone" dataKey="qps" name="Queries (QPS)" stroke={cQps} strokeWidth={1.6} dot={false} isAnimationActive={false}
+            <Line yAxisId="left" type="monotone" dataKey="qps" name="QPS (esq.)" stroke={cQps} strokeWidth={1.6} dot={false} isAnimationActive={false}
               style={{ filter: `drop-shadow(0 0 4px ${cQps})` }} />
-            <Line yAxisId="left" type="monotone" dataKey="hitRatio" name="Cache Hit (%)" stroke={cHit} strokeWidth={1.6} dot={false} isAnimationActive={false}
-              style={{ filter: `drop-shadow(0 0 4px ${cHit})` }} />
-            <Line yAxisId="right" type="monotone" dataKey="latency" name="Latência (ms)" stroke={cLat} strokeWidth={1.6} dot={false} isAnimationActive={false}
+            <Line yAxisId="right" type="monotone" dataKey="latency" name="Latência recursão · ms (dir.)" stroke={cLat} strokeWidth={1.6} dot={false} isAnimationActive={false}
               style={{ filter: `drop-shadow(0 0 4px ${cLat})` }} />
           </LineChart>
         </ResponsiveContainer>
       )}</MeasuredChartFrame>
       )}
+      <div className="mt-2 px-1 text-[10px] leading-snug text-muted-foreground/80">
+        QPS = consultas por segundo (eixo esq.). Latência = tempo de <strong>recursão na internet</strong> em cache-miss (eixo dir.); 100–200&nbsp;ms é normal.
+        Cache Hit tem painel próprio (escala 0–100%), por isso não aparece aqui.
+      </div>
     </Panel>
   );
 }
+
 
 
 /* ============================================================
@@ -1070,9 +1098,9 @@ export default function DnsPage() {
                 icon={<Database size={24} strokeWidth={1.6} />}
               />
               <KpiCardLarge
-                label="Latência"
-                value={noSource ? dash : `${avgLatency.toFixed(0)}ms`}
-                sub={noSource ? 'sem dados' : 'Recursion avg'}
+                label="Latência de recursão"
+                value={noSource ? dash : `${avgLatency.toFixed(0)} ms`}
+                sub={noSource ? 'sem dados' : 'recursão avg (cache-miss) · 100–200 ms é normal'}
                 accent="violet" sparkData={noSource ? [] : sparkL}
                 icon={<Timer size={24} strokeWidth={1.6} />}
               />
@@ -1387,8 +1415,28 @@ export default function DnsPage() {
 
       {/* ───── Secondary charts (preserved — were tab "Tráfego") ───── */}
       <div className={`grid grid-cols-1 lg:grid-cols-2 gap-3 ${focusRing('traffic')} rounded-xl`}>
-        <ChartPanel title="QPS ao longo do tempo" data={effectiveChartData} dataKey="qps" accent="blue" rangeLabel={periodLabel} timeMeta={timeMeta} timeRange={timeRange} />
-        <ChartPanel title="Latência (ms)" data={effectiveChartData} dataKey="latency" accent="violet" rangeLabel={periodLabel} timeMeta={timeMeta} timeRange={timeRange} />
+        <ChartPanel
+          title="QPS ao longo do tempo"
+          data={effectiveChartData}
+          dataKey="qps"
+          accent="blue"
+          rangeLabel={periodLabel}
+          timeMeta={timeMeta}
+          timeRange={timeRange}
+          yLabel="QPS (consultas/s)"
+          footnote={<>QPS = consultas por segundo na janela amostrada. Valor pode estar abaixo do QPS instantâneo quando filtrado por backend/qtype (mostra apenas a fatia correspondente).</>}
+        />
+        <ChartPanel
+          title="Latência de recursão (ms)"
+          data={effectiveChartData}
+          dataKey="latency"
+          accent="violet"
+          rangeLabel={periodLabel}
+          timeMeta={timeMeta}
+          timeRange={timeRange}
+          yLabel="ms (recursão)"
+          footnote={<>Tempo de resolver um nome <strong>não cacheado</strong> na internet (cache-miss). 100–200&nbsp;ms é normal; &gt;400&nbsp;ms é lento. Consultas servidas do cache (&lt;1&nbsp;ms) não aparecem aqui.</>}
+        />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <CacheHitChart data={effectiveChartData} rangeLabel={periodLabel} timeMeta={timeMeta} timeRange={timeRange} />
