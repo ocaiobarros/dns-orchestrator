@@ -196,10 +196,24 @@ DNS_CONTROL_HOST=${BACKEND_HOST}
 DNS_CONTROL_PORT=${BACKEND_PORT}
 COLLECTOR_OUTPUT_DIR=${TELEMETRY_DIR}
 EOF
-
-    chmod 600 "${ENV_FILE}"
     ok "Arquivo de ambiente criado em ${ENV_FILE}"
 fi
+
+# ── SECRET_KEY persistente (idempotente) ──
+# Se a chave ainda não existir no env (instalação antiga ou env editado à mão),
+# gerar UMA vez e fazer append. NUNCA sobrescrever uma chave já existente:
+# trocar a chave invalida todos os JWT e desloga todos os usuários.
+if ! grep -qE '^DNS_CONTROL_SECRET_KEY=.+' "${ENV_FILE}"; then
+    sed -i '/^DNS_CONTROL_SECRET_KEY=$/d' "${ENV_FILE}"
+    printf 'DNS_CONTROL_SECRET_KEY=%s\n' "$(openssl rand -hex 32)" >> "${ENV_FILE}"
+    ok "DNS_CONTROL_SECRET_KEY persistente gerada e gravada em ${ENV_FILE}"
+else
+    ok "DNS_CONTROL_SECRET_KEY preservada (sessões sobrevivem ao restart)"
+fi
+
+# Permissão restritiva: root:dns-control 0640 (serviço lê via EnvironmentFile=)
+chown root:"${APP_USER}" "${ENV_FILE}" 2>/dev/null || chown root:root "${ENV_FILE}"
+chmod 0640 "${ENV_FILE}"
 
 # ═══════════════════════════════════════════════════════════════
 step "Inicializando banco de dados"
