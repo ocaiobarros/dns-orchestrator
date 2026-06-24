@@ -140,27 +140,32 @@ function InterceptionDashboard() {
         };
       });
 
-  // Latency matrix — usa latência real por instância (não tudo igual)
+  // Resolvers são hops INTERNOS (loopback). Latência esperada ~0–1 ms. NÃO injetar
+  // avgLatency (que é RECURSÃO p/ internet — pertence só à coluna upstream).
   const latencyResolvers = topoBackends.map((b) => ({
     name: b.name.toUpperCase(),
     ip: b.ip,
-    latencyMs: b.latencyMs > 0 ? b.latencyMs : (b.healthy ? Math.max(1, Math.round(avgLatency)) : 0),
+    latencyMs: b.healthy ? 1 : 0, // loopback simbólico — verde
     healthy: b.healthy,
   }));
-  // Upstream latency: derivada da latência média real dos resolvers (proxy realista — sem probe externo via browser por CORS).
-  // Quando resolvers estão saudáveis e <30ms, upstreams refletem isso (em vez de valor fixo 141ms).
-  const upstreamBaseMs = Math.max(1, Math.round(avgLatency || (latencyResolvers.find(r => r.healthy && r.latencyMs > 0)?.latencyMs ?? 10)));
+  // Upstream latency reflects real recursion latency (avgLatency).
+  const upstreamBaseMs = Math.max(1, Math.round(avgLatency || 10));
   const latencyUpstreams = [
     { name: '1.1.1.1', ip: '1.1.1.1', latencyMs: upstreamBaseMs, healthy: true },
     { name: '8.8.8.8', ip: '8.8.8.8', latencyMs: upstreamBaseMs + 1, healthy: true },
   ];
 
-  // GeoMap nodes (Americas focus)
+  // Categorize the loopback IP soup for separate, correctly-labeled chips.
+  const backendIpSet = new Set(topoBackends.map(b => b.ip).filter(Boolean));
+  const listenerIps = vipAnycastList.filter(ip => isCgn(ip) || backendIpSet.has(ip));
+  const egressIps = vipAnycastList.filter(ip => !isCgn(ip) && !backendIpSet.has(ip) && ip !== frontendIp);
+
+  // GeoMap nodes — resolvers são loopback (latência interna ~1ms), NÃO avgLatency.
   const geoNodes: MapNode[] = [
-    { id: 'vip', label: vipAddress || 'Frontend DNS', type: 'vip', status: 'ok', qps: totalQps, bindIp: vipAddress || undefined },
+    { id: 'vip', label: frontendIp || 'Frontend DNS', type: 'vip', status: 'ok', qps: totalQps, bindIp: frontendIp || undefined },
     ...topoBackends.map((b, i) => ({
       id: `r-${i}`, label: b.name, type: 'resolver' as const, status: 'ok' as const,
-      latency: Math.round(avgLatency || 10), qps: b.qps, cacheHit: b.cacheHit, bindIp: b.ip,
+      latency: 1, qps: b.qps, cacheHit: b.cacheHit, bindIp: b.ip,
     })),
     { id: 'upstream', label: 'Upstream', type: 'upstream', status: 'ok', bindIp: '8.8.8.8' },
   ];
