@@ -20,7 +20,7 @@ export default function TopologyMini({
   const allIpsTitle = frontendIps.length > 1 ? frontendIps.join('\n') : undefined;
 
   return (
-    <div className="relative flex items-center justify-between gap-1.5 py-4 px-1 min-h-[220px] w-full min-w-0 overflow-hidden font-mono text-[9px]">
+    <div className="relative flex items-center justify-around gap-2 py-4 px-1 min-h-[220px] w-full min-w-0 overflow-hidden font-mono text-[9px]">
       {/* Clients */}
       <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
         <div className="w-11 h-11 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center"
@@ -111,20 +111,26 @@ export default function TopologyMini({
 function AnimatedEdge({ multiple = 1 }: { multiple?: number }) {
   const lines = Math.max(multiple, 1);
   return (
-    <svg width="28" height={Math.max(20, lines * 16)} className="flex-shrink-0" viewBox={`0 0 28 ${Math.max(20, lines * 16)}`}>
+    <svg
+      height={Math.max(20, lines * 16)}
+      className="flex-1 min-w-[24px] self-center"
+      preserveAspectRatio="none"
+      viewBox={`0 0 100 ${Math.max(20, lines * 16)}`}
+    >
       {Array.from({ length: lines }).map((_, i) => {
         const y = lines === 1 ? 10 : 8 + (i * (Math.max(20, lines * 16) - 16) / Math.max(lines - 1, 1));
         return (
           <g key={i}>
-            <line x1="0" y1={y} x2="28" y2={y}
-              stroke="hsl(var(--primary) / 0.4)" strokeWidth="1" strokeDasharray="2 2" />
+            <line x1="0" y1={y} x2="100" y2={y}
+              stroke="hsl(var(--primary) / 0.4)" strokeWidth="1" strokeDasharray="2 2" vectorEffect="non-scaling-stroke" />
             <circle cx="0" cy={y} r="1.4" fill="hsl(var(--primary))">
-              <animate attributeName="cx" from="0" to="28" dur={`${1.2 + i * 0.2}s`} repeatCount="indefinite" />
+              <animate attributeName="cx" from="0" to="100" dur={`${1.2 + i * 0.2}s`} repeatCount="indefinite" />
               <animate attributeName="opacity" values="0;1;1;0" dur={`${1.2 + i * 0.2}s`} repeatCount="indefinite" />
             </circle>
           </g>
         );
       })}
     </svg>
+
   );
 }

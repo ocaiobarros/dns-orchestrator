@@ -156,8 +156,9 @@ export default function LatencyMatrix({ frontend, resolvers, upstreams }: Props)
           )}
         </svg>
 
-        <div className="relative flex items-stretch justify-between gap-1 z-10"
-             style={{ height: `${Math.max(280, 70 * Math.max(resolvers.length, upstreams.length) + 60)}px` }}>
+        <div className="relative flex items-stretch justify-between gap-1 z-10 pb-4"
+             style={{ height: `${Math.max(360, 96 * Math.max(resolvers.length, upstreams.length) + 80)}px` }}>
+
 
           {/* Frontend node */}
           <div className="flex flex-col items-center justify-center gap-1.5" style={{ width: '22%' }}>
@@ -242,7 +243,7 @@ export default function LatencyMatrix({ frontend, resolvers, upstreams }: Props)
         </div>
 
         {/* Legend — bands REAIS de DNS recursivo + nota explicativa */}
-        <div className="mt-3 space-y-1.5 text-[10px] leading-snug">
+        <div className="mt-4 pt-3 border-t border-border/40 space-y-1.5 text-[10px] leading-snug">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-primary" />
