@@ -366,8 +366,11 @@ export interface NetworkInterface {
   ipv6Addresses?: string[];
   rxBytes?: number;
   txBytes?: number;
+  rxBps?: number;
+  txBps?: number;
   rxPackets?: number;
   txPackets?: number;
+
 }
 
 export interface Route {
