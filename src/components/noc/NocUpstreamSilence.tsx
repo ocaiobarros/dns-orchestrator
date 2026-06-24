@@ -176,11 +176,27 @@ export default function NocUpstreamSilence() {
         </div>
 
         <div className="px-4 py-3 space-y-3">
+          {/* Legenda contextual — explica O QUE este painel mostra, para
+              que ninguém olhe a tabela e ache que o servidor está com problema. */}
+          <div className="flex items-start gap-2 rounded border border-border/40 bg-muted/20 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
+            <Info size={13} className="mt-0.5 shrink-0 text-primary/80" />
+            <p>
+              Lista servidores DNS <strong className="text-foreground">autoritativos da
+              internet</strong> que pararam de responder às consultas de recursão deste
+              resolver. IPs locais e do próprio servidor são filtrados automaticamente.{' '}
+              <span className="text-foreground">Tabela vazia = nenhum autoritativo
+              externo mudo (bom sinal).</span> Um IP aqui indica problema{' '}
+              <strong className="text-foreground">lá fora</strong> (no autoritativo), não
+              no seu DNS.
+            </p>
+          </div>
+
           {!isAdmin && snap?.collector_status === 'disabled' && (
             <div className="text-[11px] font-mono text-muted-foreground">
               Detector desativado. Peça a um administrador para habilitar a coleta.
             </div>
           )}
+
 
           {snap?.collector_status === 'degraded' && (
             <div className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-[11px] font-mono text-destructive">
