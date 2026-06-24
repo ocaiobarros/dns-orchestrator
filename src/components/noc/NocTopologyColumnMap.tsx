@@ -1,5 +1,6 @@
 import { Activity, ArrowRight, Globe, Server, Timer, Zap } from 'lucide-react';
 import type { InstanceHealthReport, InstanceHealthResult } from '@/lib/types';
+import { formatIpWithBreaks } from '@/lib/ip-format';
 
 interface Props {
   health: InstanceHealthReport;

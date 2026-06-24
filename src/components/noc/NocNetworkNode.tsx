@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import type { MapNode } from './NocNetworkMap';
 import { safeNum, safeR, safeSW } from '@/lib/svg-utils';
+import { formatIpWithBreaks } from '@/lib/ip-format';
 
 interface Props {
   node: MapNode;
