@@ -410,3 +410,92 @@ class WorkerEmitTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LocalOrOwnFilterTest(unittest.TestCase):
+    """Filtra IPs locais/privados/CGNAT/link-local + denylist do host
+    (egress/listeners/VIPs). IP público real continua passando."""
+
+    def setUp(self):
+        UpstreamSilenceDetector.instance().reset_for_test()
+
+    def test_static_ranges_are_local(self):
+        for ip in (
+            "127.0.0.1", "10.0.0.5", "172.16.5.5", "192.168.1.1",
+            "169.254.1.1", "100.126.0.10",  # CGNAT (listener interno)
+            "::1", "fe80::1", "fc00::1", "fd12::1",
+        ):
+            self.assertTrue(uss.is_local_or_own(ip), f"{ip} deveria ser local")
+
+    def test_public_ips_pass(self):
+        for ip in ("8.8.8.8", "1.1.1.1", "45.232.215.18",
+                   "2001:4860:4860::8888"):
+            self.assertFalse(uss.is_local_or_own(ip), f"{ip} é público")
+
+    def test_denylist_blocks_own_egress_and_vip(self):
+        own = {"45.232.215.18", "4.2.2.5", "2620:119:35::35"}
+        self.assertTrue(uss.is_local_or_own("45.232.215.18", own))
+        self.assertTrue(uss.is_local_or_own("4.2.2.5", own))
+        self.assertTrue(uss.is_local_or_own("2620:119:35::35", own))
+        # Sibling IP de outra instância NÃO deve passar quando na denylist.
+        self.assertTrue(uss.is_local_or_own("45.232.215.17", own | {"45.232.215.17"}))
+        # IP público fora da denylist continua passando.
+        self.assertFalse(uss.is_local_or_own("8.8.8.8", own))
+
+    def test_invalid_ip_is_rejected(self):
+        self.assertTrue(uss.is_local_or_own(""))
+        self.assertTrue(uss.is_local_or_own("not-an-ip"))
+
+    def test_collect_own_ips_from_payload(self):
+        payload = {
+            "hostIp": "203.0.113.10",
+            "instances": [
+                {"name": "u1", "exitIp": "45.232.215.17", "bindIp": "100.126.0.1",
+                 "exitIpv6": "2001:db8:cafe::17"},
+                {"name": "u2", "egressIpv4": "45.232.215.18/32"},
+            ],
+            "interceptedVips": [
+                {"vipIp": "4.2.2.5", "vipIpv6": "2620:119:35::35"},
+            ],
+            "serviceVips": [{"ipv4": "192.0.2.50"}],
+        }
+        own = uss.collect_own_ips_from_payload(payload)
+        for expected in ("203.0.113.10", "45.232.215.17", "45.232.215.18",
+                         "100.126.0.1", "2001:db8:cafe::17",
+                         "4.2.2.5", "2620:119:35::35", "192.0.2.50"):
+            self.assertIn(expected, own, f"falta {expected} na denylist")
+
+    def test_detector_drops_own_egress_event(self):
+        det = UpstreamSilenceDetector.instance()
+        det.set_own_ips({"45.232.215.18"})
+        # Egress próprio: NÃO deve agregar.
+        line_own = (
+            "[DESTROY] udp 17 30 src=10.0.0.1 dst=45.232.215.18 "
+            "sport=33000 dport=53 [UNREPLIED]"
+        )
+        self.assertFalse(det.ingest_for_test(line_own))
+        # Público mudo: ainda agrega.
+        line_pub = (
+            "[DESTROY] udp 17 30 src=10.0.0.1 dst=8.8.8.8 "
+            "sport=33000 dport=53 [UNREPLIED]"
+        )
+        self.assertTrue(det.ingest_for_test(line_pub))
+        snap = det.snapshot()
+        self.assertEqual(snap["unique_ips"], 1)
+        self.assertEqual(snap["items"][0]["ip"], "8.8.8.8")
+        self.assertEqual(snap["own_ips_count"], 1)
+
+    def test_detector_drops_private_and_cgnat_without_denylist(self):
+        det = UpstreamSilenceDetector.instance()
+        # Sem denylist do host (degradação): ranges estáticos ainda filtram.
+        for dst in ("100.126.0.10", "10.0.0.5", "192.168.1.1"):
+            line = (
+                f"[DESTROY] udp 17 30 src=10.0.0.1 dst={dst} "
+                f"sport=33000 dport=53 [UNREPLIED]"
+            )
+            self.assertFalse(det.ingest_for_test(line), f"{dst} deveria ser dropado")
+        self.assertEqual(det.snapshot()["unique_ips"], 0)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    unittest.main()
