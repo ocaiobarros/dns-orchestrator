@@ -228,6 +228,28 @@ function InterceptionDashboard() {
         <TelemetryHealthStrip compact className="ml-2" />
       </div>
 
+      {/* Loopback IP categorization — keeps egress/listeners visible but NOT mislabeled as "Frontend DNS" */}
+      {(listenerIps.length > 0 || egressIps.length > 0) && (
+        <div className="flex items-center gap-2 flex-wrap text-[10px] font-mono">
+          {listenerIps.length > 0 && (
+            <div className="noc-status-chip" title={listenerIps.join('\n')}>
+              <span>Listeners (internos)</span>
+              <span className="text-foreground/85 font-normal normal-case tracking-normal truncate max-w-[260px]">
+                {listenerIps.slice(0, 2).join(', ')}{listenerIps.length > 2 ? ` +${listenerIps.length - 2}` : ''}
+              </span>
+            </div>
+          )}
+          {egressIps.length > 0 && (
+            <div className="noc-status-chip" title={egressIps.join('\n')}>
+              <span>Egress (saída)</span>
+              <span className="text-foreground/85 font-normal normal-case tracking-normal truncate max-w-[260px]">
+                {egressIps.slice(0, 2).join(', ')}{egressIps.length > 2 ? ` +${egressIps.length - 2}` : ''}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 6 KPI cards */}
       <div className="noc-grid-kpi">
         <KpiCard label="Frontend DNS (VIP)" value={frontendIp ? `${frontendIp}:53` : '—'}
