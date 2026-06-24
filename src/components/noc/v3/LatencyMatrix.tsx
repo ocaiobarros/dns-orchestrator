@@ -156,9 +156,9 @@ export default function LatencyMatrix({ frontend, resolvers, upstreams }: Props)
           )}
         </svg>
 
-        <div className="relative flex items-center justify-between gap-1 z-10 h-[200px]">
+        <div className="relative flex items-stretch justify-between gap-1 z-10 h-[280px]">
           {/* Frontend node */}
-          <div className="flex flex-col items-center gap-1.5" style={{ width: '22%' }}>
+          <div className="flex flex-col items-center justify-center gap-1.5" style={{ width: '22%' }}>
             <div className="w-14 h-14 rounded-full bg-card border border-primary/60 flex items-center justify-center relative"
               style={{ boxShadow: '0 0 20px -2px hsl(var(--primary) / 0.6)' }}>
               <span className="absolute inset-0 rounded-full border border-primary/40 animate-ping" style={{ animationDuration: '2.4s' }} />
