@@ -221,9 +221,10 @@ def collect_own_ips_from_payload(payload: Optional[Dict[str, object]]) -> Set[st
         _add(loopback.get("ipv6"))
 
     # Wizard nested config (alguns deploys aninham aí).
-    wizard_cfg = payload.get("_wizardConfig") or {}
-    if isinstance(wizard_cfg, dict):
+    wizard_cfg = payload.get("_wizardConfig")
+    if isinstance(wizard_cfg, dict) and wizard_cfg:
         out |= collect_own_ips_from_payload(wizard_cfg)
+
 
     # Instâncias: egress + binds.
     for inst in payload.get("instances", []) or []:
