@@ -169,7 +169,7 @@ export default function NocNetworkNode({ node, x, y, isHovered, onHover, onLeave
               {node.bindIp && (
                 <div>
                   <span className="text-muted-foreground/40">IPs:</span>
-                  <div className="text-foreground/70 text-[8px] mt-0.5 break-all">{node.bindIp}</div>
+                  <div title={node.bindIp} style={{ scrollbarWidth: 'thin' }} className="text-foreground/70 text-[8px] mt-0.5 overflow-x-auto whitespace-nowrap">{node.bindIp}</div>
                 </div>
               )}
               {node.latency != null && (
