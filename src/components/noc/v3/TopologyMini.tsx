@@ -54,7 +54,7 @@ export default function TopologyMini({
       </div>
 
 
-      <AnimatedEdge multiple={Math.min(backends.length, 3)} />
+      <AnimatedEdge multiple={Math.min(backends.length, 4)} />
 
       {/* Backends */}
       <div className="flex flex-col gap-1.5 flex-shrink min-w-0">
