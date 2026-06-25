@@ -13,9 +13,10 @@ import { useAuth } from '@/lib/auth';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Cpu, MemoryStick, HardDrive, Clock, Activity, Database, Timer,
-  Globe, Shield, Server, Wifi, Bell, Eye, CheckCircle2, ChevronDown,
+  Globe, Shield, Server, Wifi, Bell, Eye, CheckCircle2, AlertCircle, ChevronDown,
   ArrowLeft,
 } from 'lucide-react';
+
 
 // ── Auto-refresh interval (15s)
 const REFRESH_INTERVAL = 15_000;
