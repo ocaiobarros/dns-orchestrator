@@ -31,7 +31,7 @@ export default function StatusChipBar({
         {frontendIp && (
           <div className="noc-status-chip" data-state="ok">
             <Globe size={13} />
-            <span>Frontend DNS</span>
+            <span>Endereço do DNS</span>
             <span className="text-foreground/85 font-normal normal-case ml-1 tracking-normal">
               {frontendIp}:53
             </span>
