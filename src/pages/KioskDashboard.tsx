@@ -424,20 +424,31 @@ export default function KioskDashboard() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <Panel className="min-h-[160px]">
                 <CardLabel icon={<Globe size={13} />}>Frontend DNS</CardLabel>
-                <div className="flex items-end justify-between gap-3 mt-2">
-                  <div className="min-w-0">
-                    <div className="text-[24px] font-bold font-mono leading-none tracking-tight truncate">
-                      {frontend.ip ?? primaryIp}
+                {(() => {
+                  const isHealthy = frontend.healthy !== false && !!frontend.ip;
+                  const StatusIcon = isHealthy ? CheckCircle2 : AlertCircle;
+                  const tone = isHealthy ? 'primary' : 'destructive';
+                  const label = isHealthy ? 'Respondendo' : 'Sem resposta';
+                  return (
+                    <div className="mt-2">
+                      <div className="text-[24px] font-bold font-mono leading-none tracking-tight truncate">
+                        {frontend.ip ?? primaryIp}
+                      </div>
+                      <div className="text-[11px] font-mono text-muted-foreground/70 mt-1.5">
+                        porta {frontend.port ?? 53} · UDP/TCP
+                      </div>
+                      <div
+                        className={`mt-3 inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-${tone}/30`}
+                        style={{ background: `hsl(var(--${tone}) / 0.08)` }}
+                      >
+                        <StatusIcon size={11} className={`text-${tone}`} />
+                        <span className={`text-[10.5px] font-mono text-${tone}`}>{label}</span>
+                      </div>
                     </div>
-                    <div className="mt-3 inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-primary/30"
-                      style={{ background: 'hsl(var(--primary) / 0.08)' }}>
-                      <CheckCircle2 size={11} className="text-primary" />
-                      <span className="text-[10.5px] font-mono text-primary">{frontend.healthy === false ? 'Sem resposta' : 'Respondendo'}</span>
-                    </div>
-                  </div>
-                  <div className="opacity-90 flex-shrink-0"><DotMap /></div>
-                </div>
+                  );
+                })()}
               </Panel>
+
 
               <Panel className="min-h-[160px]">
                 <CardLabel icon={<Activity size={13} />}>QPS</CardLabel>
