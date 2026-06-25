@@ -169,7 +169,7 @@ function InterceptionDashboard() {
 
   // GeoMap nodes — resolvers são loopback (latência interna ~1ms), NÃO avgLatency.
   const geoNodes: MapNode[] = [
-    { id: 'vip', label: frontendIp || 'Frontend DNS', type: 'vip', status: 'ok', qps: totalQps, bindIp: frontendIp || undefined },
+    { id: 'vip', label: frontendIp || 'Endereço do DNS', type: 'vip', status: 'ok', qps: totalQps, bindIp: frontendIp || undefined },
     ...topoBackends.map((b, i) => ({
       id: `r-${i}`, label: b.name, type: 'resolver' as const, status: 'ok' as const,
       latency: 1, qps: b.qps, cacheHit: b.cacheHit, bindIp: b.ip,
@@ -257,7 +257,7 @@ function InterceptionDashboard() {
 
       {/* 6 KPI cards */}
       <div className="noc-grid-kpi">
-        <KpiCard label="Frontend DNS (VIP)" value={frontendIp ? `${frontendIp}:53` : '—'}
+        <KpiCard label="Endereço do DNS" value={frontendIp ? `${frontendIp}:53` : '—'}
           sub={listenerIps.length || egressIps.length
             ? `${listenerIps.length} listener(s) · ${egressIps.length} egress`
             : 'Respondendo'}

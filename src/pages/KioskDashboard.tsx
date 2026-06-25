@@ -404,7 +404,7 @@ export default function KioskDashboard() {
             {/* Row 3 — DNS metric cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <Panel className="min-h-[160px]">
-                <CardLabel icon={<Globe size={13} />}>Frontend DNS</CardLabel>
+                <CardLabel icon={<Globe size={13} />}>Endereço do DNS</CardLabel>
                 {(() => {
                   const isHealthy = frontend.healthy !== false && !!frontend.ip;
                   const StatusIcon = isHealthy ? CheckCircle2 : AlertCircle;

@@ -40,7 +40,7 @@ export default function TopologyMini({
         <div className="px-3 py-2 rounded-lg bg-card border border-primary/40 text-center min-w-0 w-full max-w-[clamp(110px,12vw,180px)]"
           style={{ boxShadow: '0 0 18px -4px hsl(var(--primary) / 0.4)' }}
           title={allIpsTitle}>
-          <div className="text-[9px] font-bold text-primary uppercase tracking-wider">Frontend DNS</div>
+          <div className="text-[9px] font-bold text-primary uppercase tracking-wider">Endereço do DNS</div>
           <div className="flex items-center justify-center gap-1 mt-1 min-w-0">
             <span className="text-foreground font-mono text-[11px] leading-tight truncate">{primaryIp}</span>
             {extraCount > 0 && (
