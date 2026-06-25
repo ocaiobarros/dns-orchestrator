@@ -13,9 +13,10 @@ import { useAuth } from '@/lib/auth';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Cpu, MemoryStick, HardDrive, Clock, Activity, Database, Timer,
-  Globe, Shield, Server, Wifi, Bell, Eye, CheckCircle2, ChevronDown,
+  Globe, Shield, Server, Wifi, Bell, Eye, CheckCircle2, AlertCircle, ChevronDown,
   ArrowLeft,
 } from 'lucide-react';
+
 
 // ── Auto-refresh interval (15s)
 const REFRESH_INTERVAL = 15_000;
@@ -104,25 +105,6 @@ function BarChart({ data, color, height = 64 }: { data: number[]; color: string;
   );
 }
 
-function DotMap() {
-  // Decorative tiny "world dots" map for Frontend DNS card
-  const cells: { cx: number; cy: number; o: number }[] = [];
-  for (let y = 0; y < 14; y++) {
-    for (let x = 0; x < 28; x++) {
-      // pseudo-random sparse dots
-      const v = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
-      const r = v - Math.floor(v);
-      if (r > 0.62) cells.push({ cx: x * 3, cy: y * 3, o: 0.3 + r * 0.7 });
-    }
-  }
-  return (
-    <svg viewBox="0 0 84 42" width="84" height="42">
-      {cells.map((c, i) => (
-        <circle key={i} cx={c.cx} cy={c.cy} r="0.7" fill="hsl(var(--primary))" opacity={c.o} />
-      ))}
-    </svg>
-  );
-}
 
 function Donut({ pct, size = 64, stroke = 8 }: { pct: number; size?: number; stroke?: number }) {
   const r = (size - stroke) / 2;
@@ -423,20 +405,34 @@ export default function KioskDashboard() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <Panel className="min-h-[160px]">
                 <CardLabel icon={<Globe size={13} />}>Frontend DNS</CardLabel>
-                <div className="flex items-end justify-between gap-3 mt-2">
-                  <div className="min-w-0">
-                    <div className="text-[24px] font-bold font-mono leading-none tracking-tight truncate">
-                      {frontend.ip ?? primaryIp}
+                {(() => {
+                  const isHealthy = frontend.healthy !== false && !!frontend.ip;
+                  const StatusIcon = isHealthy ? CheckCircle2 : AlertCircle;
+                  const wrapClass = isHealthy
+                    ? 'mt-3 inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-primary/30'
+                    : 'mt-3 inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-destructive/40';
+                  const wrapBg = isHealthy ? 'hsl(var(--primary) / 0.08)' : 'hsl(var(--destructive) / 0.1)';
+                  const iconClass = isHealthy ? 'text-primary' : 'text-destructive';
+                  const textClass = isHealthy ? 'text-[10.5px] font-mono text-primary' : 'text-[10.5px] font-mono text-destructive';
+                  const label = isHealthy ? 'Respondendo' : 'Sem resposta';
+                  return (
+                    <div className="mt-2">
+                      <div className="text-[24px] font-bold font-mono leading-none tracking-tight truncate">
+                        {frontend.ip ?? primaryIp}
+                      </div>
+                      <div className="text-[11px] font-mono text-muted-foreground/70 mt-1.5">
+                        porta {frontend.port ?? 53} · UDP/TCP
+                      </div>
+                      <div className={wrapClass} style={{ background: wrapBg }}>
+                        <StatusIcon size={11} className={iconClass} />
+                        <span className={textClass}>{label}</span>
+                      </div>
                     </div>
-                    <div className="mt-3 inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-primary/30"
-                      style={{ background: 'hsl(var(--primary) / 0.08)' }}>
-                      <CheckCircle2 size={11} className="text-primary" />
-                      <span className="text-[10.5px] font-mono text-primary">{frontend.healthy === false ? 'Sem resposta' : 'Respondendo'}</span>
-                    </div>
-                  </div>
-                  <div className="opacity-90 flex-shrink-0"><DotMap /></div>
-                </div>
+                  );
+                })()}
+
               </Panel>
+
 
               <Panel className="min-h-[160px]">
                 <CardLabel icon={<Activity size={13} />}>QPS</CardLabel>
