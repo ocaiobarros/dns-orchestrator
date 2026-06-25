@@ -257,7 +257,7 @@ function InterceptionDashboard() {
 
       {/* 6 KPI cards */}
       <div className="noc-grid-kpi">
-        <KpiCard label="Frontend DNS (VIP)" value={frontendIp ? `${frontendIp}:53` : '—'}
+        <KpiCard label="Endereço do DNS" value={frontendIp ? `${frontendIp}:53` : '—'}
           sub={listenerIps.length || egressIps.length
             ? `${listenerIps.length} listener(s) · ${egressIps.length} egress`
             : 'Respondendo'}
