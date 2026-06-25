@@ -427,7 +427,12 @@ export default function KioskDashboard() {
                 {(() => {
                   const isHealthy = frontend.healthy !== false && !!frontend.ip;
                   const StatusIcon = isHealthy ? CheckCircle2 : AlertCircle;
-                  const tone = isHealthy ? 'primary' : 'destructive';
+                  const wrapClass = isHealthy
+                    ? 'mt-3 inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-primary/30'
+                    : 'mt-3 inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-destructive/40';
+                  const wrapBg = isHealthy ? 'hsl(var(--primary) / 0.08)' : 'hsl(var(--destructive) / 0.1)';
+                  const iconClass = isHealthy ? 'text-primary' : 'text-destructive';
+                  const textClass = isHealthy ? 'text-[10.5px] font-mono text-primary' : 'text-[10.5px] font-mono text-destructive';
                   const label = isHealthy ? 'Respondendo' : 'Sem resposta';
                   return (
                     <div className="mt-2">
@@ -437,16 +442,14 @@ export default function KioskDashboard() {
                       <div className="text-[11px] font-mono text-muted-foreground/70 mt-1.5">
                         porta {frontend.port ?? 53} · UDP/TCP
                       </div>
-                      <div
-                        className={`mt-3 inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-${tone}/30`}
-                        style={{ background: `hsl(var(--${tone}) / 0.08)` }}
-                      >
-                        <StatusIcon size={11} className={`text-${tone}`} />
-                        <span className={`text-[10.5px] font-mono text-${tone}`}>{label}</span>
+                      <div className={wrapClass} style={{ background: wrapBg }}>
+                        <StatusIcon size={11} className={iconClass} />
+                        <span className={textClass}>{label}</span>
                       </div>
                     </div>
                   );
                 })()}
+
               </Panel>
 
 
