@@ -105,25 +105,6 @@ function BarChart({ data, color, height = 64 }: { data: number[]; color: string;
   );
 }
 
-function DotMap() {
-  // Decorative tiny "world dots" map for Frontend DNS card
-  const cells: { cx: number; cy: number; o: number }[] = [];
-  for (let y = 0; y < 14; y++) {
-    for (let x = 0; x < 28; x++) {
-      // pseudo-random sparse dots
-      const v = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
-      const r = v - Math.floor(v);
-      if (r > 0.62) cells.push({ cx: x * 3, cy: y * 3, o: 0.3 + r * 0.7 });
-    }
-  }
-  return (
-    <svg viewBox="0 0 84 42" width="84" height="42">
-      {cells.map((c, i) => (
-        <circle key={i} cx={c.cx} cy={c.cy} r="0.7" fill="hsl(var(--primary))" opacity={c.o} />
-      ))}
-    </svg>
-  );
-}
 
 function Donut({ pct, size = 64, stroke = 8 }: { pct: number; size?: number; stroke?: number }) {
   const r = (size - stroke) / 2;
