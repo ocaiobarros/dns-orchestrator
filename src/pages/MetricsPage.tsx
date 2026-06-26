@@ -124,9 +124,14 @@ export default function MetricsPage() {
         </div>
       )}
       <div className="px-4 pb-4">
-        <div className="text-center text-[11px] text-muted-foreground border border-border/60 rounded py-2 bg-background/30">
+        <button
+          type="button"
+          onClick={() => setOpenDomains(true)}
+          disabled={topDomains.length === 0}
+          className="w-full text-center text-[11px] text-muted-foreground hover:text-primary border border-border/60 hover:border-primary/40 rounded py-2 bg-background/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
           Ver todos os domínios →
-        </div>
+        </button>
       </div>
     </div>
   );
