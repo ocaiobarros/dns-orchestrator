@@ -404,7 +404,10 @@ def get_dashboard_summary() -> dict:
         "frontend_dns_ipv6": frontend_dns_ipv6,
         "intercepted_vips": deploy_state.get("interceptedVips", []),
         "intercepted_vips_ipv6": deploy_state.get("interceptedVipsIpv6", []),
+        "server_frontend_ip": server_frontend_ip,
+        "server_frontend_ipv6": server_frontend_ipv6,
     }
+
 
 
 def _get_nftables_state() -> dict:
