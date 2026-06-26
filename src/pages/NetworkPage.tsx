@@ -119,9 +119,19 @@ function ListenerCard({ l, timeMeta }: { l: any; timeMeta: ServerTimeMetadata })
           {ok ? 'Online' : 'Offline'}
         </span>
       </div>
-      <div className="mt-2 font-mono text-base font-semibold tabular-nums text-foreground/95">
-        {ip}:{port}
-      </div>
+      {
+        (() => {
+          const isV6 = (ip.match(/:/g)?.length ?? 0) >= 2;
+          return (
+            <div
+              className={`mt-2 font-mono font-semibold tabular-nums text-foreground/95 whitespace-nowrap overflow-hidden text-ellipsis ${isV6 ? 'text-[11px]' : 'text-base'}`}
+              title={`${ip}:${port}`}
+            >
+              {ip}:{port}
+            </div>
+          );
+        })()
+      }
       <div className="mt-1 text-[11px] font-mono text-muted-foreground">
         Resolvendo <span style={{ color: `hsl(${accent})` }}>→</span>{' '}
         <span className="text-foreground/80">{resolved}</span>
