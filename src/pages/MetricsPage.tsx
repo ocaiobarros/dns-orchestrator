@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import IpAddressStack from '@/components/IpAddressStack';
 import { LoadingState } from '@/components/DataStates';
+import TopListDialog from '@/components/TopListDialog';
 import { useTelemetry, useTelemetryStatus } from '@/lib/hooks';
 
 function safeNum(v: unknown): number {
