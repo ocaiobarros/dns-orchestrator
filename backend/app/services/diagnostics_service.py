@@ -287,18 +287,58 @@ def get_dashboard_summary() -> dict:
         deploy_state = {}
     if not operation_mode:
         operation_mode = deploy_state.get("operationMode", "")
-        frontend_dns_ip = deploy_state.get("frontendDnsIp", "")
-    else:
-        # Observed/imported: deploy_state may have no frontendDnsIp — try VIP discovery.
-        frontend_dns_ip = deploy_state.get("frontendDnsIp", "") or frontend_dns_ip
-        if not frontend_dns_ip:
-            try:
-                from app.services.runtime_inventory_service import discover_vips
-                vips = discover_vips()
-                if vips:
-                    frontend_dns_ip = vips[0]["ip"]
-            except Exception:
-                pass
+
+    # Resolve the "client-facing DNS address" with a robust cascade so the UI
+    # never shows "—" when the host actually serves DNS. Order:
+    #  1. Explicit frontendDnsIp from deploy_state (Own VIP).
+    #  2. Interception mode → first interceptedVip from deploy_state.
+    #  3. Simple mode / no deploy_state → first listener bindIp discovered at
+    #     runtime from the actual Unbound configs (the IP clients query).
+    #  4. Last resort → VIP discovery on lo0/dummy interfaces.
+    frontend_dns_ip = str(deploy_state.get("frontendDnsIp", "") or "").strip()
+    frontend_dns_ipv6 = str(deploy_state.get("frontendDnsIpv6", "") or "").strip()
+    mode_lc = (operation_mode or "").lower()
+    intercepted_v4 = [str(x).strip() for x in (deploy_state.get("interceptedVips") or []) if str(x).strip()]
+    intercepted_v6 = [str(x).strip() for x in (deploy_state.get("interceptedVipsIpv6") or []) if str(x).strip()]
+
+    if not frontend_dns_ip and "intercep" in mode_lc and intercepted_v4:
+        frontend_dns_ip = intercepted_v4[0]
+    if not frontend_dns_ipv6 and "intercep" in mode_lc and intercepted_v6:
+        frontend_dns_ipv6 = intercepted_v6[0]
+
+    if not frontend_dns_ip or not frontend_dns_ipv6:
+        try:
+            from app.services.runtime_inventory_service import _discover_runtime_instances
+            runtime_insts = _discover_runtime_instances() or []
+        except Exception:
+            runtime_insts = []
+        listener_v4: list[str] = []
+        listener_v6: list[str] = []
+        for inst in runtime_insts:
+            for ip in inst.get("bind_ips", []) or []:
+                ip_s = str(ip).strip()
+                if not ip_s or ip_s in ("127.0.0.1", "0.0.0.0", "::1", "::"):
+                    continue
+                if ":" in ip_s:
+                    listener_v6.append(ip_s)
+                else:
+                    listener_v4.append(ip_s)
+        if not frontend_dns_ip and listener_v4:
+            frontend_dns_ip = listener_v4[0]
+        if not frontend_dns_ipv6 and listener_v6:
+            frontend_dns_ipv6 = listener_v6[0]
+
+    if not frontend_dns_ip:
+        try:
+            from app.services.runtime_inventory_service import discover_vips
+            vips = discover_vips()
+            for v in vips or []:
+                ip_s = str(v.get("ip", "")).strip()
+                if ip_s and ":" not in ip_s:
+                    frontend_dns_ip = ip_s
+                    break
+        except Exception:
+            pass
 
 
     return {
