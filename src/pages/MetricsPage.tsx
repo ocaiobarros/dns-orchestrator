@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import IpAddressStack from '@/components/IpAddressStack';
 import { LoadingState } from '@/components/DataStates';
+import TopListDialog from '@/components/TopListDialog';
 import { useTelemetry, useTelemetryStatus } from '@/lib/hooks';
 
 function safeNum(v: unknown): number {
@@ -53,6 +54,8 @@ export default function MetricsPage() {
   const { data: telemetry, isLoading } = useTelemetry();
   const { data: telStatus } = useTelemetryStatus();
   const [tab, setTab] = useState<TabKey>('overview');
+  const [openDomains, setOpenDomains] = useState(false);
+  const [openClients, setOpenClients] = useState(false);
 
   if (isLoading) return <LoadingState />;
 
@@ -121,9 +124,14 @@ export default function MetricsPage() {
         </div>
       )}
       <div className="px-4 pb-4">
-        <div className="text-center text-[11px] text-muted-foreground border border-border/60 rounded py-2 bg-background/30">
+        <button
+          type="button"
+          onClick={() => setOpenDomains(true)}
+          disabled={topDomains.length === 0}
+          className="w-full text-center text-[11px] text-muted-foreground hover:text-primary border border-border/60 hover:border-primary/40 rounded py-2 bg-background/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
           Ver todos os domínios →
-        </div>
+        </button>
       </div>
     </div>
   );
@@ -161,9 +169,14 @@ export default function MetricsPage() {
         </div>
       )}
       <div className="px-4 pb-4">
-        <div className="text-center text-[11px] text-muted-foreground border border-border/60 rounded py-2 bg-background/30">
+        <button
+          type="button"
+          onClick={() => setOpenClients(true)}
+          disabled={topClients.length === 0}
+          className="w-full text-center text-[11px] text-muted-foreground hover:text-primary border border-border/60 hover:border-primary/40 rounded py-2 bg-background/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
           Ver todos os clientes →
-        </div>
+        </button>
       </div>
     </div>
   );
@@ -470,6 +483,25 @@ export default function MetricsPage() {
           {NftDistributionBlock}
         </div>
       )}
+
+      <TopListDialog
+        open={openDomains}
+        onOpenChange={setOpenDomains}
+        title="Todos os Domínios Consultados"
+        items={topDomains.map((d: any) => ({ label: String(d.domain ?? '—'), count: safeNum(d.count) }))}
+        itemLabel="domínios"
+        accent="mint"
+        source={(queryAnalytics.log_source ?? 'journalctl').toString().toUpperCase()}
+      />
+      <TopListDialog
+        open={openClients}
+        onOpenChange={setOpenClients}
+        title="Todos os Clientes DNS"
+        items={topClients.map((c: any) => ({ label: String(c.ip ?? '—'), count: safeNum(c.queries) }))}
+        itemLabel="clientes"
+        accent="violet"
+        source={(queryAnalytics.log_source ?? 'journalctl').toString().toUpperCase()}
+      />
     </div>
   );
 }

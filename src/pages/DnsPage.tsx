@@ -4,6 +4,7 @@ import { Calendar, RefreshCw, Bell, SlidersHorizontal, Layers, Database, Timer, 
 import { LoadingState, ErrorState } from '@/components/DataStates';
 import { useTelemetry, useTelemetryHistory } from '@/lib/hooks';
 import TelemetryHealthStrip, { FallbackRankingsBadge, isRankingsFallback } from '@/components/noc/TelemetryHealthStrip';
+import TopListDialog from '@/components/TopListDialog';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { ServerTimeMetadata } from '@/lib/api';
@@ -628,6 +629,8 @@ export default function DnsPage() {
   const setFilter = (patch: Partial<DnsFilterState>) => setFilters(prev => ({ ...prev, ...patch }));
   const [showOnlyAlerts, setShowOnlyAlerts] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionTab>('overview');
+  const [openDomainsAll, setOpenDomainsAll] = useState(false);
+  const [openClientsAll, setOpenClientsAll] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
@@ -999,6 +1002,7 @@ export default function DnsPage() {
   if (error) return <ErrorState message={error.message} />;
 
   return (
+    <>
     <div className="space-y-4 noc-page">
       {/* ───── HEADER (search + status badges + collector) ───── */}
       <div className="flex items-center justify-between flex-wrap gap-3 px-1 pt-1 pb-1">
@@ -1239,7 +1243,7 @@ export default function DnsPage() {
               </div>
               {topDomains.length > 0 && (
                 <button
-                  onClick={() => setActiveSection('domains')}
+                  onClick={() => setOpenDomainsAll(true)}
                   className="mt-3 w-full text-[10px] font-mono text-muted-foreground/70 hover:text-primary px-2 py-2 rounded border border-border/40 hover:border-primary/40 transition-colors"
                 >
                   Ver todos os domínios →
@@ -1280,7 +1284,7 @@ export default function DnsPage() {
               </div>
               {topClients.length > 0 && (
                 <button
-                  onClick={() => setActiveSection('clients')}
+                  onClick={() => setOpenClientsAll(true)}
                   className="mt-3 w-full text-[10px] font-mono text-muted-foreground/70 hover:text-primary px-2 py-2 rounded border border-border/40 hover:border-primary/40 transition-colors"
                 >
                   Ver todos os clientes →
@@ -1443,6 +1447,26 @@ export default function DnsPage() {
         <ErrorsChart data={effectiveChartData} rangeLabel={periodLabel} timeMeta={timeMeta} timeRange={timeRange} />
       </div>
     </div>
+
+    <TopListDialog
+      open={openDomainsAll}
+      onOpenChange={setOpenDomainsAll}
+      title="Todos os Domínios Consultados"
+      items={topDomains.map((d: any) => ({ label: String(d.domain ?? '—'), count: safeNum(d.count) }))}
+      itemLabel="domínios"
+      accent="mint"
+      source={(queryRankings?.log_source ?? queryAnalytics?.log_source ?? 'journalctl').toString().toUpperCase()}
+    />
+    <TopListDialog
+      open={openClientsAll}
+      onOpenChange={setOpenClientsAll}
+      title="Todos os Clientes DNS"
+      items={topClients.map((c: any) => ({ label: String(c.ip ?? '—'), count: safeNum(c.count) }))}
+      itemLabel="clientes"
+      accent="violet"
+      source={(queryRankings?.log_source ?? queryAnalytics?.log_source ?? 'journalctl').toString().toUpperCase()}
+    />
+    </>
   );
 }
 
