@@ -306,7 +306,10 @@ def get_dashboard_summary() -> dict:
     if not frontend_dns_ipv6 and "intercep" in mode_lc and intercepted_v6:
         frontend_dns_ipv6 = intercepted_v6[0]
 
-    if not frontend_dns_ip or not frontend_dns_ipv6:
+    # Guard: listener fallback is only valid in non-interception modes.
+    # If interceptedVips exist, never treat a listener as the frontend DNS.
+    is_interception = "intercep" in mode_lc or bool(intercepted_v4) or bool(intercepted_v6)
+    if not is_interception and (not frontend_dns_ip or not frontend_dns_ipv6):
         try:
             from app.services.runtime_inventory_service import _discover_runtime_instances
             runtime_insts = _discover_runtime_instances() or []
