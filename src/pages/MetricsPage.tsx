@@ -483,6 +483,25 @@ export default function MetricsPage() {
           {NftDistributionBlock}
         </div>
       )}
+
+      <TopListDialog
+        open={openDomains}
+        onOpenChange={setOpenDomains}
+        title="Todos os Domínios Consultados"
+        items={topDomains.map((d: any) => ({ label: String(d.domain ?? '—'), count: safeNum(d.count) }))}
+        itemLabel="domínios"
+        accent="mint"
+        source={(queryAnalytics.log_source ?? 'journalctl').toString().toUpperCase()}
+      />
+      <TopListDialog
+        open={openClients}
+        onOpenChange={setOpenClients}
+        title="Todos os Clientes DNS"
+        items={topClients.map((c: any) => ({ label: String(c.ip ?? '—'), count: safeNum(c.queries) }))}
+        itemLabel="clientes"
+        accent="violet"
+        source={(queryAnalytics.log_source ?? 'journalctl').toString().toUpperCase()}
+      />
     </div>
   );
 }
