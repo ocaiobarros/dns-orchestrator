@@ -2419,6 +2419,31 @@ def _save_deploy_state(deploy_id: str, operator: str, success: bool, backup_id: 
             if not frontend_dns_ipv6 and intercepted_v6 and "intercep" in mode_lc:
                 frontend_dns_ipv6 = intercepted_v6[0]
 
+            # In Simple mode (no Own VIP, no Intercepted VIPs), the client-facing
+            # IP IS the first listener bindIp — that's what clients query.
+            if not frontend_dns_ip or not frontend_dns_ipv6:
+                inst_v4: list[str] = []
+                inst_v6: list[str] = []
+                for inst in normalized.get("instances", []) or []:
+                    raw = (
+                        inst.get("bindIp")
+                        or inst.get("listenAddress")
+                        or inst.get("listen_address")
+                        or inst.get("ip")
+                        or ""
+                    )
+                    ip_s = str(raw).strip()
+                    if not ip_s or ip_s in ("127.0.0.1", "0.0.0.0", "::1", "::"):
+                        continue
+                    if ":" in ip_s:
+                        inst_v6.append(ip_s)
+                    else:
+                        inst_v4.append(ip_s)
+                if not frontend_dns_ip and inst_v4:
+                    frontend_dns_ip = inst_v4[0]
+                if not frontend_dns_ipv6 and inst_v6:
+                    frontend_dns_ipv6 = inst_v6[0]
+
             raw_forward_addrs = normalized.get("forwardAddrs") or wizard_cfg.get("forwardAddrs") or []
             if isinstance(raw_forward_addrs, list):
                 forward_addrs = _dedupe_preserve_order([str(x).strip() for x in raw_forward_addrs])
