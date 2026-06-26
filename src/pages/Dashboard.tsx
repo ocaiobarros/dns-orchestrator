@@ -239,16 +239,16 @@ function InterceptionDashboard() {
           {listenerIps.length > 0 && (
             <div className="noc-status-chip" title={listenerIps.join('\n')}>
               <span>Listeners (internos)</span>
-              <span className="text-foreground/85 font-normal normal-case tracking-normal truncate max-w-[260px]">
-                {listenerIps.slice(0, 2).join(', ')}{listenerIps.length > 2 ? ` +${listenerIps.length - 2}` : ''}
+              <span className="text-foreground/85 font-normal normal-case tracking-normal break-words whitespace-normal max-w-full">
+                {listenerIps.slice(0, 6).join(', ')}{listenerIps.length > 6 ? ` +${listenerIps.length - 6}` : ''}
               </span>
             </div>
           )}
           {egressIps.length > 0 && (
             <div className="noc-status-chip" title={egressIps.join('\n')}>
               <span>Egress (saída)</span>
-              <span className="text-foreground/85 font-normal normal-case tracking-normal truncate max-w-[260px]">
-                {egressIps.slice(0, 2).join(', ')}{egressIps.length > 2 ? ` +${egressIps.length - 2}` : ''}
+              <span className="text-foreground/85 font-normal normal-case tracking-normal break-words whitespace-normal max-w-full">
+                {egressIps.slice(0, 6).join(', ')}{egressIps.length > 6 ? ` +${egressIps.length - 6}` : ''}
               </span>
             </div>
           )}
