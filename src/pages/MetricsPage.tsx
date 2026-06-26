@@ -54,6 +54,8 @@ export default function MetricsPage() {
   const { data: telemetry, isLoading } = useTelemetry();
   const { data: telStatus } = useTelemetryStatus();
   const [tab, setTab] = useState<TabKey>('overview');
+  const [openDomains, setOpenDomains] = useState(false);
+  const [openClients, setOpenClients] = useState(false);
 
   if (isLoading) return <LoadingState />;
 
