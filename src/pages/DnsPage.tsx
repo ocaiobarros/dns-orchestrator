@@ -1446,6 +1446,26 @@ export default function DnsPage() {
         <ErrorsChart data={effectiveChartData} rangeLabel={periodLabel} timeMeta={timeMeta} timeRange={timeRange} />
       </div>
     </div>
+
+    <TopListDialog
+      open={openDomainsAll}
+      onOpenChange={setOpenDomainsAll}
+      title="Todos os Domínios Consultados"
+      items={topDomains.map((d: any) => ({ label: String(d.domain ?? '—'), count: safeNum(d.count) }))}
+      itemLabel="domínios"
+      accent="mint"
+      source={(queryRankings?.log_source ?? queryAnalytics?.log_source ?? 'journalctl').toString().toUpperCase()}
+    />
+    <TopListDialog
+      open={openClientsAll}
+      onOpenChange={setOpenClientsAll}
+      title="Todos os Clientes DNS"
+      items={topClients.map((c: any) => ({ label: String(c.ip ?? '—'), count: safeNum(c.count) }))}
+      itemLabel="clientes"
+      accent="violet"
+      source={(queryRankings?.log_source ?? queryAnalytics?.log_source ?? 'journalctl').toString().toUpperCase()}
+    />
+    </>
   );
 }
 
