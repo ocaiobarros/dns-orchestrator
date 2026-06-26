@@ -549,6 +549,8 @@ def get_full_inventory() -> dict:
 
     return {
         "collected_at": datetime.now(timezone.utc).isoformat(),
+        "hostname": _discover_hostname(),
+        "network": _discover_network(),
         "instances": instances,
         "vips": vips,
         "dnat_rules": dnat_rules,
