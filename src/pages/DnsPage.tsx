@@ -629,6 +629,8 @@ export default function DnsPage() {
   const setFilter = (patch: Partial<DnsFilterState>) => setFilters(prev => ({ ...prev, ...patch }));
   const [showOnlyAlerts, setShowOnlyAlerts] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionTab>('overview');
+  const [openDomainsAll, setOpenDomainsAll] = useState(false);
+  const [openClientsAll, setOpenClientsAll] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
