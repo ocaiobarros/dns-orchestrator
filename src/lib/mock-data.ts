@@ -22,12 +22,14 @@ export const mockSystemInfo: SystemInfo = {
   frrVersion: 'FRRouting 10.3 (dnscontrol)',
   nftablesVersion: 'nftables v1.1.3',
   mainInterface: 'ens192',
-  vipAnycast: '4.2.2.5/32, 4.2.2.6/32',
+  vipAnycast: '100.126.255.101,100.126.255.102,100.126.255.103,100.126.255.104,45.232.215.16,45.232.215.17,45.232.215.18,45.232.215.19',
   lastApply: '2026-03-28T10:00:00Z',
   configVersion: 'v4',
   cpuCount: 8,
   memoryTotalMb: 16384,
   memoryUsedMb: 4200,
+  operation_mode: 'simple',
+  frontend_dns_ip: '172.250.40.3',
 };
 
 // ---- Services ----
