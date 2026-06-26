@@ -1283,7 +1283,7 @@ export default function DnsPage() {
               </div>
               {topClients.length > 0 && (
                 <button
-                  onClick={() => setActiveSection('clients')}
+                  onClick={() => setOpenClientsAll(true)}
                   className="mt-3 w-full text-[10px] font-mono text-muted-foreground/70 hover:text-primary px-2 py-2 rounded border border-border/40 hover:border-primary/40 transition-colors"
                 >
                   Ver todos os clientes →
