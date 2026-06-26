@@ -1002,6 +1002,7 @@ export default function DnsPage() {
   if (error) return <ErrorState message={error.message} />;
 
   return (
+    <>
     <div className="space-y-4 noc-page">
       {/* ───── HEADER (search + status badges + collector) ───── */}
       <div className="flex items-center justify-between flex-wrap gap-3 px-1 pt-1 pb-1">
