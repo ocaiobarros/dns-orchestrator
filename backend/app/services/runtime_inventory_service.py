@@ -433,6 +433,85 @@ def discover_dns_listeners() -> list[dict]:
 # ── Full inventory snapshot ─────────────────────────────────
 
 
+def _discover_hostname() -> str:
+    """Read system hostname (read-only)."""
+    result = _safe_run("hostname", [], timeout=5)
+    if result["exit_code"] == 0 and result["stdout"].strip():
+        return result["stdout"].strip()
+    result = _safe_run("cat", ["/etc/hostname"], timeout=5)
+    if result["exit_code"] == 0 and result["stdout"].strip():
+        return result["stdout"].strip()
+    return ""
+
+
+def _discover_network() -> dict:
+    """
+    Discover host network: default-route interface, primary IPv4/IPv6 and gateways.
+    Pure read-only via `ip` commands.
+    """
+    net = {
+        "main_interface": "",
+        "ipv4_address": "",
+        "ipv4_gateway": "",
+        "ipv6_address": "",
+        "ipv6_gateway": "",
+    }
+
+    # IPv4 default route → interface + gateway
+    r4 = _safe_run("ip", ["-j", "-4", "route", "show", "default"], timeout=5)
+    iface = ""
+    if r4["exit_code"] == 0 and r4["stdout"].strip():
+        try:
+            routes = json.loads(r4["stdout"])
+            if routes:
+                iface = routes[0].get("dev", "") or ""
+                net["ipv4_gateway"] = routes[0].get("gateway", "") or ""
+        except (json.JSONDecodeError, ValueError):
+            pass
+    if not iface:
+        rt = _safe_run("ip", ["route", "show", "default"], timeout=5)
+        if rt["exit_code"] == 0:
+            m = re.search(r"default\s+via\s+(\S+)\s+dev\s+(\S+)", rt["stdout"])
+            if m:
+                net["ipv4_gateway"] = net["ipv4_gateway"] or m.group(1)
+                iface = m.group(2)
+    net["main_interface"] = iface
+
+    # IPv6 default route → gateway (interface usually same)
+    r6 = _safe_run("ip", ["-j", "-6", "route", "show", "default"], timeout=5)
+    if r6["exit_code"] == 0 and r6["stdout"].strip():
+        try:
+            routes6 = json.loads(r6["stdout"])
+            if routes6:
+                net["ipv6_gateway"] = routes6[0].get("gateway", "") or ""
+                if not iface:
+                    iface = routes6[0].get("dev", "") or ""
+                    net["main_interface"] = iface
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # Addresses on the main interface
+    if iface:
+        ra = _safe_run("ip", ["-j", "addr", "show", "dev", iface], timeout=5)
+        if ra["exit_code"] == 0 and ra["stdout"].strip():
+            try:
+                data = json.loads(ra["stdout"])
+                if data:
+                    for addr in data[0].get("addr_info", []):
+                        fam = addr.get("family")
+                        local = addr.get("local", "")
+                        prefix = addr.get("prefixlen", "")
+                        scope = addr.get("scope", "")
+                        if fam == "inet" and local and not net["ipv4_address"]:
+                            net["ipv4_address"] = f"{local}/{prefix}" if prefix != "" else local
+                        elif fam == "inet6" and local and scope == "global" and not net["ipv6_address"]:
+                            net["ipv6_address"] = f"{local}/{prefix}" if prefix != "" else local
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+    return net
+
+
 def get_full_inventory() -> dict:
     """
     Build a complete runtime inventory of the DNS infrastructure.
@@ -470,6 +549,8 @@ def get_full_inventory() -> dict:
 
     return {
         "collected_at": datetime.now(timezone.utc).isoformat(),
+        "hostname": _discover_hostname(),
+        "network": _discover_network(),
         "instances": instances,
         "vips": vips,
         "dnat_rules": dnat_rules,
