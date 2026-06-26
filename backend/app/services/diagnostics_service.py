@@ -288,48 +288,68 @@ def get_dashboard_summary() -> dict:
     if not operation_mode:
         operation_mode = deploy_state.get("operationMode", "")
 
-    # Resolve the "client-facing DNS address" with a robust cascade so the UI
-    # never shows "—" when the host actually serves DNS. Order:
-    #  1. Explicit frontendDnsIp from deploy_state (Own VIP).
-    #  2. Interception mode → first interceptedVip from deploy_state.
-    #  3. Simple mode / no deploy_state → first listener bindIp discovered at
-    #     runtime from the actual Unbound configs (the IP clients query).
-    #  4. Last resort → VIP discovery on lo0/dummy interfaces.
+    # Resolve the "client-facing DNS address" with a mode-aware cascade so the
+    # UI never shows "—" when the host actually serves DNS, and never mixes
+    # concepts between modes:
+    #
+    #  Interception mode:
+    #    1. Explicit frontendDnsIp from deploy_state (Own VIP).
+    #    2. First interceptedVip from deploy_state.
+    #    (Never a listener bind_ip; never the management IP.)
+    #
+    #  Simple mode (recursive without interception):
+    #    1. Explicit frontendDnsIp from deploy_state (if user set one).
+    #    2. The MANAGEMENT IP of the server (primary IPv4 of the default-route
+    #       interface). Clients query this IP — NOT the internal listener bind.
+    #
+    #  Last resort (any mode, only if nothing else worked): scan lo0/dummy
+    #  for a non-CGN VIP via discover_vips().
     frontend_dns_ip = str(deploy_state.get("frontendDnsIp", "") or "").strip()
     frontend_dns_ipv6 = str(deploy_state.get("frontendDnsIpv6", "") or "").strip()
     mode_lc = (operation_mode or "").lower()
     intercepted_v4 = [str(x).strip() for x in (deploy_state.get("interceptedVips") or []) if str(x).strip()]
     intercepted_v6 = [str(x).strip() for x in (deploy_state.get("interceptedVipsIpv6") or []) if str(x).strip()]
-
-    if not frontend_dns_ip and "intercep" in mode_lc and intercepted_v4:
-        frontend_dns_ip = intercepted_v4[0]
-    if not frontend_dns_ipv6 and "intercep" in mode_lc and intercepted_v6:
-        frontend_dns_ipv6 = intercepted_v6[0]
-
-    # Guard: listener fallback is only valid in non-interception modes.
-    # If interceptedVips exist, never treat a listener as the frontend DNS.
     is_interception = "intercep" in mode_lc or bool(intercepted_v4) or bool(intercepted_v6)
-    if not is_interception and (not frontend_dns_ip or not frontend_dns_ipv6):
-        try:
-            from app.services.runtime_inventory_service import _discover_runtime_instances
-            runtime_insts = _discover_runtime_instances() or []
-        except Exception:
-            runtime_insts = []
-        listener_v4: list[str] = []
-        listener_v6: list[str] = []
-        for inst in runtime_insts:
-            for ip in inst.get("bind_ips", []) or []:
-                ip_s = str(ip).strip()
-                if not ip_s or ip_s in ("127.0.0.1", "0.0.0.0", "::1", "::"):
-                    continue
-                if ":" in ip_s:
-                    listener_v6.append(ip_s)
-                else:
-                    listener_v4.append(ip_s)
-        if not frontend_dns_ip and listener_v4:
-            frontend_dns_ip = listener_v4[0]
-        if not frontend_dns_ipv6 and listener_v6:
-            frontend_dns_ipv6 = listener_v6[0]
+
+    if is_interception:
+        if not frontend_dns_ip and intercepted_v4:
+            frontend_dns_ip = intercepted_v4[0]
+        if not frontend_dns_ipv6 and intercepted_v6:
+            frontend_dns_ipv6 = intercepted_v6[0]
+
+    # Discover the server's MANAGEMENT IP (default-route interface, primary IPv4).
+    # Used as the "client-facing DNS" in simple mode, and exposed to the UI so
+    # the dashboard can distinguish it from listener bind_ips.
+    server_frontend_ip = ""
+    server_frontend_ipv6 = ""
+    try:
+        r_def = _safe_run("ip", ["route", "show", "default"], timeout=5)
+        mgmt_iface = ""
+        if r_def["exit_code"] == 0 and "dev" in r_def["stdout"]:
+            parts = r_def["stdout"].split()
+            idx = parts.index("dev")
+            mgmt_iface = parts[idx + 1]
+        if mgmt_iface:
+            r_addr = _safe_run("ip", ["-j", "addr", "show", "dev", mgmt_iface], timeout=5)
+            if r_addr["exit_code"] == 0 and r_addr["stdout"].strip():
+                data = json.loads(r_addr["stdout"])
+                for iface in data:
+                    for addr in iface.get("addr_info", []):
+                        local = str(addr.get("local", "")).strip()
+                        if not local:
+                            continue
+                        if addr.get("family") == "inet" and not server_frontend_ip:
+                            server_frontend_ip = local
+                        elif addr.get("family") == "inet6" and not server_frontend_ipv6 and not local.lower().startswith("fe80"):
+                            server_frontend_ipv6 = local
+    except Exception:
+        pass
+
+    if not is_interception:
+        if not frontend_dns_ip and server_frontend_ip:
+            frontend_dns_ip = server_frontend_ip
+        if not frontend_dns_ipv6 and server_frontend_ipv6:
+            frontend_dns_ipv6 = server_frontend_ipv6
 
     if not frontend_dns_ip:
         try:
@@ -342,6 +362,7 @@ def get_dashboard_summary() -> dict:
                     break
         except Exception:
             pass
+
 
 
     return {
@@ -383,7 +404,10 @@ def get_dashboard_summary() -> dict:
         "frontend_dns_ipv6": frontend_dns_ipv6,
         "intercepted_vips": deploy_state.get("interceptedVips", []),
         "intercepted_vips_ipv6": deploy_state.get("interceptedVipsIpv6", []),
+        "server_frontend_ip": server_frontend_ip,
+        "server_frontend_ipv6": server_frontend_ipv6,
     }
+
 
 
 def _get_nftables_state() -> dict:
