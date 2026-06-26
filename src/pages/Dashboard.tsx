@@ -163,9 +163,12 @@ function InterceptionDashboard() {
   ];
 
   // Categorize the loopback IP soup for separate, correctly-labeled chips.
+  // The intercepted VIP (client-facing DNS) is NEVER a listener nor an egress.
   const backendIpSet = new Set(topoBackends.map(b => b.ip).filter(Boolean));
-  const listenerIps = vipAnycastList.filter(ip => isCgn(ip) || backendIpSet.has(ip));
-  const egressIps = vipAnycastList.filter(ip => !isCgn(ip) && !backendIpSet.has(ip) && ip !== frontendIp);
+  const interceptedSet = new Set(interceptedVips);
+  const listenerIps = vipAnycastList.filter(ip => !interceptedSet.has(ip) && (isCgn(ip) || backendIpSet.has(ip)));
+  const egressIps = vipAnycastList.filter(ip => !isCgn(ip) && !backendIpSet.has(ip) && !interceptedSet.has(ip) && ip !== frontendIp);
+
 
   // GeoMap nodes — resolvers são loopback (latência interna ~1ms), NÃO avgLatency.
   const geoNodes: MapNode[] = [
