@@ -2177,6 +2177,36 @@ export default function Wizard() {
           newConfig.deploymentMode = 'vip-routed-border';
         }
 
+        // VIP → Instance mapping from DNAT rules
+        // Match VIP IP to interceptedVips index, backend_ip to instances[].bindIp index
+        if (dnatRules.length > 0 && newConfig.interceptedVips && newConfig.instances) {
+          const vipsArr = newConfig.interceptedVips;
+          const instArr = newConfig.instances;
+          const seen = new Set<string>();
+          const mappings: { vipIndex: number; instanceIndex: number }[] = [];
+          for (const rule of dnatRules) {
+            const destList: string[] = [
+              ...(rule.dest_ips || []),
+              ...(rule.dest_ip ? [rule.dest_ip] : []),
+            ];
+            const backendIp = rule.backend_ip;
+            if (!backendIp) continue;
+            const instanceIndex = instArr.findIndex(i => i.bindIp === backendIp);
+            if (instanceIndex < 0) continue;
+            for (const vipIp of destList) {
+              const vipIndex = vipsArr.findIndex(v => v.vipIp === vipIp);
+              if (vipIndex < 0) continue;
+              const key = `${vipIndex}-${instanceIndex}`;
+              if (seen.has(key)) continue;
+              seen.add(key);
+              mappings.push({ vipIndex, instanceIndex });
+            }
+          }
+          if (mappings.length > 0) {
+            newConfig.vipMappings = mappings;
+          }
+        }
+
         // Auto-fill Frontend DNS IP for simple mode from management interface
         const resultingMode = newConfig.operationMode || config.operationMode;
         if (resultingMode === 'simple' && inv.network?.ipv4_address) {
