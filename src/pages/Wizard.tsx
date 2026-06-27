@@ -1207,16 +1207,17 @@ export default function Wizard() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <ModeCard
             selected={config.securityProfile === 'legacy'}
-            onClick={() => set('securityProfile', 'legacy')}
+            onClick={() => { securityProfileManuallyEditedRef.current = true; set('securityProfile', 'legacy'); }}
             label="Sem Proteção (Legacy / Open DNS)"
             desc="Reproduz o runtime Part1/Part2. Sem filter table, sem ACL no firewall."
           />
           <ModeCard
             selected={config.securityProfile === 'isp-hardened'}
-            onClick={() => set('securityProfile', 'isp-hardened')}
+            onClick={() => { securityProfileManuallyEditedRef.current = true; set('securityProfile', 'isp-hardened'); }}
             label="ISP Hardened"
             desc="ACL, rate limit e anti-amplificação no nftables (EDGE)."
           />
+
         </div>
         {config.securityProfile === 'legacy' && (
           <div className="space-y-3">
