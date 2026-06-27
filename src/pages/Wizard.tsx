@@ -2344,6 +2344,23 @@ export default function Wizard() {
           }
         }
 
+        // AnaBlock (judicial blocklist) — reflect real host state. The backend
+        // marks enabled = (anablock.conf OR unbound-block-domains.conf present)
+        // AND included in at least one unbound instance config. Optional
+        // ip_blocking is inferred from blackhole routes. Don't overwrite a
+        // manual choice already made in the current session.
+        const ab = inv.anablock;
+        if (ab && typeof ab === 'object' && !anablockManuallyEditedRef.current) {
+          if (typeof ab.enabled === 'boolean') {
+            newConfig.enableBlocklist = ab.enabled;
+          }
+          if (typeof ab.ip_blocking === 'boolean') {
+            newConfig.enableIpBlocking = ab.ip_blocking;
+          }
+        }
+
+
+
 
 
         setConfig(prev => ({ ...prev, ...newConfig }));
