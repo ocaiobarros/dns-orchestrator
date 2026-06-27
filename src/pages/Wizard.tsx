@@ -156,6 +156,8 @@ export default function Wizard() {
     phase: string; currentStep: string | null; completedSteps: number; totalSteps: number; lastMessage: string;
   } | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const securityProfileManuallyEditedRef = useRef(false);
+
   const applyMutation = useApplyConfig();
   const navigate = useNavigate();
 
@@ -1205,16 +1207,17 @@ export default function Wizard() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <ModeCard
             selected={config.securityProfile === 'legacy'}
-            onClick={() => set('securityProfile', 'legacy')}
+            onClick={() => { securityProfileManuallyEditedRef.current = true; set('securityProfile', 'legacy'); }}
             label="Sem Proteção (Legacy / Open DNS)"
             desc="Reproduz o runtime Part1/Part2. Sem filter table, sem ACL no firewall."
           />
           <ModeCard
             selected={config.securityProfile === 'isp-hardened'}
-            onClick={() => set('securityProfile', 'isp-hardened')}
+            onClick={() => { securityProfileManuallyEditedRef.current = true; set('securityProfile', 'isp-hardened'); }}
             label="ISP Hardened"
             desc="ACL, rate limit e anti-amplificação no nftables (EDGE)."
           />
+
         </div>
         {config.securityProfile === 'legacy' && (
           <div className="space-y-3">
@@ -2288,8 +2291,20 @@ export default function Wizard() {
           }
         }
 
+        // Security profile — derive from real nftables ruleset.
+        // Criterion (mirrors nftables_generator.py): presence of `table ip/ip6 filter`
+        // ⇒ 'isp-hardened'; absence ⇒ 'legacy'. Don't overwrite a manual choice
+        // already made in the current session.
+        const sec = inv.security;
+        if (sec && typeof sec.profile === 'string' && !securityProfileManuallyEditedRef.current) {
+          if (sec.profile === 'legacy' || sec.profile === 'isp-hardened') {
+            newConfig.securityProfile = sec.profile;
+          }
+        }
+
         setConfig(prev => ({ ...prev, ...newConfig }));
         setConfigSource('host_runtime');
+
         setHostSyncResult({
           instances: newConfig.instances?.length || 0,
           vips: vips.length,

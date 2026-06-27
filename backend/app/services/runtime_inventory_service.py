@@ -979,7 +979,38 @@ def discover_frr_config() -> dict:
 
 
 
+def discover_security_profile() -> dict:
+    """
+    Detect security profile from live nftables ruleset.
+
+    Criterion (matches the generator at nftables_generator.py: legacy mode does
+    NOT emit any `filter` table): presence of `table ip filter` or
+    `table ip6 filter` ⇒ 'isp-hardened'; absence ⇒ 'legacy'.
+
+    Read-only — only inspects `nft list ruleset` output.
+    """
+    out = {
+        "profile": "legacy",
+        "filter_table_present": False,
+        "rate_limit_present": False,
+    }
+    result = _safe_run("nft", ["list", "ruleset"], timeout=10, use_privilege=True)
+    if result["exit_code"] != 0:
+        return out
+
+    text = result["stdout"] or ""
+    # Match `table ip filter {` / `table ip6 filter {` (top-level filter tables).
+    if re.search(r'^\s*table\s+ip6?\s+filter\s*\{', text, re.MULTILINE):
+        out["filter_table_present"] = True
+        out["profile"] = "isp-hardened"
+        # Heuristic: rate limit / anti-amplification when `limit rate` shows up.
+        if re.search(r'\blimit\s+rate\b', text):
+            out["rate_limit_present"] = True
+    return out
+
+
 def get_full_inventory() -> dict:
+
     """
     Build a complete runtime inventory of the DNS infrastructure.
     This is the observed-mode equivalent of deploy-state.json.
@@ -1081,6 +1112,7 @@ def get_full_inventory() -> dict:
             vip["capture_mode"] = "local_bind"
 
     frr_config = discover_frr_config()
+    security = discover_security_profile()
 
     return {
         "collected_at": datetime.now(timezone.utc).isoformat(),
@@ -1093,11 +1125,13 @@ def get_full_inventory() -> dict:
         "listeners": listeners,
         "vip_backend_map": vip_backend_map,
         "frr": frr_config,
+        "security": security,
         "instance_count": len(instances),
         "vip_count": len(vips),
         "dnat_rule_count": len(dnat_rules),
         "listener_count": len(listeners),
     }
+
 
 
 # ── Sync to dns_instances table ─────────────────────────────
