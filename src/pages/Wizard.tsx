@@ -937,7 +937,7 @@ export default function Wizard() {
       )}
 
       <div className="flex gap-4 flex-wrap">
-        <Toggle checked={config.enableIpBlocking} onChange={v => set('enableIpBlocking', v)} label="AnaBlock IP Blocking (rotas blackhole)" />
+        <Toggle checked={config.enableIpBlocking} onChange={v => { anablockManuallyEditedRef.current = true; set('enableIpBlocking', v); }} label="AnaBlock IP Blocking (rotas blackhole)" />
       </div>
 
       {config.enableIpBlocking && (
