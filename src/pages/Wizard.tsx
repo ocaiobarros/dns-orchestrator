@@ -157,6 +157,8 @@ export default function Wizard() {
   } | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const securityProfileManuallyEditedRef = useRef(false);
+  const anablockManuallyEditedRef = useRef(false);
+
 
   const applyMutation = useApplyConfig();
   const navigate = useNavigate();
@@ -897,7 +899,7 @@ export default function Wizard() {
       </div>
       <div className="flex gap-4 flex-wrap">
         <Toggle checked={config.enableDetailedLogs} onChange={v => set('enableDetailedLogs', v)} label="Logs detalhados" />
-        <Toggle checked={config.enableBlocklist} onChange={v => set('enableBlocklist', v)} label="AnaBlock (Blocklist Judicial)" />
+        <Toggle checked={config.enableBlocklist} onChange={v => { anablockManuallyEditedRef.current = true; set('enableBlocklist', v); }} label="AnaBlock (Blocklist Judicial)" />
       </div>
 
       {config.enableBlocklist && (
@@ -935,7 +937,7 @@ export default function Wizard() {
       )}
 
       <div className="flex gap-4 flex-wrap">
-        <Toggle checked={config.enableIpBlocking} onChange={v => set('enableIpBlocking', v)} label="AnaBlock IP Blocking (rotas blackhole)" />
+        <Toggle checked={config.enableIpBlocking} onChange={v => { anablockManuallyEditedRef.current = true; set('enableIpBlocking', v); }} label="AnaBlock IP Blocking (rotas blackhole)" />
       </div>
 
       {config.enableIpBlocking && (
@@ -2341,6 +2343,23 @@ export default function Wizard() {
             newConfig.useCapsForId = tun.use_caps_for_id;
           }
         }
+
+        // AnaBlock (judicial blocklist) — reflect real host state. The backend
+        // marks enabled = (anablock.conf OR unbound-block-domains.conf present)
+        // AND included in at least one unbound instance config. Optional
+        // ip_blocking is inferred from blackhole routes. Don't overwrite a
+        // manual choice already made in the current session.
+        const ab = inv.anablock;
+        if (ab && typeof ab === 'object' && !anablockManuallyEditedRef.current) {
+          if (typeof ab.enabled === 'boolean') {
+            newConfig.enableBlocklist = ab.enabled;
+          }
+          if (typeof ab.ip_blocking === 'boolean') {
+            newConfig.enableIpBlocking = ab.ip_blocking;
+          }
+        }
+
+
 
 
 

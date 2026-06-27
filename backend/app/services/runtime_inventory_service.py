@@ -1091,7 +1091,70 @@ def discover_security_profile() -> dict:
     return out
 
 
+def discover_anablock_state(instances: list[dict] | None = None) -> dict:
+    """
+    Detect AnaBlock (judicial blocklist) state from host artifacts.
+
+    Criterion: the generator (unbound_generator.py) emits
+    `/etc/unbound/anablock.conf` and `/etc/unbound/unbound-block-domains.conf`
+    AND adds `include:` lines for them in each instance unbound.conf. AnaBlock
+    is considered enabled when at least one of those files exists AND at least
+    one instance config includes it.
+
+    Optional: detect blackhole routes (`ip route show type blackhole`) as a
+    proxy for IP blocking.
+
+    Read-only.
+    """
+    out = {
+        "enabled": False,
+        "anablock_conf_present": False,
+        "block_domains_conf_present": False,
+        "included_in_unbound": False,
+        "ip_blocking": False,
+    }
+
+    # File presence: cat returns exit 0 only when the file exists and is readable.
+    for path, key in (
+        ("/etc/unbound/anablock.conf", "anablock_conf_present"),
+        ("/etc/unbound/unbound-block-domains.conf", "block_domains_conf_present"),
+    ):
+        r = _safe_run("cat", [path], timeout=3)
+        if r["exit_code"] == 0:
+            out[key] = True
+
+    # Include directive: scan instance unbound.conf files for `include:` lines
+    # pointing at anablock.conf or unbound-block-domains.conf.
+    include_re = re.compile(r'^\s*include:\s*\S*(anablock\.conf|unbound-block-domains\.conf)\b')
+    inst_list = instances if instances is not None else discover_unbound_instances()
+    for inst in inst_list:
+        cfg_path = inst.get("config_path") or f"/etc/unbound/{inst.get('instance_name', '')}.conf"
+        r = _safe_run("cat", [cfg_path], timeout=3)
+        if r["exit_code"] != 0:
+            continue
+        for line in r["stdout"].split("\n"):
+            if include_re.match(line):
+                out["included_in_unbound"] = True
+                break
+        if out["included_in_unbound"]:
+            break
+
+    out["enabled"] = (
+        (out["anablock_conf_present"] or out["block_domains_conf_present"])
+        and out["included_in_unbound"]
+    )
+
+    # Optional: blackhole routes ⇒ IP blocking active.
+    r = _safe_run("ip", ["route", "show", "type", "blackhole"], timeout=3)
+    if r["exit_code"] == 0 and r["stdout"].strip():
+        out["ip_blocking"] = True
+
+    return out
+
+
 def get_full_inventory() -> dict:
+
+
 
     """
     Build a complete runtime inventory of the DNS infrastructure.
@@ -1195,6 +1258,8 @@ def get_full_inventory() -> dict:
 
     frr_config = discover_frr_config()
     security = discover_security_profile()
+    anablock = discover_anablock_state(instances)
+
 
     # Aggregate per-instance unbound tuning into a single "tuning" view that
     # matches the wizard's global tuning fields. The wizard treats tuning as
@@ -1222,6 +1287,8 @@ def get_full_inventory() -> dict:
         "frr": frr_config,
         "security": security,
         "tuning": tuning_agg,
+        "anablock": anablock,
+
         "instance_count": len(instances),
         "vip_count": len(vips),
         "dnat_rule_count": len(dnat_rules),
