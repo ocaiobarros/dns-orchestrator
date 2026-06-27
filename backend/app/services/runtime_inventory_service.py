@@ -1053,6 +1053,22 @@ def get_full_inventory() -> dict:
                     "label": "DNS_ANYCAST",
                 })
 
+    # Runtime-expanded nftables rules may expose intercepted VIPs only as
+    # `ip daddr <VIP> ... jump <chain>` with `dnat to` inside that target chain.
+    # Ensure those daddr-captured VIPs are present even when they are not bound
+    # on loopback. Sticky set elements are not included in dnat_dest_ips because
+    # they are never parsed as capture destinations.
+    existing_vip_ips = {v.get("ip") for v in vips}
+    for ip in sorted(dnat_dest_ips):
+        if ip and ip not in existing_vip_ips:
+            vips.append({
+                "ip": ip,
+                "prefixlen": 128 if ":" in ip else 32,
+                "interface": "nft-capture",
+                "label": "nft daddr capture",
+            })
+            existing_vip_ips.add(ip)
+
     for vip in vips:
         if vip.get("ip") in dnat_dest_ips:
             vip["capture_mode"] = "dnat"
