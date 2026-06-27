@@ -702,6 +702,8 @@ def get_full_inventory() -> dict:
         else:
             vip["capture_mode"] = "local_bind"
 
+    frr_config = discover_frr_config()
+
     return {
         "collected_at": datetime.now(timezone.utc).isoformat(),
         "hostname": _discover_hostname(),
@@ -712,6 +714,7 @@ def get_full_inventory() -> dict:
         "sticky_sets": sticky_sets,
         "listeners": listeners,
         "vip_backend_map": vip_backend_map,
+        "frr": frr_config,
         "instance_count": len(instances),
         "vip_count": len(vips),
         "dnat_rule_count": len(dnat_rules),
