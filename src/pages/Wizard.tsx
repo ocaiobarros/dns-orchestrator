@@ -2222,6 +2222,37 @@ export default function Wizard() {
         // Egress delivery mode inference
         if (inv.egress_delivery_mode) newConfig.egressDeliveryMode = inv.egress_delivery_mode;
 
+        // FRR / OSPF — import router-id, area, cost, interfaces, redistribute
+        const frr = inv.frr;
+        if (frr && frr.available) {
+          if (frr.router_id) newConfig.routerId = frr.router_id;
+          if (frr.area) newConfig.ospfArea = frr.area;
+          if (typeof frr.default_cost === 'number' && frr.default_cost > 0) {
+            newConfig.ospfCost = frr.default_cost;
+          }
+          if (typeof frr.redistribute_connected === 'boolean') {
+            newConfig.redistributeConnected = frr.redistribute_connected;
+          }
+          if (Array.isArray(frr.interfaces) && frr.interfaces.length > 0) {
+            const ifaceNames = frr.interfaces
+              .map((i: any) => i?.name)
+              .filter((n: any) => typeof n === 'string' && n && n !== 'lo0' && n !== 'lo');
+            if (ifaceNames.length > 0) newConfig.ospfInterfaces = ifaceNames;
+            const pp = frr.interfaces.find((i: any) => i?.network_type);
+            if (pp?.network_type === 'point-to-point' || pp?.network_type === 'broadcast') {
+              newConfig.networkType = pp.network_type;
+            }
+          }
+          const hasOspfRouter = !!frr.router_id || (Array.isArray(frr.networks) && frr.networks.length > 0);
+          if (frr.ospfd_enabled === true || hasOspfRouter) {
+            newConfig.enableOspf = true;
+            newConfig.routingMode = 'frr-ospf';
+          } else if (frr.ospfd_enabled === false) {
+            newConfig.enableOspf = false;
+            newConfig.routingMode = 'static';
+          }
+        }
+
         setConfig(prev => ({ ...prev, ...newConfig }));
         setConfigSource('host_runtime');
         setHostSyncResult({

@@ -512,6 +512,156 @@ def _discover_network() -> dict:
     return net
 
 
+# ── FRR / OSPF discovery ────────────────────────────────────
+
+
+def discover_frr_config() -> dict:
+    """
+    Read-only discovery of the running FRR configuration.
+
+    Source of truth: /etc/frr/frr.conf (preferred). Falls back to
+    `vtysh -c "show running-config"` when the file is unavailable.
+
+    Extracts: router_id, area, networks announced, per-interface OSPF cost,
+    route-maps (name + set metric / set ip next-hop / set metric-type), and
+    OSPF-enabled interfaces. This function NEVER mutates FRR state.
+    """
+    text = ""
+    src = None
+    r = _safe_run("cat", ["/etc/frr/frr.conf"], timeout=5)
+    if r["exit_code"] == 0 and r.get("stdout"):
+        text = r["stdout"]
+        src = "file"
+    else:
+        rv = _safe_run("vtysh", ["-c", "show running-config"], timeout=10, use_privilege=True)
+        if rv["exit_code"] == 0 and rv.get("stdout"):
+            text = rv["stdout"]
+            src = "vtysh"
+
+    out: dict = {
+        "available": bool(text),
+        "source": src,
+        "router_id": "",
+        "area": "",
+        "networks": [],
+        "interfaces": [],          # [{name, cost, network_type}]
+        "default_cost": None,
+        "route_maps": [],          # [{name, action, seq, set_metric, set_metric_type, set_ip_next_hop}]
+        "redistribute_connected": False,
+        "ospfd_enabled": None,
+    }
+    if not text:
+        # Check daemons file for ospfd flag even when frr.conf is empty
+        rd = _safe_run("cat", ["/etc/frr/daemons"], timeout=5)
+        if rd["exit_code"] == 0:
+            m = re.search(r"^\s*ospfd\s*=\s*(yes|no)\b", rd["stdout"], re.MULTILINE)
+            if m:
+                out["ospfd_enabled"] = (m.group(1) == "yes")
+        return out
+
+    # daemons file (independent of frr.conf)
+    rd = _safe_run("cat", ["/etc/frr/daemons"], timeout=5)
+    if rd["exit_code"] == 0:
+        m = re.search(r"^\s*ospfd\s*=\s*(yes|no)\b", rd["stdout"], re.MULTILINE)
+        if m:
+            out["ospfd_enabled"] = (m.group(1) == "yes")
+
+    lines = text.split("\n")
+    current_block = None       # "interface:<name>", "router_ospf", "route_map:<name>:<seq>"
+    iface_cost_by_name: dict = {}
+    cost_values: list = []
+
+    for raw in lines:
+        line = raw.rstrip()
+        stripped = line.strip()
+        if not stripped or stripped.startswith("!"):
+            continue
+
+        if stripped == "exit" or stripped == "exit-address-family":
+            current_block = None
+            continue
+
+        m = re.match(r"^interface\s+(\S+)", stripped)
+        if m:
+            current_block = f"interface:{m.group(1)}"
+            iface_cost_by_name.setdefault(m.group(1), {"name": m.group(1), "cost": None, "network_type": None})
+            continue
+
+        if stripped == "router ospf" or stripped.startswith("router ospf "):
+            current_block = "router_ospf"
+            continue
+
+        m = re.match(r"^route-map\s+(\S+)\s+(permit|deny)\s+(\d+)", stripped)
+        if m:
+            name, action, seq = m.group(1), m.group(2), int(m.group(3))
+            current_block = f"route_map:{name}:{seq}"
+            out["route_maps"].append({
+                "name": name,
+                "action": action,
+                "seq": seq,
+                "set_metric": None,
+                "set_metric_type": None,
+                "set_ip_next_hop": None,
+            })
+            continue
+
+        # Inside blocks
+        if current_block and current_block.startswith("interface:"):
+            iname = current_block.split(":", 1)[1]
+            mc = re.match(r"^ip\s+ospf\s+cost\s+(\d+)$", stripped)
+            if mc:
+                c = int(mc.group(1))
+                iface_cost_by_name[iname]["cost"] = c
+                cost_values.append(c)
+                continue
+            mn = re.match(r"^ip\s+ospf\s+network\s+(\S+)$", stripped)
+            if mn:
+                iface_cost_by_name[iname]["network_type"] = mn.group(1)
+                continue
+
+        if current_block == "router_ospf":
+            m = re.match(r"^ospf\s+router-id\s+(\S+)$", stripped)
+            if m:
+                out["router_id"] = m.group(1)
+                continue
+            if stripped == "redistribute connected":
+                out["redistribute_connected"] = True
+                continue
+            m = re.match(r"^network\s+(\S+)\s+area\s+(\S+)$", stripped)
+            if m:
+                out["networks"].append({"network": m.group(1), "area": m.group(2)})
+                if not out["area"]:
+                    out["area"] = m.group(2)
+                continue
+
+        if current_block and current_block.startswith("route_map:"):
+            rm = out["route_maps"][-1]
+            m = re.match(r"^set\s+metric\s+(\S+)$", stripped)
+            if m:
+                try:
+                    rm["set_metric"] = int(m.group(1))
+                except ValueError:
+                    rm["set_metric"] = m.group(1)
+                continue
+            m = re.match(r"^set\s+metric-type\s+(\S+)$", stripped)
+            if m:
+                rm["set_metric_type"] = m.group(1)
+                continue
+            m = re.match(r"^set\s+ip\s+next-hop\s+(\S+)$", stripped)
+            if m:
+                rm["set_ip_next_hop"] = m.group(1)
+                continue
+
+    out["interfaces"] = list(iface_cost_by_name.values())
+    if cost_values:
+        # mode (most common) as the representative default cost
+        from collections import Counter
+        out["default_cost"] = Counter(cost_values).most_common(1)[0][0]
+
+    return out
+
+
+
 def get_full_inventory() -> dict:
     """
     Build a complete runtime inventory of the DNS infrastructure.
@@ -552,6 +702,8 @@ def get_full_inventory() -> dict:
         else:
             vip["capture_mode"] = "local_bind"
 
+    frr_config = discover_frr_config()
+
     return {
         "collected_at": datetime.now(timezone.utc).isoformat(),
         "hostname": _discover_hostname(),
@@ -562,6 +714,7 @@ def get_full_inventory() -> dict:
         "sticky_sets": sticky_sets,
         "listeners": listeners,
         "vip_backend_map": vip_backend_map,
+        "frr": frr_config,
         "instance_count": len(instances),
         "vip_count": len(vips),
         "dnat_rule_count": len(dnat_rules),
