@@ -2280,6 +2280,12 @@ export default function Wizard() {
             newConfig.enableOspf = false;
             newConfig.routingMode = 'static';
           }
+          // OSPF6/IPv6 dual-stack: detected from `ipv6 ospf6 ...` per-interface
+          // directives in the real frr.conf. The generator emits the IPv6 OSPF
+          // block (and ospf6d=yes) when enableIpv6 is true.
+          if (frr.ipv6_ospf_enabled === true) {
+            newConfig.enableIpv6 = true;
+          }
         }
 
         setConfig(prev => ({ ...prev, ...newConfig }));
