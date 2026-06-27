@@ -78,7 +78,7 @@ def discover_unbound_instances() -> list[dict]:
 
 
 def _parse_unbound_config(instance_name: str) -> dict:
-    """Parse unbound config for bind IPs, control interface/port, outgoing IPs."""
+    """Parse unbound config for bind IPs, control interface/port, outgoing IPs, tuning."""
     config_path = f"/etc/unbound/{instance_name}.conf"
     result = _safe_run("cat", [config_path], timeout=5)
 
@@ -89,19 +89,46 @@ def _parse_unbound_config(instance_name: str) -> dict:
         "control_port": 8953,
         "outgoing_ips": [],
         "config_path": config_path,
+        "tuning": {},
     }
 
     if result["exit_code"] != 0:
         return config
 
+    tuning: dict = {}
+
+    def _kv(stripped: str) -> str:
+        return stripped.split(":", 1)[1].strip()
+
+    def _bool(val: str):
+        v = val.strip().lower()
+        if v in ("yes", "true", "on", "1"):
+            return True
+        if v in ("no", "false", "off", "0"):
+            return False
+        return None
+
+    def _int(val: str):
+        try:
+            return int(val.strip())
+        except ValueError:
+            return None
+
+    def _norm_size(val: str) -> str:
+        # Normalize unbound size strings: "2G"/"2g"/"2048m" → lowercase suffix.
+        v = val.strip().lower().replace(" ", "")
+        m = re.match(r'^(\d+)([kmg])?$', v)
+        if not m:
+            return v
+        return f"{m.group(1)}{m.group(2) or ''}"
+
     for line in result["stdout"].split("\n"):
         stripped = line.strip()
-        if stripped.startswith("#"):
+        if not stripped or stripped.startswith("#"):
             continue
 
         if stripped.startswith("interface:") and not stripped.startswith("interface-automatic"):
-            ip = stripped.split(":", 1)[1].strip()
-            # Handle interface with port: 10.0.0.1@5353
+            ip = _kv(stripped)
             if "@" in ip:
                 parts = ip.split("@")
                 ip = parts[0]
@@ -114,28 +141,81 @@ def _parse_unbound_config(instance_name: str) -> dict:
 
         elif stripped.startswith("port:"):
             try:
-                config["port"] = int(stripped.split(":", 1)[1].strip())
+                config["port"] = int(_kv(stripped))
             except ValueError:
                 pass
 
         elif stripped.startswith("control-interface:"):
-            config["control_interface"] = stripped.split(":", 1)[1].strip()
+            config["control_interface"] = _kv(stripped)
 
         elif stripped.startswith("control-port:"):
             try:
-                config["control_port"] = int(stripped.split(":", 1)[1].strip())
+                config["control_port"] = int(_kv(stripped))
             except ValueError:
                 pass
 
         elif stripped.startswith("outgoing-interface:"):
-            ip = stripped.split(":", 1)[1].strip()
+            ip = _kv(stripped)
             if ip:
                 config["outgoing_ips"].append(ip)
+
+        elif stripped.startswith("num-threads:"):
+            n = _int(_kv(stripped))
+            if n is not None:
+                tuning["num_threads"] = n
+
+        elif stripped.startswith("num-queries-per-thread:"):
+            n = _int(_kv(stripped))
+            if n is not None:
+                tuning["num_queries_per_thread"] = n
+
+        elif stripped.startswith("msg-cache-size:"):
+            tuning["msg_cache_size"] = _norm_size(_kv(stripped))
+
+        elif stripped.startswith("rrset-cache-size:"):
+            tuning["rrset_cache_size"] = _norm_size(_kv(stripped))
+
+        elif stripped.startswith("cache-min-ttl:"):
+            n = _int(_kv(stripped))
+            if n is not None:
+                tuning["cache_min_ttl"] = n
+
+        elif stripped.startswith("cache-max-ttl:"):
+            n = _int(_kv(stripped))
+            if n is not None:
+                tuning["cache_max_ttl"] = n
+
+        elif stripped.startswith("serve-expired:"):
+            b = _bool(_kv(stripped))
+            if b is not None:
+                tuning["serve_expired"] = b
+
+        elif stripped.startswith("serve-expired-ttl:"):
+            n = _int(_kv(stripped))
+            if n is not None:
+                tuning["serve_expired_ttl"] = n
+
+        elif stripped.startswith("identity:"):
+            ident = _kv(stripped).strip('"').strip("'")
+            if ident:
+                tuning["identity"] = ident
+
+        elif stripped.startswith("harden-dnssec-stripped:"):
+            b = _bool(_kv(stripped))
+            if b is not None:
+                tuning["harden_dnssec_stripped"] = b
+
+        elif stripped.startswith("use-caps-for-id:"):
+            b = _bool(_kv(stripped))
+            if b is not None:
+                tuning["use_caps_for_id"] = b
 
     if not config["bind_ips"]:
         config["bind_ips"] = ["127.0.0.1"]
 
+    config["tuning"] = tuning
     return config
+
 
 
 # ── VIP discovery from loopback ─────────────────────────────
