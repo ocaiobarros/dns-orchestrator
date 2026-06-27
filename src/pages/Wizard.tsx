@@ -548,13 +548,13 @@ export default function Wizard() {
           <Input value={config.mainInterface} onChange={v => set('mainInterface', v)} placeholder="ens192" />
         </FieldGroup>
         <FieldGroup label="VLAN Tag" hint="Opcional">
-          <Input value={config.vlanTag} onChange={v => set('vlanTag', v)} placeholder="100" />
+          <Input value={config.vlanTag} onChange={v => set('vlanTag', v)} placeholder="ex: 10" />
         </FieldGroup>
         <FieldGroup label="Endereço IPv4 (CIDR) *" error={fieldError('ipv4Address')} hint="IP privado do host com máscara">
-          <Input value={config.ipv4Address} onChange={v => set('ipv4Address', v)} placeholder="172.29.22.6/30" />
+          <Input value={config.ipv4Address} onChange={v => set('ipv4Address', v)} placeholder="ex: 192.0.2.6/30" />
         </FieldGroup>
         <FieldGroup label="Gateway IPv4 *" error={fieldError('ipv4Gateway')}>
-          <Input value={config.ipv4Gateway} onChange={v => set('ipv4Gateway', v)} placeholder="172.29.22.5" />
+          <Input value={config.ipv4Gateway} onChange={v => set('ipv4Gateway', v)} placeholder="ex: 192.0.2.1" />
         </FieldGroup>
       </div>
       <Toggle checked={config.enableIpv6} onChange={v => set('enableIpv6', v)} label="Habilitar dual-stack IPv6" />
