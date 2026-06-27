@@ -374,6 +374,11 @@ def _index_nft_chains(ruleset_text: str) -> dict:
         if chain_match:
             current_chain = chain_match.group(1)
             tables.setdefault(current_table, {}).setdefault(current_chain, [])
+            inline_body = stripped.split("{", 1)[1].strip()
+            if inline_body and inline_body != "}":
+                inline_body = inline_body.rsplit("}", 1)[0].strip()
+                if inline_body:
+                    tables[current_table][current_chain].append(inline_body)
             chain_depth = stripped.count("{") - stripped.count("}")
             if chain_depth <= 0:
                 current_chain = ""
