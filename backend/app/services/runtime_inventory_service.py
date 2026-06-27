@@ -1287,6 +1287,8 @@ def get_full_inventory() -> dict:
         "frr": frr_config,
         "security": security,
         "tuning": tuning_agg,
+        "anablock": anablock,
+
         "instance_count": len(instances),
         "vip_count": len(vips),
         "dnat_rule_count": len(dnat_rules),
