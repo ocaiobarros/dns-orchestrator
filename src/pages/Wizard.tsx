@@ -899,7 +899,7 @@ export default function Wizard() {
       </div>
       <div className="flex gap-4 flex-wrap">
         <Toggle checked={config.enableDetailedLogs} onChange={v => set('enableDetailedLogs', v)} label="Logs detalhados" />
-        <Toggle checked={config.enableBlocklist} onChange={v => set('enableBlocklist', v)} label="AnaBlock (Blocklist Judicial)" />
+        <Toggle checked={config.enableBlocklist} onChange={v => { anablockManuallyEditedRef.current = true; set('enableBlocklist', v); }} label="AnaBlock (Blocklist Judicial)" />
       </div>
 
       {config.enableBlocklist && (
