@@ -156,6 +156,8 @@ export default function Wizard() {
     phase: string; currentStep: string | null; completedSteps: number; totalSteps: number; lastMessage: string;
   } | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const securityProfileManuallyEditedRef = useRef(false);
+
   const applyMutation = useApplyConfig();
   const navigate = useNavigate();
 
