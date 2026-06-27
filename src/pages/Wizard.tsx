@@ -2176,6 +2176,15 @@ export default function Wizard() {
           newConfig.deploymentMode = 'vip-routed-border';
         }
 
+        // Auto-fill Frontend DNS IP for simple mode from management interface
+        const resultingMode = newConfig.operationMode || config.operationMode;
+        if (resultingMode === 'simple' && inv.network?.ipv4_address) {
+          const mgmtIp = inv.network.ipv4_address.split('/')[0];
+          if (!config.frontendDnsIp && !newConfig.frontendDnsIp) {
+            newConfig.frontendDnsIp = mgmtIp;
+          }
+        }
+
         // Listeners
         const listeners = inv.listeners || [];
 
