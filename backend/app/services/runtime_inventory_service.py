@@ -1112,6 +1112,7 @@ def get_full_inventory() -> dict:
             vip["capture_mode"] = "local_bind"
 
     frr_config = discover_frr_config()
+    security = discover_security_profile()
 
     return {
         "collected_at": datetime.now(timezone.utc).isoformat(),
@@ -1124,11 +1125,13 @@ def get_full_inventory() -> dict:
         "listeners": listeners,
         "vip_backend_map": vip_backend_map,
         "frr": frr_config,
+        "security": security,
         "instance_count": len(instances),
         "vip_count": len(vips),
         "dnat_rule_count": len(dnat_rules),
         "listener_count": len(listeners),
     }
+
 
 
 # ── Sync to dns_instances table ─────────────────────────────
