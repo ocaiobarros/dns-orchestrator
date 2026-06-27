@@ -283,6 +283,61 @@ def discover_dnat_rules() -> list[dict]:
     return rules
 
 
+def _discover_nft_anycast() -> dict:
+    """
+    Parse nftables ruleset for DNS anycast/intercepted-VIP defines and references.
+
+    Many real deployments define intercepted VIPs in a top-level variable
+    (e.g. `define DNS_ANYCAST_IPV4 = { 4.2.2.5, ... }`) and reference it from
+    capture chains via `ip daddr $DNS_ANYCAST_IPV4` while the actual `dnat to`
+    sits in separate action chains. Per-rule parsing in `discover_dnat_rules`
+    misses these VIPs because the literal IPs never appear next to `dnat to`.
+
+    Returns:
+      {
+        "anycast_ipv4": set[str],     # IPs from `define DNS_ANYCAST_IPV4`
+        "anycast_ipv6": set[str],     # IPs from `define DNS_ANYCAST_IPV6`
+        "ref_v4": bool,               # rule references $DNS_ANYCAST_IPV4
+        "ref_v6": bool,               # rule references $DNS_ANYCAST_IPV6
+      }
+    """
+    out = {
+        "anycast_ipv4": set(),
+        "anycast_ipv6": set(),
+        "ref_v4": False,
+        "ref_v6": False,
+    }
+    r = _safe_run("nft", ["list", "ruleset"], timeout=10, use_privilege=True)
+    if r["exit_code"] != 0:
+        return out
+    text = r.get("stdout", "") or ""
+
+    # `define NAME = { v1, v2, ... }` may span multiple lines until the closing `}`.
+    for m in re.finditer(
+        r"define\s+(DNS_ANYCAST_IPV[46])\s*=\s*\{([^}]*)\}",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    ):
+        name = m.group(1).upper()
+        body = m.group(2)
+        ips = [tok.strip() for tok in re.split(r"[,\s]+", body) if tok.strip()]
+        target = "anycast_ipv4" if name.endswith("IPV4") else "anycast_ipv6"
+        for ip in ips:
+            # accept literal v4 or v6 only (skip comments / variables)
+            if re.fullmatch(r"\d+\.\d+\.\d+\.\d+", ip):
+                if target == "anycast_ipv4":
+                    out["anycast_ipv4"].add(ip)
+            elif ":" in ip and re.fullmatch(r"[0-9A-Fa-f:]+", ip):
+                if target == "anycast_ipv6":
+                    out["anycast_ipv6"].add(ip)
+
+    if re.search(r"\$DNS_ANYCAST_IPV4\b", text):
+        out["ref_v4"] = True
+    if re.search(r"\$DNS_ANYCAST_IPV6\b", text):
+        out["ref_v6"] = True
+    return out
+
+
 # ── Sticky set discovery ────────────────────────────────────
 
 
