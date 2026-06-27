@@ -198,7 +198,9 @@ def discover_dnat_rules() -> list[dict]:
     current_chain = ""
     current_table = ""
 
-    for line in result["stdout"].split("\n"):
+    ruleset_text = result["stdout"]
+
+    for line in ruleset_text.split("\n"):
         stripped = line.strip()
 
         table_match = re.match(r'table\s+(\S+)\s+(\S+)\s*\{', stripped)
@@ -279,8 +281,220 @@ def discover_dnat_rules() -> list[dict]:
                         "raw_rule": stripped[:200],
                     })
 
+    rules.extend(_discover_nft_daddr_dnat_correlations(ruleset_text))
+
     logger.info(f"DNAT discovery: found {len(rules)} rules")
     return rules
+
+
+def _extract_nft_dnat_targets(rule_line: str) -> list[dict]:
+    """Extract literal DNAT backends from one nftables rule line."""
+    targets = []
+    seen = set()
+
+    for match in re.finditer(r'\bdnat\s+to\s+(\d+\.\d+\.\d+\.\d+)(?::(\d+))?', rule_line):
+        ip = match.group(1)
+        port = int(match.group(2)) if match.group(2) else 53
+        key = (ip, port)
+        if key not in seen:
+            seen.add(key)
+            targets.append({"backend_ip": ip, "backend_port": port})
+
+    for match in re.finditer(r'\bdnat\s+to\s+\[([0-9A-Fa-f:.]+)\](?::(\d+))?', rule_line):
+        ip = match.group(1)
+        port = int(match.group(2)) if match.group(2) else 53
+        key = (ip, port)
+        if key not in seen:
+            seen.add(key)
+            targets.append({"backend_ip": ip, "backend_port": port})
+
+    for match in re.finditer(r'\bdnat\s+to\s+([0-9A-Fa-f:]{2,})(?:\s|$)', rule_line):
+        ip = match.group(1)
+        key = (ip, 53)
+        if key not in seen:
+            seen.add(key)
+            targets.append({"backend_ip": ip, "backend_port": 53})
+
+    return targets
+
+
+def _extract_nft_jump_targets(rule_line: str) -> list[str]:
+    """Extract jump/goto chain targets from an nftables rule line."""
+    return [m.group(1) for m in re.finditer(r'\b(?:jump|goto)\s+([A-Za-z0-9_.:-]+)\b', rule_line)]
+
+
+def _extract_nft_capture_destinations(rule_line: str) -> list[str]:
+    """Extract literal ip/ip6 daddr values from capture rules only."""
+    dests = []
+
+    for match in re.finditer(r'\bip\s+daddr\s+(\d+\.\d+\.\d+\.\d+)\b', rule_line):
+        dests.append(match.group(1))
+    for match in re.finditer(r'\bip6\s+daddr\s+([0-9A-Fa-f:]+)\b', rule_line):
+        dests.append(match.group(1))
+
+    for match in re.finditer(r'\bip\s+daddr\s+\{([^}]+)\}', rule_line):
+        for token in re.split(r'[,\s]+', match.group(1)):
+            token = token.strip()
+            if re.fullmatch(r'\d+\.\d+\.\d+\.\d+', token):
+                dests.append(token)
+    for match in re.finditer(r'\bip6\s+daddr\s+\{([^}]+)\}', rule_line):
+        for token in re.split(r'[,\s]+', match.group(1)):
+            token = token.strip()
+            if re.fullmatch(r'[0-9A-Fa-f:]+', token) and ':' in token:
+                dests.append(token)
+
+    deduped = []
+    seen = set()
+    for dest in dests:
+        if dest not in seen:
+            seen.add(dest)
+            deduped.append(dest)
+    return deduped
+
+
+def _index_nft_chains(ruleset_text: str) -> dict:
+    """Build a table-local chain index from text `nft list ruleset` output."""
+    tables: dict = {}
+    current_table = ""
+    current_chain = ""
+    chain_depth = 0
+
+    for line in ruleset_text.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        table_match = re.match(r'table\s+(\S+)\s+(\S+)\s*\{', stripped)
+        if table_match and not current_chain:
+            current_table = f"{table_match.group(1)} {table_match.group(2)}"
+            tables.setdefault(current_table, {})
+            continue
+
+        chain_match = re.match(r'chain\s+(\S+)\s*\{', stripped)
+        if chain_match:
+            current_chain = chain_match.group(1)
+            tables.setdefault(current_table, {}).setdefault(current_chain, [])
+            inline_body = stripped.split("{", 1)[1].strip()
+            if inline_body and inline_body != "}":
+                inline_body = inline_body.rsplit("}", 1)[0].strip()
+                if inline_body:
+                    tables[current_table][current_chain].append(inline_body)
+            chain_depth = stripped.count("{") - stripped.count("}")
+            if chain_depth <= 0:
+                current_chain = ""
+            continue
+
+        if current_chain:
+            tables.setdefault(current_table, {}).setdefault(current_chain, []).append(stripped)
+            chain_depth += stripped.count("{") - stripped.count("}")
+            if chain_depth <= 0:
+                current_chain = ""
+
+    return tables
+
+
+def _discover_nft_daddr_dnat_correlations(ruleset_text: str) -> list[dict]:
+    """
+    Correlate expanded nftables capture rules with DNAT action chains.
+
+    Runtime `nft list ruleset` expands `define DNS_ANYCAST_*`, so intercepted
+    VIPs may appear only as `ip daddr <VIP> ... jump <chain>`, while `dnat to`
+    lives inside the target chain or one more jump away. Sticky set elements are
+    intentionally ignored because only `daddr` capture rules are considered.
+    """
+    tables = _index_nft_chains(ruleset_text)
+    correlated = []
+    seen = set()
+
+    for table_name, chains in tables.items():
+        chain_backends = {
+            chain_name: [target for line in lines for target in _extract_nft_dnat_targets(line)]
+            for chain_name, lines in chains.items()
+        }
+
+        def reachable_backends(start_chain: str, max_depth: int = 2) -> list[dict]:
+            queue = [(start_chain, 0)]
+            visited = set()
+            found = []
+            found_keys = set()
+
+            while queue:
+                chain_name, depth = queue.pop(0)
+                if chain_name in visited:
+                    continue
+                visited.add(chain_name)
+
+                for backend in chain_backends.get(chain_name, []):
+                    key = (backend["backend_ip"], backend["backend_port"])
+                    if key not in found_keys:
+                        found_keys.add(key)
+                        found.append(backend)
+
+                if depth >= max_depth:
+                    continue
+
+                for line in chains.get(chain_name, []):
+                    for next_chain in _extract_nft_jump_targets(line):
+                        if next_chain in chains and next_chain not in visited:
+                            queue.append((next_chain, depth + 1))
+
+            return found
+
+        for capture_chain, lines in chains.items():
+            for line in lines:
+                jump_targets = _extract_nft_jump_targets(line)
+                if not jump_targets:
+                    continue
+
+                capture_dests = _extract_nft_capture_destinations(line)
+                if not capture_dests:
+                    continue
+
+                proto = "unknown"
+                if re.search(r'\btcp\s+dport\b|\bmeta\s+l4proto\s+tcp\b', line):
+                    proto = "tcp"
+                elif re.search(r'\budp\s+dport\b|\bmeta\s+l4proto\s+udp\b', line):
+                    proto = "udp"
+
+                counter_match = re.search(r'counter packets (\d+) bytes (\d+)', line)
+                packets = int(counter_match.group(1)) if counter_match else 0
+                bytes_val = int(counter_match.group(2)) if counter_match else 0
+
+                for target_chain in jump_targets:
+                    backends = reachable_backends(target_chain)
+                    if not backends:
+                        continue
+
+                    for dest_ip in capture_dests:
+                        for backend in backends:
+                            key = (
+                                table_name,
+                                capture_chain,
+                                target_chain,
+                                dest_ip,
+                                backend["backend_ip"],
+                                backend["backend_port"],
+                                proto,
+                            )
+                            if key in seen:
+                                continue
+                            seen.add(key)
+                            correlated.append({
+                                "backend_ip": backend["backend_ip"],
+                                "backend_port": backend["backend_port"],
+                                "dest_ip": dest_ip,
+                                "dest_ips": [dest_ip],
+                                "protocol": proto,
+                                "packets": packets,
+                                "bytes": bytes_val,
+                                "chain": target_chain,
+                                "capture_chain": capture_chain,
+                                "table": table_name,
+                                "raw_rule": line[:200],
+                                "discovery": "daddr_jump_dnat",
+                            })
+
+    return correlated
 
 
 def _discover_nft_anycast() -> dict:
@@ -843,6 +1057,22 @@ def get_full_inventory() -> dict:
                     "interface": "anycast-define",
                     "label": "DNS_ANYCAST",
                 })
+
+    # Runtime-expanded nftables rules may expose intercepted VIPs only as
+    # `ip daddr <VIP> ... jump <chain>` with `dnat to` inside that target chain.
+    # Ensure those daddr-captured VIPs are present even when they are not bound
+    # on loopback. Sticky set elements are not included in dnat_dest_ips because
+    # they are never parsed as capture destinations.
+    existing_vip_ips = {v.get("ip") for v in vips}
+    for ip in sorted(dnat_dest_ips):
+        if ip and ip not in existing_vip_ips:
+            vips.append({
+                "ip": ip,
+                "prefixlen": 128 if ":" in ip else 32,
+                "interface": "nft-capture",
+                "label": "nft daddr capture",
+            })
+            existing_vip_ips.add(ip)
 
     for vip in vips:
         if vip.get("ip") in dnat_dest_ips:
