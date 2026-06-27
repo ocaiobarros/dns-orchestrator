@@ -157,6 +157,8 @@ export default function Wizard() {
   } | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const securityProfileManuallyEditedRef = useRef(false);
+  const anablockManuallyEditedRef = useRef(false);
+
 
   const applyMutation = useApplyConfig();
   const navigate = useNavigate();
