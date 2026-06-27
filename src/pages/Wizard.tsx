@@ -2138,18 +2138,33 @@ export default function Wizard() {
         // Instances from runtime discovery
         const discoveredInstances = inv.instances || [];
         if (discoveredInstances.length > 0) {
-          newConfig.instances = discoveredInstances.map((inst: any, i: number) => ({
-            name: inst.name || `unbound${String(i + 1).padStart(2, '0')}`,
-            bindIp: inst.bind_ip || inst.bindIp || '',
-            bindIpv6: inst.bind_ipv6 || inst.bindIpv6 || '',
-            publicListenerIp: '',
-            controlInterface: inst.control_interface || inst.controlInterface || `127.0.0.${11 + i}`,
-            controlPort: inst.control_port || inst.controlPort || 8953,
-            egressIpv4: inst.egress_ipv4 || inst.egressIpv4 || inst.outgoing_interface || '',
-            egressIpv6: inst.egress_ipv6 || inst.egressIpv6 || '',
-          }));
+          newConfig.instances = discoveredInstances.map((inst: any, i: number) => {
+            // Egress IPs come from Unbound's outgoing-interface directive.
+            // Backend exposes outgoing_ip (primary) and outgoing_ips (list).
+            // Split v4/v6 by IP family (':' = IPv6).
+            const outList: string[] = Array.isArray(inst.outgoing_ips) ? inst.outgoing_ips : [];
+            const outV4 = outList.find((ip: string) => typeof ip === 'string' && ip && !ip.includes(':'));
+            const outV6 = outList.find((ip: string) => typeof ip === 'string' && ip.includes(':'));
+            const primary = inst.outgoing_ip || '';
+            const primaryIsV6 = typeof primary === 'string' && primary.includes(':');
+            return {
+              name: inst.name || inst.instance_name || `unbound${String(i + 1).padStart(2, '0')}`,
+              bindIp: inst.bind_ip || inst.bindIp || '',
+              bindIpv6: inst.bind_ipv6 || inst.bindIpv6 || '',
+              publicListenerIp: '',
+              controlInterface: inst.control_interface || inst.controlInterface || `127.0.0.${11 + i}`,
+              controlPort: inst.control_port || inst.controlPort || 8953,
+              egressIpv4:
+                inst.egress_ipv4 || inst.egressIpv4 ||
+                outV4 || (!primaryIsV6 ? primary : '') || '',
+              egressIpv6:
+                inst.egress_ipv6 || inst.egressIpv6 ||
+                outV6 || (primaryIsV6 ? primary : '') || '',
+            };
+          });
           newConfig.instanceCount = newConfig.instances!.length;
         }
+
 
         // VIPs from loopback — only DNAT-captured VIPs go to interceptedVips
         const vips = inv.vips || [];
