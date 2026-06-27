@@ -2234,8 +2234,22 @@ export default function Wizard() {
         // Listeners
         const listeners = inv.listeners || [];
 
-        // Egress delivery mode inference
-        if (inv.egress_delivery_mode) newConfig.egressDeliveryMode = inv.egress_delivery_mode;
+        // Egress delivery mode: prefer backend-aggregated value; otherwise
+        // derive from instances (any outgoing-interface set → host-owned;
+        // interception mode with zero outgoing IPs → border-routed).
+        if (inv.egress_delivery_mode) {
+          newConfig.egressDeliveryMode = inv.egress_delivery_mode;
+        } else {
+          const instArr = newConfig.instances || config.instances || [];
+          const anyEgress = instArr.some(i => (i.egressIpv4 && i.egressIpv4.trim()) || (i.egressIpv6 && i.egressIpv6.trim()));
+          const isInterceptionInferred = (newConfig.operationMode || config.operationMode) === 'interception';
+          if (anyEgress) {
+            newConfig.egressDeliveryMode = 'host-owned';
+          } else if (isInterceptionInferred) {
+            newConfig.egressDeliveryMode = 'border-routed';
+          }
+        }
+
 
         // FRR / OSPF — import router-id, area, cost, interfaces, redistribute
         const frr = inv.frr;
