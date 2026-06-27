@@ -2291,8 +2291,20 @@ export default function Wizard() {
           }
         }
 
+        // Security profile — derive from real nftables ruleset.
+        // Criterion (mirrors nftables_generator.py): presence of `table ip/ip6 filter`
+        // ⇒ 'isp-hardened'; absence ⇒ 'legacy'. Don't overwrite a manual choice
+        // already made in the current session.
+        const sec = inv.security;
+        if (sec && typeof sec.profile === 'string' && !securityProfileManuallyEditedRef.current) {
+          if (sec.profile === 'legacy' || sec.profile === 'isp-hardened') {
+            newConfig.securityProfile = sec.profile;
+          }
+        }
+
         setConfig(prev => ({ ...prev, ...newConfig }));
         setConfigSource('host_runtime');
+
         setHostSyncResult({
           instances: newConfig.instances?.length || 0,
           vips: vips.length,
