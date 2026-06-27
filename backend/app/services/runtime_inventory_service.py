@@ -537,15 +537,20 @@ def get_full_inventory() -> dict:
                 "bytes": rule["bytes"],
             })
 
-    # Also check VIPs on loopback that appear in DNAT dest
+    # Classify each VIP by capture mode based on DNAT correlation
+    dnat_dest_ips = set()
+    for rule in dnat_rules:
+        for dest_ip in rule.get("dest_ips", []):
+            if dest_ip:
+                dnat_dest_ips.add(dest_ip)
+        if rule.get("dest_ip"):
+            dnat_dest_ips.add(rule["dest_ip"])
+
     for vip in vips:
-        ip = vip["ip"]
-        if ip not in vip_backend_map:
-            # Check if this VIP appears as a jump target destination
-            for rule in dnat_rules:
-                if not rule.get("dest_ips"):
-                    # Rule without explicit dest_ip might be in a VIP-specific chain
-                    pass
+        if vip.get("ip") in dnat_dest_ips:
+            vip["capture_mode"] = "dnat"
+        else:
+            vip["capture_mode"] = "local_bind"
 
     return {
         "collected_at": datetime.now(timezone.utc).isoformat(),

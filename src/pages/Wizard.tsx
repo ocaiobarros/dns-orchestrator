@@ -2151,14 +2151,15 @@ export default function Wizard() {
           newConfig.instanceCount = newConfig.instances!.length;
         }
 
-        // VIPs from loopback
+        // VIPs from loopback — only DNAT-captured VIPs go to interceptedVips
         const vips = inv.vips || [];
-        if (vips.length > 0) {
-          newConfig.interceptedVips = vips.map((v: any) => ({
-            vipIp: v.ip || v.address || '',
+        const intercepted = vips.filter((v: any) => v.capture_mode === 'dnat' || v.captureMode === 'dnat');
+        if (intercepted.length > 0) {
+          newConfig.interceptedVips = intercepted.map((v: any) => ({
+            vipIp: v.ip || v.address || v.vip_ip || '',
             vipIpv6: '',
             vipType: 'intercepted' as const,
-            captureMode: 'dnat' as CaptureMode,
+            captureMode: (v.capture_mode || v.captureMode || 'dnat') as CaptureMode,
             backendInstance: '',
             backendTargetIp: '',
             description: `Discovered VIP on ${v.interface || 'lo'}`,
