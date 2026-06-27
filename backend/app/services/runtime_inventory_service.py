@@ -70,7 +70,9 @@ def discover_unbound_instances() -> list[dict]:
             "outgoing_ip": config["outgoing_ips"][0] if config["outgoing_ips"] else None,
             "is_running": is_running,
             "config_path": config["config_path"],
+            "tuning": config["tuning"],
         })
+
 
     return instances
 
