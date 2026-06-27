@@ -1258,6 +1258,8 @@ def get_full_inventory() -> dict:
 
     frr_config = discover_frr_config()
     security = discover_security_profile()
+    anablock = discover_anablock_state(instances)
+
 
     # Aggregate per-instance unbound tuning into a single "tuning" view that
     # matches the wizard's global tuning fields. The wizard treats tuning as
