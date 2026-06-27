@@ -1445,14 +1445,14 @@ export default function Wizard() {
                   ]}
                 />
               </FieldGroup>
-              <FieldGroup label="Hello interval (s)" hint="Intervalo entre pacotes Hello (padrão: 10)">
+              <FieldGroup label="Hello interval (s)" hint="Default opcional (10). Não é lido do frr.conf nem emitido pelo gerador.">
                 <Input
                   type="number"
                   value={config.ospfHelloInterval ?? 10}
                   onChange={v => set('ospfHelloInterval', Math.max(1, parseInt(v) || 10))}
                 />
               </FieldGroup>
-              <FieldGroup label="Dead interval (s)" hint="Tempo até considerar vizinho morto (padrão: 40)">
+              <FieldGroup label="Dead interval (s)" hint="Default opcional (40). Não é lido do frr.conf nem emitido pelo gerador.">
                 <Input
                   type="number"
                   value={config.ospfDeadInterval ?? 40}
@@ -2279,6 +2279,12 @@ export default function Wizard() {
           } else if (frr.ospfd_enabled === false) {
             newConfig.enableOspf = false;
             newConfig.routingMode = 'static';
+          }
+          // OSPF6/IPv6 dual-stack: detected from `ipv6 ospf6 ...` per-interface
+          // directives in the real frr.conf. The generator emits the IPv6 OSPF
+          // block (and ospf6d=yes) when enableIpv6 is true.
+          if (frr.ipv6_ospf_enabled === true) {
+            newConfig.enableIpv6 = true;
           }
         }
 

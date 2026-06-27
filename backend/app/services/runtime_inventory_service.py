@@ -599,11 +599,15 @@ def discover_frr_config() -> dict:
         "router_id": "",
         "area": "",
         "networks": [],
-        "interfaces": [],          # [{name, cost, network_type}]
+        "interfaces": [],          # [{name, cost, network_type, ipv6_ospf:{area,cost,network_type}}]
         "default_cost": None,
         "route_maps": [],          # [{name, action, seq, set_metric, set_metric_type, set_ip_next_hop}]
         "redistribute_connected": False,
         "ospfd_enabled": None,
+        # New: OSPF6 + segment-routing presence (read from real frr.conf).
+        "ipv6_ospf_enabled": False,
+        "segment_routing": False,
+        "traffic_eng": False,
     }
     if not text:
         # Check daemons file for ospfd flag even when frr.conf is empty
@@ -612,6 +616,9 @@ def discover_frr_config() -> dict:
             m = re.search(r"^\s*ospfd\s*=\s*(yes|no)\b", rd["stdout"], re.MULTILINE)
             if m:
                 out["ospfd_enabled"] = (m.group(1) == "yes")
+            m6 = re.search(r"^\s*ospf6d\s*=\s*(yes|no)\b", rd["stdout"], re.MULTILINE)
+            if m6:
+                out["ipv6_ospf_enabled"] = (m6.group(1) == "yes")
         return out
 
     # daemons file (independent of frr.conf)
@@ -620,10 +627,14 @@ def discover_frr_config() -> dict:
         m = re.search(r"^\s*ospfd\s*=\s*(yes|no)\b", rd["stdout"], re.MULTILINE)
         if m:
             out["ospfd_enabled"] = (m.group(1) == "yes")
+        m6 = re.search(r"^\s*ospf6d\s*=\s*(yes|no)\b", rd["stdout"], re.MULTILINE)
+        if m6:
+            # daemons file is a hint; frr.conf ipv6 ospf6 lines override below
+            out["ipv6_ospf_enabled"] = out["ipv6_ospf_enabled"] or (m6.group(1) == "yes")
 
     lines = text.split("\n")
-    current_block = None       # "interface:<name>", "router_ospf", "route_map:<name>:<seq>"
-    iface_cost_by_name: dict = {}
+    current_block = None       # "interface:<name>", "router_ospf", "route_map:<name>:<seq>", "segment_routing"
+    iface_data: dict = {}
     cost_values: list = []
 
     for raw in lines:
@@ -639,11 +650,21 @@ def discover_frr_config() -> dict:
         m = re.match(r"^interface\s+(\S+)", stripped)
         if m:
             current_block = f"interface:{m.group(1)}"
-            iface_cost_by_name.setdefault(m.group(1), {"name": m.group(1), "cost": None, "network_type": None})
+            iface_data.setdefault(m.group(1), {
+                "name": m.group(1),
+                "cost": None,
+                "network_type": None,
+                "ipv6_ospf": None,  # {area, cost, network_type}
+            })
             continue
 
         if stripped == "router ospf" or stripped.startswith("router ospf "):
             current_block = "router_ospf"
+            continue
+
+        if stripped == "segment-routing":
+            current_block = "segment_routing"
+            out["segment_routing"] = True
             continue
 
         m = re.match(r"^route-map\s+(\S+)\s+(permit|deny)\s+(\d+)", stripped)
@@ -666,12 +687,34 @@ def discover_frr_config() -> dict:
             mc = re.match(r"^ip\s+ospf\s+cost\s+(\d+)$", stripped)
             if mc:
                 c = int(mc.group(1))
-                iface_cost_by_name[iname]["cost"] = c
+                iface_data[iname]["cost"] = c
                 cost_values.append(c)
                 continue
             mn = re.match(r"^ip\s+ospf\s+network\s+(\S+)$", stripped)
             if mn:
-                iface_cost_by_name[iname]["network_type"] = mn.group(1)
+                iface_data[iname]["network_type"] = mn.group(1)
+                continue
+            # IPv6 OSPF6 per-interface directives
+            m6a = re.match(r"^ipv6\s+ospf6\s+area\s+(\S+)$", stripped)
+            if m6a:
+                v6 = iface_data[iname].get("ipv6_ospf") or {}
+                v6["area"] = m6a.group(1)
+                iface_data[iname]["ipv6_ospf"] = v6
+                out["ipv6_ospf_enabled"] = True
+                continue
+            m6c = re.match(r"^ipv6\s+ospf6\s+cost\s+(\d+)$", stripped)
+            if m6c:
+                v6 = iface_data[iname].get("ipv6_ospf") or {}
+                v6["cost"] = int(m6c.group(1))
+                iface_data[iname]["ipv6_ospf"] = v6
+                out["ipv6_ospf_enabled"] = True
+                continue
+            m6n = re.match(r"^ipv6\s+ospf6\s+network\s+(\S+)$", stripped)
+            if m6n:
+                v6 = iface_data[iname].get("ipv6_ospf") or {}
+                v6["network_type"] = m6n.group(1)
+                iface_data[iname]["ipv6_ospf"] = v6
+                out["ipv6_ospf_enabled"] = True
                 continue
 
         if current_block == "router_ospf":
@@ -687,6 +730,11 @@ def discover_frr_config() -> dict:
                 out["networks"].append({"network": m.group(1), "area": m.group(2)})
                 if not out["area"]:
                     out["area"] = m.group(2)
+                continue
+
+        if current_block == "segment_routing":
+            if stripped == "traffic-eng" or stripped.startswith("traffic-eng "):
+                out["traffic_eng"] = True
                 continue
 
         if current_block and current_block.startswith("route_map:"):
@@ -707,7 +755,7 @@ def discover_frr_config() -> dict:
                 rm["set_ip_next_hop"] = m.group(1)
                 continue
 
-    out["interfaces"] = list(iface_cost_by_name.values())
+    out["interfaces"] = list(iface_data.values())
     if cost_values:
         # mode (most common) as the representative default cost
         from collections import Counter
