@@ -561,10 +561,10 @@ export default function Wizard() {
       {config.enableIpv6 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FieldGroup label="Endereço IPv6 (CIDR)" error={fieldError('ipv6Address')}>
-            <Input value={config.ipv6Address} onChange={v => set('ipv6Address', v)} placeholder="2804:4AFC:8844::2/64" />
+            <Input value={config.ipv6Address} onChange={v => set('ipv6Address', v)} placeholder="ex: 2001:db8::2/64" />
           </FieldGroup>
           <FieldGroup label="Gateway IPv6" error={fieldError('ipv6Gateway')}>
-            <Input value={config.ipv6Gateway} onChange={v => set('ipv6Gateway', v)} placeholder="2804:4AFC:8844::1" />
+            <Input value={config.ipv6Gateway} onChange={v => set('ipv6Gateway', v)} placeholder="ex: 2001:db8::1" />
           </FieldGroup>
         </div>
       )}
@@ -629,7 +629,7 @@ export default function Wizard() {
       <FieldGroup label="Frontend DNS IP *" error={fieldError('frontendDnsIp')}
         hint="IP real do servidor que os clientes consultam na porta 53. Ex: o IP principal do host.">
         <Input value={config.frontendDnsIp} onChange={v => set('frontendDnsIp', v)}
-          placeholder={config.ipv4Address ? config.ipv4Address.split('/')[0] : '172.250.40.100'} />
+          placeholder={config.ipv4Address ? config.ipv4Address.split('/')[0] : 'ex: 198.51.100.100'} />
       </FieldGroup>
 
       {/* Distribution Strategy */}
@@ -792,7 +792,7 @@ export default function Wizard() {
           }} />
         </FieldGroup>
         <FieldGroup label="DNS Identity" hint="Valor do campo identity">
-          <Input value={config.dnsIdentity} onChange={v => set('dnsIdentity', v)} placeholder="67-DNS" />
+          <Input value={config.dnsIdentity} onChange={v => set('dnsIdentity', v)} placeholder="ex: ns1.example" />
         </FieldGroup>
       </div>
       {/* Safety warnings */}
