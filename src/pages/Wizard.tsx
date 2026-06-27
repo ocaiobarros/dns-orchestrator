@@ -541,7 +541,7 @@ export default function Wizard() {
         <FieldGroup label="Hostname *" error={fieldError('hostname')} hint="FQDN do servidor">
           <Input value={config.hostname} onChange={v => set('hostname', v)} placeholder="dns-rec-01.example.com" />
         </FieldGroup>
-        <FieldGroup label="Organização *" error={fieldError('organization')}>
+        <FieldGroup label="Organização" error={fieldError('organization')}>
           <Input value={config.organization} onChange={v => set('organization', v)} placeholder="MinhaOperadora" />
         </FieldGroup>
         <FieldGroup label="Interface principal *" error={fieldError('mainInterface')} hint="NIC primária do host">

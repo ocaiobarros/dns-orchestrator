@@ -85,7 +85,7 @@ export function validateConfig(config: WizardConfig): ValidationError[] {
   const topStep = s('Topologia do Host');
   if (!config.hostname.trim()) e('hostname', topStep, 'Hostname é obrigatório');
   else if (!HOSTNAME.test(config.hostname)) e('hostname', topStep, 'Hostname contém caracteres inválidos');
-  if (!config.organization.trim()) e('organization', topStep, 'Organização é obrigatória');
+  // organization is optional metadata
   if (!config.mainInterface.trim()) e('mainInterface', topStep, 'Interface principal é obrigatória');
   else if (!IFACE_NAME.test(config.mainInterface)) e('mainInterface', topStep, 'Nome de interface inválido');
   if (!config.ipv4Address) e('ipv4Address', topStep, 'Endereço IPv4 é obrigatório');
