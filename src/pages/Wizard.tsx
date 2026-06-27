@@ -2302,6 +2302,48 @@ export default function Wizard() {
           }
         }
 
+        // Unbound tuning — import real values from unbound.conf so the wizard
+        // does NOT show defaults that diverge from the host. Only set keys the
+        // backend actually parsed; leave wizard defaults intact for the rest.
+        const tun = inv.tuning;
+        if (tun && typeof tun === 'object') {
+          if (typeof tun.num_threads === 'number' && tun.num_threads > 0) {
+            newConfig.threads = tun.num_threads;
+          }
+          if (typeof tun.num_queries_per_thread === 'number' && tun.num_queries_per_thread > 0) {
+            newConfig.numQueriesPerThread = tun.num_queries_per_thread;
+          }
+          if (typeof tun.msg_cache_size === 'string' && tun.msg_cache_size) {
+            newConfig.msgCacheSize = String(tun.msg_cache_size).toLowerCase();
+          }
+          if (typeof tun.rrset_cache_size === 'string' && tun.rrset_cache_size) {
+            newConfig.rrsetCacheSize = String(tun.rrset_cache_size).toLowerCase();
+          }
+          if (typeof tun.cache_min_ttl === 'number') {
+            newConfig.cacheMinTtl = tun.cache_min_ttl;
+          }
+          if (typeof tun.cache_max_ttl === 'number') {
+            newConfig.maxTtl = tun.cache_max_ttl;
+          }
+          if (typeof tun.serve_expired === 'boolean') {
+            newConfig.serveExpired = tun.serve_expired;
+          }
+          if (typeof tun.serve_expired_ttl === 'number') {
+            newConfig.serveExpiredTtl = tun.serve_expired_ttl;
+          }
+          if (typeof tun.identity === 'string' && tun.identity) {
+            newConfig.dnsIdentity = tun.identity;
+          }
+          if (typeof tun.harden_dnssec_stripped === 'boolean') {
+            newConfig.hardenDnssecStripped = tun.harden_dnssec_stripped;
+          }
+          if (typeof tun.use_caps_for_id === 'boolean') {
+            newConfig.useCapsForId = tun.use_caps_for_id;
+          }
+        }
+
+
+
         setConfig(prev => ({ ...prev, ...newConfig }));
         setConfigSource('host_runtime');
 
