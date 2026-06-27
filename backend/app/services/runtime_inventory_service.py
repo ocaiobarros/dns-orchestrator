@@ -1196,6 +1196,19 @@ def get_full_inventory() -> dict:
     frr_config = discover_frr_config()
     security = discover_security_profile()
 
+    # Aggregate per-instance unbound tuning into a single "tuning" view that
+    # matches the wizard's global tuning fields. The wizard treats tuning as
+    # global; in practice all instances on the same host share the same values.
+    # Strategy: use the first instance that actually parsed tuning (deterministic
+    # by systemd ordering). Skip keys that are missing in the real config so the
+    # wizard preserves its own defaults only where the host has no opinion.
+    tuning_agg: dict = {}
+    for inst in instances:
+        t = inst.get("tuning") or {}
+        if t:
+            tuning_agg = dict(t)
+            break
+
     return {
         "collected_at": datetime.now(timezone.utc).isoformat(),
         "hostname": _discover_hostname(),
@@ -1208,11 +1221,13 @@ def get_full_inventory() -> dict:
         "vip_backend_map": vip_backend_map,
         "frr": frr_config,
         "security": security,
+        "tuning": tuning_agg,
         "instance_count": len(instances),
         "vip_count": len(vips),
         "dnat_rule_count": len(dnat_rules),
         "listener_count": len(listeners),
     }
+
 
 
 
