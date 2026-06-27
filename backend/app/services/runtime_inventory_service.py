@@ -751,6 +751,51 @@ def get_full_inventory() -> dict:
         if rule.get("dest_ip"):
             dnat_dest_ips.add(rule["dest_ip"])
 
+    # Anycast VIPs declared via `define DNS_ANYCAST_IPV4/IPV6` and referenced
+    # by capture chains (`ip daddr $DNS_ANYCAST_IPV4`). When such an indirection
+    # exists AND we discovered any `dnat to <backend>` action, treat every IP in
+    # the define as a DNAT-captured VIP. Backends for these VIPs are the union
+    # of all discovered DNAT backends (action chain → backend correlation is
+    # not 1:1 in nftables, so we expose the full pool).
+    anycast = _discover_nft_anycast()
+    anycast_dnat_ips: set = set()
+    if dnat_rules:
+        if anycast["ref_v4"] and anycast["anycast_ipv4"]:
+            anycast_dnat_ips |= anycast["anycast_ipv4"]
+        if anycast["ref_v6"] and anycast["anycast_ipv6"]:
+            anycast_dnat_ips |= anycast["anycast_ipv6"]
+
+    if anycast_dnat_ips:
+        # Backend pool: unique (backend_ip, backend_port, protocol) tuples.
+        backend_pool: list = []
+        seen_pool: set = set()
+        for rule in dnat_rules:
+            key = (rule.get("backend_ip"), rule.get("backend_port"), rule.get("protocol"))
+            if key in seen_pool or not rule.get("backend_ip"):
+                continue
+            seen_pool.add(key)
+            backend_pool.append({
+                "backend_ip": rule["backend_ip"],
+                "backend_port": rule.get("backend_port", 53),
+                "protocol": rule.get("protocol", "unknown"),
+                "packets": rule.get("packets", 0),
+                "bytes": rule.get("bytes", 0),
+            })
+        for ip in anycast_dnat_ips:
+            dnat_dest_ips.add(ip)
+            vip_backend_map.setdefault(ip, list(backend_pool))
+
+        # Ensure anycast VIPs appear in `vips` even if not on a loopback.
+        existing_vip_ips = {v.get("ip") for v in vips}
+        for ip in anycast_dnat_ips:
+            if ip not in existing_vip_ips:
+                vips.append({
+                    "ip": ip,
+                    "prefixlen": 128 if ":" in ip else 32,
+                    "interface": "anycast-define",
+                    "label": "DNS_ANYCAST",
+                })
+
     for vip in vips:
         if vip.get("ip") in dnat_dest_ips:
             vip["capture_mode"] = "dnat"
