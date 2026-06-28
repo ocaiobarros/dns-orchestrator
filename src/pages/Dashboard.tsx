@@ -278,16 +278,11 @@ function InterceptionDashboard() {
           visual={<MiniShield />} />
       </div>
 
-      {/* Geo map — full width row (precisa de aspect ratio ~2:1 sem área morta) */}
+      {/* Geo map — agora vivo, baseado em probes reais de upstream (PoP + rtt). */}
       <PanelV3 title="Mapa de Rede DNS" icon={<MapIcon size={13} />}>
         <div className="-mx-4 overflow-hidden w-[calc(100%+2rem)]"
              style={{ aspectRatio: '21 / 9', maxHeight: 'clamp(280px, 42vh, 520px)' }}>
-          <NocGeoMap nodes={geoNodes} edges={geoEdges} />
-        </div>
-        <div className="flex items-center gap-4 text-[10px] font-mono mt-3 text-muted-foreground/70">
-          <span>Nodos: <span className="text-primary font-bold">{geoNodes.length}</span></span>
-          <span>Regiões: <span className="text-primary font-bold">10</span></span>
-          <span>QPS Total: <span className="text-primary font-bold">{totalQps}</span></span>
+          <NocUpstreamMap />
         </div>
       </PanelV3>
 
