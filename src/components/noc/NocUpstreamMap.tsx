@@ -37,28 +37,47 @@ function buildNodes(snap: UpstreamProbeSnapshot): { nodes: MapNode[]; edges: Map
     u => u.alive || (u.down_for_s ?? 0) < HIDE_AFTER_DOWN_S,
   );
 
-  // Origin (egress). Position it at the median of the visible PoPs so the
-  // line origins are visually grounded; the label is the real egress IP.
-  // No invented city: only the IP is shown.
+  // Origin position. PRIORITY: real geoIP of the user's own egress (snapshot.egress.geo).
+  // Fallback (geo API failed or unavailable): median of visible PoPs, labelled as "aproximada".
+  const geoOrigin = snap.egress?.geo;
   const popPoints = visible
     .map(u => u.current_geo)
     .filter((g): g is NonNullable<typeof g> => Boolean(g));
-  const originLat = popPoints.length
+  const medianLat = popPoints.length
     ? popPoints.reduce((s, g) => s + g.lat, 0) / popPoints.length
     : undefined;
-  const originLng = popPoints.length
+  const medianLng = popPoints.length
     ? popPoints.reduce((s, g) => s + g.lng, 0) / popPoints.length
     : undefined;
 
+  const originLat = geoOrigin?.lat ?? medianLat;
+  const originLng = geoOrigin?.lng ?? medianLng;
+  const originIsApprox = !geoOrigin && medianLat != null;
+
   const hasOrigin = Boolean(snap.egress?.ip || originLat != null);
   if (hasOrigin) {
+    const egressIp = snap.egress?.ip ?? '';
+    const cityBits: string[] = [];
+    if (geoOrigin) {
+      if (geoOrigin.city) cityBits.push(geoOrigin.city);
+      if (geoOrigin.region && geoOrigin.region !== geoOrigin.city) cityBits.push(geoOrigin.region);
+      if (geoOrigin.country) cityBits.push(geoOrigin.country);
+    } else if (originIsApprox) {
+      cityBits.push('posição aproximada (sem geoIP)');
+    }
+    const extras: string[] = [];
+    if (cityBits.length) extras.push(cityBits.join(' · '));
+    if (geoOrigin?.isp) extras.push(`ISP: ${geoOrigin.isp}`);
+    if (geoOrigin?.asn) extras.push(geoOrigin.asn);
+    if (snap.egress?.ecs) extras.push(`ECS: ${snap.egress.ecs}`);
+
     nodes.push({
       id: 'origin',
-      label: snap.egress?.ip ? `Egress ${snap.egress.ip}` : 'Origem',
+      label: egressIp ? `Egress ${egressIp}` : 'Origem',
       type: 'vip',
       status: 'ok',
-      bindIp: snap.egress?.ip ?? undefined,
-      extra: snap.egress?.ecs ?? undefined,
+      bindIp: egressIp || undefined,
+      extra: extras.length ? extras.join(' · ') : undefined,
       lat: originLat,
       lng: originLng,
     });
@@ -137,7 +156,15 @@ export default function NocUpstreamMap({ refetchMs = 30000, title = 'DNS Network
         <span>Upstreams: <span className="text-primary font-bold">{totalUpstreams}</span></span>
         <span>Vivos: <span className="text-success font-bold">{aliveCount}</span></span>
         {snap?.egress?.ip && (
-          <span>Egress: <span className="text-foreground/80 font-bold">{snap.egress.ip}</span></span>
+          <span>
+            Egress: <span className="text-foreground/80 font-bold">{snap.egress.ip}</span>
+            {snap.egress.geo?.city && (
+              <span className="text-muted-foreground/60"> ({snap.egress.geo.city}{snap.egress.geo.region ? `, ${snap.egress.geo.region}` : ''})</span>
+            )}
+            {!snap.egress.geo && (
+              <span className="text-muted-foreground/40"> (geo não resolvida)</span>
+            )}
+          </span>
         )}
         {isLoading && <span className="text-muted-foreground/50">carregando…</span>}
         {isError && <span className="text-destructive/80">erro ao consultar /network/upstreams</span>}
