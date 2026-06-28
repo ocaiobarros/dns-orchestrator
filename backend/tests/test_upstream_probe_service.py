@@ -26,22 +26,44 @@ def test_probe_pop_cloudflare_id_server():
     assert "id.server" in out["method"]
 
 
-def test_probe_pop_google_myaddr():
+def test_probe_pop_google_myaddr_egress_derived_from_ecs():
+    # The lone IPv4 line is the REMOTE server (Google), not our egress.
+    # The ECS line is the only trustworthy signal — egress must come from it.
     def fake_run(cmd, **kwargs):
         if "id.server" in cmd or "hostname.bind" in cmd:
             return _make_completed(returncode=1)
         if "o-o.myaddr.l.google.com" in cmd:
             return _make_completed(
-                stdout='"45.232.215.0"\n"edns0-client-subnet 45.232.215.0/24"\n'
+                stdout='"172.253.230.25"\n"edns0-client-subnet 45.232.215.0/24"\n'
             )
         return _make_completed(returncode=1)
 
     with patch.object(ups.shutil, "which", return_value="/usr/bin/dig"), \
          patch.object(ups.subprocess, "run", side_effect=fake_run):
         out = ups.probe_pop("8.8.8.8")
+    # Must NOT capture the Google server IP as our egress.
+    assert out["egress_ip"] != "172.253.230.25"
+    # Must derive egress from ECS prefix (real user-side block).
     assert out["egress_ip"] == "45.232.215.0"
-    assert out["ecs"] and "45.232.215.0/24" in out["ecs"]
+    assert out["ecs"] == "45.232.215.0/24"
     assert "myaddr" in out["method"]
+
+
+def test_probe_pop_google_myaddr_no_ecs_means_no_egress():
+    # Without ECS we have NO trustworthy egress — must NOT fall back to the
+    # lone IPv4 (which is the remote server).
+    def fake_run(cmd, **kwargs):
+        if "id.server" in cmd or "hostname.bind" in cmd:
+            return _make_completed(returncode=1)
+        if "o-o.myaddr.l.google.com" in cmd:
+            return _make_completed(stdout='"192.178.95.29"\n')
+        return _make_completed(returncode=1)
+
+    with patch.object(ups.shutil, "which", return_value="/usr/bin/dig"), \
+         patch.object(ups.subprocess, "run", side_effect=fake_run):
+        out = ups.probe_pop("8.8.8.8")
+    assert out["egress_ip"] is None
+    assert out["ecs"] is None
 
 
 def test_probe_latency_ping_avg():
