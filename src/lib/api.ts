@@ -698,6 +698,7 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path === '/api/network/interfaces') return mockInterfaces;
   if (path === '/api/network/routes') return mockRoutes;
   if (path === '/api/network/reachability') return mockReachability;
+  if (path === '/api/network/upstreams') return { ts: Date.now() / 1000, egress: null, upstreams: [] };
 
   // DNS
   if (path.startsWith('/api/dns/metrics')) {
