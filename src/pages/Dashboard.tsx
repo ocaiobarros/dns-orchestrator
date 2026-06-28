@@ -16,6 +16,7 @@ import TopologyMini from '@/components/noc/v3/TopologyMini';
 import LatencyMatrix from '@/components/noc/v3/LatencyMatrix';
 import RankList from '@/components/noc/v3/RankList';
 import NocGeoMap from '@/components/noc/NocGeoMap';
+import NocUpstreamMap from '@/components/noc/NocUpstreamMap';
 import TelemetryHealthStrip from '@/components/noc/TelemetryHealthStrip';
 import NocPoolOperationalState from '@/components/noc/NocPoolOperationalState';
 import type { MapNode, MapEdge } from '@/components/noc/NocNetworkMap';
