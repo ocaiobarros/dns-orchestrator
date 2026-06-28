@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.services.diagnostics_service import get_network_interfaces, get_routes, check_reachability, get_dns_listeners
+from app.services import upstream_probe_service
 
 router = APIRouter()
 
@@ -30,3 +31,15 @@ def reachability(_: User = Depends(get_current_user)):
 def listeners(_: User = Depends(get_current_user)):
     """Detect all IPs listening on port 53 with DNS resolution test."""
     return get_dns_listeners()
+
+
+@router.get("/upstreams")
+def upstreams(
+    include_retired: bool = False,
+    _: User = Depends(get_current_user),
+):
+    """Live upstream probe state: current PoP, rtt, alive, history per upstream.
+
+    Read-only. Updated by the upstream_probe_worker (~30s cadence).
+    """
+    return upstream_probe_service.get_state_snapshot(include_retired=include_retired)

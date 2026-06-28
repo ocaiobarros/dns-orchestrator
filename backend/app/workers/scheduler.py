@@ -17,6 +17,7 @@ from app.workers.reconciliation_worker import reconciliation_job
 from app.workers.dns_error_worker import dns_error_collection_job
 from app.workers.anablock_status_worker import anablock_status_job
 from app.workers.upstream_silence_alert_worker import upstream_silence_alert_job
+from app.workers.upstream_probe_worker import upstream_probe_job, upstream_path_probe_job
 
 logger = logging.getLogger("dns-control.scheduler")
 
@@ -132,6 +133,24 @@ def start_scheduler():
         trigger=IntervalTrigger(seconds=15),
         id="upstream_silence_alert_worker",
         name="Upstream Silence Alert (debounced)",
+        replace_existing=True,
+    )
+
+    # Upstream probe worker — read-only PoP/rtt/alive probe for each
+    # configured forward-addr. Powers the live upstream map.
+    _scheduler.add_job(
+        upstream_probe_job,
+        trigger=IntervalTrigger(seconds=30),
+        id="upstream_probe_worker",
+        name="Upstream Probe (PoP + rtt)",
+        replace_existing=True,
+    )
+    # Slower path probe (mtr/traceroute) — heavier, runs every 5 min.
+    _scheduler.add_job(
+        upstream_path_probe_job,
+        trigger=IntervalTrigger(seconds=300),
+        id="upstream_path_probe_worker",
+        name="Upstream Path Probe (mtr)",
         replace_existing=True,
     )
 
