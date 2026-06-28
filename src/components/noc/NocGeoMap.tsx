@@ -31,6 +31,12 @@ interface Props {
   /** Server lat/lng — if not set, defaults to São Paulo */
   serverLat?: number;
   serverLng?: number;
+  /** Show the legacy hardcoded Brazilian client cloud. Defaults to false —
+   *  the live upstream map renders only real probed nodes. */
+  showClientPoints?: boolean;
+  /** Hide the "DNS Server" anchor pin (the origin is already provided as a
+   *  vip-typed node by the caller). */
+  hideServerAnchor?: boolean;
 }
 
 // Known upstream DNS geo locations
