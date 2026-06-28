@@ -97,7 +97,7 @@ function buildNodes(snap: UpstreamProbeSnapshot): { nodes: MapNode[]; edges: Map
       const popLabel = u.current_pop ? u.current_pop.toUpperCase() : '—';
       const extras: string[] = [
         `atende via ${popLabel}`,
-        `${popGeo.city}${popGeo.region ? ', ' + popGeo.region : ''}`,
+        `${popGeo.city}${popGeo.country ? ', ' + popGeo.country : ''}`,
         rttLabel,
       ];
       if (u.hops != null) extras.push(`${u.hops} hops`);
