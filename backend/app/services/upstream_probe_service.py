@@ -285,3 +285,139 @@ def probe_all(
 ) -> list[dict[str, Any]]:
     """Probe every configured upstream and return JSON-serializable dicts."""
     return [probe_upstream(ip, with_path=with_path).to_dict() for ip in get_upstreams(state)]
+
+
+# ---------------------------------------------------------------------------
+# In-memory state cache (per-process, refreshed by upstream_probe_worker)
+# ---------------------------------------------------------------------------
+
+from collections import deque  # noqa: E402
+from threading import Lock  # noqa: E402
+
+_STATE_LOCK = Lock()
+_STATE: dict[str, dict[str, Any]] = {}
+_HISTORY_MAX = 10
+# A PoP silent longer than this is dropped from the response so the UI
+# naturally retires dead nodes after the "red" period.
+_DOWN_RETIRE_AFTER_S = 15 * 60
+
+
+def _new_entry(ip: str) -> dict[str, Any]:
+    return {
+        "ip": ip,
+        "current_pop": None,
+        "current_rtt_ms": None,
+        "alive": False,
+        "last_seen_ts": None,
+        "down_since_ts": None,
+        "pop_method": None,
+        "pop_raw": None,
+        "egress_ip": None,
+        "ecs": None,
+        "hops": None,
+        "ingress": None,
+        "history": deque(maxlen=_HISTORY_MAX),
+    }
+
+
+def _apply_probe(entry: dict[str, Any], probe: UpstreamProbeResult, now: float) -> None:
+    if probe.alive:
+        entry["alive"] = True
+        entry["last_seen_ts"] = now
+        entry["down_since_ts"] = None
+        if probe.rtt_ms is not None:
+            entry["current_rtt_ms"] = probe.rtt_ms
+        if probe.pop_method:
+            entry["pop_method"] = probe.pop_method
+        if probe.pop_raw:
+            entry["pop_raw"] = probe.pop_raw
+        if probe.egress_ip:
+            entry["egress_ip"] = probe.egress_ip
+        if probe.ecs:
+            entry["ecs"] = probe.ecs
+        if probe.hops is not None:
+            entry["hops"] = probe.hops
+        if probe.ingress:
+            entry["ingress"] = probe.ingress
+        new_pop = probe.pop_code
+        if new_pop and new_pop != entry["current_pop"]:
+            entry["current_pop"] = new_pop
+            entry["history"].append(
+                {"pop_code": new_pop, "first_seen": now, "last_seen": now}
+            )
+        elif new_pop and entry["history"]:
+            entry["history"][-1]["last_seen"] = now
+    else:
+        entry["alive"] = False
+        if entry["down_since_ts"] is None:
+            entry["down_since_ts"] = now
+
+
+def run_probe_cycle(
+    state: dict[str, Any] | None = None, with_path: bool = False
+) -> list[dict[str, Any]]:
+    """Probe all upstreams once and update the shared state cache."""
+    now = time.time()
+    ips = get_upstreams(state)
+    results: list[UpstreamProbeResult] = [
+        probe_upstream(ip, with_path=with_path) for ip in ips
+    ]
+    with _STATE_LOCK:
+        for probe in results:
+            entry = _STATE.get(probe.ip) or _new_entry(probe.ip)
+            _apply_probe(entry, probe, now)
+            _STATE[probe.ip] = entry
+    return [r.to_dict() for r in results]
+
+
+def _serialize_entry(entry: dict[str, Any], now: float) -> dict[str, Any]:
+    last_seen = entry.get("last_seen_ts")
+    down_since = entry.get("down_since_ts")
+    age_since_seen = (now - last_seen) if last_seen else None
+    down_for = (now - down_since) if down_since else None
+    if entry.get("alive"):
+        status = "current"
+    elif down_for is not None and down_for >= _DOWN_RETIRE_AFTER_S:
+        status = "retired"
+    else:
+        status = "down"
+    return {
+        "ip": entry["ip"],
+        "alive": entry.get("alive", False),
+        "status": status,
+        "current_pop": entry.get("current_pop"),
+        "current_rtt_ms": entry.get("current_rtt_ms"),
+        "pop_method": entry.get("pop_method"),
+        "pop_raw": entry.get("pop_raw"),
+        "egress_ip": entry.get("egress_ip"),
+        "ecs": entry.get("ecs"),
+        "hops": entry.get("hops"),
+        "ingress": entry.get("ingress"),
+        "last_seen_ts": last_seen,
+        "down_since_ts": down_since,
+        "age_since_seen_s": round(age_since_seen, 2) if age_since_seen is not None else None,
+        "down_for_s": round(down_for, 2) if down_for is not None else None,
+        "history": list(entry.get("history") or []),
+    }
+
+
+def get_state_snapshot(include_retired: bool = False) -> dict[str, Any]:
+    """Return the current cached state for all probed upstreams."""
+    now = time.time()
+    with _STATE_LOCK:
+        entries = [_serialize_entry(e, now) for e in _STATE.values()]
+    if not include_retired:
+        entries = [e for e in entries if e["status"] != "retired"]
+    egress = next((e["egress_ip"] for e in entries if e.get("egress_ip")), None)
+    ecs = next((e["ecs"] for e in entries if e.get("ecs")), None)
+    return {
+        "ts": now,
+        "egress": {"ip": egress, "ecs": ecs} if (egress or ecs) else None,
+        "upstreams": entries,
+    }
+
+
+def reset_state_for_tests() -> None:
+    """Test helper — wipe the cache between unit tests."""
+    with _STATE_LOCK:
+        _STATE.clear()
