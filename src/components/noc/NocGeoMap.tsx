@@ -322,34 +322,83 @@ export default function NocGeoMap({
             const from = geoNodes.find(n => n.id === edge.from);
             const to = geoNodes.find(n => n.id === edge.to);
             if (!from?.lat || !to?.lat || !from?.lng || !to?.lng) return null;
-            const color = getLatencyColor(edge.latency);
-            const weight = Math.max(2, Math.min(6, (edge.qps || 0) / 200 + 2));
-            return (
+            // Dashed "identity" edges (PoP → home) get a neutral color and
+            // never display latency — they are not network paths.
+            const isIdentity = edge.dashed === true;
+            const color = isIdentity ? 'hsl(220, 10%, 55%)' : getLatencyColor(edge.latency);
+            const weight = isIdentity
+              ? 1.5
+              : Math.max(2, Math.min(6, (edge.qps || 0) / 200 + 2));
+            const lines: JSX.Element[] = [
               <Polyline
                 key={`${edge.from}-${edge.to}`}
                 positions={[[from.lat, from.lng], [to.lat, to.lng]]}
                 pathOptions={{
                   color,
                   weight,
-                  opacity: 0.6,
+                  opacity: isIdentity ? 0.55 : 0.6,
+                  dashArray: isIdentity ? '6 6' : undefined,
                 }}
               >
                 <Popup>
                   <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#e2e8f0', background: '#0f172a', padding: 8, borderRadius: 6, border: '1px solid #1e293b' }}>
-                    <div>{from.label} → {to.label}</div>
-                    {edge.latency != null && <div style={{ color }}>Latency: {edge.latency}ms</div>}
-                    {edge.qps != null && <div style={{ color: '#94a3b8' }}>QPS: {edge.qps}</div>}
+                    <div>{from.label} {isIdentity ? '⋯' : '→'} {to.label}</div>
+                    {isIdentity ? (
+                      <div style={{ color: '#94a3b8', fontSize: 9 }}>Identidade · sede registrada (não é caminho de rede)</div>
+                    ) : (
+                      <>
+                        {edge.latency != null && <div style={{ color }}>Latency: {edge.latency}ms</div>}
+                        {edge.qps != null && <div style={{ color: '#94a3b8' }}>QPS: {edge.qps}</div>}
+                      </>
+                    )}
                   </div>
                 </Popup>
-              </Polyline>
-            );
+              </Polyline>,
+            ];
+            // Direction arrow head for traffic edges: a small filled dot
+            // placed at ~88% of the segment, in the same color as the line.
+            if (edge.arrow && !isIdentity) {
+              const t = 0.88;
+              const headLat = from.lat + (to.lat - from.lat) * t;
+              const headLng = from.lng + (to.lng - from.lng) * t;
+              lines.push(
+                <CircleMarker
+                  key={`${edge.from}-${edge.to}-arrow`}
+                  center={[headLat, headLng]}
+                  radius={4}
+                  pathOptions={{ color, fillColor: color, fillOpacity: 1, weight: 0, opacity: 1 }}
+                  interactive={false}
+                />,
+              );
+            }
+            return lines;
           })}
 
           {/* Infrastructure nodes — VIPs, Resolvers, Upstreams */}
           {geoNodes.map(node => {
             if (node.lat == null || node.lng == null) return null;
-            const color = getStatusColor(node.status);
-            const radius = node.type === 'vip' ? 12 : node.type === 'resolver' ? 10 : 8;
+            const baseColor = getStatusColor(node.status);
+            // Sub-kind styling for the upstream layer.
+            // pop      → real PoP (solid green when ok) — same as default
+            // history  → previous PoP (small, faded blue)
+            // home     → registered "parent" datacenter (neutral amber, dashed ring)
+            let color = baseColor;
+            let radius = node.type === 'vip' ? 12 : node.type === 'resolver' ? 10 : 8;
+            let fillOpacity = 0.7;
+            let dashArray: string | undefined;
+            let weight = 2;
+            if (node.kind === 'history') {
+              color = 'hsl(200, 80%, 55%)';
+              radius = 4;
+              fillOpacity = 0.45;
+              weight = 1;
+            } else if (node.kind === 'home') {
+              color = 'hsl(38, 80%, 55%)';
+              radius = 7;
+              fillOpacity = 0.2;
+              dashArray = '3 4';
+              weight = 2;
+            }
 
             return (
               <CircleMarker
@@ -359,9 +408,10 @@ export default function NocGeoMap({
                 pathOptions={{
                   color,
                   fillColor: color,
-                  fillOpacity: 0.7,
-                  weight: 2,
+                  fillOpacity,
+                  weight,
                   opacity: 1,
+                  dashArray,
                 }}
               >
                 <Popup>
@@ -371,7 +421,7 @@ export default function NocGeoMap({
                       {node.label}
                     </div>
                     <div style={{ color: '#64748b', fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
-                      {node.type}
+                      {node.kind === 'home' ? 'sede registrada' : node.kind === 'history' ? 'PoP anterior' : node.kind === 'pop' ? 'PoP atual' : node.type}
                     </div>
                     {node.bindIp && <div style={{ color: '#94a3b8' }}>IP: <span style={{ color: '#22d3ee' }}>{node.bindIp}</span></div>}
                     {node.qps != null && <div style={{ color: '#94a3b8' }}>QPS: <span style={{ color: '#22c55e' }}>{node.qps}</span></div>}
