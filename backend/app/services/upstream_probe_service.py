@@ -391,8 +391,13 @@ def _serialize_entry(entry: dict[str, Any], now: float) -> dict[str, Any]:
     else:
         status = "down"
     from app.services.iata_geo import resolve_pop_geo  # local import (avoid cycles)
+    from app.services.egress_geo_service import resolve_egress_geo  # local (avoid cycles)
 
     current_geo = resolve_pop_geo(entry.get("current_pop"))
+    # home_geo = REGISTERED location of the upstream IP itself (the "parent"
+    # datacenter / anycast home). Distinct from current_geo (the real PoP
+    # where our traffic actually lands). Both coexist honestly.
+    home_geo = resolve_egress_geo(entry.get("ip"))
     history = []
     for h in entry.get("history") or []:
         h_geo = resolve_pop_geo(h.get("pop_code"))
@@ -404,6 +409,7 @@ def _serialize_entry(entry: dict[str, Any], now: float) -> dict[str, Any]:
         "status": status,
         "current_pop": entry.get("current_pop"),
         "current_geo": current_geo,
+        "home_geo": home_geo,
         "current_rtt_ms": entry.get("current_rtt_ms"),
         "pop_method": entry.get("pop_method"),
         "pop_raw": entry.get("pop_raw"),
