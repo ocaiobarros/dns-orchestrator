@@ -13,6 +13,7 @@ import type {
   ConfigProfile, ConfigDiff, GeneratedFile, PaginatedResponse,
   InstanceHealthReport, DeployState, RollbackResult, PostDeployCheck,
   V2Event, V2MetricEntry, V2Instance, V2Action, ReconcileSummary, SystemSelfTestResult,
+  UpstreamProbeSnapshot,
 } from './types';
 
 export interface AuthUserRecord {
