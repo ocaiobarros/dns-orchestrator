@@ -114,7 +114,7 @@ export default function NocUpstreamMap({ refetchMs = 30000, title = 'DNS Network
     staleTime: refetchMs / 2,
   });
 
-  const snap = data as UpstreamProbeSnapshot | undefined;
+  const snap = (data?.success ? data.data : undefined) as UpstreamProbeSnapshot | undefined;
   const { nodes, edges, hasOrigin, aliveCount } = useMemo(() => {
     if (!snap) return { nodes: [] as MapNode[], edges: [] as MapEdge[], hasOrigin: false, aliveCount: 0 };
     const built = buildNodes(snap);
