@@ -118,3 +118,98 @@ def test_snapshot_includes_egress_geo():
     assert snap["egress"]["geo"]["city"] == "Campinas"
     assert snap["egress"]["geo"]["lat"] == pytest.approx(-22.9)
     assert snap["egress"]["geo"]["lng"] == pytest.approx(-47.06)
+
+
+# ── FIX-GEOIP-RATE-SAFETY tests ────────────────────────────────────────
+
+def _ok_payload(ip):
+    return {
+        "status": "success", "city": "X", "regionName": "Y", "country": "Z",
+        "lat": 1.0, "lon": 2.0, "isp": "i", "as": "a", "query": ip,
+    }
+
+
+def test_rate_cap_never_exceeded_under_burst(monkeypatch):
+    """50 distinct IPs in a burst → HTTP calls capped at _MAX_CALLS_PER_MIN."""
+    monkeypatch.setattr(geo, "_MAX_CALLS_PER_MIN", 10)
+    geo.reset_cache_for_tests()
+    with patch.object(geo.httpx, "Client") as mock_client:
+        mock_client.return_value.__enter__.return_value.get.side_effect = \
+            lambda url: _mock_response(200, _ok_payload(url))
+        for i in range(50):
+            geo.resolve_egress_geo(f"203.0.113.{i}")
+        # Over-budget lookups must NOT trigger HTTP — they return None silently.
+        assert mock_client.return_value.__enter__.return_value.get.call_count == 10
+
+
+def test_429_triggers_cooldown_and_serves_stale_cache(monkeypatch):
+    """After a good resolve, a later 429 must NOT clobber cache; cooldown blocks new HTTP."""
+    geo.reset_cache_for_tests()
+    ip = "45.232.215.20"
+    # Pre-seed a good value with EXPIRED TTL so the next call would refresh.
+    now = geo._now()
+    good = {"ip": ip, "city": "C", "region": "R", "country": "BR",
+            "lat": 1.0, "lng": 2.0, "isp": None, "asn": None, "resolved_at": now - 99999}
+    with geo._LOCK:
+        geo._CACHE[ip] = (now - 1, good, now - 99999)  # already expired
+
+    with patch.object(geo.httpx, "Client") as mock_client:
+        mock_client.return_value.__enter__.return_value.get.return_value = _mock_response(429, {})
+        out = geo.resolve_egress_geo(ip)
+        # Served STALE (not None) despite 429.
+        assert out is good
+        assert mock_client.return_value.__enter__.return_value.get.call_count == 1
+        # Cooldown engaged → no further HTTP calls, still serves stale.
+        out2 = geo.resolve_egress_geo(ip)
+        assert out2 is good
+        assert mock_client.return_value.__enter__.return_value.get.call_count == 1
+
+
+def test_stale_served_when_budget_exhausted(monkeypatch):
+    """TTL expired + no tokens → serve stale value, not None, and no HTTP call."""
+    monkeypatch.setattr(geo, "_MAX_CALLS_PER_MIN", 1)
+    geo.reset_cache_for_tests()
+    ip_good = "203.0.113.99"
+    # First call consumes the only token and seeds good cache.
+    with patch.object(geo.httpx, "Client") as mock_client:
+        mock_client.return_value.__enter__.return_value.get.return_value = \
+            _mock_response(200, _ok_payload(ip_good))
+        first = geo.resolve_egress_geo(ip_good)
+        assert first is not None
+
+        # Force the cache entry to be expired (stale).
+        now = geo._now()
+        with geo._LOCK:
+            exp, val, ra = geo._CACHE[ip_good]
+            geo._CACHE[ip_good] = (now - 1, val, ra)
+
+        # Another distinct IP would need a token — none left. No new HTTP.
+        before = mock_client.return_value.__enter__.return_value.get.call_count
+        other = geo.resolve_egress_geo("198.51.100.1")
+        assert other is None
+        # And the stale good entry is SERVED, not refreshed.
+        stale = geo.resolve_egress_geo(ip_good)
+        assert stale is not None
+        assert stale["city"] == "X"
+        after = mock_client.return_value.__enter__.return_value.get.call_count
+        assert after == before  # zero new HTTP calls
+
+
+def test_resolved_at_present_on_success():
+    geo.reset_cache_for_tests()
+    with patch.object(geo.httpx, "Client") as mock_client:
+        mock_client.return_value.__enter__.return_value.get.return_value = \
+            _mock_response(200, _ok_payload("1.2.3.4"))
+        out = geo.resolve_egress_geo("1.2.3.4")
+    assert out is not None
+    assert "resolved_at" in out and isinstance(out["resolved_at"], float)
+
+
+def test_probe_pop_path_does_not_touch_geoip():
+    """PoP/rtt/alive path must NOT call ip-api (only dig/ping)."""
+    from app.services import upstream_probe_service as ups
+    import inspect
+    src = inspect.getsource(ups.probe_pop)
+    assert "ip-api" not in src.lower()
+    assert "egress_geo_service" not in src
+    assert "resolve_egress_geo" not in src
