@@ -1108,6 +1108,10 @@ export interface UpstreamProbeEntry {
   age_since_seen_s: number | null;
   down_for_s: number | null;
   history: UpstreamPopHistoryEntry[];
+  /** Registered location of the upstream IP itself (the "parent"/home
+   *  datacenter — e.g. 1.1.1.1 → Brisbane/AU). Distinct from current_geo
+   *  (the real anycast PoP where our traffic actually lands). */
+  home_geo?: EgressGeo | null;
 }
 
 export interface EgressGeo {
