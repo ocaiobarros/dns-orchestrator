@@ -411,11 +411,13 @@ export default function NocGeoMap({
           )}
         </AnimatePresence>
 
-        {/* Stats overlay */}
+        {/* Stats overlay — honest counts only */}
         <div className="absolute bottom-3 left-3 z-[1000] px-3 py-2 rounded-lg border border-border/30 bg-card/80 backdrop-blur-md">
           <div className="flex items-center gap-4 text-[9px] font-mono text-muted-foreground/50">
             <span>Nodes: <span className="text-foreground/70 font-bold">{nodes.length}</span></span>
-            <span>Regions: <span className="text-accent font-bold">{CLIENT_ACCESS_POINTS.length}</span></span>
+            {showClientPoints && (
+              <span>Regions: <span className="text-accent font-bold">{CLIENT_ACCESS_POINTS.length}</span></span>
+            )}
             {totalQps > 0 && <span>Total QPS: <span className="text-primary font-bold">{totalQps}</span></span>}
           </div>
         </div>
