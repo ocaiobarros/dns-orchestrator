@@ -1068,3 +1068,50 @@ export function safeDateShort(dateStr: string | null | undefined, locale = 'pt-B
     return '—';
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Upstream Probe (live PoP + rtt for each forward-addr)
+// ─────────────────────────────────────────────────────────────────────
+
+export interface UpstreamPopGeo {
+  iata: string;
+  city: string;
+  country: string;
+  lat: number;
+  lng: number;
+}
+
+export interface UpstreamPopHistoryEntry {
+  pop_code: string;
+  first_seen: number;
+  last_seen: number;
+  geo: UpstreamPopGeo | null;
+}
+
+export type UpstreamProbeStatus = 'current' | 'down' | 'retired';
+
+export interface UpstreamProbeEntry {
+  ip: string;
+  alive: boolean;
+  status: UpstreamProbeStatus;
+  current_pop: string | null;
+  current_geo: UpstreamPopGeo | null;
+  current_rtt_ms: number | null;
+  pop_method: string | null;
+  pop_raw: string | null;
+  egress_ip: string | null;
+  ecs: string | null;
+  hops: number | null;
+  ingress: string | null;
+  last_seen_ts: number | null;
+  down_since_ts: number | null;
+  age_since_seen_s: number | null;
+  down_for_s: number | null;
+  history: UpstreamPopHistoryEntry[];
+}
+
+export interface UpstreamProbeSnapshot {
+  ts: number;
+  egress: { ip: string | null; ecs: string | null } | null;
+  upstreams: UpstreamProbeEntry[];
+}

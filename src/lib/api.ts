@@ -13,6 +13,7 @@ import type {
   ConfigProfile, ConfigDiff, GeneratedFile, PaginatedResponse,
   InstanceHealthReport, DeployState, RollbackResult, PostDeployCheck,
   V2Event, V2MetricEntry, V2Instance, V2Action, ReconcileSummary, SystemSelfTestResult,
+  UpstreamProbeSnapshot,
 } from './types';
 
 export interface AuthUserRecord {
@@ -212,6 +213,7 @@ export const api = {
   getInterfaces: () => apiCall<NetworkInterface[]>('GET', '/network/interfaces'),
   getRoutes: () => apiCall<Route[]>('GET', '/network/routes'),
   checkReachability: () => apiCall<ReachabilityResult[]>('GET', '/network/reachability'),
+  getUpstreamProbes: () => apiCall<UpstreamProbeSnapshot>('GET', '/network/upstreams'),
 
   // DNS
   // Response envelope is { rows, source, source_available, degraded } since the
@@ -696,6 +698,7 @@ function routeMock(method: string, path: string, body?: unknown): unknown {
   if (path === '/api/network/interfaces') return mockInterfaces;
   if (path === '/api/network/routes') return mockRoutes;
   if (path === '/api/network/reachability') return mockReachability;
+  if (path === '/api/network/upstreams') return { ts: Date.now() / 1000, egress: null, upstreams: [] };
 
   // DNS
   if (path.startsWith('/api/dns/metrics')) {

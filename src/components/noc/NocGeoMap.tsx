@@ -31,6 +31,12 @@ interface Props {
   /** Server lat/lng — if not set, defaults to São Paulo */
   serverLat?: number;
   serverLng?: number;
+  /** Show the legacy hardcoded Brazilian client cloud. Defaults to false —
+   *  the live upstream map renders only real probed nodes. */
+  showClientPoints?: boolean;
+  /** Hide the "DNS Server" anchor pin (the origin is already provided as a
+   *  vip-typed node by the caller). */
+  hideServerAnchor?: boolean;
 }
 
 // Known upstream DNS geo locations
@@ -120,33 +126,41 @@ export default function NocGeoMap({
   title = 'DNS Network Map',
   serverLat = -23.55,
   serverLng = -46.63,
+  showClientPoints = false,
+  hideServerAnchor = false,
 }: Props) {
-  // Assign geo positions to nodes
+  // Assign geo positions to nodes.
+  // If a node already provides explicit lat/lng, honor it verbatim — that is
+  // how the live upstream map plots probed PoPs at their real coordinates.
   const geoNodes = useMemo<GeoNode[]>(() => {
     const result: GeoNode[] = [];
     const resolvers = nodes.filter(n => n.type === 'resolver');
     const vips = nodes.filter(n => n.type === 'vip');
     const upstreams = nodes.filter(n => n.type === 'upstream');
 
-    // VIPs at server location
     vips.forEach(n => {
-      result.push({ ...n, lat: serverLat, lng: serverLng });
+      result.push({ ...n, lat: n.lat ?? serverLat, lng: n.lng ?? serverLng });
     });
 
-    // Resolvers slightly offset from server
     resolvers.forEach((n, i) => {
+      if (n.lat != null && n.lng != null) {
+        result.push({ ...n, lat: n.lat, lng: n.lng });
+        return;
+      }
       const offset = 0.15 * (i - (resolvers.length - 1) / 2);
       result.push({ ...n, lat: serverLat + offset, lng: serverLng + offset * 0.8 });
     });
 
-    // Upstreams — try to match known IPs
     upstreams.forEach((n, i) => {
+      if (n.lat != null && n.lng != null) {
+        result.push({ ...n, lat: n.lat, lng: n.lng });
+        return;
+      }
       const ip = n.bindIp || n.extra || '';
       const known = Object.entries(KNOWN_UPSTREAMS).find(([k]) => ip.includes(k));
       if (known) {
         result.push({ ...n, lat: known[1].lat, lng: known[1].lng });
       } else {
-        // Default upstream positions spread globally
         const defaultPositions = [
           { lat: 37.386, lng: -122.084 },
           { lat: 51.507, lng: -0.128 },
@@ -160,18 +174,18 @@ export default function NocGeoMap({
     return result;
   }, [nodes, serverLat, serverLng]);
 
-  // All positions for fit bounds — focus on the REAL node + Brazilian client cloud.
-  // Upstreams (US/EU) and arbitrary "Americas" anchors are NOT used for framing,
-  // otherwise the map opens wide and the operator can't see the actual node.
+  // Fit bounds to the real nodes (and optionally the legacy client cloud).
   const allPositions = useMemo<[number, number][]>(() => {
     const pts: [number, number][] = [];
-    pts.push([serverLat, serverLng]);
+    if (!hideServerAnchor) pts.push([serverLat, serverLng]);
     geoNodes
-      .filter(n => (n.type === 'vip' || n.type === 'resolver') && n.lat != null && n.lng != null)
+      .filter(n => n.lat != null && n.lng != null)
       .forEach(n => pts.push([n.lat!, n.lng!]));
-    CLIENT_ACCESS_POINTS.forEach(c => pts.push([c.lat, c.lng]));
+    if (showClientPoints) {
+      CLIENT_ACCESS_POINTS.forEach(c => pts.push([c.lat, c.lng]));
+    }
     return pts;
-  }, [geoNodes, serverLat, serverLng]);
+  }, [geoNodes, serverLat, serverLng, showClientPoints, hideServerAnchor]);
 
   // Total QPS for scaling
   const totalQps = useMemo(() => {
@@ -194,9 +208,11 @@ export default function NocGeoMap({
           <span className="flex items-center gap-1.5 text-[9px] font-mono text-muted-foreground/40">
             <span className="w-2 h-2 rounded-full bg-destructive" /> Failed
           </span>
-          <span className="flex items-center gap-1.5 text-[9px] font-mono text-muted-foreground/40">
-            <span className="w-2 h-2 rounded-full bg-accent opacity-50" /> Client
-          </span>
+          {showClientPoints && (
+            <span className="flex items-center gap-1.5 text-[9px] font-mono text-muted-foreground/40">
+              <span className="w-2 h-2 rounded-full bg-accent opacity-50" /> Client
+            </span>
+          )}
           <span className="text-[9px] font-mono text-muted-foreground/20 uppercase tracking-widest">
             Live Geo Topology
           </span>
@@ -219,45 +235,50 @@ export default function NocGeoMap({
 
           <FitBounds positions={allPositions} />
 
-          {/* DNS Server marker — ALWAYS visible so the operator can see where
-              "the DNS" is on the map, even if geoNodes is empty/loading. */}
-          <CircleMarker
-            center={[serverLat, serverLng]}
-            radius={14}
-            pathOptions={{
-              color: 'hsl(140, 80%, 50%)',
-              fillColor: 'hsl(140, 80%, 50%)',
-              fillOpacity: 0.85,
-              weight: 3,
-              opacity: 1,
-            }}
-          >
-            <Popup>
-              <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#e2e8f0', background: '#0f172a', padding: 10, borderRadius: 8, border: '1px solid #1e293b', minWidth: 160 }}>
-                <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 6 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', display: 'inline-block', marginRight: 6 }} />
-                  DNS Server (este host)
-                </div>
-                <div style={{ color: '#94a3b8' }}>São Paulo, BR</div>
-                <div style={{ color: '#64748b', fontSize: 9, marginTop: 4 }}>Frontend DNS + Resolvers</div>
-              </div>
-            </Popup>
-          </CircleMarker>
-          <CircleMarker
-            center={[serverLat, serverLng]}
-            radius={22}
-            pathOptions={{
-              color: 'hsl(140, 80%, 50%)',
-              fillColor: 'hsl(140, 80%, 50%)',
-              fillOpacity: 0.1,
-              weight: 1,
-              opacity: 0.5,
-            }}
-          />
+          {/* DNS Server anchor — hidden when the caller already provides a
+              vip-typed origin node (live upstream map). */}
+          {!hideServerAnchor && (
+            <>
+              <CircleMarker
+                center={[serverLat, serverLng]}
+                radius={14}
+                pathOptions={{
+                  color: 'hsl(140, 80%, 50%)',
+                  fillColor: 'hsl(140, 80%, 50%)',
+                  fillOpacity: 0.85,
+                  weight: 3,
+                  opacity: 1,
+                }}
+              >
+                <Popup>
+                  <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#e2e8f0', background: '#0f172a', padding: 10, borderRadius: 8, border: '1px solid #1e293b', minWidth: 160 }}>
+                    <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 6 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', display: 'inline-block', marginRight: 6 }} />
+                      DNS Server (este host)
+                    </div>
+                    <div style={{ color: '#94a3b8' }}>São Paulo, BR</div>
+                    <div style={{ color: '#64748b', fontSize: 9, marginTop: 4 }}>Frontend DNS + Resolvers</div>
+                  </div>
+                </Popup>
+              </CircleMarker>
+              <CircleMarker
+                center={[serverLat, serverLng]}
+                radius={22}
+                pathOptions={{
+                  color: 'hsl(140, 80%, 50%)',
+                  fillColor: 'hsl(140, 80%, 50%)',
+                  fillOpacity: 0.1,
+                  weight: 1,
+                  opacity: 0.5,
+                }}
+              />
+            </>
+          )}
 
 
-          {/* Client access points — small cyan dots with traffic lines */}
-          {CLIENT_ACCESS_POINTS.map(client => {
+          {/* Legacy hardcoded Brazilian client cloud — opt-in. The live
+              upstream map keeps this off to remain 100% honest. */}
+          {showClientPoints && CLIENT_ACCESS_POINTS.map(client => {
             const scaledRadius = Math.max(3, Math.min(10, client.qps / 40));
             return (
               <CircleMarker
@@ -283,8 +304,7 @@ export default function NocGeoMap({
             );
           })}
 
-          {/* Lines from clients to VIP/resolver cluster */}
-          {CLIENT_ACCESS_POINTS.map(client => (
+          {showClientPoints && CLIENT_ACCESS_POINTS.map(client => (
             <Polyline
               key={`line-${client.label}`}
               positions={[[client.lat, client.lng], [serverLat, serverLng]]}
@@ -391,11 +411,13 @@ export default function NocGeoMap({
           )}
         </AnimatePresence>
 
-        {/* Stats overlay */}
+        {/* Stats overlay — honest counts only */}
         <div className="absolute bottom-3 left-3 z-[1000] px-3 py-2 rounded-lg border border-border/30 bg-card/80 backdrop-blur-md">
           <div className="flex items-center gap-4 text-[9px] font-mono text-muted-foreground/50">
             <span>Nodes: <span className="text-foreground/70 font-bold">{nodes.length}</span></span>
-            <span>Regions: <span className="text-accent font-bold">{CLIENT_ACCESS_POINTS.length}</span></span>
+            {showClientPoints && (
+              <span>Regions: <span className="text-accent font-bold">{CLIENT_ACCESS_POINTS.length}</span></span>
+            )}
             {totalQps > 0 && <span>Total QPS: <span className="text-primary font-bold">{totalQps}</span></span>}
           </div>
         </div>

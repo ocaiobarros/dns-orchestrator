@@ -14,6 +14,10 @@ export interface MapNode {
   cacheHit?: number;
   bindIp?: string;
   extra?: string;
+  /** Explicit geographic position — when present, NocGeoMap uses these
+   *  coordinates instead of auto-positioning the node. */
+  lat?: number;
+  lng?: number;
 }
 
 export interface MapEdge {
