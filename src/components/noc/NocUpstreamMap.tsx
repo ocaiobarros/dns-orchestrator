@@ -156,7 +156,15 @@ export default function NocUpstreamMap({ refetchMs = 30000, title = 'DNS Network
         <span>Upstreams: <span className="text-primary font-bold">{totalUpstreams}</span></span>
         <span>Vivos: <span className="text-success font-bold">{aliveCount}</span></span>
         {snap?.egress?.ip && (
-          <span>Egress: <span className="text-foreground/80 font-bold">{snap.egress.ip}</span></span>
+          <span>
+            Egress: <span className="text-foreground/80 font-bold">{snap.egress.ip}</span>
+            {snap.egress.geo?.city && (
+              <span className="text-muted-foreground/60"> ({snap.egress.geo.city}{snap.egress.geo.region ? `, ${snap.egress.geo.region}` : ''})</span>
+            )}
+            {!snap.egress.geo && (
+              <span className="text-muted-foreground/40"> (geo não resolvida)</span>
+            )}
+          </span>
         )}
         {isLoading && <span className="text-muted-foreground/50">carregando…</span>}
         {isError && <span className="text-destructive/80">erro ao consultar /network/upstreams</span>}
