@@ -274,8 +274,9 @@ export default function NocGeoMap({
           )}
 
 
-          {/* Client access points — small cyan dots with traffic lines */}
-          {CLIENT_ACCESS_POINTS.map(client => {
+          {/* Legacy hardcoded Brazilian client cloud — opt-in. The live
+              upstream map keeps this off to remain 100% honest. */}
+          {showClientPoints && CLIENT_ACCESS_POINTS.map(client => {
             const scaledRadius = Math.max(3, Math.min(10, client.qps / 40));
             return (
               <CircleMarker
@@ -301,8 +302,7 @@ export default function NocGeoMap({
             );
           })}
 
-          {/* Lines from clients to VIP/resolver cluster */}
-          {CLIENT_ACCESS_POINTS.map(client => (
+          {showClientPoints && CLIENT_ACCESS_POINTS.map(client => (
             <Polyline
               key={`line-${client.label}`}
               positions={[[client.lat, client.lng], [serverLat, serverLng]]}
