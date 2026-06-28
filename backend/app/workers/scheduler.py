@@ -136,6 +136,24 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # Upstream probe worker — read-only PoP/rtt/alive probe for each
+    # configured forward-addr. Powers the live upstream map.
+    _scheduler.add_job(
+        upstream_probe_job,
+        trigger=IntervalTrigger(seconds=30),
+        id="upstream_probe_worker",
+        name="Upstream Probe (PoP + rtt)",
+        replace_existing=True,
+    )
+    # Slower path probe (mtr/traceroute) — heavier, runs every 5 min.
+    _scheduler.add_job(
+        upstream_path_probe_job,
+        trigger=IntervalTrigger(seconds=300),
+        id="upstream_path_probe_worker",
+        name="Upstream Path Probe (mtr)",
+        replace_existing=True,
+    )
+
     _scheduler.start()
     logger.info(
         "v2.1 Scheduler started: health(10s), metrics(30s), reconciliation(10s), "
