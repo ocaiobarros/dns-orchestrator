@@ -8,7 +8,8 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import NocGeoMap, { type MapNode, type MapEdge } from './NocGeoMap';
+import NocGeoMap from './NocGeoMap';
+import type { MapNode, MapEdge } from './NocNetworkMap';
 import type { UpstreamProbeEntry, UpstreamProbeSnapshot } from '@/lib/types';
 
 // How long a "down" upstream remains visible (red) before the front hides it.
