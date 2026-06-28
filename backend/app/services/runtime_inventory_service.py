@@ -59,10 +59,25 @@ def discover_unbound_instances() -> list[dict]:
         is_running = "running" in line or ("active" in line and "inactive" not in line)
         config = _parse_unbound_config(name)
 
+        # Split bind_ips into IPv4 and IPv6 listeners.
+        # bind_ip → first IPv4 (preserves legacy behaviour).
+        # bind_ipv6 → first non-loopback / non-link-local IPv6 listener.
+        # control-interface (::1) is parsed separately and never reaches
+        # bind_ips, but we still defensively filter loopback/link-local.
+        bind_ips_list = config["bind_ips"] or []
+        ipv4s = [ip for ip in bind_ips_list if "." in ip and ":" not in ip]
+        ipv6s = [
+            ip for ip in bind_ips_list
+            if ":" in ip and ip != "::1" and not ip.lower().startswith("fe80:")
+        ]
+        bind_ip = ipv4s[0] if ipv4s else (bind_ips_list[0] if bind_ips_list else "127.0.0.1")
+        bind_ipv6 = ipv6s[0] if ipv6s else ""
+
         instances.append({
             "instance_name": name,
-            "bind_ips": config["bind_ips"],
-            "bind_ip": config["bind_ips"][0] if config["bind_ips"] else "127.0.0.1",
+            "bind_ips": bind_ips_list,
+            "bind_ip": bind_ip,
+            "bind_ipv6": bind_ipv6,
             "bind_port": config["port"],
             "control_interface": config["control_interface"],
             "control_port": config["control_port"],
