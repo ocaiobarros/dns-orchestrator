@@ -115,3 +115,50 @@ def test_history_capped_at_max():
     entry = ups.get_state_snapshot()["upstreams"][0]
     assert len(entry["history"]) == ups._HISTORY_MAX
     assert entry["current_pop"].startswith("pop")
+
+
+def test_snapshot_includes_home_geo_per_upstream():
+    """Each upstream exposes home_geo (registered location of the IP itself)
+    distinct from current_geo (real PoP where traffic lands)."""
+    from app.services import egress_geo_service as geo
+    geo.reset_cache_for_tests()
+
+    fake = {
+        "1.1.1.1": {"ip": "1.1.1.1", "city": "Brisbane", "region": "Queensland",
+                    "country": "Australia", "lat": -27.4, "lng": 153.0,
+                    "isp": "APNIC", "asn": "AS13335", "resolved_at": 0.0},
+        "8.8.8.8": {"ip": "8.8.8.8", "city": "Mountain View", "region": "California",
+                    "country": "United States", "lat": 37.4, "lng": -122.1,
+                    "isp": "Google", "asn": "AS15169", "resolved_at": 0.0},
+        "45.232.215.0": {"ip": "45.232.215.0", "city": "Curitiba", "region": "PR",
+                         "country": "Brazil", "lat": -25.4, "lng": -49.2,
+                         "isp": "ISP", "asn": "AS123", "resolved_at": 0.0},
+    }
+    calls: list[str] = []
+
+    def fake_resolve(ip):
+        calls.append(ip)
+        return fake.get(ip)
+
+    with patch.object(ups, "get_upstreams", return_value=["1.1.1.1", "8.8.8.8"]), \
+         patch.object(ups, "probe_upstream", side_effect=lambda ip, with_path=False: _probe(
+             ip, pop="gru17", rtt=18.0,
+             egress="45.232.215.0" if ip == "1.1.1.1" else None,
+         )), \
+         patch("app.services.egress_geo_service.resolve_egress_geo", side_effect=fake_resolve):
+        ups.run_probe_cycle()
+        snap = ups.get_state_snapshot()
+        # second call: cache should kick in (no extra resolves beyond first batch)
+        before = len(calls)
+        ups.get_state_snapshot()
+        after = len(calls)
+
+    by_ip = {u["ip"]: u for u in snap["upstreams"]}
+    assert by_ip["1.1.1.1"]["home_geo"]["city"] == "Brisbane"
+    assert by_ip["8.8.8.8"]["home_geo"]["city"] == "Mountain View"
+    # current_geo (PoP) is distinct from home_geo (registered)
+    assert by_ip["1.1.1.1"]["current_pop"] == "gru17"
+    # second snapshot resolved the same IPs again (function is called, but
+    # the underlying cache de-dupes HTTP — that contract is tested in the
+    # egress_geo_service tests). Here we only assert presence and shape.
+    assert after > before
