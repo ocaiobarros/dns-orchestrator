@@ -84,36 +84,122 @@ function buildNodes(snap: UpstreamProbeSnapshot): { nodes: MapNode[]; edges: Map
   }
 
   visible.forEach(u => {
-    const geo = u.current_geo;
     const status = statusForNode(u);
-    const popLabel = u.current_pop ? u.current_pop.toUpperCase() : '—';
-    const cityLabel = geo ? `${geo.city}` : 'PoP desconhecido';
+    const vendor = vendorLabel(u.ip);
     const rttLabel = u.current_rtt_ms != null ? `${u.current_rtt_ms.toFixed(1)}ms` : 'sem rtt';
-    const extras: string[] = [popLabel, cityLabel, rttLabel];
-    if (u.hops != null) extras.push(`${u.hops} hops`);
-    if (!u.alive && u.down_for_s != null) {
-      extras.push(`down ${Math.round(u.down_for_s)}s`);
-    }
 
-    nodes.push({
-      id: `up-${u.ip}`,
-      label: `${vendorLabel(u.ip)} ${u.ip}`,
-      type: 'upstream',
-      status,
-      bindIp: u.ip,
-      latency: u.current_rtt_ms ?? undefined,
-      extra: extras.join(' · '),
-      lat: geo?.lat,
-      lng: geo?.lng,
-    });
-
-    if (hasOrigin) {
-      edges.push({
-        from: 'origin',
-        to: `up-${u.ip}`,
+    // ── (1) PoP ATUAL — where our traffic ACTUALLY lands (anycast).
+    //    This is the only node the egress connects to. Never plot the
+    //    upstream IP at the registered "home" location and call it the PoP.
+    const popGeo = u.current_geo;
+    const popId = `pop-${u.ip}`;
+    if (popGeo) {
+      const popLabel = u.current_pop ? u.current_pop.toUpperCase() : '—';
+      const extras: string[] = [
+        `atende via ${popLabel}`,
+        `${popGeo.city}${popGeo.region ? ', ' + popGeo.region : ''}`,
+        rttLabel,
+      ];
+      if (u.hops != null) extras.push(`${u.hops} hops`);
+      if (!u.alive && u.down_for_s != null) extras.push(`down ${Math.round(u.down_for_s)}s`);
+      nodes.push({
+        id: popId,
+        label: `${vendor} ${u.ip} · ${popLabel}`,
+        type: 'upstream',
+        kind: 'pop',
+        status,
+        bindIp: u.ip,
         latency: u.current_rtt_ms ?? undefined,
+        extra: extras.join(' · '),
+        lat: popGeo.lat,
+        lng: popGeo.lng,
+      });
+      if (hasOrigin) {
+        // TRAFFIC edge: solid, arrow, real latency. Egress → PoP only.
+        edges.push({
+          from: 'origin',
+          to: popId,
+          latency: u.current_rtt_ms ?? undefined,
+          arrow: true,
+        });
+      }
+    } else {
+      // No PoP geo known — still represent the upstream so the user sees it,
+      // but without a geographic position (NocGeoMap will skip rendering).
+      nodes.push({
+        id: popId,
+        label: `${vendor} ${u.ip} · PoP desconhecido`,
+        type: 'upstream',
+        kind: 'pop',
+        status,
+        bindIp: u.ip,
+        latency: u.current_rtt_ms ?? undefined,
+        extra: 'PoP desconhecido',
       });
     }
+
+    // ── (2) DATACENTER PAI / SEDE — registered location of the upstream IP.
+    //    Identity relation, NOT a traffic destination. Dashed edge PoP→home.
+    //    Never receives an edge from origin.
+    const home = u.home_geo;
+    if (home && popGeo) {
+      const sameCity =
+        Math.abs(home.lat - popGeo.lat) < 0.05 &&
+        Math.abs(home.lng - popGeo.lng) < 0.05;
+      if (!sameCity) {
+        const homeId = `home-${u.ip}`;
+        const homeBits: string[] = [];
+        if (home.city) homeBits.push(home.city);
+        if (home.country) homeBits.push(home.country);
+        const homeExtras: string[] = ['sede registrada'];
+        if (homeBits.length) homeExtras.push(homeBits.join(', '));
+        if (home.isp) homeExtras.push(`ISP: ${home.isp}`);
+        if (home.asn) homeExtras.push(home.asn);
+        nodes.push({
+          id: homeId,
+          label: `${vendor} · sede ${home.city ?? home.country ?? ''}`.trim(),
+          type: 'upstream',
+          kind: 'home',
+          status: 'inactive',
+          bindIp: u.ip,
+          extra: homeExtras.join(' · '),
+          lat: home.lat,
+          lng: home.lng,
+        });
+        // IDENTITY edge: dashed, no arrow, no latency. PoP → home.
+        edges.push({ from: popId, to: homeId, dashed: true });
+      }
+    }
+
+    // ── (3) HISTORY — PoPs we already touched (dedup by city, skip current).
+    const seenCities = new Set<string>();
+    if (popGeo?.city) seenCities.add(popGeo.city);
+    (u.history ?? []).forEach((h, idx) => {
+      const hGeo = h.geo;
+      if (!hGeo) return;
+      const cityKey = hGeo.city || `${hGeo.lat},${hGeo.lng}`;
+      if (seenCities.has(cityKey)) return;
+      seenCities.add(cityKey);
+      const histExtras: string[] = ['PoP anterior'];
+      if (h.pop_code) histExtras.push(h.pop_code.toUpperCase());
+      if (hGeo.city) histExtras.push(hGeo.city);
+      if (h.last_seen) {
+        const ageS = Math.max(0, Math.round(Date.now() / 1000 - h.last_seen));
+        histExtras.push(`visto há ${ageS}s`);
+      }
+      nodes.push({
+        id: `hist-${u.ip}-${idx}`,
+        label: `${vendor} · ${hGeo.city ?? h.pop_code ?? 'anterior'}`,
+        type: 'upstream',
+        kind: 'history',
+        status: 'inactive',
+        bindIp: u.ip,
+        extra: histExtras.join(' · '),
+        lat: hGeo.lat,
+        lng: hGeo.lng,
+      });
+      // No edge — history points are just markers, not traffic paths.
+    });
   });
 
   return { nodes, edges, hasOrigin };
