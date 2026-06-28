@@ -1110,8 +1110,23 @@ export interface UpstreamProbeEntry {
   history: UpstreamPopHistoryEntry[];
 }
 
+export interface EgressGeo {
+  ip: string;
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  lat: number;
+  lng: number;
+  isp: string | null;
+  asn: string | null;
+}
+
 export interface UpstreamProbeSnapshot {
   ts: number;
-  egress: { ip: string | null; ecs: string | null } | null;
+  egress: {
+    ip: string | null;
+    ecs: string | null;
+    geo?: EgressGeo | null;
+  } | null;
   upstreams: UpstreamProbeEntry[];
 }
