@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.services.diagnostics_service import get_network_interfaces, get_routes, check_reachability, get_dns_listeners
+from app.services import upstream_probe_service
 
 router = APIRouter()
 
