@@ -18,6 +18,11 @@ export interface MapNode {
    *  coordinates instead of auto-positioning the node. */
   lat?: number;
   lng?: number;
+  /** Optional sub-kind for the upstream layer: the real anycast PoP we
+   *  actually reach ('pop'), a previous PoP we already touched ('history'),
+   *  or the registered "home" datacenter of the upstream IP ('home').
+   *  Purely visual — consumers without this field keep working. */
+  kind?: 'pop' | 'history' | 'home';
 }
 
 export interface MapEdge {
@@ -25,6 +30,12 @@ export interface MapEdge {
   to: string;
   latency?: number;
   qps?: number;
+  /** Render style: solid traffic edge (default) or dashed identity edge
+   *  (PoP→home, "belongs to" — NOT a network hop, no latency). */
+  dashed?: boolean;
+  /** Draw a small arrow head near the destination to convey traffic
+   *  direction (egress → PoP). */
+  arrow?: boolean;
 }
 
 interface Props {
