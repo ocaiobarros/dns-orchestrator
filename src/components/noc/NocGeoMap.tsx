@@ -208,9 +208,11 @@ export default function NocGeoMap({
           <span className="flex items-center gap-1.5 text-[9px] font-mono text-muted-foreground/40">
             <span className="w-2 h-2 rounded-full bg-destructive" /> Failed
           </span>
-          <span className="flex items-center gap-1.5 text-[9px] font-mono text-muted-foreground/40">
-            <span className="w-2 h-2 rounded-full bg-accent opacity-50" /> Client
-          </span>
+          {showClientPoints && (
+            <span className="flex items-center gap-1.5 text-[9px] font-mono text-muted-foreground/40">
+              <span className="w-2 h-2 rounded-full bg-accent opacity-50" /> Client
+            </span>
+          )}
           <span className="text-[9px] font-mono text-muted-foreground/20 uppercase tracking-widest">
             Live Geo Topology
           </span>
