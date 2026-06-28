@@ -381,11 +381,20 @@ def _serialize_entry(entry: dict[str, Any], now: float) -> dict[str, Any]:
         status = "retired"
     else:
         status = "down"
+    from app.services.iata_geo import resolve_pop_geo  # local import (avoid cycles)
+
+    current_geo = resolve_pop_geo(entry.get("current_pop"))
+    history = []
+    for h in entry.get("history") or []:
+        h_geo = resolve_pop_geo(h.get("pop_code"))
+        history.append({**h, "geo": h_geo})
+
     return {
         "ip": entry["ip"],
         "alive": entry.get("alive", False),
         "status": status,
         "current_pop": entry.get("current_pop"),
+        "current_geo": current_geo,
         "current_rtt_ms": entry.get("current_rtt_ms"),
         "pop_method": entry.get("pop_method"),
         "pop_raw": entry.get("pop_raw"),
@@ -397,7 +406,7 @@ def _serialize_entry(entry: dict[str, Any], now: float) -> dict[str, Any]:
         "down_since_ts": down_since,
         "age_since_seen_s": round(age_since_seen, 2) if age_since_seen is not None else None,
         "down_for_s": round(down_for, 2) if down_for is not None else None,
-        "history": list(entry.get("history") or []),
+        "history": history,
     }
 
 
