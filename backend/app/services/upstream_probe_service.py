@@ -167,15 +167,24 @@ def probe_pop(ip: str) -> dict[str, Any]:
     )
     if rc == 0 and stdout.strip():
         out["method"] = "TXT myaddr (google)"
+        # NOTE: do NOT use the lone IPv4 line as our egress. When the query is
+        # forwarded (e.g. through Cloudflare/Google as resolver), that IPv4 is
+        # the remote server's address as seen by Google — NOT our egress. The
+        # only trustworthy signal here is the ECS prefix, which reflects the
+        # /24 the upstream forwarded with — that IS our egress block.
         for line in stdout.splitlines():
             v = line.strip().strip('"')
             if not v:
                 continue
             if v.startswith("edns0-client-subnet"):
                 out["ecs"] = v.split()[-1] if " " in v else v.split("=")[-1]
-            elif _is_ipv4(v):
-                out["egress_ip"] = v
-        if out["egress_ip"] or out["ecs"]:
+        if out["ecs"]:
+            # Derive a representative egress IP from the ECS prefix
+            # (e.g. "45.232.215.0/24" → "45.232.215.0"). Honest: it's the
+            # block, not a specific host, but it's REAL user-side data.
+            prefix = out["ecs"].split("/", 1)[0].strip()
+            if _is_ipv4(prefix):
+                out["egress_ip"] = prefix
             out["raw"] = stdout.strip()
     return out
 
