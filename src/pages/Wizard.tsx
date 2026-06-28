@@ -2171,13 +2171,21 @@ export default function Wizard() {
         }
 
 
-        // VIPs from loopback — only DNAT-captured VIPs go to interceptedVips
+        // VIPs from loopback — only DNAT-captured VIPs go to interceptedVips.
+        // Pair dual-stack: a single VIP can have both IPv4 (vipIp) and IPv6 (vipIpv6).
+        // Validator requires vipIp to be IPv4; never place an IPv6 in vipIp.
         const vips = inv.vips || [];
         const intercepted = vips.filter((v: any) => v.capture_mode === 'dnat' || v.captureMode === 'dnat');
         if (intercepted.length > 0) {
-          newConfig.interceptedVips = intercepted.map((v: any) => ({
-            vipIp: v.ip || v.address || v.vip_ip || '',
-            vipIpv6: '',
+          const ipOf = (v: any): string => v.ip || v.address || v.vip_ip || '';
+          const isV4 = (ip: string) => /^\d+\.\d+\.\d+\.\d+$/.test(ip);
+          const v4Items = intercepted.filter((v: any) => isV4(ipOf(v)));
+          const v6Ips = intercepted
+            .filter((v: any) => !isV4(ipOf(v)) && ipOf(v).includes(':'))
+            .map((v: any) => ipOf(v));
+          const paired = v4Items.map((v: any, idx: number) => ({
+            vipIp: ipOf(v),
+            vipIpv6: v6Ips[idx] || '',
             vipType: 'intercepted' as const,
             captureMode: (v.capture_mode || v.captureMode || 'dnat') as CaptureMode,
             backendInstance: '',
@@ -2188,6 +2196,16 @@ export default function Wizard() {
             protocol: 'udp+tcp' as const,
             port: 53,
           }));
+          // Extra IPv6 with no IPv4 pair → append to last item to avoid invalid IPv6-only entries.
+          if (paired.length > 0 && v6Ips.length > v4Items.length) {
+            const leftover = v6Ips.slice(v4Items.length).filter(Boolean);
+            if (leftover.length > 0 && !paired[paired.length - 1].vipIpv6) {
+              paired[paired.length - 1].vipIpv6 = leftover[0];
+            }
+          }
+          if (paired.length > 0) {
+            newConfig.interceptedVips = paired;
+          }
         }
 
         // DNAT rules → try to infer interception mode

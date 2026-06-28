@@ -339,15 +339,17 @@ export function validateInterceptionModeConfig(config: WizardConfig): ConfigChec
   });
 
   // ═══ 12. Priority consistency ═══
+  // nftables: "dstnat" is an alias for priority -100. Generators emit the numeric form.
   const preContent = preHook?.content || '';
   const outContent = outHook?.content || '';
-  const prePriority = preContent.includes('priority dstnat');
-  const outPriority = outContent.includes('priority dstnat');
+  const priorityRe = /priority\s+(dstnat|-100)\b/;
+  const prePriority = priorityRe.test(preContent);
+  const outPriority = priorityRe.test(outContent);
   checks.push({
     id: 'priority-consistency',
     label: 'Prioridades consistentes (dstnat)',
     status: prePriority && outPriority ? 'pass' : 'fail',
-    detail: prePriority && outPriority ? 'PREROUTING e OUTPUT usam priority dstnat' : 'Prioridade inconsistente entre hooks',
+    detail: prePriority && outPriority ? 'PREROUTING e OUTPUT usam priority dstnat (-100)' : 'Prioridade inconsistente entre hooks',
   });
 
   // ═══ 13. Deterministic file ordering ═══
