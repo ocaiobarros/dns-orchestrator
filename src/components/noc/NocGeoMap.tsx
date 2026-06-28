@@ -126,33 +126,41 @@ export default function NocGeoMap({
   title = 'DNS Network Map',
   serverLat = -23.55,
   serverLng = -46.63,
+  showClientPoints = false,
+  hideServerAnchor = false,
 }: Props) {
-  // Assign geo positions to nodes
+  // Assign geo positions to nodes.
+  // If a node already provides explicit lat/lng, honor it verbatim — that is
+  // how the live upstream map plots probed PoPs at their real coordinates.
   const geoNodes = useMemo<GeoNode[]>(() => {
     const result: GeoNode[] = [];
     const resolvers = nodes.filter(n => n.type === 'resolver');
     const vips = nodes.filter(n => n.type === 'vip');
     const upstreams = nodes.filter(n => n.type === 'upstream');
 
-    // VIPs at server location
     vips.forEach(n => {
-      result.push({ ...n, lat: serverLat, lng: serverLng });
+      result.push({ ...n, lat: n.lat ?? serverLat, lng: n.lng ?? serverLng });
     });
 
-    // Resolvers slightly offset from server
     resolvers.forEach((n, i) => {
+      if (n.lat != null && n.lng != null) {
+        result.push({ ...n, lat: n.lat, lng: n.lng });
+        return;
+      }
       const offset = 0.15 * (i - (resolvers.length - 1) / 2);
       result.push({ ...n, lat: serverLat + offset, lng: serverLng + offset * 0.8 });
     });
 
-    // Upstreams — try to match known IPs
     upstreams.forEach((n, i) => {
+      if (n.lat != null && n.lng != null) {
+        result.push({ ...n, lat: n.lat, lng: n.lng });
+        return;
+      }
       const ip = n.bindIp || n.extra || '';
       const known = Object.entries(KNOWN_UPSTREAMS).find(([k]) => ip.includes(k));
       if (known) {
         result.push({ ...n, lat: known[1].lat, lng: known[1].lng });
       } else {
-        // Default upstream positions spread globally
         const defaultPositions = [
           { lat: 37.386, lng: -122.084 },
           { lat: 51.507, lng: -0.128 },
@@ -166,18 +174,18 @@ export default function NocGeoMap({
     return result;
   }, [nodes, serverLat, serverLng]);
 
-  // All positions for fit bounds — focus on the REAL node + Brazilian client cloud.
-  // Upstreams (US/EU) and arbitrary "Americas" anchors are NOT used for framing,
-  // otherwise the map opens wide and the operator can't see the actual node.
+  // Fit bounds to the real nodes (and optionally the legacy client cloud).
   const allPositions = useMemo<[number, number][]>(() => {
     const pts: [number, number][] = [];
-    pts.push([serverLat, serverLng]);
+    if (!hideServerAnchor) pts.push([serverLat, serverLng]);
     geoNodes
-      .filter(n => (n.type === 'vip' || n.type === 'resolver') && n.lat != null && n.lng != null)
+      .filter(n => n.lat != null && n.lng != null)
       .forEach(n => pts.push([n.lat!, n.lng!]));
-    CLIENT_ACCESS_POINTS.forEach(c => pts.push([c.lat, c.lng]));
+    if (showClientPoints) {
+      CLIENT_ACCESS_POINTS.forEach(c => pts.push([c.lat, c.lng]));
+    }
     return pts;
-  }, [geoNodes, serverLat, serverLng]);
+  }, [geoNodes, serverLat, serverLng, showClientPoints, hideServerAnchor]);
 
   // Total QPS for scaling
   const totalQps = useMemo(() => {
