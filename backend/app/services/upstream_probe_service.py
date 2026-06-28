@@ -428,9 +428,14 @@ def get_state_snapshot(include_retired: bool = False) -> dict[str, Any]:
         entries = [e for e in entries if e["status"] != "retired"]
     egress = next((e["egress_ip"] for e in entries if e.get("egress_ip")), None)
     ecs = next((e["ecs"] for e in entries if e.get("ecs")), None)
+    egress_block: dict[str, Any] | None = None
+    if egress or ecs:
+        from app.services.egress_geo_service import resolve_egress_geo  # local (avoid cycles)
+        geo = resolve_egress_geo(egress) if egress else None
+        egress_block = {"ip": egress, "ecs": ecs, "geo": geo}
     return {
         "ts": now,
-        "egress": {"ip": egress, "ecs": ecs} if (egress or ecs) else None,
+        "egress": egress_block,
         "upstreams": entries,
     }
 
