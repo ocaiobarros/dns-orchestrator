@@ -168,14 +168,20 @@ ${rootHintsLine}
     hide-identity: yes
     hide-version: yes
     harden-glue: yes
-    # Modos Simples e Interceptação operam em forward-first (gabarito):
-    # iterator puro, sem validator local. Validator + auto-trust-anchor
-    # em forward-first causa SERVFAIL (não consegue primar a raiz).
+    # Postura DNSSEC depende do modo:
+    # - Simples (forward-only): iterator puro, DNSSEC delegado ao upstream.
+    # - Interceptação: resolver iterativo VALIDANTE da raiz (sem forward-zone ".").
+    #   Validator + auto-trust-anchor funciona porque a raiz é primada via
+    #   root-hints — não há forward-first para causar SERVFAIL. Em iterativo,
+    #   o autoritativo do CDN enxerga o egress do próprio provedor → steering correto.
     harden-dnssec-stripped: ${isSimple ? 'no' : (hardenDnssec ? 'yes' : 'no')}
     use-caps-for-id: ${capsForId ? 'yes' : 'no'}
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
-    module-config: "iterator"
+    module-config: ${isSimple ? '"iterator"' : '"validator iterator"'}
+${isSimple ? '' : `    auto-trust-anchor-file: "/var/lib/unbound/root.key"
+    val-clean-additional: yes
+`}
 
 ${privateDomainBlock}    local-zone: "localhost." static
     local-data: "localhost. 10800 IN NS localhost."
