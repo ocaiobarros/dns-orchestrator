@@ -404,8 +404,9 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
             config += 'forward-zone:\n    name: "."\n'
             for faddr in forward_addrs:
                 config += f"    forward-addr: {faddr}\n"
-            if forward_first:
-                config += "    forward-first: yes\n"
+            # forward-first NÃO se aplica em simples (forward-only puro);
+            # em interceptação não há forward-zone "." (iterativo da raiz).
+
 
         # AD forward zones
         for ad in ad_forward_zones:
