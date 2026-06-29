@@ -183,3 +183,71 @@ def test_get_cdn_snapshot_orders_providers_by_count_and_aggregates(monkeypatch):
     # Per-provider entries carry rtt + flags.
     cf = providers["Cloudflare"]["entries"][0]
     assert "rtt_ms" in cf and "zone" in cf and "lame" in cf and "dnssec_lame" in cf
+
+
+# ── FIX-EGRESS-LABEL-MAP ──────────────────────────────────────────────────
+
+def test_get_cdn_snapshot_exposes_real_egress_ips_from_dns_instances(monkeypatch):
+    """Snapshot must surface DnsInstance.outgoing_ip as egress.ips and
+    derive a block label, instead of leaving only the ECS '.0' as origin."""
+    svc.reset_state_for_tests()
+    monkeypatch.setattr(svc, "_run_dump_infra", lambda s, c, timeout=6:
+                        SAMPLE_INSTANCE_1 if s.endswith("11@8953") else "")
+    _install_geo_stub(lambda ip: None)
+    monkeypatch.setattr(svc, "_refresh_egress", lambda: None)
+    svc.run_probe_cycle()
+
+    # Inject an ECS-derived egress (what the world sees, ends in .0)
+    with svc._EGRESS_LOCK:
+        svc._EGRESS.update({
+            "ip": "45.232.215.0",
+            "ecs": "45.232.215.0/24",
+            "geo": {"ip": "45.232.215.0", "lat": -22.5, "lng": -55.7,
+                    "city": "Ponta Porã", "region": None, "country": "BR",
+                    "isp": None, "asn": None},
+            "ts": 1.0,
+        })
+
+    # Mock the DB query so we don't depend on a real session.
+    class _FakeInst:
+        def __init__(self, ip): self.outgoing_ip = ip
+    class _FakeQuery:
+        def all(self): return [_FakeInst("45.232.215.16"), _FakeInst("45.232.215.17"),
+                               _FakeInst("45.232.215.18"), _FakeInst("45.232.215.19")]
+    class _FakeDB:
+        def query(self, _): return _FakeQuery()
+        def close(self): pass
+    import app.core.database as dbmod
+    monkeypatch.setattr(dbmod, "SessionLocal", lambda: _FakeDB())
+
+    snap = svc.get_cdn_snapshot()
+    eg = snap["egress"]
+    assert eg is not None
+    assert eg["ips"] == ["45.232.215.16", "45.232.215.17",
+                        "45.232.215.18", "45.232.215.19"]
+    assert eg["block"] == "45.232.215.0/24"
+    assert eg["ecs"] == "45.232.215.0/24"
+    # Legacy 'ip' must NOT be the misleading .0 — it's the first real egress.
+    assert eg["ip"] == "45.232.215.16"
+    assert eg["geo"]["city"] == "Ponta Porã"
+
+
+def test_get_cdn_snapshot_falls_back_when_outgoing_ip_unavailable(monkeypatch):
+    svc.reset_state_for_tests()
+    monkeypatch.setattr(svc, "_run_dump_infra", lambda s, c, timeout=6: "")
+    _install_geo_stub(lambda ip: None)
+    monkeypatch.setattr(svc, "_refresh_egress", lambda: None)
+
+    with svc._EGRESS_LOCK:
+        svc._EGRESS.update({"ip": "203.0.113.5", "ecs": None, "geo": None, "ts": 1.0})
+
+    # DB query raises — snapshot must still work.
+    import app.core.database as dbmod
+    def _boom(): raise RuntimeError("db down")
+    monkeypatch.setattr(dbmod, "SessionLocal", _boom)
+
+    snap = svc.get_cdn_snapshot()
+    eg = snap["egress"]
+    assert eg is not None
+    assert eg["ip"] == "203.0.113.5"
+    assert eg["ips"] == []
