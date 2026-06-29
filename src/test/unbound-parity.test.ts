@@ -171,15 +171,16 @@ describe('Frontend/Backend Parity Contract', () => {
     expect(content).not.toContain('val-permissive-mode: yes');
   });
 
-  it('Interception (forward-first) mode emits iterator only (gabarito parity)', () => {
+  it('Interception mode is iterative validating (validator + auto-trust-anchor, no forward-zone ".")', () => {
     const iterativeCfg = makePayload({ operationMode: 'interception' });
     const content = generateUnboundConf(iterativeCfg, 0);
-    expect(content).toContain('module-config: "iterator"');
-    expect(content).not.toContain('validator iterator');
-    expect(content).not.toContain('auto-trust-anchor-file');
-    expect(content).not.toContain('val-clean-additional');
-    expect(content).not.toContain('val-permissive-mode: yes');
+    expect(content).toContain('module-config: "validator iterator"');
+    expect(content).toContain('auto-trust-anchor-file: "/var/lib/unbound/root.key"');
+    expect(content).toContain('val-clean-additional: yes');
+    // root é primada via root-hints, não via forward-zone "."
+    expect(content).not.toMatch(/forward-zone:\s*\n\s+name:\s+"\."/);
   });
+
 
   it('anablock include stays inside the main server block', () => {
     const content = generateUnboundConf(config, 0);
