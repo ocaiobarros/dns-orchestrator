@@ -30,7 +30,9 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
 
   const isSimple = config.operationMode === 'simple';
   const queryLoggingEnabled = isSimple || config.observability?.enableQueryLogging !== false;
-  const outgoingRange = isSimple ? 65535 : 8192;
+  // Interceptação roda iterativo validante (raiz): precisa de mais sockets
+  // de saída por thread do que o 8192 antigo (dimensionado p/ forward-first).
+  const outgoingRange = isSimple ? 65535 : 32768;
   const socketBuffer = isSimple ? '128m' : '8m';
 
   // Collect all interface: directives (listeners ONLY)
@@ -166,14 +168,20 @@ ${rootHintsLine}
     hide-identity: yes
     hide-version: yes
     harden-glue: yes
-    # Modos Simples e Interceptação operam em forward-first (gabarito):
-    # iterator puro, sem validator local. Validator + auto-trust-anchor
-    # em forward-first causa SERVFAIL (não consegue primar a raiz).
+    # Postura DNSSEC depende do modo:
+    # - Simples (forward-only): iterator puro, DNSSEC delegado ao upstream.
+    # - Interceptação: resolver iterativo VALIDANTE da raiz (sem forward-zone ".").
+    #   Validator + auto-trust-anchor funciona porque a raiz é primada via
+    #   root-hints — não há forward-first para causar SERVFAIL. Em iterativo,
+    #   o autoritativo do CDN enxerga o egress do próprio provedor → steering correto.
     harden-dnssec-stripped: ${isSimple ? 'no' : (hardenDnssec ? 'yes' : 'no')}
     use-caps-for-id: ${capsForId ? 'yes' : 'no'}
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
-    module-config: "iterator"
+    module-config: ${isSimple ? '"iterator"' : '"validator iterator"'}
+${isSimple ? '' : `    auto-trust-anchor-file: "/var/lib/unbound/root.key"
+    val-clean-additional: yes
+`}
 
 ${privateDomainBlock}    local-zone: "localhost." static
     local-data: "localhost. 10800 IN NS localhost."
@@ -200,15 +208,21 @@ remote-control:
 `;
 
   // ═══ BLOCK 3: forward-zone: ═══
-  let forwardZonesBlock = `
+  // Modo SIMPLES: forward-zone "." para upstreams. Modo INTERCEPTAÇÃO: NÃO
+  // emitir forward-zone "." — resolver iterativo validante prima a raiz via
+  // root-hints. AD forward-zones internas são emitidas em ambos os modos.
+  let forwardZonesBlock = '';
+  if (isSimple) {
+    forwardZonesBlock += `
 forward-zone:
     name: "."
 `;
-  for (const addr of forwardAddrs) {
-    forwardZonesBlock += `    forward-addr: ${addr}\n`;
-  }
-  if (config.forwardFirst && !isSimple) {
-    forwardZonesBlock += `    forward-first: yes\n`;
+    for (const addr of forwardAddrs) {
+      forwardZonesBlock += `    forward-addr: ${addr}\n`;
+    }
+    // forward-first NÃO se aplica: simples é forward-only; interceptação não
+    // tem forward-zone "." (resolve iterativo da raiz).
+
   }
 
   // AD forward zones

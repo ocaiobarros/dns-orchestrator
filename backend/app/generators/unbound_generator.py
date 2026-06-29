@@ -207,7 +207,11 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     harden_dnssec = payload.get("hardenDnssecStripped") if payload.get("hardenDnssecStripped") is not None else wizard_cfg.get("hardenDnssecStripped", True)
     use_caps_for_id = payload.get("useCapsForId") if payload.get("useCapsForId") is not None else wizard_cfg.get("useCapsForId", False)
     query_logging_enabled = is_simple or (payload.get("observability") or wizard_cfg.get("observability") or {}).get("enableQueryLogging", True)
-    outgoing_range = 65535 if is_simple else 8192
+    # Interceptação roda iterativo validante (resolve da raiz): precisa de mais
+    # sockets de saída por thread do que o conservador 8192 anterior (que era
+    # dimensionado para forward-first com 4 upstreams). 32768 dá folga para
+    # iteração contra muitos autoritativos sem estourar limites do kernel.
+    outgoing_range = 65535 if is_simple else 32768
     socket_buffer = "128m" if is_simple else "8m"
 
     # Smart access-control
@@ -341,15 +345,24 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     hide-version: yes
     harden-glue: yes
 """
-        # Modos Simples e Interceptação operam ambos em forward-first
-        # (gabarito do servidor homologado): iterator puro, sem validator
-        # local. Validator + auto-trust-anchor em forward-first causa
-        # SERVFAIL (não consegue primar a raiz a partir do upstream).
+        # Postura DNSSEC depende do modo:
+        # - Simples (forward-only): iterator puro, DNSSEC delegado ao upstream.
+        # - Interceptação: resolver iterativo VALIDANTE da raiz (sem forward-zone
+        #   "."). O validator + auto-trust-anchor funciona porque a raiz é primada
+        #   diretamente via root-hints — não há forward-first para causar SERVFAIL.
+        #   Forwardar a terceiros faz CDNs enxergarem o egress do recursor público
+        #   (sem ECS no Cloudflare), errando o steering. Em iterativo, o autoritativo
+        #   do CDN enxerga o egress do próprio provedor → steering correto.
+        module_config = '"iterator"' if is_simple else '"validator iterator"'
         config += f"""    harden-dnssec-stripped: {"no" if is_simple else ("yes" if harden_dnssec else "no")}
     use-caps-for-id: {"yes" if use_caps_for_id else "no"}
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
-    module-config: "iterator"
+    module-config: {module_config}
+"""
+        if not is_simple:
+            config += """    auto-trust-anchor-file: "/var/lib/unbound/root.key"
+    val-clean-additional: yes
 """
         config += f"""
 
@@ -383,11 +396,17 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
 """
 
         # ═══ BLOCK 3: forward-zone: ═══
-        config += 'forward-zone:\n    name: "."\n'
-        for faddr in forward_addrs:
-            config += f"    forward-addr: {faddr}\n"
-        if forward_first and not is_simple:
-            config += "    forward-first: yes\n"
+        # Modo SIMPLES: forward-zone "." para os recursores upstream (forward-only).
+        # Modo INTERCEPTAÇÃO: NÃO emitir forward-zone "." — o resolver é iterativo
+        # validante e prima a raiz diretamente via root-hints. AD forward-zones
+        # internas (domínios privados) seguem sendo emitidas abaixo, em ambos os modos.
+        if is_simple:
+            config += 'forward-zone:\n    name: "."\n'
+            for faddr in forward_addrs:
+                config += f"    forward-addr: {faddr}\n"
+            # forward-first NÃO se aplica em simples (forward-only puro);
+            # em interceptação não há forward-zone "." (iterativo da raiz).
+
 
         # AD forward zones
         for ad in ad_forward_zones:
