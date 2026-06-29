@@ -245,9 +245,23 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
             "/etc/unbound/named.cache",
         )
         files.append(_generate_root_hints())
-        # Seed do trust anchor (DNSSEC) a partir do snapshot frozen do repo.
-        # Após o seed, manutenção é IN-BAND via RFC 5011 (sem download HTTP).
-        files.append(_generate_root_anchor())
+        # NÃO materializar /var/lib/unbound/root.key pelo deploy.
+        # ─────────────────────────────────────────────────────────
+        # O Debian/Unbound mantém o trust anchor da raiz IN-BAND via
+        # RFC 5011 (auto-trust-anchor-file). Sobrescrever esse arquivo
+        # no deploy:
+        #   1) destrói o estado vivo do rollover (last_success, contadores);
+        #   2) exige ownership unbound:unbound em /var/lib/unbound, fora
+        #      do escopo do sudoers do dns-control (root:root somente);
+        #   3) faria o deploy falhar em hosts onde o caminho é gerido
+        #      pelo pacote unbound (caso vdns-02 / Debian 13).
+        # O snapshot frozen em backend/app/generators/data/root.key
+        # permanece como SEED documental para bootstrap manual offline,
+        # mas não é emitido como artefato. A diretiva
+        #   auto-trust-anchor-file: "/var/lib/unbound/root.key"
+        # continua na config — o caminho existe no host (criado pelo
+        # pacote unbound) e o daemon o mantém sozinho.
+
 
     for inst in instances:
         name = inst.get("name", "unbound")
