@@ -25,6 +25,7 @@ from typing import Any
 # é a única fonte de verdade e garante deploys reproduzíveis offline.
 # ─────────────────────────────────────────────────────────────────────────
 _ROOT_HINTS_PATH = Path(__file__).parent / "data" / "named.cache"
+_ROOT_ANCHOR_PATH = Path(__file__).parent / "data" / "root.key"
 
 
 def _safe_int(value: Any, default: int) -> int:
@@ -72,6 +73,26 @@ def _generate_root_hints() -> dict:
         "content": content,
         "permissions": "0644",
         "owner": "root:unbound",
+    }
+
+
+def _generate_root_anchor() -> dict:
+    """
+    Materializa /var/lib/unbound/root.key a partir do snapshot IANA versionado
+    em backend/app/generators/data/root.key.
+
+    DETERMINISMO: o seed inicial vem 100% do repositório — sem download em
+    runtime, sem dependência de unbound-anchor/curl/wget. Após o seed, o
+    Unbound mantém o anchor IN-BAND via RFC 5011 (probes DNS para o KSK da
+    raiz — NÃO é download HTTP). Caminho writable porque o daemon precisa
+    reescrever o arquivo durante o rollover automático do KSK.
+    """
+    content = _ROOT_ANCHOR_PATH.read_text(encoding="utf-8")
+    return {
+        "path": "/var/lib/unbound/root.key",
+        "content": content,
+        "permissions": "0644",
+        "owner": "unbound:unbound",
     }
 
 
@@ -224,6 +245,9 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
             "/etc/unbound/named.cache",
         )
         files.append(_generate_root_hints())
+        # Seed do trust anchor (DNSSEC) a partir do snapshot frozen do repo.
+        # Após o seed, manutenção é IN-BAND via RFC 5011 (sem download HTTP).
+        files.append(_generate_root_anchor())
 
     for inst in instances:
         name = inst.get("name", "unbound")
