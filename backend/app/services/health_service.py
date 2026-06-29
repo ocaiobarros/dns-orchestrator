@@ -95,32 +95,25 @@ def _classify_health(results: dict, settings: dict) -> str:
     """
     Liveness-first classification (iterative-aware):
     - failed   : only when the service is truly down — systemd inactive,
-                 port not bound, OR unbound-control not responding.
-    - degraded : alive but slow/partial — dig timeout/slow, latency above
-                 warn threshold, or unbound-control reports degraded.
-    - ok       : alive and dig within latency budget.
+                 port not bound, or an explicit failed control signal.
+    - degraded : alive but unbound-control reports a real degraded condition.
+    - ok       : live local signals are healthy.
 
-    A slow/timed-out external recursion (dig) NEVER marks the instance as
-    failed, because in iterative mode a cache-miss to the roots/TLDs can
-    exceed the probe timeout while the resolver is perfectly healthy.
+    A slow/timed-out external recursion (dig) is collected and persisted as
+    latency telemetry, but NEVER drives instance status. In iterative mode a
+    cache-miss to roots/TLDs is expected to exceed low latency budgets while
+    the resolver remains perfectly healthy.
     """
     systemd_ok = results["systemd"]["status"] == "ok"
     port_ok = results["port"]["status"] == "ok"
-    control_ok = results["unbound_stats"]["status"] == "ok"
-    dig_ok = results["dig"]["status"] == "ok"
-    dig_latency = results["dig"].get("latency_ms", 0)
-    latency_warn = settings.get("latency_warn_ms", 50)
+    control_status = results["unbound_stats"]["status"]
 
     # Liveness gate — only local, cheap signals can mark "failed".
-    if not systemd_ok or not port_ok or not control_ok:
+    if not systemd_ok or not port_ok or control_status == "failed":
         return "failed"
 
-    # Alive: classify quality.
-    if not dig_ok:
-        return "degraded"
-    if dig_latency > latency_warn:
-        return "degraded"
-    if results["unbound_stats"]["status"] == "degraded":
+    # Alive: only a real unbound-control degraded signal changes status.
+    if control_status == "degraded":
         return "degraded"
 
     return "ok"

@@ -1,8 +1,8 @@
 """Tests for liveness-first health classification (iterative-aware).
 
-A slow external recursion (dig) must NEVER mark a live unbound as "failed".
-Only systemd-inactive, port-not-bound, or unbound-control-not-responding
-qualify as "failed".
+A slow external recursion (dig) is latency telemetry only: it must NEVER
+change status for a live unbound. Only real liveness/control signals qualify
+as status triggers.
 """
 
 import sys, types
@@ -41,14 +41,14 @@ def test_all_ok():
     assert _classify_health(_r(), SETTINGS) == "ok"
 
 
-def test_dig_timeout_alive_is_degraded_not_failed():
+def test_dig_timeout_alive_is_ok_not_degraded():
     # Iterative mode: cache-miss to roots can exceed probe timeout while
-    # the resolver is perfectly healthy. Must NOT be "failed".
-    assert _classify_health(_r(dig="failed", dig_ms=5000), SETTINGS) == "degraded"
+    # the resolver is perfectly healthy. Dig remains telemetry only.
+    assert _classify_health(_r(dig="failed", dig_ms=5000), SETTINGS) == "ok"
 
 
-def test_dig_slow_alive_is_degraded():
-    assert _classify_health(_r(dig_ms=500), SETTINGS) == "degraded"
+def test_dig_slow_alive_is_ok():
+    assert _classify_health(_r(dig_ms=500), SETTINGS) == "ok"
 
 
 def test_systemd_down_is_failed():
@@ -59,5 +59,9 @@ def test_port_not_bound_is_failed():
     assert _classify_health(_r(port="failed"), SETTINGS) == "failed"
 
 
-def test_control_not_responding_is_failed():
-    assert _classify_health(_r(control="degraded"), SETTINGS) == "failed"
+def test_control_error_is_degraded():
+    assert _classify_health(_r(control="degraded"), SETTINGS) == "degraded"
+
+
+def test_explicit_control_failed_is_failed():
+    assert _classify_health(_r(control="failed"), SETTINGS) == "failed"
