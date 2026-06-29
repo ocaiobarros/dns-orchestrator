@@ -30,7 +30,9 @@ export function generateUnboundConf(config: WizardConfig, instanceIndex: number)
 
   const isSimple = config.operationMode === 'simple';
   const queryLoggingEnabled = isSimple || config.observability?.enableQueryLogging !== false;
-  const outgoingRange = isSimple ? 65535 : 8192;
+  // Interceptação roda iterativo validante (raiz): precisa de mais sockets
+  // de saída por thread do que o 8192 antigo (dimensionado p/ forward-first).
+  const outgoingRange = isSimple ? 65535 : 32768;
   const socketBuffer = isSimple ? '128m' : '8m';
 
   // Collect all interface: directives (listeners ONLY)
