@@ -76,6 +76,26 @@ def _generate_root_hints() -> dict:
     }
 
 
+def _generate_root_anchor() -> dict:
+    """
+    Materializa /var/lib/unbound/root.key a partir do snapshot IANA versionado
+    em backend/app/generators/data/root.key.
+
+    DETERMINISMO: o seed inicial vem 100% do repositório — sem download em
+    runtime, sem dependência de unbound-anchor/curl/wget. Após o seed, o
+    Unbound mantém o anchor IN-BAND via RFC 5011 (probes DNS para o KSK da
+    raiz — NÃO é download HTTP). Caminho writable porque o daemon precisa
+    reescrever o arquivo durante o rollover automático do KSK.
+    """
+    content = _ROOT_ANCHOR_PATH.read_text(encoding="utf-8")
+    return {
+        "path": "/var/lib/unbound/root.key",
+        "content": content,
+        "permissions": "0644",
+        "owner": "unbound:unbound",
+    }
+
+
 def _compute_slabs(threads: int) -> int:
     """Compute slabs as power of 2 derived from thread count."""
     if threads <= 2:
