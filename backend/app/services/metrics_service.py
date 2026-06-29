@@ -176,6 +176,8 @@ def get_dns_instances() -> list[dict]:
             "totalQueries": st.get("totalQueries", 0),
             "cacheHitRatio": st.get("cacheHitRatio", 0),
             "avgLatencyMs": st.get("avgLatencyMs", 0),
+            "recursionLatencyMs": st.get("recursionLatencyMs", st.get("avgLatencyMs", 0)),
+            "effectiveLatencyMs": st.get("effectiveLatencyMs", 0),
             "uptime": st.get("uptime", ""),
             "threads": st.get("threads", 0),
             "cacheHits": st.get("cacheHits", 0),

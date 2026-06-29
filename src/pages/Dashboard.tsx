@@ -85,6 +85,10 @@ function InterceptionDashboard() {
   const totalQps = dnsAvail ? dashQ : safeStats.reduce((a, b) => a + getInstanceQueries(b), 0);
   const avgCacheHit = dnsAvail ? dashCH : (safeStats.length ? safeStats.reduce((a, b) => a + getInstanceCacheHit(b), 0) / safeStats.length : 0);
   const avgLatency = dnsAvail ? dashLat : (safeStats.length ? safeStats.reduce((a, b) => a + getInstanceLatency(b), 0) / safeStats.length : 0);
+  // Latência EFETIVA percebida pelo cliente: cache-hits custam ~0ms, só os
+  // cache-miss pagam o custo de recursão. Aproximação honesta com base no
+  // ratio de cache. avgLatency aqui é a média de recursão (cache-miss).
+  const effectiveLatency = avgLatency * (1 - Math.min(100, Math.max(0, avgCacheHit)) / 100);
 
   const healthyCount = safeV2.length > 0 ? safeV2.filter(i => i.current_status === 'healthy').length : (health?.healthy ?? 0);
   const totalInstances = safeV2.length > 0 ? safeV2.length : (health?.total ?? 0);
@@ -272,7 +276,12 @@ function InterceptionDashboard() {
           visual={<MiniBars />} />
         <KpiCard label="Cache Hit" value={dnsAvail || safeStats.length > 0 ? `${avgCacheHit.toFixed(1)}%` : '—'} sub={dnsAvail || safeStats.length > 0 ? (avgCacheHit > 70 ? 'Eficiente' : 'Moderado') : 'sem dados'}
           glow visual={<MiniDonut pct={avgCacheHit} />} />
-        <KpiCard label="Latência DNS" value={dnsAvail || safeStats.length > 0 ? `${avgLatency.toFixed(2)} ms` : '—'} sub={dnsAvail || safeStats.length > 0 ? (avgLatency < 30 ? 'Ótima' : 'Aceitável') : 'sem dados'}
+        <KpiCard
+          label="Latência efetiva"
+          value={dnsAvail || safeStats.length > 0 ? `${effectiveLatency.toFixed(2)} ms` : '—'}
+          sub={dnsAvail || safeStats.length > 0
+            ? `recursão (cache-miss): ${avgLatency.toFixed(0)} ms · cache hit: ${avgCacheHit.toFixed(1)}%`
+            : 'sem dados'}
           accent="violet" visual={<MiniSpark accent="violet" />} />
         <KpiCard label="Uptime" value={sysInfo?.uptime || '—'} sub="Sistema"
           visual={<MiniShield />} />
