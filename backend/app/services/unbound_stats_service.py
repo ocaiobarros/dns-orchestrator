@@ -52,12 +52,21 @@ def get_instance_real_stats(instances: list[dict] | None = None) -> list[dict]:
             requestlist_max = stats.get("total.requestlist.max", 0)
 
             hit_ratio = (cache_hits / total_q * 100) if total_q > 0 else 0
+            recursion_ms = recursion_avg * 1000
+            # Effective latency ponderada: cache-hits custam ~0ms, só os
+            # cache-miss pagam o custo de recursão. Aproximação honesta
+            # do que o cliente médio percebe.
+            effective_ms = recursion_ms * (1 - hit_ratio / 100.0)
 
             results.append({
                 "instance": name,
                 "totalQueries": int(total_q),
                 "cacheHitRatio": round(hit_ratio, 1),
-                "avgLatencyMs": round(recursion_avg * 1000, 1),
+                # Mantido por compatibilidade — historicamente é a média
+                # de recursão (cache-miss), NÃO a latência efetiva.
+                "avgLatencyMs": round(recursion_ms, 1),
+                "recursionLatencyMs": round(recursion_ms, 1),
+                "effectiveLatencyMs": round(effective_ms, 2),
                 "uptime": _format_uptime(uptime),
                 "uptimeSeconds": int(uptime),
                 "threads": int(threads),
@@ -69,7 +78,7 @@ def get_instance_real_stats(instances: list[dict] | None = None) -> list[dict]:
                 "nxdomain": int(stats.get("num.answer.rcode.NXDOMAIN", 0)),
                 "noerror": int(stats.get("num.answer.rcode.NOERROR", 0)),
                 "refused": int(stats.get("num.answer.rcode.REFUSED", 0)),
-                "recursionTimeAvg": round(recursion_avg * 1000, 2),
+                "recursionTimeAvg": round(recursion_ms, 2),
                 "recursionTimeMedian": round(float(stats.get("total.recursion.time.median", 0)) * 1000, 2),
                 "source": "live",
                 "control_interface": control_ip,
