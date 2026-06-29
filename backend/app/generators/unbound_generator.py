@@ -396,11 +396,16 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
 """
 
         # ═══ BLOCK 3: forward-zone: ═══
-        config += 'forward-zone:\n    name: "."\n'
-        for faddr in forward_addrs:
-            config += f"    forward-addr: {faddr}\n"
-        if forward_first and not is_simple:
-            config += "    forward-first: yes\n"
+        # Modo SIMPLES: forward-zone "." para os recursores upstream (forward-only).
+        # Modo INTERCEPTAÇÃO: NÃO emitir forward-zone "." — o resolver é iterativo
+        # validante e prima a raiz diretamente via root-hints. AD forward-zones
+        # internas (domínios privados) seguem sendo emitidas abaixo, em ambos os modos.
+        if is_simple:
+            config += 'forward-zone:\n    name: "."\n'
+            for faddr in forward_addrs:
+                config += f"    forward-addr: {faddr}\n"
+            if forward_first:
+                config += "    forward-first: yes\n"
 
         # AD forward zones
         for ad in ad_forward_zones:
