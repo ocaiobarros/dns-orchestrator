@@ -65,19 +65,26 @@ class RootAnchorFrozenSnapshotTest(unittest.TestCase):
 
 
 class RootAnchorGeneratorWiringTest(unittest.TestCase):
-    def test_interception_emits_root_key_file_from_frozen_snapshot(self):
+    def test_interception_does_not_emit_root_key_artifact(self):
+        """Approach A (FIX-DEPLOY-ROOTKEY): o Debian/Unbound mantém
+        /var/lib/unbound/root.key in-band via RFC 5011. O deploy NÃO pode
+        sobrescrever esse arquivo (destrói o estado vivo do rollover e
+        exige ownership unbound:unbound, fora do sudoers do dns-control).
+        """
         files = generate_unbound_configs(_payload("interception"))
-        root_key = next((f for f in files if f["path"] == "/var/lib/unbound/root.key"), None)
-        self.assertIsNotNone(root_key, "interception deve materializar /var/lib/unbound/root.key")
-        # Same bytes as the frozen snapshot — zero runtime fetch.
-        self.assertEqual(root_key["content"], _BACKEND_ROOT_KEY.read_text(encoding="utf-8"))
-        # Writable owner so RFC 5011 rollover funciona.
-        self.assertEqual(root_key["owner"], "unbound:unbound")
+        paths = [f["path"] for f in files]
+        self.assertNotIn("/var/lib/unbound/root.key", paths)
+
+    def test_interception_conf_still_points_to_host_anchor(self):
+        files = generate_unbound_configs(_payload("interception"))
+        content = next(f["content"] for f in files if f["path"] == "/etc/unbound/unbound01.conf")
+        self.assertIn('auto-trust-anchor-file: "/var/lib/unbound/root.key"', content)
 
     def test_simple_mode_does_not_emit_root_key(self):
         files = generate_unbound_configs(_payload("simple"))
         paths = [f["path"] for f in files]
         self.assertNotIn("/var/lib/unbound/root.key", paths)
+
 
 
 if __name__ == "__main__":
