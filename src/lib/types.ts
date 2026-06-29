@@ -1164,8 +1164,13 @@ export interface CdnSnapshot {
   ts: number;
   egress: {
     ip: string | null;
+    /** Honest /24 block label observed (typically derived from ECS). */
+    block?: string | null;
+    /** Real per-instance egress IPs (DnsInstance.outgoing_ip), one per instance. */
+    ips?: string[];
     ecs: string | null;
     geo: EgressGeo | null;
   } | null;
   providers: CdnProviderGroup[];
 }
+
