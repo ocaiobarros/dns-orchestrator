@@ -1134,3 +1134,38 @@ export interface UpstreamProbeSnapshot {
   } | null;
   upstreams: UpstreamProbeEntry[];
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Iterative-mode CDN map (powered by `unbound-control dump_infra`).
+// Honest: shows ONLY the authoritatives/CDNs the resolver actually
+// contacted, with rtt straight from dump_infra. Geo is best-effort
+// (top-N per cycle) and entries without geo are still listed.
+// ─────────────────────────────────────────────────────────────────────
+
+export interface CdnEntry {
+  ip: string;
+  zone: string;
+  rtt_ms: number | null;
+  lame: boolean;
+  dnssec_lame: boolean;
+  family: 'ipv4' | 'ipv6';
+  geo: EgressGeo | null;
+}
+
+export interface CdnProviderGroup {
+  provider: string;
+  count: number;
+  avg_rtt_ms: number | null;
+  geo_count: number;
+  entries: CdnEntry[];
+}
+
+export interface CdnSnapshot {
+  ts: number;
+  egress: {
+    ip: string | null;
+    ecs: string | null;
+    geo: EgressGeo | null;
+  } | null;
+  providers: CdnProviderGroup[];
+}
