@@ -437,12 +437,17 @@ export function validateInterceptionModeConfig(config: WizardConfig): ConfigChec
     const serverIdx = content.indexOf('server:');
     const remoteIdx = content.indexOf('remote-control:');
     const forwardIdx = content.indexOf('forward-zone:');
-    const orderOk = serverIdx >= 0 && remoteIdx > serverIdx && forwardIdx > remoteIdx;
+    const baseOk = serverIdx >= 0 && remoteIdx > serverIdx;
+    const orderOk = forwardIdx === -1
+      ? baseOk
+      : (baseOk && forwardIdx > remoteIdx);
     checks.push({
       id: 'unbound-block-order',
-      label: 'Unbound block order (server → remote-control → forward-zone)',
+      label: 'Unbound block order (server → remote-control [→ forward-zone])',
       status: orderOk ? 'pass' : 'fail',
-      detail: orderOk ? 'Ordem correta' : 'Ordem incorreta',
+      detail: orderOk
+        ? (forwardIdx === -1 ? 'server → remote-control (iterativo, sem forward-zone)' : 'server → remote-control → forward-zone')
+        : 'Ordem incorreta',
     });
 
     const threads = config.threads || 4;
