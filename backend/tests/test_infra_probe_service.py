@@ -148,7 +148,7 @@ def test_run_probe_cycle_respects_geo_topn_and_prioritizes_big_cdns(monkeypatch)
                 "country": "X", "isp": None, "asn": None}
 
     # Patch the service used inside infra_probe + the egress refresh import path.
-    monkeypatch.setattr("app.services.egress_geo_service.resolve_egress_geo", fake_geo)
+    _install_geo_stub(fake_geo)
     # Skip egress refresh (dig not available in CI; just no-op).
     monkeypatch.setattr(svc, "_refresh_egress", lambda: None)
 
