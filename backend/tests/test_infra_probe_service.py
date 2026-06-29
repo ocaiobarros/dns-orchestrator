@@ -167,8 +167,7 @@ def test_get_cdn_snapshot_orders_providers_by_count_and_aggregates(monkeypatch):
     svc.reset_state_for_tests()
     monkeypatch.setattr(svc, "_run_dump_infra", lambda s, c, timeout=6:
                         SAMPLE_INSTANCE_1 if s.endswith("11@8953") else SAMPLE_INSTANCE_2)
-    monkeypatch.setattr("app.services.egress_geo_service.resolve_egress_geo",
-                        lambda ip: None)
+    _install_geo_stub(lambda ip: None)
     monkeypatch.setattr(svc, "_refresh_egress", lambda: None)
     svc.run_probe_cycle()
 
