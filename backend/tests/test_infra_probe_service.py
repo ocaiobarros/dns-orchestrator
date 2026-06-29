@@ -2,7 +2,18 @@
 providers, dedupes by IP, and tolerates per-instance failures.
 """
 
+import sys
+import types
 from unittest.mock import patch
+
+
+# Install a stub for egress_geo_service before infra_probe_service imports it
+# inline (the real module pulls in httpx, which isn't installed in CI).
+def _install_geo_stub(resolver):
+    mod = types.ModuleType("app.services.egress_geo_service")
+    mod.resolve_egress_geo = resolver  # type: ignore[attr-defined]
+    sys.modules["app.services.egress_geo_service"] = mod
+
 
 from app.services import infra_probe_service as svc
 
