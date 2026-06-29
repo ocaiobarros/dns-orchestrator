@@ -5,6 +5,23 @@ Only systemd-inactive, port-not-bound, or unbound-control-not-responding
 qualify as "failed".
 """
 
+import sys, types
+# Stub sqlalchemy to allow importing health_service in isolation.
+for mod in ("sqlalchemy", "sqlalchemy.orm"):
+    sys.modules.setdefault(mod, types.ModuleType(mod))
+sys.modules["sqlalchemy.orm"].Session = object  # type: ignore[attr-defined]
+# Stub app.models.operational and app.executors.command_runner deps.
+for mod in (
+    "app.executors", "app.executors.command_runner",
+    "app.models", "app.models.operational",
+    "app.services.settings_service",
+):
+    sys.modules.setdefault(mod, types.ModuleType(mod))
+sys.modules["app.executors.command_runner"].run_command = lambda *a, **k: {}  # type: ignore
+for name in ("DnsInstance", "HealthCheck", "InstanceState", "OperationalEvent"):
+    setattr(sys.modules["app.models.operational"], name, object)
+sys.modules["app.services.settings_service"].get_health_settings = lambda db: {}  # type: ignore
+
 from app.services.health_service import _classify_health
 
 
