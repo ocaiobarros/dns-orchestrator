@@ -246,10 +246,15 @@ def test_get_cdn_snapshot_falls_back_when_outgoing_ip_unavailable(monkeypatch):
     with svc._EGRESS_LOCK:
         svc._EGRESS.update({"ip": "203.0.113.5", "ecs": None, "geo": None, "ts": 1.0})
 
-    # DB query raises — snapshot must still work.
-    import app.core.database as dbmod
+    # DB import raises — snapshot must still work.
     def _boom(): raise RuntimeError("db down")
-    monkeypatch.setattr(dbmod, "SessionLocal", _boom)
+    dbmod = types.ModuleType("app.core.database")
+    dbmod.SessionLocal = _boom  # type: ignore[attr-defined]
+    sys.modules["app.core.database"] = dbmod
+    opmod = types.ModuleType("app.models.operational")
+    opmod.DnsInstance = object  # type: ignore[attr-defined]
+    sys.modules["app.models.operational"] = opmod
+
 
     snap = svc.get_cdn_snapshot()
     eg = snap["egress"]
