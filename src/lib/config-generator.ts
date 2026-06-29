@@ -208,15 +208,21 @@ remote-control:
 `;
 
   // ═══ BLOCK 3: forward-zone: ═══
-  let forwardZonesBlock = `
+  // Modo SIMPLES: forward-zone "." para upstreams. Modo INTERCEPTAÇÃO: NÃO
+  // emitir forward-zone "." — resolver iterativo validante prima a raiz via
+  // root-hints. AD forward-zones internas são emitidas em ambos os modos.
+  let forwardZonesBlock = '';
+  if (isSimple) {
+    forwardZonesBlock += `
 forward-zone:
     name: "."
 `;
-  for (const addr of forwardAddrs) {
-    forwardZonesBlock += `    forward-addr: ${addr}\n`;
-  }
-  if (config.forwardFirst && !isSimple) {
-    forwardZonesBlock += `    forward-first: yes\n`;
+    for (const addr of forwardAddrs) {
+      forwardZonesBlock += `    forward-addr: ${addr}\n`;
+    }
+    if (config.forwardFirst) {
+      forwardZonesBlock += `    forward-first: yes\n`;
+    }
   }
 
   // AD forward zones
