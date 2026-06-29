@@ -15,11 +15,14 @@ from __future__ import annotations
 import ipaddress
 import logging
 import re
-from typing import Iterable
+import threading
+import time
+from typing import Any, Iterable
 
 from app.executors.command_runner import run_command
 
 logger = logging.getLogger("dns-control.infra_probe")
+
 
 
 # Local Unbound instances — same convention used everywhere else in the codebase
