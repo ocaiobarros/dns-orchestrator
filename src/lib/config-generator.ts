@@ -6,6 +6,7 @@
 
 import type { WizardConfig } from './types';
 import { ROOT_HINTS_NAMED_CACHE } from './root-hints';
+import { ROOT_TRUST_ANCHOR_KEY } from './root-anchor';
 
 // ═══ UNBOUND MASTER CONFIG ═══
 
