@@ -52,23 +52,34 @@ function buildMap(snap: CdnSnapshot): { nodes: MapNode[]; edges: MapEdge[]; hasO
   const hasOrigin = Boolean(snap.egress?.ip || originLat != null);
 
   if (hasOrigin) {
-    const ip = snap.egress?.ip ?? '';
+    const ips = snap.egress?.ips ?? [];
+    const block = snap.egress?.block ?? snap.egress?.ecs ?? null;
+    const legacyIp = snap.egress?.ip ?? '';
+    const label = block
+      ? `Egress ${block}`
+      : (ips[0] ? `Egress ${ips[0]}` : (legacyIp ? `Egress ${legacyIp}` : 'Origem'));
     const bits: string[] = [];
+    if (ips.length > 0) {
+      bits.push(`egressos reais: ${ips.join(' · ')}`);
+    } else if (legacyIp) {
+      bits.push(legacyIp);
+    }
     if (geoOrigin?.city) bits.push(geoOrigin.city);
     if (geoOrigin?.country) bits.push(geoOrigin.country);
     if (geoOrigin?.isp) bits.push(`ISP: ${geoOrigin.isp}`);
     if (snap.egress?.ecs) bits.push(`ECS: ${snap.egress.ecs}`);
     nodes.push({
       id: 'origin',
-      label: ip ? `Egress ${ip}` : 'Origem',
+      label,
       type: 'vip',
       status: 'ok',
-      bindIp: ip || undefined,
+      bindIp: ips[0] || legacyIp || undefined,
       extra: bits.join(' · ') || undefined,
       lat: originLat,
       lng: originLng,
     });
   }
+
 
   for (const group of snap.providers) {
     for (const entry of group.entries) {
@@ -166,14 +177,21 @@ export default function NocCdnMap({ refetchMs = 60000, title = 'DNS Network Map 
         <div className="flex items-center gap-4 text-[10px] font-mono text-muted-foreground/70 px-1 flex-wrap">
           <span>CDNs/autoritativos: <span className="text-primary font-bold">{totalEntries}</span></span>
           <span>Com geo no mapa: <span className="text-success font-bold">{totalGeo}</span></span>
-          {snap?.egress?.ip && (
+          {(snap?.egress?.block || snap?.egress?.ips?.length || snap?.egress?.ip) && (
             <span>
-              Egress: <span className="text-foreground/80 font-bold">{snap.egress.ip}</span>
-              {snap.egress.geo?.city && (
+              Egress:{' '}
+              <span className="text-foreground/80 font-bold">
+                {snap?.egress?.block ?? snap?.egress?.ip}
+              </span>
+              {snap?.egress?.ips && snap.egress.ips.length > 0 && (
+                <span className="text-muted-foreground/60"> [{snap.egress.ips.join(', ')}]</span>
+              )}
+              {snap?.egress?.geo?.city && (
                 <span className="text-muted-foreground/60"> ({snap.egress.geo.city}{snap.egress.geo.country ? `, ${snap.egress.geo.country}` : ''})</span>
               )}
             </span>
           )}
+
           {isLoading && <span className="text-muted-foreground/50">carregando…</span>}
           {isError && <span className="text-destructive/80">erro ao consultar /network/cdns</span>}
           {!isLoading && !isError && totalEntries === 0 && (
