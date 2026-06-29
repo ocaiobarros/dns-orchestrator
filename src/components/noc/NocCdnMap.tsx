@@ -52,23 +52,34 @@ function buildMap(snap: CdnSnapshot): { nodes: MapNode[]; edges: MapEdge[]; hasO
   const hasOrigin = Boolean(snap.egress?.ip || originLat != null);
 
   if (hasOrigin) {
-    const ip = snap.egress?.ip ?? '';
+    const ips = snap.egress?.ips ?? [];
+    const block = snap.egress?.block ?? snap.egress?.ecs ?? null;
+    const legacyIp = snap.egress?.ip ?? '';
+    const label = block
+      ? `Egress ${block}`
+      : (ips[0] ? `Egress ${ips[0]}` : (legacyIp ? `Egress ${legacyIp}` : 'Origem'));
     const bits: string[] = [];
+    if (ips.length > 0) {
+      bits.push(`egressos reais: ${ips.join(' · ')}`);
+    } else if (legacyIp) {
+      bits.push(legacyIp);
+    }
     if (geoOrigin?.city) bits.push(geoOrigin.city);
     if (geoOrigin?.country) bits.push(geoOrigin.country);
     if (geoOrigin?.isp) bits.push(`ISP: ${geoOrigin.isp}`);
     if (snap.egress?.ecs) bits.push(`ECS: ${snap.egress.ecs}`);
     nodes.push({
       id: 'origin',
-      label: ip ? `Egress ${ip}` : 'Origem',
+      label,
       type: 'vip',
       status: 'ok',
-      bindIp: ip || undefined,
+      bindIp: ips[0] || legacyIp || undefined,
       extra: bits.join(' · ') || undefined,
       lat: originLat,
       lng: originLng,
     });
   }
+
 
   for (const group of snap.providers) {
     for (const entry of group.entries) {
