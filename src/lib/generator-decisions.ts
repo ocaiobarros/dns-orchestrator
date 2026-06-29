@@ -209,18 +209,27 @@ export function buildDecisionLog(config: WizardConfig): GeneratorDecision[] {
     });
   }
 
-  // Forward addrs
-  const fwd = config.forwardAddrs?.length > 0 ? config.forwardAddrs : ['1.1.1.1', '1.0.0.1', '8.8.8.8', '9.9.9.9'];
-  decisions.push({
-    category: 'Resolução',
-    parameter: 'forward-addr',
-    value: fwd.join(', '),
-    reasoning: config.forwardAddrs?.length > 0
-      ? 'Upstreams customizados pelo operador'
-      : 'Upstreams default: Cloudflare + Google (fallback quando nenhum upstream foi especificado)',
-  });
+  // Forward addrs (caminho primário apenas no modo Simples)
+  if (isSimple) {
+    const fwd = config.forwardAddrs?.length > 0 ? config.forwardAddrs : ['1.1.1.1', '1.0.0.1', '8.8.8.8', '9.9.9.9'];
+    decisions.push({
+      category: 'Resolução',
+      parameter: 'forward-addr',
+      value: fwd.join(', '),
+      reasoning: config.forwardAddrs?.length > 0
+        ? 'Upstreams customizados pelo operador (modo Simples = forward-only)'
+        : 'Upstreams default: Cloudflare + Google (fallback quando nenhum upstream foi especificado)',
+    });
+  } else {
+    decisions.push({
+      category: 'Resolução',
+      parameter: 'forward-addr',
+      value: 'não usado (resolução iterativa)',
+      reasoning: 'Modo Interceptação resolve direto dos autoritativos a partir da raiz (root servers). Não há forward-zone "." — forwardar a terceiros faria o CDN enxergar o egress do recursor público (sem ECS), errando o steering geográfico. Em iterativo, o autoritativo do CDN enxerga o egress do próprio provedor.',
+    });
+  }
 
-  // Root hints
+  // Root hints / arquitetura de resolução
   if (isSimple) {
     decisions.push({
       category: 'Arquitetura',
@@ -231,11 +240,12 @@ export function buildDecisionLog(config: WizardConfig): GeneratorDecision[] {
   } else {
     decisions.push({
       category: 'Arquitetura',
-      parameter: 'root-hints',
-      value: config.rootHintsPath || '/usr/share/dns/root.hints',
-      reasoning: 'Modo interceptação usa forward-first — root-hints necessário para fallback iterativo quando upstreams falham',
+      parameter: 'module-config / root-hints',
+      value: `validator iterator + ${config.rootHintsPath || '/etc/unbound/named.cache'}`,
+      reasoning: 'Modo Interceptação: resolver iterativo VALIDANTE da raiz. root-hints prima os 13 root servers diretamente; auto-trust-anchor-file mantém o KSK via RFC 5011. Sem forward-zone "." → steering de CDN correto pelo egress do provedor.',
     });
   }
+
 
   // AD zones
   const adZones = config.adForwardZones?.filter(z => z.domain?.trim() && z.dnsServers.length > 0) || [];
