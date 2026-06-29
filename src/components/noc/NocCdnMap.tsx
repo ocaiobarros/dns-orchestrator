@@ -177,14 +177,21 @@ export default function NocCdnMap({ refetchMs = 60000, title = 'DNS Network Map 
         <div className="flex items-center gap-4 text-[10px] font-mono text-muted-foreground/70 px-1 flex-wrap">
           <span>CDNs/autoritativos: <span className="text-primary font-bold">{totalEntries}</span></span>
           <span>Com geo no mapa: <span className="text-success font-bold">{totalGeo}</span></span>
-          {snap?.egress?.ip && (
+          {(snap?.egress?.block || snap?.egress?.ips?.length || snap?.egress?.ip) && (
             <span>
-              Egress: <span className="text-foreground/80 font-bold">{snap.egress.ip}</span>
-              {snap.egress.geo?.city && (
+              Egress:{' '}
+              <span className="text-foreground/80 font-bold">
+                {snap?.egress?.block ?? snap?.egress?.ip}
+              </span>
+              {snap?.egress?.ips && snap.egress.ips.length > 0 && (
+                <span className="text-muted-foreground/60"> [{snap.egress.ips.join(', ')}]</span>
+              )}
+              {snap?.egress?.geo?.city && (
                 <span className="text-muted-foreground/60"> ({snap.egress.geo.city}{snap.egress.geo.country ? `, ${snap.egress.geo.country}` : ''})</span>
               )}
             </span>
           )}
+
           {isLoading && <span className="text-muted-foreground/50">carregando…</span>}
           {isError && <span className="text-destructive/80">erro ao consultar /network/cdns</span>}
           {!isLoading && !isError && totalEntries === 0 && (
