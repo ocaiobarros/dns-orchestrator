@@ -1980,12 +1980,15 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
         '    control-interface: /run/unbound.ctl\n' +
         '    control-use-cert: "no"\n',
     });
-    // Trust anchor da raiz (DNSSEC KSK) — seed FROZEN do repo, materializado
-    // em /var/lib/unbound/root.key (writable). Após o seed, o Unbound mantém
-    // o anchor IN-BAND via RFC 5011 (probes DNS, NÃO download HTTP). Necessário
-    // porque o modo Interceptação opera como resolver iterativo VALIDANTE
-    // (module-config: "validator iterator", auto-trust-anchor-file: …).
-    files.push({ path: '/var/lib/unbound/root.key', content: ROOT_TRUST_ANCHOR_KEY });
+    // Trust anchor da raiz (DNSSEC KSK): NÃO materializado pelo deploy.
+    // O Debian/Unbound mantém /var/lib/unbound/root.key IN-BAND via RFC 5011
+    // (auto-trust-anchor-file). Sobrescrever destruiria o estado vivo do
+    // rollover e exigiria ownership unbound:unbound fora do sudoers do
+    // dns-control. O snapshot ROOT_TRUST_ANCHOR_KEY permanece no repo como
+    // seed documental para bootstrap manual; a diretiva auto-trust-anchor-file
+    // no .conf aponta para o arquivo já mantido pelo pacote unbound.
+    void ROOT_TRUST_ANCHOR_KEY;
+
   }
 
 
