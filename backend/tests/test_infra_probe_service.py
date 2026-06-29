@@ -208,7 +208,7 @@ def test_get_cdn_snapshot_exposes_real_egress_ips_from_dns_instances(monkeypatch
             "ts": 1.0,
         })
 
-    # Mock the DB query so we don't depend on a real session.
+    # Stub app.core.database (real one needs sqlalchemy, not present in CI).
     class _FakeInst:
         def __init__(self, ip): self.outgoing_ip = ip
     class _FakeQuery:
@@ -217,8 +217,13 @@ def test_get_cdn_snapshot_exposes_real_egress_ips_from_dns_instances(monkeypatch
     class _FakeDB:
         def query(self, _): return _FakeQuery()
         def close(self): pass
-    import app.core.database as dbmod
-    monkeypatch.setattr(dbmod, "SessionLocal", lambda: _FakeDB())
+    dbmod = types.ModuleType("app.core.database")
+    dbmod.SessionLocal = lambda: _FakeDB()  # type: ignore[attr-defined]
+    sys.modules["app.core.database"] = dbmod
+    opmod = types.ModuleType("app.models.operational")
+    opmod.DnsInstance = object  # type: ignore[attr-defined]
+    sys.modules["app.models.operational"] = opmod
+
 
     snap = svc.get_cdn_snapshot()
     eg = snap["egress"]
