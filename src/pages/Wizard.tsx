@@ -845,7 +845,17 @@ export default function Wizard() {
       </div>
 
       {isInterception && (
-        <FieldGroup label="Root Hints"><Input value={config.rootHintsPath} onChange={v => set('rootHintsPath', v)} /></FieldGroup>
+        <>
+          <div className="p-3 rounded bg-primary/5 border border-primary/20 text-xs space-y-1">
+            <div className="font-medium text-primary">Resolução: Iterativa (a partir da raiz)</div>
+            <p className="text-muted-foreground">
+              O Unbound consulta os root servers diretamente (root-hints) e desce a cadeia até os autoritativos,
+              com DNSSEC validado localmente (validator + auto-trust-anchor / RFC 5011). <strong>Sem forward-zone "."</strong> —
+              o autoritativo do CDN enxerga o egress do próprio provedor, garantindo steering geográfico correto.
+            </p>
+          </div>
+          <FieldGroup label="Root Hints"><Input value={config.rootHintsPath} onChange={v => set('rootHintsPath', v)} /></FieldGroup>
+        </>
       )}
       {!isInterception && (
         <div className="p-2 rounded bg-accent/5 border border-accent/15 text-xs text-muted-foreground">
@@ -853,12 +863,19 @@ export default function Wizard() {
         </div>
       )}
 
-      {/* Forward Addrs */}
+      {/* Forward Addrs — caminho primário apenas em Simples */}
       <div className="border-t border-border pt-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Forward Global (resolvers upstream)</div>
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          {isInterception ? 'Forward Global (não usado em Interceptação)' : 'Forward Global (resolvers upstream)'}
+        </div>
         <ListInput items={config.forwardAddrs || []} onChange={items => set('forwardAddrs', items)} placeholder="Ex: 1.1.1.1" />
-        <p className="text-xs text-muted-foreground/70 mt-1">Todas as queries recursivas serão encaminhadas para esses resolvers em vez de usar root-hints.</p>
+        <p className="text-xs text-muted-foreground/70 mt-1">
+          {isInterception
+            ? 'Opcional. Em Interceptação a resolução é iterativa da raiz; estes IPs NÃO geram forward-zone "." e ficam ignorados pelo gerador.'
+            : 'Todas as queries recursivas serão encaminhadas para esses resolvers em vez de usar root-hints.'}
+        </p>
       </div>
+
 
       {/* AD Forward Zones */}
       <div className="border-t border-border pt-4">
