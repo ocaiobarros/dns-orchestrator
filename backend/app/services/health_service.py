@@ -93,27 +93,38 @@ def run_health_checks_for_instance(db: Session, instance: DnsInstance) -> dict:
 
 def _classify_health(results: dict, settings: dict) -> str:
     """
-    Quorum health classification:
-    - Healthy: process OK, port bound, dig OK
-    - Degraded: process OK, port OK, dig latency > threshold
-    - Failed: dig timeout, process inactive, or port not listening
+    Liveness-first classification (iterative-aware):
+    - failed   : only when the service is truly down — systemd inactive,
+                 port not bound, OR unbound-control not responding.
+    - degraded : alive but slow/partial — dig timeout/slow, latency above
+                 warn threshold, or unbound-control reports degraded.
+    - ok       : alive and dig within latency budget.
+
+    A slow/timed-out external recursion (dig) NEVER marks the instance as
+    failed, because in iterative mode a cache-miss to the roots/TLDs can
+    exceed the probe timeout while the resolver is perfectly healthy.
     """
     systemd_ok = results["systemd"]["status"] == "ok"
     port_ok = results["port"]["status"] == "ok"
+    control_ok = results["unbound_stats"]["status"] == "ok"
     dig_ok = results["dig"]["status"] == "ok"
     dig_latency = results["dig"].get("latency_ms", 0)
     latency_warn = settings.get("latency_warn_ms", 50)
 
-    if not systemd_ok or not port_ok:
+    # Liveness gate — only local, cheap signals can mark "failed".
+    if not systemd_ok or not port_ok or not control_ok:
         return "failed"
 
+    # Alive: classify quality.
     if not dig_ok:
-        return "failed"
-
+        return "degraded"
     if dig_latency > latency_warn:
+        return "degraded"
+    if results["unbound_stats"]["status"] == "degraded":
         return "degraded"
 
     return "ok"
+
 
 
 def _check_systemd(instance_name: str) -> dict:

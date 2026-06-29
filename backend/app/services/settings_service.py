@@ -8,7 +8,7 @@ from app.models.log_entry import Setting
 
 # Default health engine thresholds
 HEALTH_DEFAULTS = {
-    "DNS_HEALTH_DIG_TIMEOUT_MS": "2000",
+    "DNS_HEALTH_DIG_TIMEOUT_MS": "5000",
     "DNS_HEALTH_LATENCY_WARN_MS": "50",
     "DNS_HEALTH_CONSECUTIVE_FAILURES": "3",
     "DNS_HEALTH_CONSECUTIVE_SUCCESSES": "3",
