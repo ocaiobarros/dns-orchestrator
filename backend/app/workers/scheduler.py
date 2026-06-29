@@ -156,6 +156,19 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # Infra probe (iterative-mode CDN map) — read-only dump_infra across the
+    # 4 local instances. 60s is plenty (the resolver's contact set evolves
+    # slowly) and keeps load on unbound-control minimal.
+    _scheduler.add_job(
+        infra_probe_job,
+        trigger=IntervalTrigger(seconds=60),
+        id="infra_probe_worker",
+        name="Infra Probe (CDN map via dump_infra)",
+        replace_existing=True,
+    )
+
+
+
     _scheduler.start()
     logger.info(
         "v2.1 Scheduler started: health(10s), metrics(30s), reconciliation(10s), "
