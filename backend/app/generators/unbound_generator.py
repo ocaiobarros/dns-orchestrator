@@ -345,15 +345,24 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     hide-version: yes
     harden-glue: yes
 """
-        # Modos Simples e Interceptação operam ambos em forward-first
-        # (gabarito do servidor homologado): iterator puro, sem validator
-        # local. Validator + auto-trust-anchor em forward-first causa
-        # SERVFAIL (não consegue primar a raiz a partir do upstream).
+        # Postura DNSSEC depende do modo:
+        # - Simples (forward-only): iterator puro, DNSSEC delegado ao upstream.
+        # - Interceptação: resolver iterativo VALIDANTE da raiz (sem forward-zone
+        #   "."). O validator + auto-trust-anchor funciona porque a raiz é primada
+        #   diretamente via root-hints — não há forward-first para causar SERVFAIL.
+        #   Forwardar a terceiros faz CDNs enxergarem o egress do recursor público
+        #   (sem ECS no Cloudflare), errando o steering. Em iterativo, o autoritativo
+        #   do CDN enxerga o egress do próprio provedor → steering correto.
+        module_config = '"iterator"' if is_simple else '"validator iterator"'
         config += f"""    harden-dnssec-stripped: {"no" if is_simple else ("yes" if harden_dnssec else "no")}
     use-caps-for-id: {"yes" if use_caps_for_id else "no"}
     do-not-query-address: 127.0.0.1/8
     do-not-query-localhost: yes
-    module-config: "iterator"
+    module-config: {module_config}
+"""
+        if not is_simple:
+            config += """    auto-trust-anchor-file: "/var/lib/unbound/root.key"
+    val-clean-additional: yes
 """
         config += f"""
 
