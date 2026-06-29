@@ -16,7 +16,7 @@ import TopologyMini from '@/components/noc/v3/TopologyMini';
 import LatencyMatrix from '@/components/noc/v3/LatencyMatrix';
 import RankList from '@/components/noc/v3/RankList';
 import NocGeoMap from '@/components/noc/NocGeoMap';
-import NocUpstreamMap from '@/components/noc/NocUpstreamMap';
+import NocResolverMap from '@/components/noc/NocResolverMap';
 import TelemetryHealthStrip from '@/components/noc/TelemetryHealthStrip';
 import NocPoolOperationalState from '@/components/noc/NocPoolOperationalState';
 import type { MapNode, MapEdge } from '@/components/noc/NocNetworkMap';
@@ -282,7 +282,7 @@ function InterceptionDashboard() {
       <PanelV3 title="Mapa de Rede DNS" icon={<MapIcon size={13} />}>
         <div className="-mx-4 overflow-hidden w-[calc(100%+2rem)]"
              style={{ aspectRatio: '21 / 9', maxHeight: 'clamp(280px, 42vh, 520px)' }}>
-          <NocUpstreamMap />
+          <NocResolverMap />
         </div>
       </PanelV3>
 

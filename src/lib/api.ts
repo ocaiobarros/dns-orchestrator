@@ -14,6 +14,7 @@ import type {
   InstanceHealthReport, DeployState, RollbackResult, PostDeployCheck,
   V2Event, V2MetricEntry, V2Instance, V2Action, ReconcileSummary, SystemSelfTestResult,
   UpstreamProbeSnapshot,
+  CdnSnapshot,
 } from './types';
 
 export interface AuthUserRecord {
@@ -214,6 +215,7 @@ export const api = {
   getRoutes: () => apiCall<Route[]>('GET', '/network/routes'),
   checkReachability: () => apiCall<ReachabilityResult[]>('GET', '/network/reachability'),
   getUpstreamProbes: () => apiCall<UpstreamProbeSnapshot>('GET', '/network/upstreams'),
+  getCdns: () => apiCall<CdnSnapshot>('GET', '/network/cdns'),
 
   // DNS
   // Response envelope is { rows, source, source_available, degraded } since the

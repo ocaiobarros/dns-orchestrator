@@ -18,6 +18,8 @@ from app.workers.dns_error_worker import dns_error_collection_job
 from app.workers.anablock_status_worker import anablock_status_job
 from app.workers.upstream_silence_alert_worker import upstream_silence_alert_job
 from app.workers.upstream_probe_worker import upstream_probe_job, upstream_path_probe_job
+from app.workers.infra_probe_worker import infra_probe_job
+
 
 logger = logging.getLogger("dns-control.scheduler")
 
@@ -153,6 +155,19 @@ def start_scheduler():
         name="Upstream Path Probe (mtr)",
         replace_existing=True,
     )
+
+    # Infra probe (iterative-mode CDN map) — read-only dump_infra across the
+    # 4 local instances. 60s is plenty (the resolver's contact set evolves
+    # slowly) and keeps load on unbound-control minimal.
+    _scheduler.add_job(
+        infra_probe_job,
+        trigger=IntervalTrigger(seconds=60),
+        id="infra_probe_worker",
+        name="Infra Probe (CDN map via dump_infra)",
+        replace_existing=True,
+    )
+
+
 
     _scheduler.start()
     logger.info(

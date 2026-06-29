@@ -15,11 +15,14 @@ from __future__ import annotations
 import ipaddress
 import logging
 import re
-from typing import Iterable
+import threading
+import time
+from typing import Any, Iterable
 
 from app.executors.command_runner import run_command
 
 logger = logging.getLogger("dns-control.infra_probe")
+
 
 
 # Local Unbound instances — same convention used everywhere else in the codebase
@@ -214,3 +217,201 @@ def get_infra_entries(instances: list[tuple[str, str]] | None = None) -> list[di
     # Stable, useful default sort: provider then rtt asc (None last)
     deduped.sort(key=lambda r: (r["provider"], r["rtt_ms"] if r["rtt_ms"] is not None else 1e9))
     return deduped
+
+
+# ── Live state + snapshot ──────────────────────────────────────────────────
+# Honest "live CDN map" state. The dump_infra probe runs every ~60s and the
+# state below remembers, per upstream IP we contacted, the last observation.
+# Geo enrichment is opportunistic: we only ask the geoIP service for the TOP-N
+# most relevant IPs per cycle and let the existing rate-limiter (10/min,
+# 6h cache) absorb the load — never asking for everything (would be hundreds).
+
+# Big-CDN priority for top-N geo enrichment. The label set MUST stay in sync
+# with classify_provider().
+_BIG_PROVIDERS = {
+    "Cloudflare", "Akamai", "Google", "AWS", "Fastly",
+    "Azure", "Microsoft", "Apple", "Meta", "Netflix",
+}
+
+# How many IPs to geo-resolve per cycle (top-N by relevance). The geoIP
+# service caps at 10 HTTP calls/min globally and caches for 6h, so picking
+# 8 here keeps a safety margin for the egress probe and other callers.
+_GEO_TOPN_PER_CYCLE = 8
+
+# Entries older than this are dropped from the snapshot.
+_STALE_AFTER_S = 30 * 60
+
+_STATE_LOCK = threading.Lock()
+# ip -> {ip, zone, provider, rtt_ms, lame, dnssec_lame, family, last_seen, geo}
+_STATE: dict[str, dict[str, Any]] = {}
+
+# Track our own egress IP/geo for the map origin (independent of forward-addrs,
+# since iterative mode has none).
+_EGRESS_LOCK = threading.Lock()
+_EGRESS: dict[str, Any] = {"ip": None, "ecs": None, "geo": None, "ts": 0.0}
+
+
+def reset_state_for_tests() -> None:
+    """Wipe in-memory state between unit tests."""
+    with _STATE_LOCK:
+        _STATE.clear()
+    with _EGRESS_LOCK:
+        _EGRESS.update({"ip": None, "ecs": None, "geo": None, "ts": 0.0})
+
+
+def _relevance_score(row: dict[str, Any]) -> tuple[int, float]:
+    """Lower score = more relevant (sort ascending)."""
+    big = 0 if row.get("provider") in _BIG_PROVIDERS else 1
+    rtt = row.get("rtt_ms")
+    return (big, rtt if rtt is not None else 1e9)
+
+
+def _refresh_egress() -> None:
+    """Best-effort refresh of our own egress IP + geo.
+
+    Uses the existing PoP probe (Google myaddr trick via dig). Read-only.
+    The geoIP lookup itself is rate-limited and cached by egress_geo_service.
+    """
+    try:
+        from app.services.upstream_probe_service import probe_pop
+        from app.services.egress_geo_service import resolve_egress_geo
+    except Exception:
+        logger.debug("egress probe unavailable", exc_info=True)
+        return
+
+    # Try a couple of well-known external resolvers — even in iterative mode
+    # the host has outbound DNS to public addresses. First success wins.
+    for target in ("8.8.8.8", "1.1.1.1"):
+        try:
+            pop = probe_pop(target) or {}
+        except Exception:
+            continue
+        egress_ip = pop.get("egress_ip")
+        ecs = pop.get("ecs")
+        if egress_ip or ecs:
+            geo = resolve_egress_geo(egress_ip) if egress_ip else None
+            with _EGRESS_LOCK:
+                _EGRESS.update({"ip": egress_ip, "ecs": ecs, "geo": geo, "ts": time.time()})
+            return
+
+
+def run_probe_cycle(now: float | None = None) -> int:
+    """Read dump_infra from every instance, refresh state, and opportunistically
+    geo-resolve the top-N most relevant IPs. Returns the count of merged entries.
+    Read-only.
+    """
+    ts = now if now is not None else time.time()
+    entries = get_infra_entries()
+    if not entries:
+        return 0
+
+    # Merge into state (keyed by IP, last write wins).
+    with _STATE_LOCK:
+        for row in entries:
+            prev = _STATE.get(row["ip"]) or {}
+            merged = {
+                "ip": row["ip"],
+                "zone": row["zone"],
+                "provider": row["provider"],
+                "rtt_ms": row.get("rtt_ms"),
+                "lame": row.get("lame", False),
+                "dnssec_lame": row.get("dnssec_lame", False),
+                "family": row.get("family", "ipv4"),
+                "last_seen": ts,
+                # Keep any previously-resolved geo unless we never had one.
+                "geo": prev.get("geo"),
+            }
+            _STATE[row["ip"]] = merged
+
+        # Drop very stale entries to bound memory.
+        stale_cut = ts - _STALE_AFTER_S
+        for ip in [ip for ip, v in _STATE.items() if v["last_seen"] < stale_cut]:
+            _STATE.pop(ip, None)
+
+        # Snapshot the candidates needing geo, OUTSIDE the lock for the HTTP call.
+        need_geo = [v for v in _STATE.values() if v.get("geo") is None]
+
+    # Order by relevance, then enrich the top-N. resolve_egress_geo is itself
+    # cached + rate-limited; we still bound the per-cycle ask to be a good
+    # citizen and never starve other callers (egress probe, etc.).
+    need_geo.sort(key=_relevance_score)
+    try:
+        from app.services.egress_geo_service import resolve_egress_geo
+    except Exception:
+        resolve_egress_geo = None  # type: ignore[assignment]
+
+    if resolve_egress_geo is not None:
+        for row in need_geo[:_GEO_TOPN_PER_CYCLE]:
+            try:
+                geo = resolve_egress_geo(row["ip"])
+            except Exception:
+                geo = None
+            if geo is None:
+                continue
+            with _STATE_LOCK:
+                cur = _STATE.get(row["ip"])
+                if cur is not None:
+                    cur["geo"] = geo
+
+    # Refresh our own egress (cheap; geo is cached 6h).
+    _refresh_egress()
+    return len(entries)
+
+
+def get_cdn_snapshot() -> dict[str, Any]:
+    """Build the public snapshot returned by GET /api/network/cdns.
+
+    Structure:
+        {
+          "ts": <epoch>,
+          "egress": {"ip": ..., "ecs": ..., "geo": {...}|None} | None,
+          "providers": [
+            {
+              "provider": "Cloudflare",
+              "count": 42,
+              "avg_rtt_ms": 18.2,
+              "geo_count": 4,
+              "entries": [{ip, zone, rtt_ms, lame, dnssec_lame, family, geo}, ...],
+            }, ...
+          ]
+        }
+
+    Providers are ordered by count desc (most-served first). Within a provider,
+    entries are ordered by rtt asc.
+    """
+    now = time.time()
+    with _STATE_LOCK:
+        rows = [dict(v) for v in _STATE.values()]
+    with _EGRESS_LOCK:
+        egress_block = (
+            {"ip": _EGRESS["ip"], "ecs": _EGRESS["ecs"], "geo": _EGRESS["geo"]}
+            if (_EGRESS["ip"] or _EGRESS["ecs"]) else None
+        )
+
+    # Group by provider.
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    for r in rows:
+        buckets.setdefault(r["provider"], []).append({
+            "ip": r["ip"],
+            "zone": r["zone"],
+            "rtt_ms": r.get("rtt_ms"),
+            "lame": bool(r.get("lame")),
+            "dnssec_lame": bool(r.get("dnssec_lame")),
+            "family": r.get("family", "ipv4"),
+            "geo": r.get("geo"),
+        })
+
+    providers: list[dict[str, Any]] = []
+    for provider, items in buckets.items():
+        items.sort(key=lambda x: x["rtt_ms"] if x["rtt_ms"] is not None else 1e9)
+        rtts = [x["rtt_ms"] for x in items if x["rtt_ms"] is not None]
+        providers.append({
+            "provider": provider,
+            "count": len(items),
+            "avg_rtt_ms": round(sum(rtts) / len(rtts), 2) if rtts else None,
+            "geo_count": sum(1 for x in items if x.get("geo")),
+            "entries": items,
+        })
+    providers.sort(key=lambda p: (-p["count"], p["provider"]))
+
+    return {"ts": now, "egress": egress_block, "providers": providers}
