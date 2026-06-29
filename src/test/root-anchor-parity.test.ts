@@ -48,13 +48,12 @@ describe('Root Trust Anchor — frozen snapshot', () => {
 });
 
 describe('Root Trust Anchor — generator wiring', () => {
-  it('interception materializes /var/lib/unbound/root.key from the frozen seed', () => {
+  it('interception does NOT materialize /var/lib/unbound/root.key (preserves host RFC 5011 anchor)', () => {
+    // Approach A (FIX-DEPLOY-ROOTKEY): o Debian/Unbound mantém o trust anchor
+    // in-band via RFC 5011. O deploy NÃO deve sobrescrever esse arquivo.
     const files = generateAllFiles(makeCfg('interception'));
     const rootKey = files.find((f) => f.path === '/var/lib/unbound/root.key');
-    expect(rootKey).toBeDefined();
-    expect(rootKey!.content).toBe(ROOT_TRUST_ANCHOR_KEY);
-    expect(rootKey!.content).toContain(DS_KSK_2017);
-    expect(rootKey!.content).toContain(DS_KSK_2024);
+    expect(rootKey).toBeUndefined();
   });
 
   it('simple mode does NOT emit the root.key (no local validator)', () => {
@@ -63,3 +62,4 @@ describe('Root Trust Anchor — generator wiring', () => {
     expect(rootKey).toBeUndefined();
   });
 });
+
