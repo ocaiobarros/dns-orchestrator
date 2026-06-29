@@ -115,8 +115,9 @@ def classify_provider(ip: str, zone: str) -> str:
     z = (zone or "").strip().lower()
     if z in (".", ""):
         return "Root"
-    # Some zones come like "root-servers.net." — keep as Root only on bare ".".
-    if z in _TLD_HINTS or (len(z) <= 5 and z.endswith(".")):
+    # Accept both "br." and "br" since callers may strip the trailing dot.
+    z_dot = z if z.endswith(".") else z + "."
+    if z_dot in _TLD_HINTS or ("." not in z.rstrip(".") and len(z.rstrip(".")) <= 4):
         return "TLD"
     for needle, label in _ZONE_PROVIDERS:
         if needle in z:
