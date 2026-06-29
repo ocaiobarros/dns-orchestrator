@@ -245,6 +245,9 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
             "/etc/unbound/named.cache",
         )
         files.append(_generate_root_hints())
+        # Seed do trust anchor (DNSSEC) a partir do snapshot frozen do repo.
+        # Após o seed, manutenção é IN-BAND via RFC 5011 (sem download HTTP).
+        files.append(_generate_root_anchor())
 
     for inst in instances:
         name = inst.get("name", "unbound")
