@@ -220,9 +220,9 @@ forward-zone:
     for (const addr of forwardAddrs) {
       forwardZonesBlock += `    forward-addr: ${addr}\n`;
     }
-    if (config.forwardFirst) {
-      forwardZonesBlock += `    forward-first: yes\n`;
-    }
+    // forward-first NÃO se aplica: simples é forward-only; interceptação não
+    // tem forward-zone "." (resolve iterativo da raiz).
+
   }
 
   // AD forward zones
