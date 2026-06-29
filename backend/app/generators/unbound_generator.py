@@ -25,6 +25,7 @@ from typing import Any
 # é a única fonte de verdade e garante deploys reproduzíveis offline.
 # ─────────────────────────────────────────────────────────────────────────
 _ROOT_HINTS_PATH = Path(__file__).parent / "data" / "named.cache"
+_ROOT_ANCHOR_PATH = Path(__file__).parent / "data" / "root.key"
 
 
 def _safe_int(value: Any, default: int) -> int:
