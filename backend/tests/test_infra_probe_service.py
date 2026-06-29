@@ -98,3 +98,78 @@ def test_per_instance_failure_does_not_break_aggregation(monkeypatch):
     # Got entries from the one working instance — others didn't crash the call.
     assert len(entries) == 6
     assert any(e["provider"] == "Akamai" for e in entries)
+
+
+# ── PROMPT 2: state, geo budget, snapshot ─────────────────────────────────
+
+def _make_dump(n_cloudflare: int, n_other: int) -> str:
+    """Synthesize a dump_infra block with n CF + n unknown rows."""
+    lines = []
+    for i in range(n_cloudflare):
+        ip = f"104.16.{i // 256}.{i % 256}"
+        lines.append(
+            f"{ip} cdn{i}.example.cloudflare.net. ttl 900 ping 10 var 2 "
+            f"rtt 22 rto 22 tA 0 tAAAA 0 tother 0 ednsknown 1 edns 0 delay 0 "
+            f"lame 0 dnssec_lame 0 reclame 0"
+        )
+    for i in range(n_other):
+        ip = f"203.0.113.{i}"
+        lines.append(
+            f"{ip} weird-zone-{i}.example. ttl 800 ping 200 var 12 "
+            f"rtt 250 rto 250 tA 0 tAAAA 0 tother 0 ednsknown 1 edns 0 delay 0 "
+            f"lame 0 dnssec_lame 0 reclame 0"
+        )
+    return "\n".join(lines)
+
+
+def test_run_probe_cycle_respects_geo_topn_and_prioritizes_big_cdns(monkeypatch):
+    svc.reset_state_for_tests()
+    # 100 IPs total — well above the 8/cycle geo budget — split between a
+    # big CDN (Cloudflare) and "Other". We expect only the top-N to be
+    # geo-resolved, and they MUST be Cloudflare rows (big-CDN priority).
+    monkeypatch.setattr(svc, "_run_dump_infra", lambda s, c, timeout=6: _make_dump(50, 50))
+
+    geo_calls: list[str] = []
+
+    def fake_geo(ip):
+        geo_calls.append(ip)
+        return {"ip": ip, "lat": 0.0, "lng": 0.0, "city": "X", "region": None,
+                "country": "X", "isp": None, "asn": None}
+
+    # Patch the service used inside infra_probe + the egress refresh import path.
+    monkeypatch.setattr("app.services.egress_geo_service.resolve_egress_geo", fake_geo)
+    # Skip egress refresh (dig not available in CI; just no-op).
+    monkeypatch.setattr(svc, "_refresh_egress", lambda: None)
+
+    n = svc.run_probe_cycle()
+    assert n == 100
+
+    # Hard rate cap respected — no more than _GEO_TOPN_PER_CYCLE HTTP calls.
+    assert len(geo_calls) <= svc._GEO_TOPN_PER_CYCLE
+    assert len(geo_calls) == svc._GEO_TOPN_PER_CYCLE  # we had plenty of candidates
+
+    # Every IP that got geo'd was a Cloudflare IP (big-CDN priority kicked in).
+    assert all(ip.startswith("104.16.") for ip in geo_calls)
+
+
+def test_get_cdn_snapshot_orders_providers_by_count_and_aggregates(monkeypatch):
+    svc.reset_state_for_tests()
+    monkeypatch.setattr(svc, "_run_dump_infra", lambda s, c, timeout=6:
+                        SAMPLE_INSTANCE_1 if s.endswith("11@8953") else SAMPLE_INSTANCE_2)
+    monkeypatch.setattr("app.services.egress_geo_service.resolve_egress_geo",
+                        lambda ip: None)
+    monkeypatch.setattr(svc, "_refresh_egress", lambda: None)
+    svc.run_probe_cycle()
+
+    snap = svc.get_cdn_snapshot()
+    assert "ts" in snap and "providers" in snap
+    providers = {p["provider"]: p for p in snap["providers"]}
+    # All real providers from the sample show up.
+    for p in ("Akamai", "Cloudflare", "Google", "AWS", "Spotify", "Root", "TLD"):
+        assert p in providers, f"missing provider {p} in {list(providers)}"
+    # Providers sorted by count desc.
+    counts = [p["count"] for p in snap["providers"]]
+    assert counts == sorted(counts, reverse=True)
+    # Per-provider entries carry rtt + flags.
+    cf = providers["Cloudflare"]["entries"][0]
+    assert "rtt_ms" in cf and "zone" in cf and "lame" in cf and "dnssec_lame" in cf
