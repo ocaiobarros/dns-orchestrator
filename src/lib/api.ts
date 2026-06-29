@@ -14,6 +14,7 @@ import type {
   InstanceHealthReport, DeployState, RollbackResult, PostDeployCheck,
   V2Event, V2MetricEntry, V2Instance, V2Action, ReconcileSummary, SystemSelfTestResult,
   UpstreamProbeSnapshot,
+  CdnSnapshot,
 } from './types';
 
 export interface AuthUserRecord {
