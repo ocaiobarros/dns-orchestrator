@@ -207,7 +207,11 @@ def generate_unbound_configs(payload: dict[str, Any]) -> list[dict]:
     harden_dnssec = payload.get("hardenDnssecStripped") if payload.get("hardenDnssecStripped") is not None else wizard_cfg.get("hardenDnssecStripped", True)
     use_caps_for_id = payload.get("useCapsForId") if payload.get("useCapsForId") is not None else wizard_cfg.get("useCapsForId", False)
     query_logging_enabled = is_simple or (payload.get("observability") or wizard_cfg.get("observability") or {}).get("enableQueryLogging", True)
-    outgoing_range = 65535 if is_simple else 8192
+    # Interceptação roda iterativo validante (resolve da raiz): precisa de mais
+    # sockets de saída por thread do que o conservador 8192 anterior (que era
+    # dimensionado para forward-first com 4 upstreams). 32768 dá folga para
+    # iteração contra muitos autoritativos sem estourar limites do kernel.
+    outgoing_range = 65535 if is_simple else 32768
     socket_buffer = "128m" if is_simple else "8m"
 
     # Smart access-control
