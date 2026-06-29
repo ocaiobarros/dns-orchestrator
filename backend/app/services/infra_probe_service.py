@@ -383,10 +383,54 @@ def get_cdn_snapshot() -> dict[str, Any]:
     with _STATE_LOCK:
         rows = [dict(v) for v in _STATE.values()]
     with _EGRESS_LOCK:
-        egress_block = (
-            {"ip": _EGRESS["ip"], "ecs": _EGRESS["ecs"], "geo": _EGRESS["geo"]}
-            if (_EGRESS["ip"] or _EGRESS["ecs"]) else None
-        )
+        eg_ip = _EGRESS["ip"]
+        eg_ecs = _EGRESS["ecs"]
+        eg_geo = _EGRESS["geo"]
+
+    # Real per-instance egresses come from DnsInstance.outgoing_ip — that's
+    # the ground truth (tcpdump confirms). The ECS-derived ".0" is just the
+    # /24 block label observed by the world. Show both honestly.
+    real_egress_ips: list[str] = []
+    try:
+        from app.core.database import SessionLocal
+        from app.models.operational import DnsInstance
+        db = SessionLocal()
+        try:
+            for inst in db.query(DnsInstance).all():
+                ip = (inst.outgoing_ip or "").strip()
+                if ip and ip not in real_egress_ips:
+                    real_egress_ips.append(ip)
+        finally:
+            db.close()
+    except Exception:
+        logger.debug("could not read DnsInstance.outgoing_ip", exc_info=True)
+
+    # Block label: prefer ECS (honest /24 the world sees); fallback to /24 of
+    # any real egress IP we know.
+    block_label: str | None = eg_ecs
+    if not block_label and real_egress_ips:
+        try:
+            net = ipaddress.ip_network(f"{real_egress_ips[0]}/24", strict=False)
+            block_label = str(net)
+        except ValueError:
+            block_label = None
+
+    # Legacy "ip" field: avoid the misleading network address (".0") — use the
+    # first real per-instance egress when available.
+    legacy_ip = real_egress_ips[0] if real_egress_ips else eg_ip
+
+    egress_block: dict[str, Any] | None
+    if real_egress_ips or eg_ip or eg_ecs:
+        egress_block = {
+            "ip": legacy_ip,
+            "block": block_label,
+            "ips": real_egress_ips,
+            "ecs": eg_ecs,
+            "geo": eg_geo,
+        }
+    else:
+        egress_block = None
+
 
     # Group by provider.
     buckets: dict[str, list[dict[str, Any]]] = {}
