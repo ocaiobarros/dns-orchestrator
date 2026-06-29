@@ -1980,9 +1980,12 @@ export function generateAllFiles(config: WizardConfig): { path: string; content:
         '    control-interface: /run/unbound.ctl\n' +
         '    control-use-cert: "no"\n',
     });
-    // Drop-in DNSSEC trust anchor removido: modo Interceptação opera em
-    // forward-first (paridade com gabarito), iterator puro, sem validator
-    // local — auto-trust-anchor-file é inerte e fora de paridade.
+    // Trust anchor da raiz (DNSSEC KSK) — seed FROZEN do repo, materializado
+    // em /var/lib/unbound/root.key (writable). Após o seed, o Unbound mantém
+    // o anchor IN-BAND via RFC 5011 (probes DNS, NÃO download HTTP). Necessário
+    // porque o modo Interceptação opera como resolver iterativo VALIDANTE
+    // (module-config: "validator iterator", auto-trust-anchor-file: …).
+    files.push({ path: '/var/lib/unbound/root.key', content: ROOT_TRUST_ANCHOR_KEY });
   }
 
 
