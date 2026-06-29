@@ -92,6 +92,8 @@ def get_instance_real_stats(instances: list[dict] | None = None) -> list[dict]:
                 "totalQueries": 0,
                 "cacheHitRatio": 0,
                 "avgLatencyMs": 0,
+                "recursionLatencyMs": 0,
+                "effectiveLatencyMs": 0,
                 "uptime": "offline",
                 "uptimeSeconds": 0,
                 "threads": 0,
