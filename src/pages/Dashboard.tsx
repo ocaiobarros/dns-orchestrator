@@ -283,7 +283,7 @@ function InterceptionDashboard() {
       <PanelV3 title="Mapa de Rede DNS" icon={<MapIcon size={13} />}>
         <div className="-mx-4 overflow-hidden w-[calc(100%+2rem)]"
              style={{ aspectRatio: '21 / 9', maxHeight: 'clamp(280px, 42vh, 520px)' }}>
-          <NocUpstreamMap />
+          <NocResolverMap />
         </div>
       </PanelV3>
 
