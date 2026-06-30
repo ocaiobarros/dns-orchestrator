@@ -72,7 +72,7 @@ export default function LatencyMatrix({ frontend, resolvers, upstreams }: Props)
           </div>
           <div className="text-center text-muted-foreground/80">
             <div className="font-bold text-primary/90 flex items-center justify-center gap-1">
-              Recursão (internet)
+              Recursão (cache-miss)
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button

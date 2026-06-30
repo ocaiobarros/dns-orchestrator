@@ -278,7 +278,7 @@ function InterceptionDashboard() {
         <KpiCard label="Cache Hit" value={dnsAvail || safeStats.length > 0 ? `${avgCacheHit.toFixed(1)}%` : '—'} sub={dnsAvail || safeStats.length > 0 ? (avgCacheHit > 70 ? 'Eficiente' : 'Moderado') : 'sem dados'}
           glow visual={<MiniDonut pct={avgCacheHit} />} />
         <KpiCard
-          label="Latência efetiva"
+          label="Latência efetiva (cliente)"
           value={dnsAvail || safeStats.length > 0 ? `${effectiveLatency.toFixed(2)} ms` : '—'}
           sub={dnsAvail || safeStats.length > 0
             ? `recursão (cache-miss): ${avgLatency.toFixed(0)} ms · cache hit: ${avgCacheHit.toFixed(1)}%`
