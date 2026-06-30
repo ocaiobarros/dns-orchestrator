@@ -160,11 +160,12 @@ function InterceptionDashboard() {
     latencyMs: b.healthy ? 1 : 0, // loopback simbólico — verde
     healthy: b.healthy,
   }));
-  // Upstream latency reflects real recursion latency (avgLatency).
-  const upstreamBaseMs = Math.max(1, Math.round(avgLatency || 10));
+  // Modo ITERATIVO: a recursão vai à internet (root → TLD → autoritativo), não a resolvers fixos.
+  // A latência exibida é a recursão real (avgLatency, cache-miss). NÃO é mais forward p/ 1.1.1.1/8.8.8.8.
+  const recursionMs = Math.max(1, Math.round(avgLatency || 10));
   const latencyUpstreams = [
-    { name: '1.1.1.1', ip: '1.1.1.1', latencyMs: upstreamBaseMs, healthy: true },
-    { name: '8.8.8.8', ip: '8.8.8.8', latencyMs: upstreamBaseMs + 1, healthy: true },
+    { name: 'Root servers', ip: 'a-m.root-servers.net', latencyMs: recursionMs, healthy: true },
+    { name: 'TLD / Autoritativos', ip: 'internet', latencyMs: recursionMs, healthy: true },
   ];
 
   // Categorize the loopback IP soup for separate, correctly-labeled chips.
