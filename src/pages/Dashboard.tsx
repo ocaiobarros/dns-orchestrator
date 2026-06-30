@@ -183,7 +183,7 @@ function InterceptionDashboard() {
       id: `r-${i}`, label: b.name, type: 'resolver' as const, status: 'ok' as const,
       latency: 1, qps: b.qps, cacheHit: b.cacheHit, bindIp: b.ip,
     })),
-    { id: 'upstream', label: 'Upstream', type: 'upstream', status: 'ok', bindIp: '8.8.8.8' },
+    { id: 'upstream', label: 'Internet (raiz/autoritativos)', type: 'upstream', status: 'ok' },
   ];
   const geoEdges: MapEdge[] = topoBackends.map((_, i) => ({ from: 'vip', to: `r-${i}`, qps: Math.round(totalQps / Math.max(topoBackends.length, 1)) }));
 
