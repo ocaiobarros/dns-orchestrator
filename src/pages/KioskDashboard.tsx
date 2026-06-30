@@ -455,7 +455,7 @@ export default function KioskDashboard() {
               </Panel>
 
               <Panel className="min-h-[160px]">
-                <CardLabel icon={<Timer size={13} />}>Latência</CardLabel>
+                <CardLabel icon={<Timer size={13} />}>recursão (cache-miss)</CardLabel>
                 <div className="text-[40px] font-bold font-mono leading-none mt-2 tracking-tight"
                   style={{ color: 'hsl(var(--warning))', textShadow: '0 0 12px hsl(var(--warning) / 0.4)' }}>
                   {latency.toFixed(2)}ms
@@ -490,7 +490,7 @@ export default function KioskDashboard() {
 
               <Panel>
                 <div className="text-[10.5px] font-mono font-bold uppercase tracking-[0.2em] text-muted-foreground/75 mb-3">
-                  Latência (ms)
+                  recursão (cache-miss) (ms)
                 </div>
                 <div className="flex">
                   <div className="flex flex-col justify-between text-[9.5px] font-mono text-muted-foreground/60 pr-2 py-0.5"
@@ -652,7 +652,7 @@ export default function KioskDashboard() {
               <div className="space-y-3 text-[13px] font-mono">
                 <RowStat icon={<Globe size={13} />} label="QPS Atual" value={String(qps)} />
                 <RowStat icon={<Database size={13} />} label="Cache Hit" value={`${cacheHit.toFixed(1)}%`} />
-                <RowStat icon={<Timer size={13} />} label="Latência" value={`${latency.toFixed(2)}ms`} />
+                <RowStat icon={<Timer size={13} />} label="recursão (cache-miss)" value={`${latency.toFixed(2)}ms`} />
                 <RowStat icon={<Shield size={13} />} label="Serviços Online" value={`${servicesUp}/${servicesTotal}`} />
                 <RowStat icon={<Server size={13} />} label="Backends Online" value={`${backendsUp}/${backendsTotal}`} />
               </div>

@@ -604,6 +604,7 @@ function TrafficEvolutionChart({ data, rangeLabel, timeMeta, timeRange }: { data
       )}
       <div className="mt-2 px-1 text-[10px] leading-snug text-muted-foreground/80">
         QPS = consultas por segundo (eixo esq.). Latência = tempo de <strong>recursão na internet</strong> em cache-miss (eixo dir.); 100–200&nbsp;ms é normal.
+        Esta é a latência de buscar um nome novo na internet; a <strong>Latência efetiva</strong> do painel principal é menor porque ~80% das respostas vêm do cache local.
         Cache Hit tem painel próprio (escala 0–100%), por isso não aparece aqui.
       </div>
     </Panel>
